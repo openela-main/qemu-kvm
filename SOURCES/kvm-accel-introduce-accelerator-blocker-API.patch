@@ -1,0 +1,349 @@
+From a5e7bb1f7a88efb5574266a76e80fd7604d19921 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Mon, 16 Jan 2023 07:49:59 -0500
+Subject: [PATCH 04/11] accel: introduce accelerator blocker API
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 247: accel: introduce accelerator blocker API
+RH-Bugzilla: 2161188
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/3] 9d3d7f9554974a79042c915763288cce07aef135
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2161188
+
+commit bd688fc93120fb3e28aa70e3dfdf567ccc1e0bc1
+Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date:   Fri Nov 11 10:47:56 2022 -0500
+
+    accel: introduce accelerator blocker API
+
+    This API allows the accelerators to prevent vcpus from issuing
+    new ioctls while execting a critical section marked with the
+    accel_ioctl_inhibit_begin/end functions.
+
+    Note that all functions submitting ioctls must mark where the
+    ioctl is being called with accel_{cpu_}ioctl_begin/end().
+
+    This API requires the caller to always hold the BQL.
+    API documentation is in sysemu/accel-blocker.h
+
+    Internally, it uses a QemuLockCnt together with a per-CPU QemuLockCnt
+    (to minimize cache line bouncing) to keep avoid that new ioctls
+    run when the critical section starts, and a QemuEvent to wait
+    that all running ioctls finish.
+
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Message-Id: <20221111154758.1372674-2-eesposit@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflicts:
+	util/meson.build: files are missing in rhel 8.8.0
+	namely int128.c, memalign.c and interval-tree.c
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ accel/accel-blocker.c          | 154 +++++++++++++++++++++++++++++++++
+ accel/meson.build              |   2 +-
+ hw/core/cpu-common.c           |   2 +
+ include/hw/core/cpu.h          |   3 +
+ include/sysemu/accel-blocker.h |  56 ++++++++++++
+ util/meson.build               |   2 +-
+ 6 files changed, 217 insertions(+), 2 deletions(-)
+ create mode 100644 accel/accel-blocker.c
+ create mode 100644 include/sysemu/accel-blocker.h
+
+diff --git a/accel/accel-blocker.c b/accel/accel-blocker.c
+new file mode 100644
+index 0000000000..1e7f423462
+--- /dev/null
++++ b/accel/accel-blocker.c
+@@ -0,0 +1,154 @@
++/*
++ * Lock to inhibit accelerator ioctls
++ *
++ * Copyright (c) 2022 Red Hat Inc.
++ *
++ * Author: Emanuele Giuseppe Esposito       <eesposit@redhat.com>
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/thread.h"
++#include "qemu/main-loop.h"
++#include "hw/core/cpu.h"
++#include "sysemu/accel-blocker.h"
++
++static QemuLockCnt accel_in_ioctl_lock;
++static QemuEvent accel_in_ioctl_event;
++
++void accel_blocker_init(void)
++{
++    qemu_lockcnt_init(&accel_in_ioctl_lock);
++    qemu_event_init(&accel_in_ioctl_event, false);
++}
++
++void accel_ioctl_begin(void)
++{
++    if (likely(qemu_mutex_iothread_locked())) {
++        return;
++    }
++
++    /* block if lock is taken in kvm_ioctl_inhibit_begin() */
++    qemu_lockcnt_inc(&accel_in_ioctl_lock);
++}
++
++void accel_ioctl_end(void)
++{
++    if (likely(qemu_mutex_iothread_locked())) {
++        return;
++    }
++
++    qemu_lockcnt_dec(&accel_in_ioctl_lock);
++    /* change event to SET. If event was BUSY, wake up all waiters */
++    qemu_event_set(&accel_in_ioctl_event);
++}
++
++void accel_cpu_ioctl_begin(CPUState *cpu)
++{
++    if (unlikely(qemu_mutex_iothread_locked())) {
++        return;
++    }
++
++    /* block if lock is taken in kvm_ioctl_inhibit_begin() */
++    qemu_lockcnt_inc(&cpu->in_ioctl_lock);
++}
++
++void accel_cpu_ioctl_end(CPUState *cpu)
++{
++    if (unlikely(qemu_mutex_iothread_locked())) {
++        return;
++    }
++
++    qemu_lockcnt_dec(&cpu->in_ioctl_lock);
++    /* change event to SET. If event was BUSY, wake up all waiters */
++    qemu_event_set(&accel_in_ioctl_event);
++}
++
++static bool accel_has_to_wait(void)
++{
++    CPUState *cpu;
++    bool needs_to_wait = false;
++
++    CPU_FOREACH(cpu) {
++        if (qemu_lockcnt_count(&cpu->in_ioctl_lock)) {
++            /* exit the ioctl, if vcpu is running it */
++            qemu_cpu_kick(cpu);
++            needs_to_wait = true;
++        }
++    }
++
++    return needs_to_wait || qemu_lockcnt_count(&accel_in_ioctl_lock);
++}
++
++void accel_ioctl_inhibit_begin(void)
++{
++    CPUState *cpu;
++
++    /*
++     * We allow to inhibit only when holding the BQL, so we can identify
++     * when an inhibitor wants to issue an ioctl easily.
++     */
++    g_assert(qemu_mutex_iothread_locked());
++
++    /* Block further invocations of the ioctls outside the BQL.  */
++    CPU_FOREACH(cpu) {
++        qemu_lockcnt_lock(&cpu->in_ioctl_lock);
++    }
++    qemu_lockcnt_lock(&accel_in_ioctl_lock);
++
++    /* Keep waiting until there are running ioctls */
++    while (true) {
++
++        /* Reset event to FREE. */
++        qemu_event_reset(&accel_in_ioctl_event);
++
++        if (accel_has_to_wait()) {
++            /*
++             * If event is still FREE, and there are ioctls still in progress,
++             * wait.
++             *
++             *  If an ioctl finishes before qemu_event_wait(), it will change
++             * the event state to SET. This will prevent qemu_event_wait() from
++             * blocking, but it's not a problem because if other ioctls are
++             * still running the loop will iterate once more and reset the event
++             * status to FREE so that it can wait properly.
++             *
++             * If an ioctls finishes while qemu_event_wait() is blocking, then
++             * it will be waken up, but also here the while loop makes sure
++             * to re-enter the wait if there are other running ioctls.
++             */
++            qemu_event_wait(&accel_in_ioctl_event);
++        } else {
++            /* No ioctl is running */
++            return;
++        }
++    }
++}
++
++void accel_ioctl_inhibit_end(void)
++{
++    CPUState *cpu;
++
++    qemu_lockcnt_unlock(&accel_in_ioctl_lock);
++    CPU_FOREACH(cpu) {
++        qemu_lockcnt_unlock(&cpu->in_ioctl_lock);
++    }
++}
++
+diff --git a/accel/meson.build b/accel/meson.build
+index dfd808d2c8..801b4d44e8 100644
+--- a/accel/meson.build
++++ b/accel/meson.build
+@@ -1,4 +1,4 @@
+-specific_ss.add(files('accel-common.c'))
++specific_ss.add(files('accel-common.c', 'accel-blocker.c'))
+ softmmu_ss.add(files('accel-softmmu.c'))
+ user_ss.add(files('accel-user.c'))
+ 
+diff --git a/hw/core/cpu-common.c b/hw/core/cpu-common.c
+index 9e3241b430..b6e83acf0a 100644
+--- a/hw/core/cpu-common.c
++++ b/hw/core/cpu-common.c
+@@ -238,6 +238,7 @@ static void cpu_common_initfn(Object *obj)
+     cpu->nr_threads = 1;
+ 
+     qemu_mutex_init(&cpu->work_mutex);
++    qemu_lockcnt_init(&cpu->in_ioctl_lock);
+     QSIMPLEQ_INIT(&cpu->work_list);
+     QTAILQ_INIT(&cpu->breakpoints);
+     QTAILQ_INIT(&cpu->watchpoints);
+@@ -249,6 +250,7 @@ static void cpu_common_finalize(Object *obj)
+ {
+     CPUState *cpu = CPU(obj);
+ 
++    qemu_lockcnt_destroy(&cpu->in_ioctl_lock);
+     qemu_mutex_destroy(&cpu->work_mutex);
+ }
+ 
+diff --git a/include/hw/core/cpu.h b/include/hw/core/cpu.h
+index e948e81f1a..49d9c73f97 100644
+--- a/include/hw/core/cpu.h
++++ b/include/hw/core/cpu.h
+@@ -383,6 +383,9 @@ struct CPUState {
+     uint32_t kvm_fetch_index;
+     uint64_t dirty_pages;
+ 
++    /* Use by accel-block: CPU is executing an ioctl() */
++    QemuLockCnt in_ioctl_lock;
++
+     /* Used for events with 'vcpu' and *without* the 'disabled' properties */
+     DECLARE_BITMAP(trace_dstate_delayed, CPU_TRACE_DSTATE_MAX_EVENTS);
+     DECLARE_BITMAP(trace_dstate, CPU_TRACE_DSTATE_MAX_EVENTS);
+diff --git a/include/sysemu/accel-blocker.h b/include/sysemu/accel-blocker.h
+new file mode 100644
+index 0000000000..72020529ef
+--- /dev/null
++++ b/include/sysemu/accel-blocker.h
+@@ -0,0 +1,56 @@
++/*
++ * Accelerator blocking API, to prevent new ioctls from starting and wait the
++ * running ones finish.
++ * This mechanism differs from pause/resume_all_vcpus() in that it does not
++ * release the BQL.
++ *
++ *  Copyright (c) 2022 Red Hat Inc.
++ *
++ * Author: Emanuele Giuseppe Esposito       <eesposit@redhat.com>
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2 or later.
++ * See the COPYING file in the top-level directory.
++ */
++#ifndef ACCEL_BLOCKER_H
++#define ACCEL_BLOCKER_H
++
++#include "qemu/osdep.h"
++#include "sysemu/cpus.h"
++
++extern void accel_blocker_init(void);
++
++/*
++ * accel_{cpu_}ioctl_begin/end:
++ * Mark when ioctl is about to run or just finished.
++ *
++ * accel_{cpu_}ioctl_begin will block after accel_ioctl_inhibit_begin() is
++ * called, preventing new ioctls to run. They will continue only after
++ * accel_ioctl_inibith_end().
++ */
++extern void accel_ioctl_begin(void);
++extern void accel_ioctl_end(void);
++extern void accel_cpu_ioctl_begin(CPUState *cpu);
++extern void accel_cpu_ioctl_end(CPUState *cpu);
++
++/*
++ * accel_ioctl_inhibit_begin: start critical section
++ *
++ * This function makes sure that:
++ * 1) incoming accel_{cpu_}ioctl_begin() calls block
++ * 2) wait that all ioctls that were already running reach
++ *    accel_{cpu_}ioctl_end(), kicking vcpus if necessary.
++ *
++ * This allows the caller to access shared data or perform operations without
++ * worrying of concurrent vcpus accesses.
++ */
++extern void accel_ioctl_inhibit_begin(void);
++
++/*
++ * accel_ioctl_inhibit_end: end critical section started by
++ * accel_ioctl_inhibit_begin()
++ *
++ * This function allows blocked accel_{cpu_}ioctl_begin() to continue.
++ */
++extern void accel_ioctl_inhibit_end(void);
++
++#endif /* ACCEL_BLOCKER_H */
+diff --git a/util/meson.build b/util/meson.build
+index 05b593055a..b5f153b0e8 100644
+--- a/util/meson.build
++++ b/util/meson.build
+@@ -48,6 +48,7 @@ util_ss.add(files('transactions.c'))
+ util_ss.add(when: 'CONFIG_POSIX', if_true: files('drm.c'))
+ util_ss.add(files('guest-random.c'))
+ util_ss.add(files('yank.c'))
++util_ss.add(files('lockcnt.c'))
+ 
+ if have_user
+   util_ss.add(files('selfmap.c'))
+@@ -69,7 +70,6 @@ if have_block
+   util_ss.add(files('hexdump.c'))
+   util_ss.add(files('iova-tree.c'))
+   util_ss.add(files('iov.c', 'qemu-sockets.c', 'uri.c'))
+-  util_ss.add(files('lockcnt.c'))
+   util_ss.add(files('main-loop.c'))
+   util_ss.add(files('nvdimm-utils.c'))
+   util_ss.add(files('qemu-coroutine.c', 'qemu-coroutine-lock.c', 'qemu-coroutine-io.c'))
+-- 
+2.37.3
+

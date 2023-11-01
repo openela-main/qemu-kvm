@@ -1,0 +1,66 @@
+From f0115d856f46e65e3b62896f84fe1902a958bf79 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 22 Mar 2022 19:23:36 -0400
+Subject: [PATCH 04/18] hw/virtio: vdpa: Fix leak of host-notifier
+ memory-region
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 132: hw/virtio: vdpa: Fix leak of host-notifier memory-region
+RH-Commit: [1/1] b3cec35d185e3b9844a458f5c51c5d5ef7e3d8f1 (jmaloy/qemu-kvm)
+RH-Bugzilla: 2060843
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+BZ: https://bugzilla.redhat.com/2060843
+UPSTREAM: no
+BREW: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=44038138
+
+commit 98f7607ecda00dea3cbb2ed7b4427c96846efb83
+Author: Laurent Vivier <lvivier@redhat.com>
+Date:   Fri Feb 11 18:02:59 2022 +0100
+
+    hw/virtio: vdpa: Fix leak of host-notifier memory-region
+
+    If call virtio_queue_set_host_notifier_mr fails, should free
+    host-notifier memory-region.
+
+    This problem can trigger a coredump with some vDPA drivers (mlx5,
+    but not with the vdpasim), if we unplug the virtio-net card from
+    the guest after a stop/start.
+
+    The same fix has been done for vhost-user:
+      1f89d3b91e3e ("hw/virtio: Fix leak of host-notifier memory-region")
+
+    Fixes: d0416d487bd5 ("vhost-vdpa: map virtqueue notification area if possible")
+    Cc: jasowang@redhat.com
+    Resolves: https://bugzilla.redhat.com/2027208
+    Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+    Message-Id: <20220211170259.1388734-1-lvivier@redhat.com>
+    Cc: qemu-stable@nongnu.org
+    Acked-by: Jason Wang <jasowang@redhat.com>
+    Reviewed-by: Stefano Garzarella <sgarzare@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 98f7607ecda00dea3cbb2ed7b4427c96846efb83)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/virtio/vhost-vdpa.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index bcaf00e09f..78da48a333 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -415,6 +415,7 @@ static int vhost_vdpa_host_notifier_init(struct vhost_dev *dev, int queue_index)
+     g_free(name);
+ 
+     if (virtio_queue_set_host_notifier_mr(vdev, queue_index, &n->mr, true)) {
++        object_unparent(OBJECT(&n->mr));
+         munmap(addr, page_size);
+         goto err;
+     }
+-- 
+2.27.0
+

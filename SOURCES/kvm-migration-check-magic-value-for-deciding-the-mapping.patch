@@ -1,0 +1,296 @@
+From f21a343af4b4d0c6e5181ae0abd0f6280dc8296c Mon Sep 17 00:00:00 2001
+From: "manish.mishra" <manish.mishra@nutanix.com>
+Date: Tue, 20 Dec 2022 18:44:18 +0000
+Subject: [PATCH 2/3] migration: check magic value for deciding the mapping of
+ channels
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 258: migration: Fix multifd crash due to channel disorder
+RH-Bugzilla: 2137740
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Commit: [2/2] f97bebef3d3e372cfd660e5ddb6cffba791840d2
+
+Conflicts:
+        migration/migration.c
+        migration/multifd.c
+        migration/postcopy-ram.c
+        migration/postcopy-ram.h
+
+        There're a bunch of conflicts due to missing upstream patches on
+        e.g. on qemufile reworks, postcopy preempt.  We don't plan to have
+        preempt in rhel8 at all, probably the same as the rest.
+
+Current logic assumes that channel connections on the destination side are
+always established in the same order as the source and the first one will
+always be the main channel followed by the multifid or post-copy
+preemption channel. This may not be always true, as even if a channel has a
+connection established on the source side it can be in the pending state on
+the destination side and a newer connection can be established first.
+Basically causing out of order mapping of channels on the destination side.
+Currently, all channels except post-copy preempt send a magic number, this
+patch uses that magic number to decide the type of channel. This logic is
+applicable only for precopy(multifd) live migration, as mentioned, the
+post-copy preempt channel does not send any magic number. Also, tls live
+migrations already does tls handshake before creating other channels, so
+this issue is not possible with tls, hence this logic is avoided for tls
+live migrations. This patch uses read peek to check the magic number of
+channels so that current data/control stream management remains
+un-effected.
+
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Daniel P. Berrange <berrange@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Suggested-by: Daniel P. Berrange <berrange@redhat.com>
+Signed-off-by: manish.mishra <manish.mishra@nutanix.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 6720c2b32725e6ac404f22851a0ecd0a71d0cbe2)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/channel.c   | 45 ++++++++++++++++++++++++++++++++++++++
+ migration/channel.h   |  5 +++++
+ migration/migration.c | 51 +++++++++++++++++++++++++++++++------------
+ migration/multifd.c   | 19 ++++++++--------
+ migration/multifd.h   |  2 +-
+ 5 files changed, 98 insertions(+), 24 deletions(-)
+
+diff --git a/migration/channel.c b/migration/channel.c
+index 086b5c0d8b..ee308fef23 100644
+--- a/migration/channel.c
++++ b/migration/channel.c
+@@ -98,3 +98,48 @@ void migration_channel_connect(MigrationState *s,
+     g_free(s->hostname);
+     error_free(error);
+ }
++
++
++/**
++ * @migration_channel_read_peek - Peek at migration channel, without
++ *     actually removing it from channel buffer.
++ *
++ * @ioc: the channel object
++ * @buf: the memory region to read data into
++ * @buflen: the number of bytes to read in @buf
++ * @errp: pointer to a NULL-initialized error object
++ *
++ * Returns 0 if successful, returns -1 and sets @errp if fails.
++ */
++int migration_channel_read_peek(QIOChannel *ioc,
++                                const char *buf,
++                                const size_t buflen,
++                                Error **errp)
++{
++    ssize_t len = 0;
++    struct iovec iov = { .iov_base = (char *)buf, .iov_len = buflen };
++
++    while (true) {
++        len = qio_channel_readv_full(ioc, &iov, 1, NULL, NULL,
++                                     QIO_CHANNEL_READ_FLAG_MSG_PEEK, errp);
++
++        if (len <= 0 && len != QIO_CHANNEL_ERR_BLOCK) {
++            error_setg(errp,
++                       "Failed to peek at channel");
++            return -1;
++        }
++
++        if (len == buflen) {
++            break;
++        }
++
++        /* 1ms sleep. */
++        if (qemu_in_coroutine()) {
++            qemu_co_sleep_ns(QEMU_CLOCK_REALTIME, 1000000);
++        } else {
++            g_usleep(1000);
++        }
++    }
++
++    return 0;
++}
+diff --git a/migration/channel.h b/migration/channel.h
+index 67a461c28a..5bdb8208a7 100644
+--- a/migration/channel.h
++++ b/migration/channel.h
+@@ -24,4 +24,9 @@ void migration_channel_connect(MigrationState *s,
+                                QIOChannel *ioc,
+                                const char *hostname,
+                                Error *error_in);
++
++int migration_channel_read_peek(QIOChannel *ioc,
++                                const char *buf,
++                                const size_t buflen,
++                                Error **errp);
+ #endif
+diff --git a/migration/migration.c b/migration/migration.c
+index d8b24a2c91..0885549de0 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -32,6 +32,7 @@
+ #include "savevm.h"
+ #include "qemu-file-channel.h"
+ #include "qemu-file.h"
++#include "channel.h"
+ #include "migration/vmstate.h"
+ #include "block/block.h"
+ #include "qapi/error.h"
+@@ -637,10 +638,6 @@ static bool migration_incoming_setup(QEMUFile *f, Error **errp)
+ {
+     MigrationIncomingState *mis = migration_incoming_get_current();
+ 
+-    if (multifd_load_setup(errp) != 0) {
+-        return false;
+-    }
+-
+     if (!mis->from_src_file) {
+         mis->from_src_file = f;
+     }
+@@ -701,10 +698,42 @@ void migration_fd_process_incoming(QEMUFile *f, Error **errp)
+ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
+ {
+     MigrationIncomingState *mis = migration_incoming_get_current();
++    bool default_channel = true;
++    uint32_t channel_magic = 0;
+     Error *local_err = NULL;
+-    bool start_migration;
++    int ret = 0;
+ 
+-    if (!mis->from_src_file) {
++    if (migrate_use_multifd() && !migrate_postcopy_ram() &&
++        qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_READ_MSG_PEEK)) {
++        /*
++         * With multiple channels, it is possible that we receive channels
++         * out of order on destination side, causing incorrect mapping of
++         * source channels on destination side. Check channel MAGIC to
++         * decide type of channel. Please note this is best effort, postcopy
++         * preempt channel does not send any magic number so avoid it for
++         * postcopy live migration. Also tls live migration already does
++         * tls handshake while initializing main channel so with tls this
++         * issue is not possible.
++         */
++        ret = migration_channel_read_peek(ioc, (void *)&channel_magic,
++                                          sizeof(channel_magic), &local_err);
++
++        if (ret != 0) {
++            error_propagate(errp, local_err);
++            return;
++        }
++
++        default_channel = (channel_magic == cpu_to_be32(QEMU_VM_FILE_MAGIC));
++    } else {
++        default_channel = !mis->from_src_file;
++    }
++
++    if (multifd_load_setup(errp) != 0) {
++        error_setg(errp, "Failed to setup multifd channels");
++        return;
++    }
++
++    if (default_channel) {
+         /* The first connection (multifd may have multiple) */
+         QEMUFile *f = qemu_fopen_channel_input(ioc);
+ 
+@@ -716,23 +745,17 @@ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
+         if (!migration_incoming_setup(f, errp)) {
+             return;
+         }
+-
+-        /*
+-         * Common migration only needs one channel, so we can start
+-         * right now.  Multifd needs more than one channel, we wait.
+-         */
+-        start_migration = !migrate_use_multifd();
+     } else {
+         /* Multiple connections */
+         assert(migrate_use_multifd());
+-        start_migration = multifd_recv_new_channel(ioc, &local_err);
++        multifd_recv_new_channel(ioc, &local_err);
+         if (local_err) {
+             error_propagate(errp, local_err);
+             return;
+         }
+     }
+ 
+-    if (start_migration) {
++    if (migration_has_all_channels()) {
+         migration_incoming_process();
+     }
+ }
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 7c16523e6b..75ac052d2f 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -1183,9 +1183,14 @@ int multifd_load_setup(Error **errp)
+     uint32_t page_count = MULTIFD_PACKET_SIZE / qemu_target_page_size();
+     uint8_t i;
+ 
+-    if (!migrate_use_multifd()) {
++    /*
++     * Return successfully if multiFD recv state is already initialised
++     * or multiFD is not enabled.
++     */
++    if (multifd_recv_state || !migrate_use_multifd()) {
+         return 0;
+     }
++
+     if (!migrate_multifd_is_allowed()) {
+         error_setg(errp, "multifd is not supported by current protocol");
+         return -1;
+@@ -1244,11 +1249,9 @@ bool multifd_recv_all_channels_created(void)
+ 
+ /*
+  * Try to receive all multifd channels to get ready for the migration.
+- * - Return true and do not set @errp when correctly receiving all channels;
+- * - Return false and do not set @errp when correctly receiving the current one;
+- * - Return false and set @errp when failing to receive the current channel.
++ * Sets @errp when failing to receive the current channel.
+  */
+-bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
++void multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
+ {
+     MultiFDRecvParams *p;
+     Error *local_err = NULL;
+@@ -1261,7 +1264,7 @@ bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
+                                 "failed to receive packet"
+                                 " via multifd channel %d: ",
+                                 qatomic_read(&multifd_recv_state->count));
+-        return false;
++        return;
+     }
+     trace_multifd_recv_new_channel(id);
+ 
+@@ -1271,7 +1274,7 @@ bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
+                    id);
+         multifd_recv_terminate_threads(local_err);
+         error_propagate(errp, local_err);
+-        return false;
++        return;
+     }
+     p->c = ioc;
+     object_ref(OBJECT(ioc));
+@@ -1282,6 +1285,4 @@ bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
+     qemu_thread_create(&p->thread, p->name, multifd_recv_thread, p,
+                        QEMU_THREAD_JOINABLE);
+     qatomic_inc(&multifd_recv_state->count);
+-    return qatomic_read(&multifd_recv_state->count) ==
+-           migrate_multifd_channels();
+ }
+diff --git a/migration/multifd.h b/migration/multifd.h
+index 11d5e273e6..9c0a2a0701 100644
+--- a/migration/multifd.h
++++ b/migration/multifd.h
+@@ -20,7 +20,7 @@ void multifd_save_cleanup(void);
+ int multifd_load_setup(Error **errp);
+ int multifd_load_cleanup(Error **errp);
+ bool multifd_recv_all_channels_created(void);
+-bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp);
++void multifd_recv_new_channel(QIOChannel *ioc, Error **errp);
+ void multifd_recv_sync_main(void);
+ int multifd_send_sync_main(QEMUFile *f);
+ int multifd_queue_page(QEMUFile *f, RAMBlock *block, ram_addr_t offset);
+-- 
+2.37.3
+

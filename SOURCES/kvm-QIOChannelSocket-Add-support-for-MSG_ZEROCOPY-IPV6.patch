@@ -1,0 +1,56 @@
+From a6c4aed18a027ce8e107fdf9184e9ea43a86f843 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Thu, 4 Aug 2022 04:10:43 -0300
+Subject: [PATCH 8/9] QIOChannelSocket: Add support for MSG_ZEROCOPY + IPV6
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [8/8] 6e26ee7c9ebaedb07623313cb0678816867751dd
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+For using MSG_ZEROCOPY, there are two steps:
+1 - io_writev() the packet, which enqueues the packet for sending, and
+2 - io_flush(), which gets confirmation that all packets got correctly sent
+
+Currently, if MSG_ZEROCOPY is used to send packets over IPV6, no error will
+be reported in (1), but it will fail in the first time (2) happens.
+
+This happens because (2) currently checks for cmsg_level & cmsg_type
+associated with IPV4 only, before reporting any error.
+
+Add checks for cmsg_level & cmsg_type associated with IPV6, and thus enable
+support for MSG_ZEROCOPY + IPV6
+
+Fixes: 2bc58ffc29 ("QIOChannelSocket: Implement io_writev zero copy flag & io_flush for CONFIG_LINUX")
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 5258a7e2c0677d16e9e1d06845f60171adf0b290)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ io/channel-socket.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index cf0d67c51b..6010ad7017 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -747,8 +747,8 @@ static int qio_channel_socket_flush(QIOChannel *ioc,
+         }
+ 
+         cm = CMSG_FIRSTHDR(&msg);
+-        if (cm->cmsg_level != SOL_IP &&
+-            cm->cmsg_type != IP_RECVERR) {
++        if (cm->cmsg_level != SOL_IP   && cm->cmsg_type != IP_RECVERR &&
++            cm->cmsg_level != SOL_IPV6 && cm->cmsg_type != IPV6_RECVERR) {
+             error_setg_errno(errp, EPROTOTYPE,
+                              "Wrong cmsg in errqueue");
+             return -1;
+-- 
+2.31.1
+

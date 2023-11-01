@@ -1,0 +1,93 @@
+From e626dc16d130c724c400b99a93daad0a9abeae59 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 22 Mar 2022 19:23:36 -0400
+Subject: [PATCH 01/18] Revert "redhat: Add hw_compat_4_2_extra and apply to
+ upstream machines"
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 131: Revert "redhat: Add hw_compat_4_2_extra and apply to upstream machines"
+RH-Commit: [1/3] 47b7d9e5062f5e215d5ed1a3ecdc1a87ac3fa630 (jmaloy/qemu-kvm)
+RH-Bugzilla: 2062613
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+BZ: https://bugzilla.redhat.com/2062613
+UPSTREAM: no
+BREW: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=44038000
+
+commit dc2e9ec1e014950c7918e23a3e9b0096b34a4a92
+Author: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Date:   Wed Mar 9 10:31:53 2022 +0000
+
+    Revert "redhat: Add hw_compat_4_2_extra and apply to upstream machines"
+
+    This reverts commit 66882f9a3230246409f3918424aca26add5c034a.
+    We no longer need these compat machines it was added for.
+
+    Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+(cherry picked from commit dc2e9ec1e014950c7918e23a3e9b0096b34a4a92)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/i386/pc.c         | 12 ------------
+ hw/i386/pc_piix.c    |  6 ------
+ include/hw/i386/pc.h |  3 ---
+ 3 files changed, 21 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 4c08a1971c..357257349b 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -670,18 +670,6 @@ GlobalProperty pc_rhel_7_0_compat[] = {
+ };
+ const size_t pc_rhel_7_0_compat_len = G_N_ELEMENTS(pc_rhel_7_0_compat);
+ 
+-/*
+- * RHEL: These properties only apply to the RHEL exported machine types
+- * pc-4.2/2.11 for the purpose to have a limited upstream machines support
+- * which can be migrated to RHEL.  Let's avoid touching hw_compat_4_2 directly
+- * so that we can have some isolation against the upstream code.
+- */
+-GlobalProperty hw_compat_4_2_extra[] = {
+-    /* By default enlarge the default virtio-net-pci ROM to 512KB. */
+-    { "virtio-net-pci", "romsize", "0x80000" },
+-};
+-const size_t hw_compat_4_2_extra_len = G_N_ELEMENTS(hw_compat_4_2_extra);
+-
+ GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled)
+ {
+     GSIState *s;
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index c30057c443..7b7076cbc7 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -531,12 +531,6 @@ static void pc_i440fx_4_2_machine_options(MachineClass *m)
+      * supported by RHEL, even if exported.
+      */
+     m->deprecation_reason = "Not supported by RHEL";
+-    /*
+-     * RHEL: Specific compat properties to have limited support for upstream
+-     * machines exported.
+-     */
+-    compat_props_add(m->compat_props, hw_compat_4_2_extra,
+-                     hw_compat_4_2_extra_len);
+ }
+ 
+ /* RHEL: Export pc-4.2 */
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 9e8bfb69f8..4a593acb50 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -325,9 +325,6 @@ extern const size_t pc_rhel_7_1_compat_len;
+ extern GlobalProperty pc_rhel_7_0_compat[];
+ extern const size_t pc_rhel_7_0_compat_len;
+ 
+-extern GlobalProperty hw_compat_4_2_extra[];
+-extern const size_t hw_compat_4_2_extra_len;
+-
+ /* Helper for setting model-id for CPU models that changed model-id
+  * depending on QEMU versions up to QEMU 2.4.
+  */
+-- 
+2.27.0
+

@@ -1,0 +1,52 @@
+From 676e19198916d7631ba1367646dd08dc72079f88 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Thu, 21 Apr 2022 16:24:35 +0200
+Subject: [PATCH 6/6] iotests/108: Fix when missing user_allow_other
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 171: qcow2: Improve refcount structure rebuilding
+RH-Commit: [4/4] 36b70b5378ae7c8084b9e847706f00003abe9c11
+RH-Bugzilla: 1519071
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+
+FUSE exports' allow-other option defaults to "auto", which means that it
+will try passing allow_other as a mount option, and fall back to not
+using it when an error occurs.  We make no effort to hide fusermount's
+error message (because it would be difficult, and because users might
+want to know about the fallback occurring), and so when allow_other does
+not work (primarily when /etc/fuse.conf does not contain
+user_allow_other), this error message will appear and break the
+reference output.
+
+We do not need allow_other here, though, so we can just pass
+allow-other=off to fix that.
+
+Reported-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220421142435.569600-1-hreitz@redhat.com>
+Tested-by: Markus Armbruster <armbru@redhat.com>
+Tested-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 348a0740afc5b313599533eb69bbb2b95d2f1bba)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ tests/qemu-iotests/108 | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/qemu-iotests/108 b/tests/qemu-iotests/108
+index 23abbeaff0..775ff08eca 100755
+--- a/tests/qemu-iotests/108
++++ b/tests/qemu-iotests/108
+@@ -326,7 +326,7 @@ else
+ 
+     $QSD \
+         --blockdev file,node-name=export-node,filename="$TEST_IMG" \
+-        --export fuse,id=fuse-export,node-name=export-node,mountpoint="$export_mp",writable=on,growable=off \
++        --export fuse,id=fuse-export,node-name=export-node,mountpoint="$export_mp",writable=on,growable=off,allow-other=off \
+         --pidfile "$TEST_DIR/qsd.pid" \
+         &
+ 
+-- 
+2.27.0
+

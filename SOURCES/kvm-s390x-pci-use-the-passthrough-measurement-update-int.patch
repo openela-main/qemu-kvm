@@ -1,0 +1,59 @@
+From c251a7a16e776072b9c7bbc4e61cfa4f52599b0a Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 3 Dec 2021 09:27:05 -0500
+Subject: [PATCH 03/42] s390x/pci: use the passthrough measurement update
+ interval
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [3/41] bc31ea731fe64e51522f1202e65528311397b919
+
+We may have gotten a measurement update interval from the underlying host
+via vfio -- Use it to set the interval via which we update the function
+measurement block.
+
+Fixes: 28dc86a072 ("s390x/pci: use a PCI Group structure")
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20211203142706.427279-4-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit cb6d6a3e6aa1226b67fd218953dcb3866c3a6845)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-inst.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index 11b7f6bfa1..07bab85ce5 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -1046,7 +1046,7 @@ static void fmb_update(void *opaque)
+                       sizeof(pbdev->fmb.last_update))) {
+         return;
+     }
+-    timer_mod(pbdev->fmb_timer, t + DEFAULT_MUI);
++    timer_mod(pbdev->fmb_timer, t + pbdev->pci_group->zpci_group.mui);
+ }
+ 
+ int mpcifc_service_call(S390CPU *cpu, uint8_t r1, uint64_t fiba, uint8_t ar,
+@@ -1204,7 +1204,8 @@ int mpcifc_service_call(S390CPU *cpu, uint8_t r1, uint64_t fiba, uint8_t ar,
+         }
+         pbdev->fmb_addr = fmb_addr;
+         timer_mod(pbdev->fmb_timer,
+-                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + DEFAULT_MUI);
++                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) +
++                                    pbdev->pci_group->zpci_group.mui);
+         break;
+     }
+     default:
+-- 
+2.37.3
+

@@ -1,0 +1,77 @@
+From 67ebb71d56e95adf185ab4971939e31c4c899863 Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 3 Dec 2021 09:27:04 -0500
+Subject: [PATCH 02/42] s390x/pci: don't use hard-coded dma range in reg_ioat
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [2/41] c7897321f9848ef8f115130832774bbcd6724f03
+
+Instead use the values from clp info, they will either be the hard-coded
+values or what came from the host driver via vfio.
+
+Fixes: 9670ee752727 ("s390x/pci: use a PCI Function structure")
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20211203142706.427279-3-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit df7ce0a94d9283f0656b4bc0f21566973ff649a3)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-inst.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index 1c8ad91175..11b7f6bfa1 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -916,9 +916,10 @@ int pci_dereg_irqs(S390PCIBusDevice *pbdev)
+     return 0;
+ }
+ 
+-static int reg_ioat(CPUS390XState *env, S390PCIIOMMU *iommu, ZpciFib fib,
++static int reg_ioat(CPUS390XState *env, S390PCIBusDevice *pbdev, ZpciFib fib,
+                     uintptr_t ra)
+ {
++    S390PCIIOMMU *iommu = pbdev->iommu;
+     uint64_t pba = ldq_p(&fib.pba);
+     uint64_t pal = ldq_p(&fib.pal);
+     uint64_t g_iota = ldq_p(&fib.iota);
+@@ -927,7 +928,7 @@ static int reg_ioat(CPUS390XState *env, S390PCIIOMMU *iommu, ZpciFib fib,
+ 
+     pba &= ~0xfff;
+     pal |= 0xfff;
+-    if (pba > pal || pba < ZPCI_SDMA_ADDR || pal > ZPCI_EDMA_ADDR) {
++    if (pba > pal || pba < pbdev->zpci_fn.sdma || pal > pbdev->zpci_fn.edma) {
+         s390_program_interrupt(env, PGM_OPERAND, ra);
+         return -EINVAL;
+     }
+@@ -1125,7 +1126,7 @@ int mpcifc_service_call(S390CPU *cpu, uint8_t r1, uint64_t fiba, uint8_t ar,
+         } else if (pbdev->iommu->enabled) {
+             cc = ZPCI_PCI_LS_ERR;
+             s390_set_status_code(env, r1, ZPCI_MOD_ST_SEQUENCE);
+-        } else if (reg_ioat(env, pbdev->iommu, fib, ra)) {
++        } else if (reg_ioat(env, pbdev, fib, ra)) {
+             cc = ZPCI_PCI_LS_ERR;
+             s390_set_status_code(env, r1, ZPCI_MOD_ST_INSUF_RES);
+         }
+@@ -1150,7 +1151,7 @@ int mpcifc_service_call(S390CPU *cpu, uint8_t r1, uint64_t fiba, uint8_t ar,
+             s390_set_status_code(env, r1, ZPCI_MOD_ST_SEQUENCE);
+         } else {
+             pci_dereg_ioat(pbdev->iommu);
+-            if (reg_ioat(env, pbdev->iommu, fib, ra)) {
++            if (reg_ioat(env, pbdev, fib, ra)) {
+                 cc = ZPCI_PCI_LS_ERR;
+                 s390_set_status_code(env, r1, ZPCI_MOD_ST_INSUF_RES);
+             }
+-- 
+2.37.3
+

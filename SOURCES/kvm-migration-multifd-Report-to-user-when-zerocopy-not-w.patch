@@ -1,0 +1,83 @@
+From 2516a21205e67078cb735e9fd47ba50156c166b7 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 11 Jul 2022 18:11:13 -0300
+Subject: [PATCH 5/9] migration/multifd: Report to user when zerocopy not
+ working
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [5/8] 0b2e23b7f8ae72936e11369cd44ba474ef3b9e8c
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Some errors, like the lack of Scatter-Gather support by the network
+interface(NETIF_F_SG) may cause sendmsg(...,MSG_ZEROCOPY) to fail on using
+zero-copy, which causes it to fall back to the default copying mechanism.
+
+After each full dirty-bitmap scan there should be a zero-copy flush
+happening, which checks for errors each of the previous calls to
+sendmsg(...,MSG_ZEROCOPY). If all of them failed to use zero-copy, then
+increment dirty_sync_missed_zero_copy migration stat to let the user know
+about it.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Acked-by: Peter Xu <peterx@redhat.com>
+Message-Id: <20220711211112.18951-4-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit d59c40cc483729f2e67c80e58df769ad19976fe9)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd.c | 2 ++
+ migration/ram.c     | 5 +++++
+ migration/ram.h     | 2 ++
+ 3 files changed, 9 insertions(+)
+
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 90ab4c4346..7c16523e6b 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -631,6 +631,8 @@ int multifd_send_sync_main(QEMUFile *f)
+             if (ret < 0) {
+                 error_report_err(err);
+                 return -1;
++            } else if (ret == 1) {
++                dirty_sync_missed_zero_copy();
+             }
+         }
+     }
+diff --git a/migration/ram.c b/migration/ram.c
+index e7173da217..93cdb456ac 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -403,6 +403,11 @@ static void ram_transferred_add(uint64_t bytes)
+     ram_counters.transferred += bytes;
+ }
+ 
++void dirty_sync_missed_zero_copy(void)
++{
++    ram_counters.dirty_sync_missed_zero_copy++;
++}
++
+ /* used by the search for pages to send */
+ struct PageSearchStatus {
+     /* Current block being searched */
+diff --git a/migration/ram.h b/migration/ram.h
+index c515396a9a..69c3ccb26a 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -88,4 +88,6 @@ void ram_write_tracking_prepare(void);
+ int ram_write_tracking_start(void);
+ void ram_write_tracking_stop(void);
+ 
++void dirty_sync_missed_zero_copy(void);
++
+ #endif
+-- 
+2.31.1
+

@@ -1,0 +1,209 @@
+From 429c4cc750affe82b89867668ff2515a8a66732e Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 18 Nov 2022 15:23:19 +0100
+Subject: [PATCH 2/3] s390x: Register TYPE_S390_CCW_MACHINE properties as class
+ properties
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 233: s390x: Document the "loadparm" machine property
+RH-Bugzilla: 2128225
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [2/2] 28a0086cb0e8be2535deafdd9115cadd7ff033f3
+
+Currently, when running 'qemu-system-s390x -M s390-ccw-virtio,help'
+the s390x-specific properties are not listed anymore. This happens
+because since commit d8fb7d0969 ("vl: switch -M parsing to keyval")
+the properties have to be defined at the class level and not at the
+instance level anymore. Fix it on s390x now, too, by moving the
+registration of the properties to the class level"
+
+Fixes: d8fb7d0969 ("vl: switch -M parsing to keyval")
+Signed-off-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20221103170150.20789-2-pmorel@linux.ibm.com>
+[thuth: Add patch description]
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 1fd396e32288bbf536483c74b68cb3ee86005a9f)
+
+Conflicts:
+	hw/s390x/s390-virtio-ccw.c
+	(dropped the "zpcii-disable" property code - it's not used in downstream)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 117 +++++++++++++++++++++----------------
+ 1 file changed, 67 insertions(+), 50 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index a9617ab79f..4a7cd21cac 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -42,6 +42,7 @@
+ #include "sysemu/sysemu.h"
+ #include "hw/s390x/pv.h"
+ #include "migration/blocker.h"
++#include "qapi/visitor.h"
+ 
+ static Error *pv_mig_blocker;
+ 
+@@ -588,38 +589,6 @@ static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
+     return newsz;
+ }
+ 
+-static void ccw_machine_class_init(ObjectClass *oc, void *data)
+-{
+-    MachineClass *mc = MACHINE_CLASS(oc);
+-    NMIClass *nc = NMI_CLASS(oc);
+-    HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
+-    S390CcwMachineClass *s390mc = S390_CCW_MACHINE_CLASS(mc);
+-
+-    s390mc->ri_allowed = true;
+-    s390mc->cpu_model_allowed = true;
+-    s390mc->css_migration_enabled = true;
+-    s390mc->hpage_1m_allowed = true;
+-    mc->init = ccw_init;
+-    mc->reset = s390_machine_reset;
+-    mc->block_default_type = IF_VIRTIO;
+-    mc->no_cdrom = 1;
+-    mc->no_floppy = 1;
+-    mc->no_parallel = 1;
+-    mc->no_sdcard = 1;
+-    mc->max_cpus = S390_MAX_CPUS;
+-    mc->has_hotpluggable_cpus = true;
+-    assert(!mc->get_hotplug_handler);
+-    mc->get_hotplug_handler = s390_get_hotplug_handler;
+-    mc->cpu_index_to_instance_props = s390_cpu_index_to_props;
+-    mc->possible_cpu_arch_ids = s390_possible_cpu_arch_ids;
+-    /* it is overridden with 'host' cpu *in kvm_arch_init* */
+-    mc->default_cpu_type = S390_CPU_TYPE_NAME("qemu");
+-    hc->plug = s390_machine_device_plug;
+-    hc->unplug_request = s390_machine_device_unplug_request;
+-    nc->nmi_monitor_handler = s390_nmi;
+-    mc->default_ram_id = "s390.ram";
+-}
+-
+ static inline bool machine_get_aes_key_wrap(Object *obj, Error **errp)
+ {
+     S390CcwMachineState *ms = S390_CCW_MACHINE(obj);
+@@ -694,19 +663,29 @@ bool hpage_1m_allowed(void)
+     return get_machine_class()->hpage_1m_allowed;
+ }
+ 
+-static char *machine_get_loadparm(Object *obj, Error **errp)
++static void machine_get_loadparm(Object *obj, Visitor *v,
++                                 const char *name, void *opaque,
++                                 Error **errp)
+ {
+     S390CcwMachineState *ms = S390_CCW_MACHINE(obj);
++    char *str = g_strndup((char *) ms->loadparm, sizeof(ms->loadparm));
+ 
+-    /* make a NUL-terminated string */
+-    return g_strndup((char *) ms->loadparm, sizeof(ms->loadparm));
++    visit_type_str(v, name, &str, errp);
++    g_free(str);
+ }
+ 
+-static void machine_set_loadparm(Object *obj, const char *val, Error **errp)
++static void machine_set_loadparm(Object *obj, Visitor *v,
++                                 const char *name, void *opaque,
++                                 Error **errp)
+ {
+     S390CcwMachineState *ms = S390_CCW_MACHINE(obj);
++    char *val;
+     int i;
+ 
++    if (!visit_type_str(v, name, &val, errp)) {
++        return;
++    }
++
+     for (i = 0; i < sizeof(ms->loadparm) && val[i]; i++) {
+         uint8_t c = qemu_toupper(val[i]); /* mimic HMC */
+ 
+@@ -724,29 +703,67 @@ static void machine_set_loadparm(Object *obj, const char *val, Error **errp)
+         ms->loadparm[i] = ' '; /* pad right with spaces */
+     }
+ }
+-static inline void s390_machine_initfn(Object *obj)
++
++static void ccw_machine_class_init(ObjectClass *oc, void *data)
+ {
+-    object_property_add_bool(obj, "aes-key-wrap",
+-                             machine_get_aes_key_wrap,
+-                             machine_set_aes_key_wrap);
+-    object_property_set_description(obj, "aes-key-wrap",
++    MachineClass *mc = MACHINE_CLASS(oc);
++    NMIClass *nc = NMI_CLASS(oc);
++    HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
++    S390CcwMachineClass *s390mc = S390_CCW_MACHINE_CLASS(mc);
++
++    s390mc->ri_allowed = true;
++    s390mc->cpu_model_allowed = true;
++    s390mc->css_migration_enabled = true;
++    s390mc->hpage_1m_allowed = true;
++    mc->init = ccw_init;
++    mc->reset = s390_machine_reset;
++    mc->block_default_type = IF_VIRTIO;
++    mc->no_cdrom = 1;
++    mc->no_floppy = 1;
++    mc->no_parallel = 1;
++    mc->no_sdcard = 1;
++    mc->max_cpus = S390_MAX_CPUS;
++    mc->has_hotpluggable_cpus = true;
++    assert(!mc->get_hotplug_handler);
++    mc->get_hotplug_handler = s390_get_hotplug_handler;
++    mc->cpu_index_to_instance_props = s390_cpu_index_to_props;
++    mc->possible_cpu_arch_ids = s390_possible_cpu_arch_ids;
++    /* it is overridden with 'host' cpu *in kvm_arch_init* */
++    mc->default_cpu_type = S390_CPU_TYPE_NAME("qemu");
++    hc->plug = s390_machine_device_plug;
++    hc->unplug_request = s390_machine_device_unplug_request;
++    nc->nmi_monitor_handler = s390_nmi;
++    mc->default_ram_id = "s390.ram";
++
++    object_class_property_add_bool(oc, "aes-key-wrap",
++                                   machine_get_aes_key_wrap,
++                                   machine_set_aes_key_wrap);
++    object_class_property_set_description(oc, "aes-key-wrap",
+             "enable/disable AES key wrapping using the CPACF wrapping key");
+-    object_property_set_bool(obj, "aes-key-wrap", true, NULL);
+ 
+-    object_property_add_bool(obj, "dea-key-wrap",
+-                             machine_get_dea_key_wrap,
+-                             machine_set_dea_key_wrap);
+-    object_property_set_description(obj, "dea-key-wrap",
++    object_class_property_add_bool(oc, "dea-key-wrap",
++                                   machine_get_dea_key_wrap,
++                                   machine_set_dea_key_wrap);
++    object_class_property_set_description(oc, "dea-key-wrap",
+             "enable/disable DEA key wrapping using the CPACF wrapping key");
+-    object_property_set_bool(obj, "dea-key-wrap", true, NULL);
+-    object_property_add_str(obj, "loadparm",
+-            machine_get_loadparm, machine_set_loadparm);
+-    object_property_set_description(obj, "loadparm",
++
++    object_class_property_add(oc, "loadparm", "loadparm",
++                              machine_get_loadparm, machine_set_loadparm,
++                              NULL, NULL);
++    object_class_property_set_description(oc, "loadparm",
+             "Up to 8 chars in set of [A-Za-z0-9. ] (lower case chars converted"
+             " to upper case) to pass to machine loader, boot manager,"
+             " and guest kernel");
+ }
+ 
++static inline void s390_machine_initfn(Object *obj)
++{
++    S390CcwMachineState *ms = S390_CCW_MACHINE(obj);
++
++    ms->aes_key_wrap = true;
++    ms->dea_key_wrap = true;
++}
++
+ static const TypeInfo ccw_machine_info = {
+     .name          = TYPE_S390_CCW_MACHINE,
+     .parent        = TYPE_MACHINE,
+-- 
+2.37.3
+

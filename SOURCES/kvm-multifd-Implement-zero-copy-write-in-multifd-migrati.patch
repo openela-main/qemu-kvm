@@ -1,0 +1,182 @@
+From 7a7e2191f1ac4114380248cbd3c6ab7425250747 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Wed, 18 May 2022 02:52:25 -0300
+Subject: [PATCH 23/37] multifd: Implement zero copy write in multifd migration
+ (multifd-zero-copy)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [23/26] 904ce3909cfef62dd84cc7d3c6a3482e7e6f28e9
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Implement zero copy send on nocomp_send_write(), by making use of QIOChannel
+writev + flags & flush interface.
+
+Change multifd_send_sync_main() so flush_zero_copy() can be called
+after each iteration in order to make sure all dirty pages are sent before
+a new iteration is started. It will also flush at the beginning and at the
+end of migration.
+
+Also make it return -1 if flush_zero_copy() fails, in order to cancel
+the migration process, and avoid resuming the guest in the target host
+without receiving all current RAM.
+
+This will work fine on RAM migration because the RAM pages are not usually freed,
+and there is no problem on changing the pages content between writev_zero_copy() and
+the actual sending of the buffer, because this change will dirty the page and
+cause it to be re-sent on a next iteration anyway.
+
+A lot of locked memory may be needed in order to use multifd migration
+with zero-copy enabled, so disabling the feature should be necessary for
+low-privileged users trying to perform multifd migrations.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Message-Id: <20220513062836.965425-9-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 5b1d9bab2da4fca3a3caee97c430e5709cb32b7b)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/migration.c | 11 ++++++++++-
+ migration/multifd.c   | 37 +++++++++++++++++++++++++++++++++++--
+ migration/multifd.h   |  2 ++
+ migration/socket.c    |  5 +++--
+ 4 files changed, 50 insertions(+), 5 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 8e28f2ee41..5357efd348 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1471,7 +1471,16 @@ static bool migrate_params_check(MigrationParameters *params, Error **errp)
+         error_prepend(errp, "Invalid mapping given for block-bitmap-mapping: ");
+         return false;
+     }
+-
++#ifdef CONFIG_LINUX
++    if (params->zero_copy_send &&
++        (!migrate_use_multifd() ||
++         params->multifd_compression != MULTIFD_COMPRESSION_NONE ||
++         (params->tls_creds && *params->tls_creds))) {
++        error_setg(errp,
++                   "Zero copy only available for non-compressed non-TLS multifd migration");
++        return false;
++    }
++#endif
+     return true;
+ }
+ 
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 193f70cdba..90ab4c4346 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -576,6 +576,7 @@ void multifd_save_cleanup(void)
+ int multifd_send_sync_main(QEMUFile *f)
+ {
+     int i;
++    bool flush_zero_copy;
+ 
+     if (!migrate_use_multifd()) {
+         return 0;
+@@ -586,6 +587,20 @@ int multifd_send_sync_main(QEMUFile *f)
+             return -1;
+         }
+     }
++
++    /*
++     * When using zero-copy, it's necessary to flush the pages before any of
++     * the pages can be sent again, so we'll make sure the new version of the
++     * pages will always arrive _later_ than the old pages.
++     *
++     * Currently we achieve this by flushing the zero-page requested writes
++     * per ram iteration, but in the future we could potentially optimize it
++     * to be less frequent, e.g. only after we finished one whole scanning of
++     * all the dirty bitmaps.
++     */
++
++    flush_zero_copy = migrate_use_zero_copy_send();
++
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+         MultiFDSendParams *p = &multifd_send_state->params[i];
+ 
+@@ -607,6 +622,17 @@ int multifd_send_sync_main(QEMUFile *f)
+         ram_counters.transferred += p->packet_len;
+         qemu_mutex_unlock(&p->mutex);
+         qemu_sem_post(&p->sem);
++
++        if (flush_zero_copy && p->c) {
++            int ret;
++            Error *err = NULL;
++
++            ret = qio_channel_flush(p->c, &err);
++            if (ret < 0) {
++                error_report_err(err);
++                return -1;
++            }
++        }
+     }
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+         MultiFDSendParams *p = &multifd_send_state->params[i];
+@@ -691,8 +717,8 @@ static void *multifd_send_thread(void *opaque)
+                 p->iov[0].iov_base = p->packet;
+             }
+ 
+-            ret = qio_channel_writev_all(p->c, p->iov, p->iovs_num,
+-                                         &local_err);
++            ret = qio_channel_writev_full_all(p->c, p->iov, p->iovs_num, NULL,
++                                              0, p->write_flags, &local_err);
+             if (ret != 0) {
+                 break;
+             }
+@@ -933,6 +959,13 @@ int multifd_save_setup(Error **errp)
+         /* We need one extra place for the packet header */
+         p->iov = g_new0(struct iovec, page_count + 1);
+         p->normal = g_new0(ram_addr_t, page_count);
++
++        if (migrate_use_zero_copy_send()) {
++            p->write_flags = QIO_CHANNEL_WRITE_FLAG_ZERO_COPY;
++        } else {
++            p->write_flags = 0;
++        }
++
+         socket_send_channel_create(multifd_new_send_channel_async, p);
+     }
+ 
+diff --git a/migration/multifd.h b/migration/multifd.h
+index 92de878155..11d5e273e6 100644
+--- a/migration/multifd.h
++++ b/migration/multifd.h
+@@ -95,6 +95,8 @@ typedef struct {
+     uint32_t packet_len;
+     /* pointer to the packet */
+     MultiFDPacket_t *packet;
++    /* multifd flags for sending ram */
++    int write_flags;
+     /* multifd flags for each packet */
+     uint32_t flags;
+     /* size of the next packet that contains pages */
+diff --git a/migration/socket.c b/migration/socket.c
+index 3754d8f72c..4fd5e85f50 100644
+--- a/migration/socket.c
++++ b/migration/socket.c
+@@ -79,8 +79,9 @@ static void socket_outgoing_migration(QIOTask *task,
+ 
+     trace_migration_socket_outgoing_connected(data->hostname);
+ 
+-    if (migrate_use_zero_copy_send()) {
+-        error_setg(&err, "Zero copy send not available in migration");
++    if (migrate_use_zero_copy_send() &&
++        !qio_channel_has_feature(sioc, QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY)) {
++        error_setg(&err, "Zero copy send feature not detected in host kernel");
+     }
+ 
+ out:
+-- 
+2.35.3
+

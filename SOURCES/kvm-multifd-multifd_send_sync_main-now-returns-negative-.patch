@@ -1,0 +1,163 @@
+From fce933410a5068220a5f29011a6d1a647e357a62 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Wed, 18 May 2022 02:52:25 -0300
+Subject: [PATCH 21/37] multifd: multifd_send_sync_main now returns negative on
+ error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [21/26] b4e4f3663576aa87f3b2f66f1d38bad4f50bd4ac
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Even though multifd_send_sync_main() currently emits error_reports, it's
+callers don't really check it before continuing.
+
+Change multifd_send_sync_main() to return -1 on error and 0 on success.
+Also change all it's callers to make use of this change and possibly fail
+earlier.
+
+(This change is important to next patch on  multifd zero copy
+implementation, to make it sure an error in zero-copy flush does not go
+unnoticed.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Message-Id: <20220513062836.965425-7-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 33d70973a3a6e8c6b62bcbc64d9e488961981007)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd.c | 10 ++++++----
+ migration/multifd.h |  2 +-
+ migration/ram.c     | 29 ++++++++++++++++++++++-------
+ 3 files changed, 29 insertions(+), 12 deletions(-)
+
+diff --git a/migration/multifd.c b/migration/multifd.c
+index e53811f04a..1e34e01ebc 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -573,17 +573,17 @@ void multifd_save_cleanup(void)
+     multifd_send_state = NULL;
+ }
+ 
+-void multifd_send_sync_main(QEMUFile *f)
++int multifd_send_sync_main(QEMUFile *f)
+ {
+     int i;
+ 
+     if (!migrate_use_multifd()) {
+-        return;
++        return 0;
+     }
+     if (multifd_send_state->pages->num) {
+         if (multifd_send_pages(f) < 0) {
+             error_report("%s: multifd_send_pages fail", __func__);
+-            return;
++            return -1;
+         }
+     }
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+@@ -596,7 +596,7 @@ void multifd_send_sync_main(QEMUFile *f)
+         if (p->quit) {
+             error_report("%s: channel %d has already quit", __func__, i);
+             qemu_mutex_unlock(&p->mutex);
+-            return;
++            return -1;
+         }
+ 
+         p->packet_num = multifd_send_state->packet_num++;
+@@ -615,6 +615,8 @@ void multifd_send_sync_main(QEMUFile *f)
+         qemu_sem_wait(&p->sem_sync);
+     }
+     trace_multifd_send_sync_main(multifd_send_state->packet_num);
++
++    return 0;
+ }
+ 
+ static void *multifd_send_thread(void *opaque)
+diff --git a/migration/multifd.h b/migration/multifd.h
+index 7823199dbe..92de878155 100644
+--- a/migration/multifd.h
++++ b/migration/multifd.h
+@@ -22,7 +22,7 @@ int multifd_load_cleanup(Error **errp);
+ bool multifd_recv_all_channels_created(void);
+ bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp);
+ void multifd_recv_sync_main(void);
+-void multifd_send_sync_main(QEMUFile *f);
++int multifd_send_sync_main(QEMUFile *f);
+ int multifd_queue_page(QEMUFile *f, RAMBlock *block, ram_addr_t offset);
+ 
+ /* Multifd Compression flags */
+diff --git a/migration/ram.c b/migration/ram.c
+index 863035d235..3e208efca7 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -2992,6 +2992,7 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
+ {
+     RAMState **rsp = opaque;
+     RAMBlock *block;
++    int ret;
+ 
+     if (compress_threads_save_setup()) {
+         return -1;
+@@ -3026,7 +3027,11 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
+     ram_control_before_iterate(f, RAM_CONTROL_SETUP);
+     ram_control_after_iterate(f, RAM_CONTROL_SETUP);
+ 
+-    multifd_send_sync_main(f);
++    ret =  multifd_send_sync_main(f);
++    if (ret < 0) {
++        return ret;
++    }
++
+     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+     qemu_fflush(f);
+ 
+@@ -3135,7 +3140,11 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
+ out:
+     if (ret >= 0
+         && migration_is_setup_or_active(migrate_get_current()->state)) {
+-        multifd_send_sync_main(rs->f);
++        ret = multifd_send_sync_main(rs->f);
++        if (ret < 0) {
++            return ret;
++        }
++
+         qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+         qemu_fflush(f);
+         ram_counters.transferred += 8;
+@@ -3193,13 +3202,19 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
+         ram_control_after_iterate(f, RAM_CONTROL_FINISH);
+     }
+ 
+-    if (ret >= 0) {
+-        multifd_send_sync_main(rs->f);
+-        qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+-        qemu_fflush(f);
++    if (ret < 0) {
++        return ret;
+     }
+ 
+-    return ret;
++    ret = multifd_send_sync_main(rs->f);
++    if (ret < 0) {
++        return ret;
++    }
++
++    qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
++    qemu_fflush(f);
++
++    return 0;
+ }
+ 
+ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
+-- 
+2.35.3
+

@@ -1,0 +1,54 @@
+From 8e23c0f208c6bd5bb64c4f6e4863b93fa6f4e9de Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Fri, 4 Feb 2022 12:10:06 +0100
+Subject: [PATCH 1/6] block/nbd: Delete reconnect delay timer when done
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 117: block/nbd: Handle AioContext changes
+RH-Commit: [1/6] 70814602a8a43a7c14857d76266d82b1aa5174a9
+RH-Bugzilla: 2035185
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+We start the reconnect delay timer to cancel the reconnection attempt
+after a while.  Once nbd_co_do_establish_connection() has returned, this
+attempt is over, and we no longer need the timer.
+
+Delete it before returning from nbd_reconnect_attempt(), so that it does
+not persist beyond the I/O request that was paused for reconnecting; we
+do not want it to fire in a drained section, because all sort of things
+can happen in such a section (e.g. the AioContext might be changed, and
+we do not want the timer to fire in the wrong context; or the BDS might
+even be deleted, and so the timer CB would access already-freed data).
+
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+(cherry picked from commit 3ce1fc16bad9c3f8b7b10b451a224d6d76e5c551)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ block/nbd.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/block/nbd.c b/block/nbd.c
+index 5ef462db1b..b8e5a9b4cc 100644
+--- a/block/nbd.c
++++ b/block/nbd.c
+@@ -353,6 +353,13 @@ static coroutine_fn void nbd_reconnect_attempt(BDRVNBDState *s)
+     }
+ 
+     nbd_co_do_establish_connection(s->bs, NULL);
++
++    /*
++     * The reconnect attempt is done (maybe successfully, maybe not), so
++     * we no longer need this timer.  Delete it so it will not outlive
++     * this I/O request (so draining removes all timers).
++     */
++    reconnect_delay_timer_del(s);
+ }
+ 
+ static coroutine_fn int nbd_receive_replies(BDRVNBDState *s, uint64_t handle)
+-- 
+2.27.0
+

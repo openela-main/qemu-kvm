@@ -1,0 +1,98 @@
+From f5be3d8a5944679c1239b974e0f910f1afe4f532 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Thu, 31 Mar 2022 11:08:45 -0400
+Subject: [PATCH 28/37] migration: Allow migrate-recover to run multiple times
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 195: migration: Allow migrate-recover to run multiple times
+RH-Commit: [2/2] a2e6b02007a06c9c7f5237289095811c7d7ca1f1
+RH-Bugzilla: 2097652
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+
+Previously migration didn't have an easy way to cleanup the listening
+transport, migrate recovery only allows to execute once.  That's done with a
+trick flag in postcopy_recover_triggered.
+
+Now the facility is already there.
+
+Drop postcopy_recover_triggered and instead allows a new migrate-recover to
+release the previous listener transport.
+
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Message-Id: <20220331150857.74406-8-peterx@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 08401c0426bc1a5ce4609afd1cda5dd39abbf9fa)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 13 ++-----------
+ migration/migration.h |  1 -
+ migration/savevm.c    |  3 ---
+ 3 files changed, 2 insertions(+), 15 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index b787a36789..616c3ff32e 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2158,11 +2158,8 @@ void qmp_migrate_recover(const char *uri, Error **errp)
+         return;
+     }
+ 
+-    if (qatomic_cmpxchg(&mis->postcopy_recover_triggered,
+-                       false, true) == true) {
+-        error_setg(errp, "Migrate recovery is triggered already");
+-        return;
+-    }
++    /* If there's an existing transport, release it */
++    migration_incoming_transport_cleanup(mis);
+ 
+     /*
+      * Note that this call will never start a real migration; it will
+@@ -2170,12 +2167,6 @@ void qmp_migrate_recover(const char *uri, Error **errp)
+      * to continue using that newly established channel.
+      */
+     qemu_start_incoming_migration(uri, errp);
+-
+-    /* Safe to dereference with the assert above */
+-    if (*errp) {
+-        /* Reset the flag so user could still retry */
+-        qatomic_set(&mis->postcopy_recover_triggered, false);
+-    }
+ }
+ 
+ void qmp_migrate_pause(Error **errp)
+diff --git a/migration/migration.h b/migration/migration.h
+index 243898e3be..0ae2133326 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -103,7 +103,6 @@ struct MigrationIncomingState {
+     struct PostcopyBlocktimeContext *blocktime_ctx;
+ 
+     /* notify PAUSED postcopy incoming migrations to try to continue */
+-    bool postcopy_recover_triggered;
+     QemuSemaphore postcopy_pause_sem_dst;
+     QemuSemaphore postcopy_pause_sem_fault;
+ 
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 0bef031acb..b8382aaa64 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -2568,9 +2568,6 @@ static bool postcopy_pause_incoming(MigrationIncomingState *mis)
+ 
+     assert(migrate_postcopy_ram());
+ 
+-    /* Clear the triggered bit to allow one recovery */
+-    mis->postcopy_recover_triggered = false;
+-
+     /*
+      * Unregister yank with either from/to src would work, since ioc behind it
+      * is the same
+-- 
+2.35.3
+

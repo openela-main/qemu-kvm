@@ -1,0 +1,153 @@
+From 192f956f2b0761f270070555f8feb1f0544e5558 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Wed, 9 Nov 2022 17:54:48 +0100
+Subject: [PATCH 01/11] block/mirror: Do not wait for active writes
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 246: block/mirror: Make active mirror progress even under full load
+RH-Bugzilla: 2125119
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/3] 652d1e55b954f13eaec2c86f58735d4942837e16
+
+Waiting for all active writes to settle before daring to create a
+background copying operation means that we will never do background
+operations while the guest does anything (in write-blocking mode), and
+therefore cannot converge.  Yes, we also will not diverge, but actually
+converging would be even nicer.
+
+It is unclear why we did decide to wait for all active writes to settle
+before creating a background operation, but it just does not seem
+necessary.  Active writes will put themselves into the in_flight bitmap
+and thus properly block actually conflicting background requests.
+
+It is important for active requests to wait on overlapping background
+requests, which we do in active_write_prepare().  However, so far it was
+not documented why it is important.  Add such documentation now, and
+also to the other call of mirror_wait_on_conflicts(), so that it becomes
+more clear why and when requests need to actively wait for other
+requests to settle.
+
+Another thing to note is that of course we need to ensure that there are
+no active requests when the job completes, but that is done by virtue of
+the BDS being drained anyway, so there cannot be any active requests at
+that point.
+
+With this change, we will need to explicitly keep track of how many
+bytes are in flight in active requests so that
+job_progress_set_remaining() in mirror_run() can set the correct number
+of remaining bytes.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2123297
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221109165452.67927-2-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit d69a879bdf1aed586478eaa161ee064fe1b92f1a)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/mirror.c | 37 ++++++++++++++++++++++++++++++-------
+ 1 file changed, 30 insertions(+), 7 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index efec2c7674..282f428cb7 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -81,6 +81,7 @@ typedef struct MirrorBlockJob {
+     int max_iov;
+     bool initial_zeroing_ongoing;
+     int in_active_write_counter;
++    int64_t active_write_bytes_in_flight;
+     bool prepared;
+     bool in_drain;
+ } MirrorBlockJob;
+@@ -493,6 +494,13 @@ static uint64_t coroutine_fn mirror_iteration(MirrorBlockJob *s)
+     }
+     bdrv_dirty_bitmap_unlock(s->dirty_bitmap);
+ 
++    /*
++     * Wait for concurrent requests to @offset.  The next loop will limit the
++     * copied area based on in_flight_bitmap so we only copy an area that does
++     * not overlap with concurrent in-flight requests.  Still, we would like to
++     * copy something, so wait until there are at least no more requests to the
++     * very beginning of the area.
++     */
+     mirror_wait_on_conflicts(NULL, s, offset, 1);
+ 
+     job_pause_point(&s->common.job);
+@@ -993,12 +1001,6 @@ static int coroutine_fn mirror_run(Job *job, Error **errp)
+         int64_t cnt, delta;
+         bool should_complete;
+ 
+-        /* Do not start passive operations while there are active
+-         * writes in progress */
+-        while (s->in_active_write_counter) {
+-            mirror_wait_for_any_operation(s, true);
+-        }
+-
+         if (s->ret < 0) {
+             ret = s->ret;
+             goto immediate_exit;
+@@ -1015,7 +1017,9 @@ static int coroutine_fn mirror_run(Job *job, Error **errp)
+         /* cnt is the number of dirty bytes remaining and s->bytes_in_flight is
+          * the number of bytes currently being processed; together those are
+          * the current remaining operation length */
+-        job_progress_set_remaining(&s->common.job, s->bytes_in_flight + cnt);
++        job_progress_set_remaining(&s->common.job,
++                                   s->bytes_in_flight + cnt +
++                                   s->active_write_bytes_in_flight);
+ 
+         /* Note that even when no rate limit is applied we need to yield
+          * periodically with no pending I/O so that bdrv_drain_all() returns.
+@@ -1073,6 +1077,10 @@ static int coroutine_fn mirror_run(Job *job, Error **errp)
+ 
+             s->in_drain = true;
+             bdrv_drained_begin(bs);
++
++            /* Must be zero because we are drained */
++            assert(s->in_active_write_counter == 0);
++
+             cnt = bdrv_get_dirty_count(s->dirty_bitmap);
+             if (cnt > 0 || mirror_flush(s) < 0) {
+                 bdrv_drained_end(bs);
+@@ -1306,6 +1314,7 @@ do_sync_target_write(MirrorBlockJob *job, MirrorMethod method,
+     }
+ 
+     job_progress_increase_remaining(&job->common.job, bytes);
++    job->active_write_bytes_in_flight += bytes;
+ 
+     switch (method) {
+     case MIRROR_METHOD_COPY:
+@@ -1327,6 +1336,7 @@ do_sync_target_write(MirrorBlockJob *job, MirrorMethod method,
+         abort();
+     }
+ 
++    job->active_write_bytes_in_flight -= bytes;
+     if (ret >= 0) {
+         job_progress_update(&job->common.job, bytes);
+     } else {
+@@ -1375,6 +1385,19 @@ static MirrorOp *coroutine_fn active_write_prepare(MirrorBlockJob *s,
+ 
+     s->in_active_write_counter++;
+ 
++    /*
++     * Wait for concurrent requests affecting the area.  If there are already
++     * running requests that are copying off now-to-be stale data in the area,
++     * we must wait for them to finish before we begin writing fresh data to the
++     * target so that the write operations appear in the correct order.
++     * Note that background requests (see mirror_iteration()) in contrast only
++     * wait for conflicting requests at the start of the dirty area, and then
++     * (based on the in_flight_bitmap) truncate the area to copy so it will not
++     * conflict with any requests beyond that.  For active writes, however, we
++     * cannot truncate that area.  The request from our parent must be blocked
++     * until the area is copied in full.  Therefore, we must wait for the whole
++     * area to become free of concurrent requests.
++     */
+     mirror_wait_on_conflicts(op, s, offset, bytes);
+ 
+     bitmap_set(s->in_flight_bitmap, start_chunk, end_chunk - start_chunk);
+-- 
+2.37.3
+

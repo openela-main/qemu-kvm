@@ -1,0 +1,94 @@
+From cbb653d73e32513ccd46b293a52384eed6a5f84f Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:36:02 +0000
+Subject: [PATCH 20/42] dump: Cleanup dump_begin write functions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [20/41] 18ea1457a3e54fd368e556d96c3be50c6ad0a6bd
+
+There's no need to have a gigantic if in there let's move the elf
+32/64 bit logic into the section, segment or note code.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220330123603.107120-9-frankja@linux.ibm.com>
+(cherry picked from commit 5ff2e5a3e1e67930e523486e39549a33fcf97227)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 42 +++++++++++-------------------------------
+ 1 file changed, 11 insertions(+), 31 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 823ca32883..88abde355a 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -565,46 +565,26 @@ static void dump_begin(DumpState *s, Error **errp)
+         return;
+     }
+ 
+-    if (dump_is_64bit(s)) {
+-        /* write all PT_LOAD to vmcore */
+-        write_elf_loads(s, errp);
++    /* write all PT_LOAD to vmcore */
++    write_elf_loads(s, errp);
++    if (*errp) {
++        return;
++    }
++
++    /* write section to vmcore */
++    if (s->shdr_num) {
++        write_elf_section(s, 1, errp);
+         if (*errp) {
+             return;
+         }
++    }
+ 
+-        /* write section to vmcore */
+-        if (s->shdr_num) {
+-            write_elf_section(s, 1, errp);
+-            if (*errp) {
+-                return;
+-            }
+-        }
+-
++    if (dump_is_64bit(s)) {
+         /* write notes to vmcore */
+         write_elf64_notes(fd_write_vmcore, s, errp);
+-        if (*errp) {
+-            return;
+-        }
+     } else {
+-        /* write all PT_LOAD to vmcore */
+-        write_elf_loads(s, errp);
+-        if (*errp) {
+-            return;
+-        }
+-
+-        /* write section to vmcore */
+-        if (s->shdr_num) {
+-            write_elf_section(s, 0, errp);
+-            if (*errp) {
+-                return;
+-            }
+-        }
+-
+         /* write notes to vmcore */
+         write_elf32_notes(fd_write_vmcore, s, errp);
+-        if (*errp) {
+-            return;
+-        }
+     }
+ }
+ 
+-- 
+2.37.3
+

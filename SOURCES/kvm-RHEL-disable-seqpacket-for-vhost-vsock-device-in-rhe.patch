@@ -1,0 +1,107 @@
+From e0e4f01c6f4fb5881960f72ae4e80951b711131e Mon Sep 17 00:00:00 2001
+From: Stefano Garzarella <sgarzare@redhat.com>
+Date: Thu, 24 Mar 2022 16:04:57 +0100
+Subject: [PATCH 1/5] RHEL: disable "seqpacket" for "vhost-vsock-device" in
+ rhel8.6.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 136: RHEL: disable "seqpacket" for "vhost-vsock-device" in rhel8.6.0 [rhel-8.7.0]
+RH-Commit: [1/1] d82ea09e123679521503689f7d9af1c03dc71bfc
+RH-Bugzilla: 2068202
+RH-Acked-by: Jason Wang <None>
+RH-Acked-by: Eugenio Pérez <None>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+vhost-vsock device in RHEL 8 kernels doesn't support seqpacket.
+To avoid problems when migrating a VM from RHEL 9 host, we need to
+disable it in rhel8-* machine types.
+
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ hw/core/machine.c          | 10 ++++++++++
+ hw/i386/pc_piix.c          |  2 ++
+ hw/i386/pc_q35.c           |  2 ++
+ hw/s390x/s390-virtio-ccw.c |  1 +
+ include/hw/boards.h        |  3 +++
+ 5 files changed, 18 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 024b025fc2..76fcabec7a 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -37,6 +37,16 @@
+ #include "hw/virtio/virtio.h"
+ #include "hw/virtio/virtio-pci.h"
+ 
++GlobalProperty hw_compat_rhel_8_6[] = {
++    /* hw_compat_rhel_8_6 bz 2068202 */
++    /*
++     * vhost-vsock device in RHEL 8 kernels doesn't support seqpacket, so
++     * we need do disable it downstream on the latest hw_compat_rhel_8.
++     */
++    { "vhost-vsock-device", "seqpacket", "off" },
++};
++const size_t hw_compat_rhel_8_6_len = G_N_ELEMENTS(hw_compat_rhel_8_6);
++
+ /*
+  * Mostly the same as hw_compat_6_0 and hw_compat_6_1
+  */
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index f03a8f0db8..ab6d03e07a 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -998,6 +998,8 @@ static void pc_machine_rhel760_options(MachineClass *m)
+     pcmc->kvmclock_create_always = false;
+     /* From pc_i440fx_5_1_machine_options() */
+     pcmc->pci_root_uid = 1;
++    compat_props_add(m->compat_props, hw_compat_rhel_8_6,
++                     hw_compat_rhel_8_6_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_8_5,
+                      hw_compat_rhel_8_5_len);
+     compat_props_add(m->compat_props, pc_rhel_8_5_compat,
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 5559261d9e..882fe7a68d 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -658,6 +658,8 @@ static void pc_q35_machine_rhel860_options(MachineClass *m)
+     m->desc = "RHEL-8.6.0 PC (Q35 + ICH9, 2009)";
+     pcmc->smbios_stream_product = "RHEL-AV";
+     pcmc->smbios_stream_version = "8.6.0";
++    compat_props_add(m->compat_props, hw_compat_rhel_8_6,
++                     hw_compat_rhel_8_6_len);
+ }
+ 
+ DEFINE_PC_MACHINE(q35_rhel860, "pc-q35-rhel8.6.0", pc_q35_init_rhel860,
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 9795eb9406..bec270598b 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1109,6 +1109,7 @@ static void ccw_machine_rhel860_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel860_class_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, hw_compat_rhel_8_6, hw_compat_rhel_8_6_len);
+ }
+ DEFINE_CCW_MACHINE(rhel860, "rhel8.6.0", true);
+ 
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 04e8759815..4ddb798144 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -443,6 +443,9 @@ extern const size_t hw_compat_2_2_len;
+ extern GlobalProperty hw_compat_2_1[];
+ extern const size_t hw_compat_2_1_len;
+ 
++extern GlobalProperty hw_compat_rhel_8_6[];
++extern const size_t hw_compat_rhel_8_6_len;
++
+ extern GlobalProperty hw_compat_rhel_8_5[];
+ extern const size_t hw_compat_rhel_8_5_len;
+ 
+-- 
+2.27.0
+

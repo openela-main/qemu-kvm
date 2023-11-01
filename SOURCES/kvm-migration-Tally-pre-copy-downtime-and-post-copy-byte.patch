@@ -1,0 +1,122 @@
+From 82637509cc9197ad9d1e1b286a608bf0da04b7b3 Mon Sep 17 00:00:00 2001
+From: David Edmondson <david.edmondson@oracle.com>
+Date: Tue, 21 Dec 2021 09:34:41 +0000
+Subject: [PATCH 2/9] migration: Tally pre-copy, downtime and post-copy bytes
+ independently
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [2/8] 7d1bf37a3d93da88da6525d70fc1fce1abb92b83
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Provide information on the number of bytes copied in the pre-copy,
+downtime and post-copy phases of migration.
+
+Signed-off-by: David Edmondson <david.edmondson@oracle.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit ae6806688016711bb9ec7541266d76ab511c5e3b)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/migration.c |  3 +++
+ migration/ram.c       |  7 +++++++
+ monitor/hmp-cmds.c    | 12 ++++++++++++
+ qapi/migration.json   | 13 ++++++++++++-
+ 4 files changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 616c3ff32e..e100b30f00 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1016,6 +1016,9 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->page_size = page_size;
+     info->ram->multifd_bytes = ram_counters.multifd_bytes;
+     info->ram->pages_per_second = s->pages_per_second;
++    info->ram->precopy_bytes = ram_counters.precopy_bytes;
++    info->ram->downtime_bytes = ram_counters.downtime_bytes;
++    info->ram->postcopy_bytes = ram_counters.postcopy_bytes;
+ 
+     if (migrate_use_xbzrle()) {
+         info->has_xbzrle_cache = true;
+diff --git a/migration/ram.c b/migration/ram.c
+index 3e82c4ff46..e7173da217 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -393,6 +393,13 @@ MigrationStats ram_counters;
+ 
+ static void ram_transferred_add(uint64_t bytes)
+ {
++    if (runstate_is_running()) {
++        ram_counters.precopy_bytes += bytes;
++    } else if (migration_in_postcopy()) {
++        ram_counters.postcopy_bytes += bytes;
++    } else {
++        ram_counters.downtime_bytes += bytes;
++    }
+     ram_counters.transferred += bytes;
+ }
+ 
+diff --git a/monitor/hmp-cmds.c b/monitor/hmp-cmds.c
+index 2669156b28..8c384dc1b2 100644
+--- a/monitor/hmp-cmds.c
++++ b/monitor/hmp-cmds.c
+@@ -293,6 +293,18 @@ void hmp_info_migrate(Monitor *mon, const QDict *qdict)
+             monitor_printf(mon, "postcopy request count: %" PRIu64 "\n",
+                            info->ram->postcopy_requests);
+         }
++        if (info->ram->precopy_bytes) {
++            monitor_printf(mon, "precopy ram: %" PRIu64 " kbytes\n",
++                           info->ram->precopy_bytes >> 10);
++        }
++        if (info->ram->downtime_bytes) {
++            monitor_printf(mon, "downtime ram: %" PRIu64 " kbytes\n",
++                           info->ram->downtime_bytes >> 10);
++        }
++        if (info->ram->postcopy_bytes) {
++            monitor_printf(mon, "postcopy ram: %" PRIu64 " kbytes\n",
++                           info->ram->postcopy_bytes >> 10);
++        }
+     }
+ 
+     if (info->has_disk) {
+diff --git a/qapi/migration.json b/qapi/migration.json
+index fe70a0c4b2..c8ec260ab0 100644
+--- a/qapi/migration.json
++++ b/qapi/migration.json
+@@ -46,6 +46,15 @@
+ # @pages-per-second: the number of memory pages transferred per second
+ #                    (Since 4.0)
+ #
++# @precopy-bytes: The number of bytes sent in the pre-copy phase
++#                 (since 7.0).
++#
++# @downtime-bytes: The number of bytes sent while the guest is paused
++#                  (since 7.0).
++#
++# @postcopy-bytes: The number of bytes sent during the post-copy phase
++#                  (since 7.0).
++#
+ # Since: 0.14
+ ##
+ { 'struct': 'MigrationStats',
+@@ -54,7 +63,9 @@
+            'normal-bytes': 'int', 'dirty-pages-rate' : 'int',
+            'mbps' : 'number', 'dirty-sync-count' : 'int',
+            'postcopy-requests' : 'int', 'page-size' : 'int',
+-           'multifd-bytes' : 'uint64', 'pages-per-second' : 'uint64' } }
++           'multifd-bytes' : 'uint64', 'pages-per-second' : 'uint64',
++           'precopy-bytes' : 'uint64', 'downtime-bytes' : 'uint64',
++           'postcopy-bytes' : 'uint64' } }
+ 
+ ##
+ # @XBZRLECacheStats:
+-- 
+2.31.1
+

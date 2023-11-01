@@ -1,0 +1,329 @@
+From b21f18afceba8231c78d29e66f58516e12c28d22 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 18 May 2022 02:52:23 -0300
+Subject: [PATCH 10/37] migration: All this fields are unsigned
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [10/26] 2c3ee27aae334db3b283ab7ef580f58e396e569d
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+So printing it as %d is wrong.  Notice that for the channel id, that
+is an uint8_t, but I changed it anyways for consistency.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 04e114049406dbb69fc9043c795ddd28fdba31a6)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd-zlib.c | 20 ++++++++++----------
+ migration/multifd-zstd.c | 24 ++++++++++++------------
+ migration/multifd.c      | 16 ++++++++--------
+ migration/trace-events   | 26 +++++++++++++-------------
+ 4 files changed, 43 insertions(+), 43 deletions(-)
+
+diff --git a/migration/multifd-zlib.c b/migration/multifd-zlib.c
+index a1950a4588..a987e4a26c 100644
+--- a/migration/multifd-zlib.c
++++ b/migration/multifd-zlib.c
+@@ -52,7 +52,7 @@ static int zlib_send_setup(MultiFDSendParams *p, Error **errp)
+     zs->opaque = Z_NULL;
+     if (deflateInit(zs, migrate_multifd_zlib_level()) != Z_OK) {
+         g_free(z);
+-        error_setg(errp, "multifd %d: deflate init failed", p->id);
++        error_setg(errp, "multifd %u: deflate init failed", p->id);
+         return -1;
+     }
+     /* We will never have more than page_count pages */
+@@ -62,7 +62,7 @@ static int zlib_send_setup(MultiFDSendParams *p, Error **errp)
+     if (!z->zbuff) {
+         deflateEnd(&z->zs);
+         g_free(z);
+-        error_setg(errp, "multifd %d: out of memory for zbuff", p->id);
++        error_setg(errp, "multifd %u: out of memory for zbuff", p->id);
+         return -1;
+     }
+     p->data = z;
+@@ -134,12 +134,12 @@ static int zlib_send_prepare(MultiFDSendParams *p, Error **errp)
+             ret = deflate(zs, flush);
+         } while (ret == Z_OK && zs->avail_in && zs->avail_out);
+         if (ret == Z_OK && zs->avail_in) {
+-            error_setg(errp, "multifd %d: deflate failed to compress all input",
++            error_setg(errp, "multifd %u: deflate failed to compress all input",
+                        p->id);
+             return -1;
+         }
+         if (ret != Z_OK) {
+-            error_setg(errp, "multifd %d: deflate returned %d instead of Z_OK",
++            error_setg(errp, "multifd %u: deflate returned %d instead of Z_OK",
+                        p->id, ret);
+             return -1;
+         }
+@@ -193,7 +193,7 @@ static int zlib_recv_setup(MultiFDRecvParams *p, Error **errp)
+     zs->avail_in = 0;
+     zs->next_in = Z_NULL;
+     if (inflateInit(zs) != Z_OK) {
+-        error_setg(errp, "multifd %d: inflate init failed", p->id);
++        error_setg(errp, "multifd %u: inflate init failed", p->id);
+         return -1;
+     }
+     /* We will never have more than page_count pages */
+@@ -203,7 +203,7 @@ static int zlib_recv_setup(MultiFDRecvParams *p, Error **errp)
+     z->zbuff = g_try_malloc(z->zbuff_len);
+     if (!z->zbuff) {
+         inflateEnd(zs);
+-        error_setg(errp, "multifd %d: out of memory for zbuff", p->id);
++        error_setg(errp, "multifd %u: out of memory for zbuff", p->id);
+         return -1;
+     }
+     return 0;
+@@ -252,7 +252,7 @@ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+     int i;
+ 
+     if (flags != MULTIFD_FLAG_ZLIB) {
+-        error_setg(errp, "multifd %d: flags received %x flags expected %x",
++        error_setg(errp, "multifd %u: flags received %x flags expected %x",
+                    p->id, flags, MULTIFD_FLAG_ZLIB);
+         return -1;
+     }
+@@ -289,19 +289,19 @@ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+         } while (ret == Z_OK && zs->avail_in
+                              && (zs->total_out - start) < page_size);
+         if (ret == Z_OK && (zs->total_out - start) < page_size) {
+-            error_setg(errp, "multifd %d: inflate generated too few output",
++            error_setg(errp, "multifd %u: inflate generated too few output",
+                        p->id);
+             return -1;
+         }
+         if (ret != Z_OK) {
+-            error_setg(errp, "multifd %d: inflate returned %d instead of Z_OK",
++            error_setg(errp, "multifd %u: inflate returned %d instead of Z_OK",
+                        p->id, ret);
+             return -1;
+         }
+     }
+     out_size = zs->total_out - out_size;
+     if (out_size != expected_size) {
+-        error_setg(errp, "multifd %d: packet size received %d size expected %d",
++        error_setg(errp, "multifd %u: packet size received %u size expected %u",
+                    p->id, out_size, expected_size);
+         return -1;
+     }
+diff --git a/migration/multifd-zstd.c b/migration/multifd-zstd.c
+index d9ed42622b..2185a83eac 100644
+--- a/migration/multifd-zstd.c
++++ b/migration/multifd-zstd.c
+@@ -56,7 +56,7 @@ static int zstd_send_setup(MultiFDSendParams *p, Error **errp)
+     z->zcs = ZSTD_createCStream();
+     if (!z->zcs) {
+         g_free(z);
+-        error_setg(errp, "multifd %d: zstd createCStream failed", p->id);
++        error_setg(errp, "multifd %u: zstd createCStream failed", p->id);
+         return -1;
+     }
+ 
+@@ -64,7 +64,7 @@ static int zstd_send_setup(MultiFDSendParams *p, Error **errp)
+     if (ZSTD_isError(res)) {
+         ZSTD_freeCStream(z->zcs);
+         g_free(z);
+-        error_setg(errp, "multifd %d: initCStream failed with error %s",
++        error_setg(errp, "multifd %u: initCStream failed with error %s",
+                    p->id, ZSTD_getErrorName(res));
+         return -1;
+     }
+@@ -75,7 +75,7 @@ static int zstd_send_setup(MultiFDSendParams *p, Error **errp)
+     if (!z->zbuff) {
+         ZSTD_freeCStream(z->zcs);
+         g_free(z);
+-        error_setg(errp, "multifd %d: out of memory for zbuff", p->id);
++        error_setg(errp, "multifd %u: out of memory for zbuff", p->id);
+         return -1;
+     }
+     return 0;
+@@ -146,12 +146,12 @@ static int zstd_send_prepare(MultiFDSendParams *p, Error **errp)
+         } while (ret > 0 && (z->in.size - z->in.pos > 0)
+                          && (z->out.size - z->out.pos > 0));
+         if (ret > 0 && (z->in.size - z->in.pos > 0)) {
+-            error_setg(errp, "multifd %d: compressStream buffer too small",
++            error_setg(errp, "multifd %u: compressStream buffer too small",
+                        p->id);
+             return -1;
+         }
+         if (ZSTD_isError(ret)) {
+-            error_setg(errp, "multifd %d: compressStream error %s",
++            error_setg(errp, "multifd %u: compressStream error %s",
+                        p->id, ZSTD_getErrorName(ret));
+             return -1;
+         }
+@@ -201,7 +201,7 @@ static int zstd_recv_setup(MultiFDRecvParams *p, Error **errp)
+     z->zds = ZSTD_createDStream();
+     if (!z->zds) {
+         g_free(z);
+-        error_setg(errp, "multifd %d: zstd createDStream failed", p->id);
++        error_setg(errp, "multifd %u: zstd createDStream failed", p->id);
+         return -1;
+     }
+ 
+@@ -209,7 +209,7 @@ static int zstd_recv_setup(MultiFDRecvParams *p, Error **errp)
+     if (ZSTD_isError(ret)) {
+         ZSTD_freeDStream(z->zds);
+         g_free(z);
+-        error_setg(errp, "multifd %d: initDStream failed with error %s",
++        error_setg(errp, "multifd %u: initDStream failed with error %s",
+                    p->id, ZSTD_getErrorName(ret));
+         return -1;
+     }
+@@ -222,7 +222,7 @@ static int zstd_recv_setup(MultiFDRecvParams *p, Error **errp)
+     if (!z->zbuff) {
+         ZSTD_freeDStream(z->zds);
+         g_free(z);
+-        error_setg(errp, "multifd %d: out of memory for zbuff", p->id);
++        error_setg(errp, "multifd %u: out of memory for zbuff", p->id);
+         return -1;
+     }
+     return 0;
+@@ -270,7 +270,7 @@ static int zstd_recv_pages(MultiFDRecvParams *p, Error **errp)
+     int i;
+ 
+     if (flags != MULTIFD_FLAG_ZSTD) {
+-        error_setg(errp, "multifd %d: flags received %x flags expected %x",
++        error_setg(errp, "multifd %u: flags received %x flags expected %x",
+                    p->id, flags, MULTIFD_FLAG_ZSTD);
+         return -1;
+     }
+@@ -302,19 +302,19 @@ static int zstd_recv_pages(MultiFDRecvParams *p, Error **errp)
+         } while (ret > 0 && (z->in.size - z->in.pos > 0)
+                          && (z->out.pos < page_size));
+         if (ret > 0 && (z->out.pos < page_size)) {
+-            error_setg(errp, "multifd %d: decompressStream buffer too small",
++            error_setg(errp, "multifd %u: decompressStream buffer too small",
+                        p->id);
+             return -1;
+         }
+         if (ZSTD_isError(ret)) {
+-            error_setg(errp, "multifd %d: decompressStream returned %s",
++            error_setg(errp, "multifd %u: decompressStream returned %s",
+                        p->id, ZSTD_getErrorName(ret));
+             return ret;
+         }
+         out_size += z->out.pos;
+     }
+     if (out_size != expected_size) {
+-        error_setg(errp, "multifd %d: packet size received %d size expected %d",
++        error_setg(errp, "multifd %u: packet size received %u size expected %u",
+                    p->id, out_size, expected_size);
+         return -1;
+     }
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 0533da154a..d0d19470f9 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -148,7 +148,7 @@ static int nocomp_recv_pages(MultiFDRecvParams *p, Error **errp)
+     uint32_t flags = p->flags & MULTIFD_FLAG_COMPRESSION_MASK;
+ 
+     if (flags != MULTIFD_FLAG_NOCOMP) {
+-        error_setg(errp, "multifd %d: flags received %x flags expected %x",
++        error_setg(errp, "multifd %u: flags received %x flags expected %x",
+                    p->id, flags, MULTIFD_FLAG_NOCOMP);
+         return -1;
+     }
+@@ -212,8 +212,8 @@ static int multifd_recv_initial_packet(QIOChannel *c, Error **errp)
+     }
+ 
+     if (msg.version != MULTIFD_VERSION) {
+-        error_setg(errp, "multifd: received packet version %d "
+-                   "expected %d", msg.version, MULTIFD_VERSION);
++        error_setg(errp, "multifd: received packet version %u "
++                   "expected %u", msg.version, MULTIFD_VERSION);
+         return -1;
+     }
+ 
+@@ -229,8 +229,8 @@ static int multifd_recv_initial_packet(QIOChannel *c, Error **errp)
+     }
+ 
+     if (msg.id > migrate_multifd_channels()) {
+-        error_setg(errp, "multifd: received channel version %d "
+-                   "expected %d", msg.version, MULTIFD_VERSION);
++        error_setg(errp, "multifd: received channel version %u "
++                   "expected %u", msg.version, MULTIFD_VERSION);
+         return -1;
+     }
+ 
+@@ -303,7 +303,7 @@ static int multifd_recv_unfill_packet(MultiFDRecvParams *p, Error **errp)
+     packet->version = be32_to_cpu(packet->version);
+     if (packet->version != MULTIFD_VERSION) {
+         error_setg(errp, "multifd: received packet "
+-                   "version %d and expected version %d",
++                   "version %u and expected version %u",
+                    packet->version, MULTIFD_VERSION);
+         return -1;
+     }
+@@ -317,7 +317,7 @@ static int multifd_recv_unfill_packet(MultiFDRecvParams *p, Error **errp)
+      */
+     if (packet->pages_alloc > pages_max * 100) {
+         error_setg(errp, "multifd: received packet "
+-                   "with size %d and expected a maximum size of %d",
++                   "with size %u and expected a maximum size of %u",
+                    packet->pages_alloc, pages_max * 100) ;
+         return -1;
+     }
+@@ -333,7 +333,7 @@ static int multifd_recv_unfill_packet(MultiFDRecvParams *p, Error **errp)
+     p->pages->num = be32_to_cpu(packet->pages_used);
+     if (p->pages->num > packet->pages_alloc) {
+         error_setg(errp, "multifd: received packet "
+-                   "with %d pages and expected maximum pages are %d",
++                   "with %u pages and expected maximum pages are %u",
+                    p->pages->num, packet->pages_alloc) ;
+         return -1;
+     }
+diff --git a/migration/trace-events b/migration/trace-events
+index b48d873b8a..5172cb3b3d 100644
+--- a/migration/trace-events
++++ b/migration/trace-events
+@@ -115,23 +115,23 @@ ram_write_tracking_ramblock_start(const char *block_id, size_t page_size, void *
+ ram_write_tracking_ramblock_stop(const char *block_id, size_t page_size, void *addr, size_t length) "%s: page_size: %zu addr: %p length: %zu"
+ 
+ # multifd.c
+-multifd_new_send_channel_async(uint8_t id) "channel %d"
+-multifd_recv(uint8_t id, uint64_t packet_num, uint32_t used, uint32_t flags, uint32_t next_packet_size) "channel %d packet_num %" PRIu64 " pages %d flags 0x%x next packet size %d"
+-multifd_recv_new_channel(uint8_t id) "channel %d"
++multifd_new_send_channel_async(uint8_t id) "channel %u"
++multifd_recv(uint8_t id, uint64_t packet_num, uint32_t used, uint32_t flags, uint32_t next_packet_size) "channel %u packet_num %" PRIu64 " pages %u flags 0x%x next packet size %u"
++multifd_recv_new_channel(uint8_t id) "channel %u"
+ multifd_recv_sync_main(long packet_num) "packet num %ld"
+-multifd_recv_sync_main_signal(uint8_t id) "channel %d"
+-multifd_recv_sync_main_wait(uint8_t id) "channel %d"
++multifd_recv_sync_main_signal(uint8_t id) "channel %u"
++multifd_recv_sync_main_wait(uint8_t id) "channel %u"
+ multifd_recv_terminate_threads(bool error) "error %d"
+-multifd_recv_thread_end(uint8_t id, uint64_t packets, uint64_t pages) "channel %d packets %" PRIu64 " pages %" PRIu64
+-multifd_recv_thread_start(uint8_t id) "%d"
+-multifd_send(uint8_t id, uint64_t packet_num, uint32_t used, uint32_t flags, uint32_t next_packet_size) "channel %d packet_num %" PRIu64 " pages %d flags 0x%x next packet size %d"
+-multifd_send_error(uint8_t id) "channel %d"
++multifd_recv_thread_end(uint8_t id, uint64_t packets, uint64_t pages) "channel %u packets %" PRIu64 " pages %" PRIu64
++multifd_recv_thread_start(uint8_t id) "%u"
++multifd_send(uint8_t id, uint64_t packet_num, uint32_t used, uint32_t flags, uint32_t next_packet_size) "channel %u packet_num %" PRIu64 " pages %u flags 0x%x next packet size %u"
++multifd_send_error(uint8_t id) "channel %u"
+ multifd_send_sync_main(long packet_num) "packet num %ld"
+-multifd_send_sync_main_signal(uint8_t id) "channel %d"
+-multifd_send_sync_main_wait(uint8_t id) "channel %d"
++multifd_send_sync_main_signal(uint8_t id) "channel %u"
++multifd_send_sync_main_wait(uint8_t id) "channel %u"
+ multifd_send_terminate_threads(bool error) "error %d"
+-multifd_send_thread_end(uint8_t id, uint64_t packets, uint64_t pages) "channel %d packets %" PRIu64 " pages %"  PRIu64
+-multifd_send_thread_start(uint8_t id) "%d"
++multifd_send_thread_end(uint8_t id, uint64_t packets, uint64_t pages) "channel %u packets %" PRIu64 " pages %"  PRIu64
++multifd_send_thread_start(uint8_t id) "%u"
+ multifd_tls_outgoing_handshake_start(void *ioc, void *tioc, const char *hostname) "ioc=%p tioc=%p hostname=%s"
+ multifd_tls_outgoing_handshake_error(void *ioc, const char *err) "ioc=%p err=%s"
+ multifd_tls_outgoing_handshake_complete(void *ioc) "ioc=%p"
+-- 
+2.35.3
+

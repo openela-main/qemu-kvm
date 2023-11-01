@@ -1,0 +1,92 @@
+From eaade87072e903cf550dfdb8ed1480dddc6bb0e3 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Thu, 20 Jan 2022 15:22:59 +0100
+Subject: [PATCH 21/24] ide: Increment BB in-flight counter for TRIM BH
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 188: ide: Increment BB in-flight counter for TRIM BH
+RH-Commit: [1/1] 1e702e735ff63f2b8b69c20cac1b309dd085cd62
+RH-Bugzilla: 2029980
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+When we still have an AIOCB registered for DMA operations, we try to
+settle the respective operation by draining the BlockBackend associated
+with the IDE device.
+
+However, this assumes that every DMA operation is associated with an
+increment of the BlockBackend’s in-flight counter (e.g. through some
+ongoing I/O operation), so that draining the BB until its in-flight
+counter reaches 0 will settle all DMA operations.  That is not the case:
+For TRIM, the guest can issue a zero-length operation that will not
+result in any I/O operation forwarded to the BlockBackend, and also not
+increment the in-flight counter in any other way.  In such a case,
+blk_drain() will be a no-op if no other operations are in flight.
+
+It is clear that if blk_drain() is a no-op, the value of
+s->bus->dma->aiocb will not change between checking it in the `if`
+condition and asserting that it is NULL after blk_drain().
+
+The particular problem is that ide_issue_trim() creates a BH
+(ide_trim_bh_cb()) to settle the TRIM request: iocb->common.cb() is
+ide_dma_cb(), which will either create a new request, or find the
+transfer to be done and call ide_set_inactive(), which clears
+s->bus->dma->aiocb.  Therefore, the blk_drain() must wait for
+ide_trim_bh_cb() to run, which currently it will not always do.
+
+To fix this issue, we increment the BlockBackend's in-flight counter
+when the TRIM operation begins (in ide_issue_trim(), when the
+ide_trim_bh_cb() BH is created) and decrement it when ide_trim_bh_cb()
+is done.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2029980
+Suggested-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220120142259.120189-1-hreitz@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Tested-by: John Snow <jsnow@redhat.com>
+(cherry picked from commit 7e5cdb345f77d76cb4877fe6230c4e17a7d0d0ca)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ hw/ide/core.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/ide/core.c b/hw/ide/core.c
+index e28f8aad61..15138225be 100644
+--- a/hw/ide/core.c
++++ b/hw/ide/core.c
+@@ -433,12 +433,16 @@ static const AIOCBInfo trim_aiocb_info = {
+ static void ide_trim_bh_cb(void *opaque)
+ {
+     TrimAIOCB *iocb = opaque;
++    BlockBackend *blk = iocb->s->blk;
+ 
+     iocb->common.cb(iocb->common.opaque, iocb->ret);
+ 
+     qemu_bh_delete(iocb->bh);
+     iocb->bh = NULL;
+     qemu_aio_unref(iocb);
++
++    /* Paired with an increment in ide_issue_trim() */
++    blk_dec_in_flight(blk);
+ }
+ 
+ static void ide_issue_trim_cb(void *opaque, int ret)
+@@ -508,6 +512,9 @@ BlockAIOCB *ide_issue_trim(
+     IDEState *s = opaque;
+     TrimAIOCB *iocb;
+ 
++    /* Paired with a decrement in ide_trim_bh_cb() */
++    blk_inc_in_flight(s->blk);
++
+     iocb = blk_aio_get(&trim_aiocb_info, s->blk, cb, cb_opaque);
+     iocb->s = s;
+     iocb->bh = qemu_bh_new(ide_trim_bh_cb, iocb);
+-- 
+2.35.3
+

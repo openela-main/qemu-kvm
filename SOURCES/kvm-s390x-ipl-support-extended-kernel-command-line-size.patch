@@ -1,0 +1,97 @@
+From ddfee9d393af322938e4df466cd01b8f9570a1c9 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 5 Apr 2022 10:20:59 +0200
+Subject: [PATCH 1/6] s390x/ipl: support extended kernel command line size
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 144: s390x/ipl: support extended kernel command line size
+RH-Commit: [1/1] be227e50af5dbe7802605f873db29ac5358aa196
+RH-Bugzilla: 2043830
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2043830
+
+commit b2173046a64beed76715f310f98538f159276af1
+Author: Marc Hartmayer <mhartmay@linux.ibm.com>
+Date:   Mon Nov 22 12:29:09 2021 +0100
+
+    s390x/ipl: support extended kernel command line size
+
+    In the past s390 used a fixed command line length of 896 bytes. This has changed
+    with the Linux commit 5ecb2da660ab ("s390: support command lines longer than 896
+    bytes"). There is now a parm area indicating the maximum command line size. This
+    parm area has always been initialized to zero, so with older kernels this field
+    would read zero and we must then assume that only 896 bytes are available.
+
+    Signed-off-by: Marc Hartmayer <mhartmay@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Reviewed-by: Christian Borntraeger <borntraeger@de.ibm.com>
+    Acked-by: Viktor Mihajlovski <mihajlov@de.ibm.com>
+    Message-Id: <20211122112909.18138-1-mhartmay@linux.ibm.com>
+    [thuth: Cosmetic fixes, and use PRIu64 instead of %lu]
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/ipl.c | 27 +++++++++++++++++++++++----
+ 1 file changed, 23 insertions(+), 4 deletions(-)
+
+diff --git a/hw/s390x/ipl.c b/hw/s390x/ipl.c
+index 7ddca0127f..eb7fc4c4ae 100644
+--- a/hw/s390x/ipl.c
++++ b/hw/s390x/ipl.c
+@@ -37,8 +37,9 @@
+ 
+ #define KERN_IMAGE_START                0x010000UL
+ #define LINUX_MAGIC_ADDR                0x010008UL
++#define KERN_PARM_AREA_SIZE_ADDR        0x010430UL
+ #define KERN_PARM_AREA                  0x010480UL
+-#define KERN_PARM_AREA_SIZE             0x000380UL
++#define LEGACY_KERN_PARM_AREA_SIZE      0x000380UL
+ #define INITRD_START                    0x800000UL
+ #define INITRD_PARM_START               0x010408UL
+ #define PARMFILE_START                  0x001000UL
+@@ -110,6 +111,21 @@ static uint64_t bios_translate_addr(void *opaque, uint64_t srcaddr)
+     return srcaddr + dstaddr;
+ }
+ 
++static uint64_t get_max_kernel_cmdline_size(void)
++{
++    uint64_t *size_ptr = rom_ptr(KERN_PARM_AREA_SIZE_ADDR, sizeof(*size_ptr));
++
++    if (size_ptr) {
++        uint64_t size;
++
++        size = be64_to_cpu(*size_ptr);
++        if (size) {
++            return size;
++        }
++    }
++    return LEGACY_KERN_PARM_AREA_SIZE;
++}
++
+ static void s390_ipl_realize(DeviceState *dev, Error **errp)
+ {
+     MachineState *ms = MACHINE(qdev_get_machine());
+@@ -197,10 +213,13 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
+             ipl->start_addr = KERN_IMAGE_START;
+             /* Overwrite parameters in the kernel image, which are "rom" */
+             if (parm_area) {
+-                if (cmdline_size > KERN_PARM_AREA_SIZE) {
++                uint64_t max_cmdline_size = get_max_kernel_cmdline_size();
++
++                if (cmdline_size > max_cmdline_size) {
+                     error_setg(errp,
+-                               "kernel command line exceeds maximum size: %zu > %lu",
+-                               cmdline_size, KERN_PARM_AREA_SIZE);
++                               "kernel command line exceeds maximum size:"
++                               " %zu > %" PRIu64,
++                               cmdline_size, max_cmdline_size);
+                     return;
+                 }
+ 
+-- 
+2.27.0
+

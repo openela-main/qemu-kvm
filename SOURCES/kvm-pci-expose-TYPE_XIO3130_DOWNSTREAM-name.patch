@@ -1,0 +1,83 @@
+From 7998e8aa78caa35c2ab2da44f9e29e21d7548c61 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 23 Mar 2022 13:21:40 -0400
+Subject: [PATCH 05/18] pci: expose TYPE_XIO3130_DOWNSTREAM name
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 134: pci: expose TYPE_XIO3130_DOWNSTREAM name
+RH-Commit: [1/2] f09ddcaf686f22b545bf269f87787ebfc33fccda (jmaloy/qemu-kvm)
+RH-Bugzilla: 2062610
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+
+BZ: https://bugzilla.redhat.com/2062610
+UPSTREAM: merged
+BREW: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=44038138
+
+commit c41481af9a5d0d463607cc45b45c510875570817
+Author: Igor Mammedov <imammedo@redhat.com>
+Date:   Tue Mar 1 10:11:58 2022 -0500
+
+    pci: expose TYPE_XIO3130_DOWNSTREAM name
+
+    Type name will be used in followup patch for cast check
+    in pcihp code.
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Message-Id: <20220301151200.3507298-2-imammedo@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit c41481af9a5d0d463607cc45b45c510875570817)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/pci-bridge/xio3130_downstream.c         |  3 ++-
+ include/hw/pci-bridge/xio3130_downstream.h | 15 +++++++++++++++
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+ create mode 100644 include/hw/pci-bridge/xio3130_downstream.h
+
+diff --git a/hw/pci-bridge/xio3130_downstream.c b/hw/pci-bridge/xio3130_downstream.c
+index 04aae72cd6..b17cafd359 100644
+--- a/hw/pci-bridge/xio3130_downstream.c
++++ b/hw/pci-bridge/xio3130_downstream.c
+@@ -28,6 +28,7 @@
+ #include "migration/vmstate.h"
+ #include "qapi/error.h"
+ #include "qemu/module.h"
++#include "hw/pci-bridge/xio3130_downstream.h"
+ 
+ #define PCI_DEVICE_ID_TI_XIO3130D       0x8233  /* downstream port */
+ #define XIO3130_REVISION                0x1
+@@ -173,7 +174,7 @@ static void xio3130_downstream_class_init(ObjectClass *klass, void *data)
+ }
+ 
+ static const TypeInfo xio3130_downstream_info = {
+-    .name          = "xio3130-downstream",
++    .name          = TYPE_XIO3130_DOWNSTREAM,
+     .parent        = TYPE_PCIE_SLOT,
+     .class_init    = xio3130_downstream_class_init,
+     .interfaces = (InterfaceInfo[]) {
+diff --git a/include/hw/pci-bridge/xio3130_downstream.h b/include/hw/pci-bridge/xio3130_downstream.h
+new file mode 100644
+index 0000000000..1d10139aea
+--- /dev/null
++++ b/include/hw/pci-bridge/xio3130_downstream.h
+@@ -0,0 +1,15 @@
++/*
++ * TI X3130 pci express downstream port switch
++ *
++ * Copyright (C) 2022 Igor Mammedov <imammedo@redhat.com>
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef HW_PCI_BRIDGE_XIO3130_DOWNSTREAM_H
++#define HW_PCI_BRIDGE_XIO3130_DOWNSTREAM_H
++
++#define TYPE_XIO3130_DOWNSTREAM "xio3130-downstream"
++
++#endif
++
+-- 
+2.27.0
+

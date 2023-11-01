@@ -1,0 +1,182 @@
+From 28cf1b55f346a9f56e84fa57921f5a28a99cd59b Mon Sep 17 00:00:00 2001
+From: Jing Liu <jing2.liu@intel.com>
+Date: Wed, 16 Feb 2022 22:04:32 -0800
+Subject: [PATCH 10/24] x86: add support for KVM_CAP_XSAVE2 and AMX state
+ migration
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [10/13] d584f455ba1ecd8a4a87f3470e6aac24ba9a1f5a
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+When dynamic xfeatures (e.g. AMX) are used by the guest, the xsave
+area would be larger than 4KB. KVM_GET_XSAVE2 and KVM_SET_XSAVE
+under KVM_CAP_XSAVE2 works with a xsave buffer larger than 4KB.
+Always use the new ioctls under KVM_CAP_XSAVE2 when KVM supports it.
+
+Signed-off-by: Jing Liu <jing2.liu@intel.com>
+Signed-off-by: Zeng Guang <guang.zeng@intel.com>
+Signed-off-by: Wei Wang <wei.w.wang@intel.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Message-Id: <20220217060434.52460-7-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e56dd3c70abb31893c61ac834109fa7a38841330)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.h          |  4 ++++
+ target/i386/kvm/kvm.c      | 42 ++++++++++++++++++++++++--------------
+ target/i386/xsave_helper.c | 28 +++++++++++++++++++++++++
+ 3 files changed, 59 insertions(+), 15 deletions(-)
+
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index f2bdef9c26..14a3501b87 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -1522,6 +1522,10 @@ typedef struct CPUX86State {
+     uint64_t opmask_regs[NB_OPMASK_REGS];
+     YMMReg zmmh_regs[CPU_NB_REGS];
+     ZMMReg hi16_zmm_regs[CPU_NB_REGS];
++#ifdef TARGET_X86_64
++    uint8_t xtilecfg[64];
++    uint8_t xtiledata[8192];
++#endif
+ 
+     /* sysenter registers */
+     uint32_t sysenter_cs;
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index a64a79d870..d3d476df27 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -123,6 +123,7 @@ static uint32_t num_architectural_pmu_gp_counters;
+ static uint32_t num_architectural_pmu_fixed_counters;
+ 
+ static int has_xsave;
++static int has_xsave2;
+ static int has_xcrs;
+ static int has_pit_state2;
+ static int has_exception_payload;
+@@ -1585,6 +1586,26 @@ static Error *invtsc_mig_blocker;
+ 
+ #define KVM_MAX_CPUID_ENTRIES  100
+ 
++static void kvm_init_xsave(CPUX86State *env)
++{
++    if (has_xsave2) {
++        env->xsave_buf_len = QEMU_ALIGN_UP(has_xsave2, 4096);
++    } else if (has_xsave) {
++        env->xsave_buf_len = sizeof(struct kvm_xsave);
++    } else {
++        return;
++    }
++
++    env->xsave_buf = qemu_memalign(4096, env->xsave_buf_len);
++    memset(env->xsave_buf, 0, env->xsave_buf_len);
++    /*
++     * The allocated storage must be large enough for all of the
++     * possible XSAVE state components.
++     */
++    assert(kvm_arch_get_supported_cpuid(kvm_state, 0xd, 0, R_ECX) <=
++           env->xsave_buf_len);
++}
++
+ int kvm_arch_init_vcpu(CPUState *cs)
+ {
+     struct {
+@@ -1614,6 +1635,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
+ 
+     cpuid_i = 0;
+ 
++    has_xsave2 = kvm_check_extension(cs->kvm_state, KVM_CAP_XSAVE2);
++
+     r = kvm_arch_set_tsc_khz(cs);
+     if (r < 0) {
+         return r;
+@@ -2003,19 +2026,7 @@ int kvm_arch_init_vcpu(CPUState *cs)
+     if (r) {
+         goto fail;
+     }
+-
+-    if (has_xsave) {
+-        env->xsave_buf_len = sizeof(struct kvm_xsave);
+-        env->xsave_buf = qemu_memalign(4096, env->xsave_buf_len);
+-        memset(env->xsave_buf, 0, env->xsave_buf_len);
+-
+-        /*
+-         * The allocated storage must be large enough for all of the
+-         * possible XSAVE state components.
+-         */
+-        assert(kvm_arch_get_supported_cpuid(kvm_state, 0xd, 0, R_ECX)
+-               <= env->xsave_buf_len);
+-    }
++    kvm_init_xsave(env);
+ 
+     max_nested_state_len = kvm_max_nested_state_length();
+     if (max_nested_state_len > 0) {
+@@ -3263,13 +3274,14 @@ static int kvm_get_xsave(X86CPU *cpu)
+ {
+     CPUX86State *env = &cpu->env;
+     void *xsave = env->xsave_buf;
+-    int ret;
++    int type, ret;
+ 
+     if (!has_xsave) {
+         return kvm_get_fpu(cpu);
+     }
+ 
+-    ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_XSAVE, xsave);
++    type = has_xsave2 ? KVM_GET_XSAVE2 : KVM_GET_XSAVE;
++    ret = kvm_vcpu_ioctl(CPU(cpu), type, xsave);
+     if (ret < 0) {
+         return ret;
+     }
+diff --git a/target/i386/xsave_helper.c b/target/i386/xsave_helper.c
+index ac61a96344..996e9f3bfe 100644
+--- a/target/i386/xsave_helper.c
++++ b/target/i386/xsave_helper.c
+@@ -126,6 +126,20 @@ void x86_cpu_xsave_all_areas(X86CPU *cpu, void *buf, uint32_t buflen)
+ 
+         memcpy(pkru, &env->pkru, sizeof(env->pkru));
+     }
++
++    e = &x86_ext_save_areas[XSTATE_XTILE_CFG_BIT];
++    if (e->size && e->offset) {
++        XSaveXTILECFG *tilecfg = buf + e->offset;
++
++        memcpy(tilecfg, &env->xtilecfg, sizeof(env->xtilecfg));
++    }
++
++    e = &x86_ext_save_areas[XSTATE_XTILE_DATA_BIT];
++    if (e->size && e->offset && buflen >= e->size + e->offset) {
++        XSaveXTILEDATA *tiledata = buf + e->offset;
++
++        memcpy(tiledata, &env->xtiledata, sizeof(env->xtiledata));
++    }
+ #endif
+ }
+ 
+@@ -247,5 +261,19 @@ void x86_cpu_xrstor_all_areas(X86CPU *cpu, const void *buf, uint32_t buflen)
+         pkru = buf + e->offset;
+         memcpy(&env->pkru, pkru, sizeof(env->pkru));
+     }
++
++    e = &x86_ext_save_areas[XSTATE_XTILE_CFG_BIT];
++    if (e->size && e->offset) {
++        const XSaveXTILECFG *tilecfg = buf + e->offset;
++
++        memcpy(&env->xtilecfg, tilecfg, sizeof(env->xtilecfg));
++    }
++
++    e = &x86_ext_save_areas[XSTATE_XTILE_DATA_BIT];
++    if (e->size && e->offset && buflen >= e->size + e->offset) {
++        const XSaveXTILEDATA *tiledata = buf + e->offset;
++
++        memcpy(&env->xtiledata, tiledata, sizeof(env->xtiledata));
++    }
+ #endif
+ }
+-- 
+2.35.3
+

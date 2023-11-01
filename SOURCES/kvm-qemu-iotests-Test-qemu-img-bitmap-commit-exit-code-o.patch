@@ -1,0 +1,166 @@
+From 7c6faae20638f58681df223e0ca44e0a6cb60d2d Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 12 Jan 2023 20:14:54 +0100
+Subject: [PATCH 4/4] qemu-iotests: Test qemu-img bitmap/commit exit code on
+ error
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 251: qemu-img: Fix exit code for errors closing the image
+RH-Bugzilla: 2147617
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [4/4] fb2f9de98ddd2ee1d745119e4f15272ef44e0aae
+
+This tests that when an error happens while writing back bitmaps to the
+image file in qcow2_inactivate(), 'qemu-img bitmap/commit' actually
+return an error value in their exit code instead of making the operation
+look successful to scripts.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20230112191454.169353-5-kwolf@redhat.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 07a4e1f8e5418f36424cd57d5d061b090a238c65)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ .../qemu-iotests/tests/qemu-img-close-errors  | 96 +++++++++++++++++++
+ .../tests/qemu-img-close-errors.out           | 23 +++++
+ 2 files changed, 119 insertions(+)
+ create mode 100755 tests/qemu-iotests/tests/qemu-img-close-errors
+ create mode 100644 tests/qemu-iotests/tests/qemu-img-close-errors.out
+
+diff --git a/tests/qemu-iotests/tests/qemu-img-close-errors b/tests/qemu-iotests/tests/qemu-img-close-errors
+new file mode 100755
+index 0000000000..50bfb6cfa2
+--- /dev/null
++++ b/tests/qemu-iotests/tests/qemu-img-close-errors
+@@ -0,0 +1,96 @@
++#!/usr/bin/env bash
++# group: rw auto quick
++#
++# Check that errors while closing the image, in particular writing back dirty
++# bitmaps, is correctly reported with a failing qemu-img exit code.
++#
++# Copyright (C) 2023 Red Hat, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++
++# creator
++owner=kwolf@redhat.com
++
++seq="$(basename $0)"
++echo "QA output created by $seq"
++
++status=1	# failure is the default!
++
++_cleanup()
++{
++    _cleanup_test_img
++}
++trap "_cleanup; exit \$status" 0 1 2 3 15
++
++# get standard environment, filters and checks
++cd ..
++. ./common.rc
++. ./common.filter
++
++_supported_fmt qcow2
++_supported_proto file
++_supported_os Linux
++
++size=1G
++
++# The error we are going to use is ENOSPC. Depending on how many bitmaps we
++# create in the backing file (and therefore increase the used up space), we get
++# failures in different places. With a low number, only merging the bitmap
++# fails, whereas with a higher number, already 'qemu-img commit' fails.
++for max_bitmap in 6 7; do
++    echo
++    echo "=== Test with $max_bitmap bitmaps ==="
++
++    TEST_IMG="$TEST_IMG.base" _make_test_img -q $size
++    for i in $(seq 1 $max_bitmap); do
++        $QEMU_IMG bitmap --add "$TEST_IMG.base" "stale-bitmap-$i"
++    done
++
++    # Simulate a block device of 128 MB by resizing the image file accordingly
++    # and then enforcing the size with the raw driver
++    $QEMU_IO -f raw -c "truncate 128M" "$TEST_IMG.base"
++    BASE_JSON='json:{
++        "driver": "qcow2",
++        "file": {
++            "driver": "raw",
++            "size": 134217728,
++            "file": {
++                "driver": "file",
++                "filename":"'"$TEST_IMG.base"'"
++            }
++        }
++    }'
++
++    _make_test_img -q -b "$BASE_JSON" -F $IMGFMT
++    $QEMU_IMG bitmap --add "$TEST_IMG" "good-bitmap"
++
++    $QEMU_IO -c 'write 0 126m' "$TEST_IMG" | _filter_qemu_io
++
++    $QEMU_IMG commit -d "$TEST_IMG" 2>&1 | _filter_generated_node_ids
++    echo "qemu-img commit exit code: ${PIPESTATUS[0]}"
++
++    $QEMU_IMG bitmap --add "$BASE_JSON" "good-bitmap"
++    echo "qemu-img bitmap --add exit code: $?"
++
++    $QEMU_IMG bitmap --merge "good-bitmap" -b "$TEST_IMG" "$BASE_JSON" \
++        "good-bitmap" 2>&1 | _filter_generated_node_ids
++    echo "qemu-img bitmap --merge exit code:  ${PIPESTATUS[0]}"
++done
++
++# success, all done
++echo "*** done"
++rm -f $seq.full
++status=0
++
+diff --git a/tests/qemu-iotests/tests/qemu-img-close-errors.out b/tests/qemu-iotests/tests/qemu-img-close-errors.out
+new file mode 100644
+index 0000000000..1bfe88f176
+--- /dev/null
++++ b/tests/qemu-iotests/tests/qemu-img-close-errors.out
+@@ -0,0 +1,23 @@
++QA output created by qemu-img-close-errors
++
++=== Test with 6 bitmaps ===
++wrote 132120576/132120576 bytes at offset 0
++126 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++Image committed.
++qemu-img commit exit code: 0
++qemu-img bitmap --add exit code: 0
++qemu-img: Lost persistent bitmaps during inactivation of node 'NODE_NAME': Failed to write bitmap 'good-bitmap' to file: No space left on device
++qemu-img: Error while closing the image: Invalid argument
++qemu-img: Lost persistent bitmaps during inactivation of node 'NODE_NAME': Failed to write bitmap 'good-bitmap' to file: No space left on device
++qemu-img bitmap --merge exit code:  1
++
++=== Test with 7 bitmaps ===
++wrote 132120576/132120576 bytes at offset 0
++126 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++qemu-img: Lost persistent bitmaps during inactivation of node 'NODE_NAME': Failed to write bitmap 'stale-bitmap-7' to file: No space left on device
++qemu-img: Lost persistent bitmaps during inactivation of node 'NODE_NAME': Failed to write bitmap 'stale-bitmap-7' to file: No space left on device
++qemu-img: Error while closing the image: Invalid argument
++qemu-img commit exit code: 1
++qemu-img bitmap --add exit code: 0
++qemu-img bitmap --merge exit code:  0
++*** done
+-- 
+2.37.3
+

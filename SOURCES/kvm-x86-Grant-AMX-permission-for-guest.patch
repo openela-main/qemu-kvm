@@ -1,0 +1,215 @@
+From 50840e01d05a466a1dfbc219e49233834e5d7ed0 Mon Sep 17 00:00:00 2001
+From: Yang Zhong <yang.zhong@intel.com>
+Date: Wed, 16 Feb 2022 22:04:29 -0800
+Subject: [PATCH 07/24] x86: Grant AMX permission for guest
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [7/13] 437578191f61139ca710cc7045ab38eb0d05eae2
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Kernel allocates 4K xstate buffer by default. For XSAVE features
+which require large state component (e.g. AMX), Linux kernel
+dynamically expands the xstate buffer only after the process has
+acquired the necessary permissions. Those are called dynamically-
+enabled XSAVE features (or dynamic xfeatures).
+
+There are separate permissions for native tasks and guests.
+
+Qemu should request the guest permissions for dynamic xfeatures
+which will be exposed to the guest. This only needs to be done
+once before the first vcpu is created.
+
+KVM implemented one new ARCH_GET_XCOMP_SUPP system attribute API to
+get host side supported_xcr0 and Qemu can decide if it can request
+dynamically enabled XSAVE features permission.
+https://lore.kernel.org/all/20220126152210.3044876-1-pbonzini@redhat.com/
+
+Suggested-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Signed-off-by: Jing Liu <jing2.liu@intel.com>
+Message-Id: <20220217060434.52460-4-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 19db68ca68a78fa033a21d419036b6e416554564)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.c          |  7 +++++
+ target/i386/cpu.h          |  4 +++
+ target/i386/kvm/kvm-cpu.c  | 12 ++++----
+ target/i386/kvm/kvm.c      | 57 ++++++++++++++++++++++++++++++++++++++
+ target/i386/kvm/kvm_i386.h |  1 +
+ 5 files changed, 75 insertions(+), 6 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 0453c27c9d..c19b51ea32 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -6027,6 +6027,7 @@ static void x86_cpu_enable_xsave_components(X86CPU *cpu)
+     CPUX86State *env = &cpu->env;
+     int i;
+     uint64_t mask;
++    static bool request_perm;
+ 
+     if (!(env->features[FEAT_1_ECX] & CPUID_EXT_XSAVE)) {
+         env->features[FEAT_XSAVE_COMP_LO] = 0;
+@@ -6042,6 +6043,12 @@ static void x86_cpu_enable_xsave_components(X86CPU *cpu)
+         }
+     }
+ 
++    /* Only request permission for first vcpu */
++    if (kvm_enabled() && !request_perm) {
++        kvm_request_xsave_components(cpu, mask);
++        request_perm = true;
++    }
++
+     env->features[FEAT_XSAVE_COMP_LO] = mask;
+     env->features[FEAT_XSAVE_COMP_HI] = mask >> 32;
+ }
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index e1dd8b9555..58676390e6 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -549,6 +549,10 @@ typedef enum X86Seg {
+ #define XSTATE_ZMM_Hi256_MASK           (1ULL << XSTATE_ZMM_Hi256_BIT)
+ #define XSTATE_Hi16_ZMM_MASK            (1ULL << XSTATE_Hi16_ZMM_BIT)
+ #define XSTATE_PKRU_MASK                (1ULL << XSTATE_PKRU_BIT)
++#define XSTATE_XTILE_CFG_MASK           (1ULL << XSTATE_XTILE_CFG_BIT)
++#define XSTATE_XTILE_DATA_MASK          (1ULL << XSTATE_XTILE_DATA_BIT)
++
++#define XSTATE_DYNAMIC_MASK             (XSTATE_XTILE_DATA_MASK)
+ 
+ #define ESA_FEATURE_ALIGN64_BIT         1
+ 
+diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
+index 86ef7b2712..bdc967c484 100644
+--- a/target/i386/kvm/kvm-cpu.c
++++ b/target/i386/kvm/kvm-cpu.c
+@@ -84,7 +84,7 @@ static void kvm_cpu_max_instance_init(X86CPU *cpu)
+ static void kvm_cpu_xsave_init(void)
+ {
+     static bool first = true;
+-    KVMState *s = kvm_state;
++    uint32_t eax, ebx, ecx, edx;
+     int i;
+ 
+     if (!first) {
+@@ -100,11 +100,11 @@ static void kvm_cpu_xsave_init(void)
+         ExtSaveArea *esa = &x86_ext_save_areas[i];
+ 
+         if (esa->size) {
+-            int sz = kvm_arch_get_supported_cpuid(s, 0xd, i, R_EAX);
+-            if (sz != 0) {
+-                assert(esa->size == sz);
+-                esa->offset = kvm_arch_get_supported_cpuid(s, 0xd, i, R_EBX);
+-                esa->ecx = kvm_arch_get_supported_cpuid(s, 0xd, i, R_ECX);
++            host_cpuid(0xd, i, &eax, &ebx, &ecx, &edx);
++            if (eax != 0) {
++                assert(esa->size == eax);
++                esa->offset = ebx;
++                esa->ecx = ecx;
+             }
+         }
+     }
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index a668f521ac..b5d98c4361 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -17,6 +17,7 @@
+ #include "qapi/error.h"
+ #include <sys/ioctl.h>
+ #include <sys/utsname.h>
++#include <sys/syscall.h>
+ 
+ #include <linux/kvm.h>
+ #include "standard-headers/asm-x86/kvm_para.h"
+@@ -347,6 +348,7 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
+     struct kvm_cpuid2 *cpuid;
+     uint32_t ret = 0;
+     uint32_t cpuid_1_edx;
++    uint64_t bitmask;
+ 
+     cpuid = get_supported_cpuid(s);
+ 
+@@ -404,6 +406,25 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
+         if (!has_msr_arch_capabs) {
+             ret &= ~CPUID_7_0_EDX_ARCH_CAPABILITIES;
+         }
++    } else if (function == 0xd && index == 0 &&
++               (reg == R_EAX || reg == R_EDX)) {
++        struct kvm_device_attr attr = {
++            .group = 0,
++            .attr = KVM_X86_XCOMP_GUEST_SUPP,
++            .addr = (unsigned long) &bitmask
++        };
++
++        bool sys_attr = kvm_check_extension(s, KVM_CAP_SYS_ATTRIBUTES);
++        if (!sys_attr) {
++            warn_report("cannot get sys attribute capabilities %d", sys_attr);
++        }
++
++        int rc = kvm_ioctl(s, KVM_GET_DEVICE_ATTR, &attr);
++        if (rc == -1 && (errno == ENXIO || errno == EINVAL)) {
++            warn_report("KVM_GET_DEVICE_ATTR(0, KVM_X86_XCOMP_GUEST_SUPP) "
++                        "error: %d", rc);
++        }
++        ret = (reg == R_EAX) ? bitmask : bitmask >> 32;
+     } else if (function == 0x80000001 && reg == R_ECX) {
+         /*
+          * It's safe to enable TOPOEXT even if it's not returned by
+@@ -5054,3 +5075,39 @@ bool kvm_arch_cpu_check_are_resettable(void)
+ {
+     return !sev_es_enabled();
+ }
++
++#define ARCH_REQ_XCOMP_GUEST_PERM       0x1025
++
++void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask)
++{
++    KVMState *s = kvm_state;
++    uint64_t supported;
++
++    mask &= XSTATE_DYNAMIC_MASK;
++    if (!mask) {
++        return;
++    }
++    /*
++     * Just ignore bits that are not in CPUID[EAX=0xD,ECX=0].
++     * ARCH_REQ_XCOMP_GUEST_PERM would fail, and QEMU has warned
++     * about them already because they are not supported features.
++     */
++    supported = kvm_arch_get_supported_cpuid(s, 0xd, 0, R_EAX);
++    supported |= (uint64_t)kvm_arch_get_supported_cpuid(s, 0xd, 0, R_EDX) << 32;
++    mask &= supported;
++
++    while (mask) {
++        int bit = ctz64(mask);
++        int rc = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_GUEST_PERM, bit);
++        if (rc) {
++            /*
++             * Older kernel version (<5.17) do not support
++             * ARCH_REQ_XCOMP_GUEST_PERM, but also do not return
++             * any dynamic feature from kvm_arch_get_supported_cpuid.
++             */
++            warn_report("prctl(ARCH_REQ_XCOMP_GUEST_PERM) failure "
++                        "for feature bit %d", bit);
++        }
++        mask &= ~BIT_ULL(bit);
++    }
++}
+diff --git a/target/i386/kvm/kvm_i386.h b/target/i386/kvm/kvm_i386.h
+index a978509d50..4124912c20 100644
+--- a/target/i386/kvm/kvm_i386.h
++++ b/target/i386/kvm/kvm_i386.h
+@@ -52,5 +52,6 @@ bool kvm_hyperv_expand_features(X86CPU *cpu, Error **errp);
+ uint64_t kvm_swizzle_msi_ext_dest_id(uint64_t address);
+ 
+ bool kvm_enable_sgx_provisioning(KVMState *s);
++void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask);
+ 
+ #endif
+-- 
+2.35.3
+

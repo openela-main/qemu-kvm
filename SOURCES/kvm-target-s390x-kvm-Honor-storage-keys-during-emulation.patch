@@ -1,0 +1,106 @@
+From 8d1a60069cddcc69ef1a6f50f2b55343de348b57 Mon Sep 17 00:00:00 2001
+From: Janis Schoetterl-Glausch <scgl@linux.ibm.com>
+Date: Fri, 6 May 2022 17:39:56 +0200
+Subject: [PATCH 2/3] target/s390x: kvm: Honor storage keys during emulation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <None>
+RH-MergeRequest: 220: s390x: Fix skey test in kvm_unit_test
+RH-Bugzilla: 2124757
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [2/2] 980dbb4eba8d2f1da7cf4113230d0a6483cffc4f
+
+Storage key controlled protection is currently not honored when
+emulating instructions.
+If available, enable key protection for the MEM_OP ioctl, thereby
+enabling it for the s390_cpu_virt_mem_* functions, when using kvm.
+As a result, the emulation of the following instructions honors storage
+keys:
+
+* CLP
+  	The Synch I/O CLP command would need special handling in order
+  	to support storage keys, but is currently not supported.
+* CHSC
+	Performing commands asynchronously would require special
+	handling, but commands are currently always synchronous.
+* STSI
+* TSCH
+	Must (and does) not change channel if terminated due to
+	protection.
+* MSCH
+	Suppressed on protection, works because fetching instruction.
+* SSCH
+	Suppressed on protection, works because fetching instruction.
+* STSCH
+* STCRW
+	Suppressed on protection, this works because no partial store is
+	possible, because the operand cannot span multiple pages.
+* PCISTB
+* MPCIFC
+* STPCIFC
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2124757
+
+Signed-off-by: Janis Schoetterl-Glausch <scgl@linux.ibm.com>
+Message-Id: <20220506153956.2217601-3-scgl@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 54354861d21b69ec0781f43e67b8d4f6edad7e3f)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/kvm/kvm.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index c52434985b..ba04997da1 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -152,12 +152,15 @@ const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
+ static int cap_sync_regs;
+ static int cap_async_pf;
+ static int cap_mem_op;
++static int cap_mem_op_extension;
+ static int cap_s390_irq;
+ static int cap_ri;
+ static int cap_hpage_1m;
+ static int cap_vcpu_resets;
+ static int cap_protected;
+ 
++static bool mem_op_storage_key_support;
++
+ static int active_cmma;
+ 
+ static int kvm_s390_query_mem_limit(uint64_t *memory_limit)
+@@ -355,6 +358,8 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
+     cap_sync_regs = kvm_check_extension(s, KVM_CAP_SYNC_REGS);
+     cap_async_pf = kvm_check_extension(s, KVM_CAP_ASYNC_PF);
+     cap_mem_op = kvm_check_extension(s, KVM_CAP_S390_MEM_OP);
++    cap_mem_op_extension = kvm_check_extension(s, KVM_CAP_S390_MEM_OP_EXTENSION);
++    mem_op_storage_key_support = cap_mem_op_extension > 0;
+     cap_s390_irq = kvm_check_extension(s, KVM_CAP_S390_INJECT_IRQ);
+     cap_vcpu_resets = kvm_check_extension(s, KVM_CAP_S390_VCPU_RESETS);
+     cap_protected = kvm_check_extension(s, KVM_CAP_S390_PROTECTED);
+@@ -843,6 +848,7 @@ int kvm_s390_mem_op(S390CPU *cpu, vaddr addr, uint8_t ar, void *hostbuf,
+                        : KVM_S390_MEMOP_LOGICAL_READ,
+         .buf = (uint64_t)hostbuf,
+         .ar = ar,
++        .key = (cpu->env.psw.mask & PSW_MASK_KEY) >> PSW_SHIFT_KEY,
+     };
+     int ret;
+ 
+@@ -852,6 +858,9 @@ int kvm_s390_mem_op(S390CPU *cpu, vaddr addr, uint8_t ar, void *hostbuf,
+     if (!hostbuf) {
+         mem_op.flags |= KVM_S390_MEMOP_F_CHECK_ONLY;
+     }
++    if (mem_op_storage_key_support) {
++        mem_op.flags |= KVM_S390_MEMOP_F_SKEY_PROTECTION;
++    }
+ 
+     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_S390_MEM_OP, &mem_op);
+     if (ret < 0) {
+-- 
+2.35.3
+

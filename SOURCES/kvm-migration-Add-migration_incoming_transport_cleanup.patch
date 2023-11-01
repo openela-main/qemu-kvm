@@ -1,0 +1,102 @@
+From 02eab793d82cd3c82d31f1e1f34d16fcc30caf0e Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Tue, 1 Mar 2022 16:39:14 +0800
+Subject: [PATCH 27/37] migration: Add migration_incoming_transport_cleanup()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 195: migration: Allow migrate-recover to run multiple times
+RH-Commit: [1/2] 57b2a9a165ee7cb2d01519bd54eb8dc4185815e0
+RH-Bugzilla: 2097652
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+
+Add a helper to cleanup the transport listener.
+
+When do it, we should also null-ify the cleanup hook and the data, then it's
+even safe to call it multiple times.
+
+Move the socket_address_list cleanup altogether, because that's a mirror of the
+listener channels and only for the purpose of query-migrate.  Hence when
+someone wants to cleanup the listener transport, it should also want to cleanup
+the socket list too, always.
+
+No functional change intended.
+
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Message-Id: <20220301083925.33483-15-peterx@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit e031149c78489413038e934eec9f54ac699cf322)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 22 ++++++++++++++--------
+ migration/migration.h |  1 +
+ 2 files changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index c8aa55d2fe..b787a36789 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -263,6 +263,19 @@ MigrationIncomingState *migration_incoming_get_current(void)
+     return current_incoming;
+ }
+ 
++void migration_incoming_transport_cleanup(MigrationIncomingState *mis)
++{
++    if (mis->socket_address_list) {
++        qapi_free_SocketAddressList(mis->socket_address_list);
++        mis->socket_address_list = NULL;
++    }
++
++    if (mis->transport_cleanup) {
++        mis->transport_cleanup(mis->transport_data);
++        mis->transport_data = mis->transport_cleanup = NULL;
++    }
++}
++
+ void migration_incoming_state_destroy(void)
+ {
+     struct MigrationIncomingState *mis = migration_incoming_get_current();
+@@ -283,10 +296,8 @@ void migration_incoming_state_destroy(void)
+         g_array_free(mis->postcopy_remote_fds, TRUE);
+         mis->postcopy_remote_fds = NULL;
+     }
+-    if (mis->transport_cleanup) {
+-        mis->transport_cleanup(mis->transport_data);
+-    }
+ 
++    migration_incoming_transport_cleanup(mis);
+     qemu_event_reset(&mis->main_thread_load_event);
+ 
+     if (mis->page_requested) {
+@@ -294,11 +305,6 @@ void migration_incoming_state_destroy(void)
+         mis->page_requested = NULL;
+     }
+ 
+-    if (mis->socket_address_list) {
+-        qapi_free_SocketAddressList(mis->socket_address_list);
+-        mis->socket_address_list = NULL;
+-    }
+-
+     yank_unregister_instance(MIGRATION_YANK_INSTANCE);
+ }
+ 
+diff --git a/migration/migration.h b/migration/migration.h
+index 9396b7e90a..243898e3be 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -130,6 +130,7 @@ struct MigrationIncomingState {
+ 
+ MigrationIncomingState *migration_incoming_get_current(void);
+ void migration_incoming_state_destroy(void);
++void migration_incoming_transport_cleanup(MigrationIncomingState *mis);
+ /*
+  * Functions to work with blocktime context
+  */
+-- 
+2.35.3
+

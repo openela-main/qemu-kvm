@@ -1,0 +1,289 @@
+From 70108ff9ffe77062116e47670c0e0c2396529f88 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 20 Jun 2022 02:39:45 -0300
+Subject: [PATCH 26/37] migration: Change zero_copy_send from migration
+ parameter to migration capability
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [26/26] ea61e6cbdbe47611bd22d18988e1c4c4e8357cc3
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+When originally implemented, zero_copy_send was designed as a Migration
+paramenter.
+
+But taking into account how is that supposed to work, and how
+the difference between a capability and a parameter, it only makes sense
+that zero-copy-send would work better as a capability.
+
+Taking into account how recently the change got merged, it was decided
+that it's still time to make it right, and convert zero_copy_send into
+a Migration capability.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Acked-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+  dgilbert: always define the capability, even on non-Linux but error if
+set; avoids build problems with the capability
+(cherry picked from commit 1abaec9a1b2c23f7aa94709a422128d9e42c3e0b)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/migration.c | 58 +++++++++++++++++++------------------------
+ monitor/hmp-cmds.c    |  6 -----
+ qapi/migration.json   | 33 +++++++-----------------
+ 3 files changed, 34 insertions(+), 63 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 5357efd348..c8aa55d2fe 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -162,7 +162,8 @@ INITIALIZE_MIGRATE_CAPS_SET(check_caps_background_snapshot,
+     MIGRATION_CAPABILITY_COMPRESS,
+     MIGRATION_CAPABILITY_XBZRLE,
+     MIGRATION_CAPABILITY_X_COLO,
+-    MIGRATION_CAPABILITY_VALIDATE_UUID);
++    MIGRATION_CAPABILITY_VALIDATE_UUID,
++    MIGRATION_CAPABILITY_ZERO_COPY_SEND);
+ 
+ bool migrate_pre_2_2;
+ 
+@@ -888,10 +889,6 @@ MigrationParameters *qmp_query_migrate_parameters(Error **errp)
+     params->multifd_zlib_level = s->parameters.multifd_zlib_level;
+     params->has_multifd_zstd_level = true;
+     params->multifd_zstd_level = s->parameters.multifd_zstd_level;
+-#ifdef CONFIG_LINUX
+-    params->has_zero_copy_send = true;
+-    params->zero_copy_send = s->parameters.zero_copy_send;
+-#endif
+     params->has_xbzrle_cache_size = true;
+     params->xbzrle_cache_size = s->parameters.xbzrle_cache_size;
+     params->has_max_postcopy_bandwidth = true;
+@@ -1249,6 +1246,24 @@ static bool migrate_caps_check(bool *cap_list,
+         }
+     }
+ 
++#ifdef CONFIG_LINUX
++    if (cap_list[MIGRATION_CAPABILITY_ZERO_COPY_SEND] &&
++        (!cap_list[MIGRATION_CAPABILITY_MULTIFD] ||
++         migrate_use_compression() ||
++         migrate_use_tls())) {
++        error_setg(errp,
++                   "Zero copy only available for non-compressed non-TLS multifd migration");
++        return false;
++    }
++#else
++    if (cap_list[MIGRATION_CAPABILITY_ZERO_COPY_SEND]) {
++        error_setg(errp,
++                   "Zero copy currently only available on Linux");
++        return false;
++    }
++#endif
++
++
+     /* incoming side only */
+     if (runstate_check(RUN_STATE_INMIGRATE) &&
+         !migrate_multifd_is_allowed() &&
+@@ -1471,16 +1486,6 @@ static bool migrate_params_check(MigrationParameters *params, Error **errp)
+         error_prepend(errp, "Invalid mapping given for block-bitmap-mapping: ");
+         return false;
+     }
+-#ifdef CONFIG_LINUX
+-    if (params->zero_copy_send &&
+-        (!migrate_use_multifd() ||
+-         params->multifd_compression != MULTIFD_COMPRESSION_NONE ||
+-         (params->tls_creds && *params->tls_creds))) {
+-        error_setg(errp,
+-                   "Zero copy only available for non-compressed non-TLS multifd migration");
+-        return false;
+-    }
+-#endif
+     return true;
+ }
+ 
+@@ -1554,11 +1559,6 @@ static void migrate_params_test_apply(MigrateSetParameters *params,
+     if (params->has_multifd_compression) {
+         dest->multifd_compression = params->multifd_compression;
+     }
+-#ifdef CONFIG_LINUX
+-    if (params->has_zero_copy_send) {
+-        dest->zero_copy_send = params->zero_copy_send;
+-    }
+-#endif
+     if (params->has_xbzrle_cache_size) {
+         dest->xbzrle_cache_size = params->xbzrle_cache_size;
+     }
+@@ -1671,11 +1671,6 @@ static void migrate_params_apply(MigrateSetParameters *params, Error **errp)
+     if (params->has_multifd_compression) {
+         s->parameters.multifd_compression = params->multifd_compression;
+     }
+-#ifdef CONFIG_LINUX
+-    if (params->has_zero_copy_send) {
+-        s->parameters.zero_copy_send = params->zero_copy_send;
+-    }
+-#endif
+     if (params->has_xbzrle_cache_size) {
+         s->parameters.xbzrle_cache_size = params->xbzrle_cache_size;
+         xbzrle_cache_resize(params->xbzrle_cache_size, errp);
+@@ -2573,7 +2568,7 @@ bool migrate_use_zero_copy_send(void)
+ 
+     s = migrate_get_current();
+ 
+-    return s->parameters.zero_copy_send;
++    return s->enabled_capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
+ }
+ #endif
+ 
+@@ -4236,10 +4231,6 @@ static Property migration_properties[] = {
+     DEFINE_PROP_UINT8("multifd-zstd-level", MigrationState,
+                       parameters.multifd_zstd_level,
+                       DEFAULT_MIGRATE_MULTIFD_ZSTD_LEVEL),
+-#ifdef CONFIG_LINUX
+-    DEFINE_PROP_BOOL("zero_copy_send", MigrationState,
+-                      parameters.zero_copy_send, false),
+-#endif
+     DEFINE_PROP_SIZE("xbzrle-cache-size", MigrationState,
+                       parameters.xbzrle_cache_size,
+                       DEFAULT_MIGRATE_XBZRLE_CACHE_SIZE),
+@@ -4277,6 +4268,10 @@ static Property migration_properties[] = {
+     DEFINE_PROP_MIG_CAP("x-multifd", MIGRATION_CAPABILITY_MULTIFD),
+     DEFINE_PROP_MIG_CAP("x-background-snapshot",
+             MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT),
++#ifdef CONFIG_LINUX
++    DEFINE_PROP_MIG_CAP("x-zero-copy-send",
++            MIGRATION_CAPABILITY_ZERO_COPY_SEND),
++#endif
+ 
+     DEFINE_PROP_END_OF_LIST(),
+ };
+@@ -4337,9 +4332,6 @@ static void migration_instance_init(Object *obj)
+     params->has_multifd_compression = true;
+     params->has_multifd_zlib_level = true;
+     params->has_multifd_zstd_level = true;
+-#ifdef CONFIG_LINUX
+-    params->has_zero_copy_send = true;
+-#endif
+     params->has_xbzrle_cache_size = true;
+     params->has_max_postcopy_bandwidth = true;
+     params->has_max_cpu_throttle = true;
+diff --git a/monitor/hmp-cmds.c b/monitor/hmp-cmds.c
+index e02da5008b..2669156b28 100644
+--- a/monitor/hmp-cmds.c
++++ b/monitor/hmp-cmds.c
+@@ -1297,12 +1297,6 @@ void hmp_migrate_set_parameter(Monitor *mon, const QDict *qdict)
+         p->has_multifd_zstd_level = true;
+         visit_type_uint8(v, param, &p->multifd_zstd_level, &err);
+         break;
+-#ifdef CONFIG_LINUX
+-    case MIGRATION_PARAMETER_ZERO_COPY_SEND:
+-        p->has_zero_copy_send = true;
+-        visit_type_bool(v, param, &p->zero_copy_send, &err);
+-        break;
+-#endif
+     case MIGRATION_PARAMETER_XBZRLE_CACHE_SIZE:
+         p->has_xbzrle_cache_size = true;
+         if (!visit_type_size(v, param, &cache_size, &err)) {
+diff --git a/qapi/migration.json b/qapi/migration.json
+index 59b5c5780b..fe70a0c4b2 100644
+--- a/qapi/migration.json
++++ b/qapi/migration.json
+@@ -452,6 +452,13 @@
+ #                       procedure starts. The VM RAM is saved with running VM.
+ #                       (since 6.0)
+ #
++# @zero-copy-send: Controls behavior on sending memory pages on migration.
++#                  When true, enables a zero-copy mechanism for sending
++#                  memory pages, if host supports it.
++#                  Requires that QEMU be permitted to use locked memory
++#                  for guest RAM pages.
++#                  (since 7.1)
++#
+ # Features:
+ # @unstable: Members @x-colo and @x-ignore-shared are experimental.
+ #
+@@ -465,7 +472,8 @@
+            'block', 'return-path', 'pause-before-switchover', 'multifd',
+            'dirty-bitmaps', 'postcopy-blocktime', 'late-block-activate',
+            { 'name': 'x-ignore-shared', 'features': [ 'unstable' ] },
+-           'validate-uuid', 'background-snapshot'] }
++           'validate-uuid', 'background-snapshot',
++           'zero-copy-send'] }
+ 
+ ##
+ # @MigrationCapabilityStatus:
+@@ -730,12 +738,6 @@
+ #                      will consume more CPU.
+ #                      Defaults to 1. (Since 5.0)
+ #
+-# @zero-copy-send: Controls behavior on sending memory pages on migration.
+-#                  When true, enables a zero-copy mechanism for sending
+-#                  memory pages, if host supports it.
+-#                  Requires that QEMU be permitted to use locked memory
+-#                  for guest RAM pages.
+-#                  Defaults to false. (Since 7.1)
+ #
+ # @block-bitmap-mapping: Maps block nodes and bitmaps on them to
+ #                        aliases for the purpose of dirty bitmap migration.  Such
+@@ -776,7 +778,6 @@
+            'xbzrle-cache-size', 'max-postcopy-bandwidth',
+            'max-cpu-throttle', 'multifd-compression',
+            'multifd-zlib-level' ,'multifd-zstd-level',
+-           { 'name': 'zero-copy-send', 'if' : 'CONFIG_LINUX'},
+            'block-bitmap-mapping' ] }
+ 
+ ##
+@@ -903,13 +904,6 @@
+ #                      will consume more CPU.
+ #                      Defaults to 1. (Since 5.0)
+ #
+-# @zero-copy-send: Controls behavior on sending memory pages on migration.
+-#                  When true, enables a zero-copy mechanism for sending
+-#                  memory pages, if host supports it.
+-#                  Requires that QEMU be permitted to use locked memory
+-#                  for guest RAM pages.
+-#                  Defaults to false. (Since 7.1)
+-#
+ # @block-bitmap-mapping: Maps block nodes and bitmaps on them to
+ #                        aliases for the purpose of dirty bitmap migration.  Such
+ #                        aliases may for example be the corresponding names on the
+@@ -964,7 +958,6 @@
+             '*multifd-compression': 'MultiFDCompression',
+             '*multifd-zlib-level': 'uint8',
+             '*multifd-zstd-level': 'uint8',
+-            '*zero-copy-send': { 'type': 'bool', 'if': 'CONFIG_LINUX' },
+             '*block-bitmap-mapping': [ 'BitmapMigrationNodeAlias' ] } }
+ 
+ ##
+@@ -1111,13 +1104,6 @@
+ #                      will consume more CPU.
+ #                      Defaults to 1. (Since 5.0)
+ #
+-# @zero-copy-send: Controls behavior on sending memory pages on migration.
+-#                  When true, enables a zero-copy mechanism for sending
+-#                  memory pages, if host supports it.
+-#                  Requires that QEMU be permitted to use locked memory
+-#                  for guest RAM pages.
+-#                  Defaults to false. (Since 7.1)
+-#
+ # @block-bitmap-mapping: Maps block nodes and bitmaps on them to
+ #                        aliases for the purpose of dirty bitmap migration.  Such
+ #                        aliases may for example be the corresponding names on the
+@@ -1170,7 +1156,6 @@
+             '*multifd-compression': 'MultiFDCompression',
+             '*multifd-zlib-level': 'uint8',
+             '*multifd-zstd-level': 'uint8',
+-            '*zero-copy-send': { 'type': 'bool', 'if': 'CONFIG_LINUX' },
+             '*block-bitmap-mapping': [ 'BitmapMigrationNodeAlias' ] } }
+ 
+ ##
+-- 
+2.35.3
+

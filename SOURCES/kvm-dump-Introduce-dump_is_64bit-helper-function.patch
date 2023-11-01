@@ -1,0 +1,118 @@
+From c851676d202b5b76962529f3b6d433936becbd8a Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:36:00 +0000
+Subject: [PATCH 18/42] dump: Introduce dump_is_64bit() helper function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [18/41] a0fd2d1985c61b8e50d4a7ca26bc0ee6fcaa6196
+
+Checking d_class in dump_info leads to lengthy conditionals so let's
+shorten things a bit by introducing a helper function.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220330123603.107120-7-frankja@linux.ibm.com>
+(cherry picked from commit 05bbaa5040ccb3419e8b93af8040485430e2db42)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 25 +++++++++++++++----------
+ 1 file changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 85a402b38c..6394e94023 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -55,6 +55,11 @@ static Error *dump_migration_blocker;
+       DIV_ROUND_UP((name_size), 4) +                    \
+       DIV_ROUND_UP((desc_size), 4)) * 4)
+ 
++static inline bool dump_is_64bit(DumpState *s)
++{
++    return s->dump_info.d_class == ELFCLASS64;
++}
++
+ uint16_t cpu_to_dump16(DumpState *s, uint16_t val)
+ {
+     if (s->dump_info.d_endian == ELFDATA2LSB) {
+@@ -489,7 +494,7 @@ static void write_elf_loads(DumpState *s, Error **errp)
+         get_offset_range(memory_mapping->phys_addr,
+                          memory_mapping->length,
+                          s, &offset, &filesz);
+-        if (s->dump_info.d_class == ELFCLASS64) {
++        if (dump_is_64bit(s)) {
+             write_elf64_load(s, memory_mapping, phdr_index++, offset,
+                              filesz, errp);
+         } else {
+@@ -537,7 +542,7 @@ static void dump_begin(DumpState *s, Error **errp)
+      */
+ 
+     /* write elf header to vmcore */
+-    if (s->dump_info.d_class == ELFCLASS64) {
++    if (dump_is_64bit(s)) {
+         write_elf64_header(s, errp);
+     } else {
+         write_elf32_header(s, errp);
+@@ -546,7 +551,7 @@ static void dump_begin(DumpState *s, Error **errp)
+         return;
+     }
+ 
+-    if (s->dump_info.d_class == ELFCLASS64) {
++    if (dump_is_64bit(s)) {
+         /* write PT_NOTE to vmcore */
+         write_elf64_note(s, errp);
+         if (*errp) {
+@@ -757,7 +762,7 @@ static void get_note_sizes(DumpState *s, const void *note,
+     uint64_t name_sz;
+     uint64_t desc_sz;
+ 
+-    if (s->dump_info.d_class == ELFCLASS64) {
++    if (dump_is_64bit(s)) {
+         const Elf64_Nhdr *hdr = note;
+         note_head_sz = sizeof(Elf64_Nhdr);
+         name_sz = tswap64(hdr->n_namesz);
+@@ -1017,10 +1022,10 @@ out:
+ 
+ static void write_dump_header(DumpState *s, Error **errp)
+ {
+-    if (s->dump_info.d_class == ELFCLASS32) {
+-        create_header32(s, errp);
+-    } else {
++    if (dump_is_64bit(s)) {
+         create_header64(s, errp);
++    } else {
++        create_header32(s, errp);
+     }
+ }
+ 
+@@ -1715,8 +1720,8 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+         uint32_t size;
+         uint16_t format;
+ 
+-        note_head_size = s->dump_info.d_class == ELFCLASS32 ?
+-            sizeof(Elf32_Nhdr) : sizeof(Elf64_Nhdr);
++        note_head_size = dump_is_64bit(s) ?
++            sizeof(Elf64_Nhdr) : sizeof(Elf32_Nhdr);
+ 
+         format = le16_to_cpu(vmci->vmcoreinfo.guest_format);
+         size = le32_to_cpu(vmci->vmcoreinfo.size);
+@@ -1819,7 +1824,7 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+         }
+     }
+ 
+-    if (s->dump_info.d_class == ELFCLASS64) {
++    if (dump_is_64bit(s)) {
+         s->phdr_offset = sizeof(Elf64_Ehdr);
+         s->shdr_offset = s->phdr_offset + sizeof(Elf64_Phdr) * s->phdr_num;
+         s->note_offset = s->shdr_offset + sizeof(Elf64_Shdr) * s->shdr_num;
+-- 
+2.37.3
+

@@ -1,0 +1,61 @@
+From 7693449b235bbab6d32a1b87fa1d0e101c786f3b Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:11:14 -0500
+Subject: [PATCH 05/13] edu: add smp_mb__after_rmw()
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [5/10] 300901290e08b253b1278eedc39cd07c1e202b96
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit 2482aeea4195ad84cf3d4e5b15b28ec5b420ed5a
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Thu Mar 2 11:16:13 2023 +0100
+
+    edu: add smp_mb__after_rmw()
+
+    Ensure ordering between clearing the COMPUTING flag and checking
+    IRQFACT, and between setting the IRQFACT flag and checking
+    COMPUTING.  This ensures that no wakeups are lost.
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ hw/misc/edu.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/misc/edu.c b/hw/misc/edu.c
+index e935c418d4..a1f8bc77e7 100644
+--- a/hw/misc/edu.c
++++ b/hw/misc/edu.c
+@@ -267,6 +267,8 @@ static void edu_mmio_write(void *opaque, hwaddr addr, uint64_t val,
+     case 0x20:
+         if (val & EDU_STATUS_IRQFACT) {
+             qatomic_or(&edu->status, EDU_STATUS_IRQFACT);
++            /* Order check of the COMPUTING flag after setting IRQFACT.  */
++            smp_mb__after_rmw();
+         } else {
+             qatomic_and(&edu->status, ~EDU_STATUS_IRQFACT);
+         }
+@@ -349,6 +351,9 @@ static void *edu_fact_thread(void *opaque)
+         qemu_mutex_unlock(&edu->thr_mutex);
+         qatomic_and(&edu->status, ~EDU_STATUS_COMPUTING);
+ 
++        /* Clear COMPUTING flag before checking IRQFACT.  */
++        smp_mb__after_rmw();
++
+         if (qatomic_read(&edu->status) & EDU_STATUS_IRQFACT) {
+             qemu_mutex_lock_iothread();
+             edu_raise_irq(edu, FACT_IRQ);
+-- 
+2.37.3
+

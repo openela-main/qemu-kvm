@@ -1,0 +1,177 @@
+From e7d0e29d1962092af58d0445439671a6e1d91f71 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:10:33 -0500
+Subject: [PATCH 02/13] qatomic: add smp_mb__before/after_rmw()
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [2/10] 1f87eb3157abcf23f020881cedce42f76497f348
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit ff00bed1897c3d27adc5b0cec6f6eeb5a7d13176
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Thu Mar 2 11:10:56 2023 +0100
+
+    qatomic: add smp_mb__before/after_rmw()
+
+    On ARM, seqcst loads and stores (which QEMU does not use) are compiled
+    respectively as LDAR and STLR instructions.  Even though LDAR is
+    also used for load-acquire operations, it also waits for all STLRs to
+    leave the store buffer.  Thus, LDAR and STLR alone are load-acquire
+    and store-release operations, but LDAR also provides store-against-load
+    ordering as long as the previous store is a STLR.
+
+    Compare this to ARMv7, where store-release is DMB+STR and load-acquire
+    is LDR+DMB, but an additional DMB is needed between store-seqcst and
+    load-seqcst (e.g. DMB+STR+DMB+LDR+DMB); or with x86, where MOV provides
+    load-acquire and store-release semantics and the two can be reordered.
+
+    Likewise, on ARM sequentially consistent read-modify-write operations only
+    need to use LDAXR and STLXR respectively for the load and the store, while
+    on x86 they need to use the stronger LOCK prefix.
+
+    In a strange twist of events, however, the _stronger_ semantics
+    of the ARM instructions can end up causing bugs on ARM, not on x86.
+    The problems occur when seqcst atomics are mixed with relaxed atomics.
+
+    QEMU's atomics try to bridge the Linux API (that most of the developers
+    are familiar with) and the C11 API, and the two have a substantial
+    difference:
+
+    - in Linux, strongly-ordered atomics such as atomic_add_return() affect
+      the global ordering of _all_ memory operations, including for example
+      READ_ONCE()/WRITE_ONCE()
+
+    - in C11, sequentially consistent atomics (except for seq-cst fences)
+      only affect the ordering of sequentially consistent operations.
+      In particular, since relaxed loads are done with LDR on ARM, they are
+      not ordered against seqcst stores (which are done with STLR).
+
+    QEMU implements high-level synchronization primitives with the idea that
+    the primitives contain the necessary memory barriers, and the callers can
+    use relaxed atomics (qatomic_read/qatomic_set) or even regular accesses.
+    This is very much incompatible with the C11 view that seqcst accesses
+    are only ordered against other seqcst accesses, and requires using seqcst
+    fences as in the following example:
+
+       qatomic_set(&y, 1);            qatomic_set(&x, 1);
+       smp_mb();                      smp_mb();
+       ... qatomic_read(&x) ...       ... qatomic_read(&y) ...
+
+    When a qatomic_*() read-modify write operation is used instead of one
+    or both stores, developers that are more familiar with the Linux API may
+    be tempted to omit the smp_mb(), which will work on x86 but not on ARM.
+
+    This nasty difference between Linux and C11 read-modify-write operations
+    has already caused issues in util/async.c and more are being found.
+    Provide something similar to Linux smp_mb__before/after_atomic(); this
+    has the double function of documenting clearly why there is a memory
+    barrier, and avoiding a double barrier on x86 and s390x systems.
+
+    The new macro can already be put to use in qatomic_mb_set().
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ docs/devel/atomics.rst | 26 +++++++++++++++++++++-----
+ include/qemu/atomic.h  | 17 ++++++++++++++++-
+ 2 files changed, 37 insertions(+), 6 deletions(-)
+
+diff --git a/docs/devel/atomics.rst b/docs/devel/atomics.rst
+index 52baa0736d..10fbfc58bb 100644
+--- a/docs/devel/atomics.rst
++++ b/docs/devel/atomics.rst
+@@ -25,7 +25,8 @@ provides macros that fall in three camps:
+ 
+ - weak atomic access and manual memory barriers: ``qatomic_read()``,
+   ``qatomic_set()``, ``smp_rmb()``, ``smp_wmb()``, ``smp_mb()``,
+-  ``smp_mb_acquire()``, ``smp_mb_release()``, ``smp_read_barrier_depends()``;
++  ``smp_mb_acquire()``, ``smp_mb_release()``, ``smp_read_barrier_depends()``,
++  ``smp_mb__before_rmw()``, ``smp_mb__after_rmw()``;
+ 
+ - sequentially consistent atomic access: everything else.
+ 
+@@ -470,7 +471,7 @@ and memory barriers, and the equivalents in QEMU:
+   sequential consistency.
+ 
+ - in QEMU, ``qatomic_read()`` and ``qatomic_set()`` do not participate in
+-  the total ordering enforced by sequentially-consistent operations.
++  the ordering enforced by read-modify-write operations.
+   This is because QEMU uses the C11 memory model.  The following example
+   is correct in Linux but not in QEMU:
+ 
+@@ -486,9 +487,24 @@ and memory barriers, and the equivalents in QEMU:
+   because the read of ``y`` can be moved (by either the processor or the
+   compiler) before the write of ``x``.
+ 
+-  Fixing this requires an ``smp_mb()`` memory barrier between the write
+-  of ``x`` and the read of ``y``.  In the common case where only one thread
+-  writes ``x``, it is also possible to write it like this:
++  Fixing this requires a full memory barrier between the write of ``x`` and
++  the read of ``y``.  QEMU provides ``smp_mb__before_rmw()`` and
++  ``smp_mb__after_rmw()``; they act both as an optimization,
++  avoiding the memory barrier on processors where it is unnecessary,
++  and as a clarification of this corner case of the C11 memory model:
++
++      +--------------------------------+
++      | QEMU (correct)                 |
++      +================================+
++      | ::                             |
++      |                                |
++      |   a = qatomic_fetch_add(&x, 2);|
++      |   smp_mb__after_rmw();         |
++      |   b = qatomic_read(&y);        |
++      +--------------------------------+
++
++  In the common case where only one thread writes ``x``, it is also possible
++  to write it like this:
+ 
+       +--------------------------------+
+       | QEMU (correct)                 |
+diff --git a/include/qemu/atomic.h b/include/qemu/atomic.h
+index 112a29910b..7855443cab 100644
+--- a/include/qemu/atomic.h
++++ b/include/qemu/atomic.h
+@@ -243,6 +243,20 @@
+ #define smp_wmb()   smp_mb_release()
+ #define smp_rmb()   smp_mb_acquire()
+ 
++/*
++ * SEQ_CST is weaker than the older __sync_* builtins and Linux
++ * kernel read-modify-write atomics.  Provide a macro to obtain
++ * the same semantics.
++ */
++#if !defined(QEMU_SANITIZE_THREAD) && \
++    (defined(__i386__) || defined(__x86_64__) || defined(__s390x__))
++# define smp_mb__before_rmw() signal_barrier()
++# define smp_mb__after_rmw() signal_barrier()
++#else
++# define smp_mb__before_rmw() smp_mb()
++# define smp_mb__after_rmw() smp_mb()
++#endif
++
+ /* qatomic_mb_read/set semantics map Java volatile variables. They are
+  * less expensive on some platforms (notably POWER) than fully
+  * sequentially consistent operations.
+@@ -257,7 +271,8 @@
+ #if !defined(__SANITIZE_THREAD__) && \
+     (defined(__i386__) || defined(__x86_64__) || defined(__s390x__))
+ /* This is more efficient than a store plus a fence.  */
+-# define qatomic_mb_set(ptr, i)  ((void)qatomic_xchg(ptr, i))
++# define qatomic_mb_set(ptr, i) \
++    ({ (void)qatomic_xchg(ptr, i); smp_mb__after_rmw(); })
+ #else
+ # define qatomic_mb_set(ptr, i) \
+    ({ qatomic_store_release(ptr, i); smp_mb(); })
+-- 
+2.37.3
+

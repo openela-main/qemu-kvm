@@ -1,0 +1,49 @@
+From 55294fc4a955491f1fd947e4d98bd6df832c88ba Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 3 Dec 2021 09:27:03 -0500
+Subject: [PATCH 01/42] s390x/pci: use a reserved ID for the default PCI group
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/41] ad3ed38dec95acf0da04d7669fe772d798d039fc
+
+The current default PCI group being used can technically collide with a
+real group ID passed from a hostdev.  Let's instead use a group ID that
+comes from a special pool (0xF0-0xFF) that is architected to be reserved
+for simulated devices.
+
+Fixes: 28dc86a072 ("s390x/pci: use a PCI Group structure")
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20211203142706.427279-2-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit b2892a2b9d45d25b909108ca633d19f9d8d673f5)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/hw/s390x/s390-pci-bus.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/hw/s390x/s390-pci-bus.h b/include/hw/s390x/s390-pci-bus.h
+index aa891c178d..2727e7bdef 100644
+--- a/include/hw/s390x/s390-pci-bus.h
++++ b/include/hw/s390x/s390-pci-bus.h
+@@ -313,7 +313,7 @@ typedef struct ZpciFmb {
+ } ZpciFmb;
+ QEMU_BUILD_BUG_MSG(offsetof(ZpciFmb, fmt0) != 48, "padding in ZpciFmb");
+ 
+-#define ZPCI_DEFAULT_FN_GRP 0x20
++#define ZPCI_DEFAULT_FN_GRP 0xFF
+ typedef struct S390PCIGroup {
+     ClpRspQueryPciGrp zpci_group;
+     int id;
+-- 
+2.37.3
+

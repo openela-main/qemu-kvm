@@ -1,0 +1,76 @@
+From 34eae2d7ef928a7e0e10cc30fe76839c005998eb Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Wed, 13 Apr 2022 12:33:29 +0100
+Subject: [PATCH 07/11] migration: Read state once
+
+RH-Author: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-MergeRequest: 249: migration: Read state once
+RH-Bugzilla: 2074205
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [1/1] 9aa47b492a646fce4e66ebd9b7d7a85286d16051
+
+The 'status' field for the migration is updated normally using
+an atomic operation from the migration thread.
+Most readers of it aren't that careful, and in most cases it doesn't
+matter.
+
+In query_migrate->fill_source_migration_info the 'state'
+is read twice; the first time to decide which state fields to fill in,
+and then secondly to copy the state to the status field; that can end up
+with a status that's inconsistent; e.g. setting up the fields
+for 'setup' and then having an 'active' status.  In that case
+libvirt gets upset by the lack of ram info.
+The symptom is:
+   libvirt.libvirtError: internal error: migration was active, but no RAM info was set
+
+Read the state exactly once in fill_source_migration_info.
+
+This is a possible fix for:
+https://bugzilla.redhat.com/show_bug.cgi?id=2074205
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Message-Id: <20220413113329.103696-1-dgilbert@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 552de79bfdd5e9e53847eb3c6d6e4cd898a4370e)
+---
+ migration/migration.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 51e6726dac..d8b24a2c91 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1071,6 +1071,7 @@ static void populate_disk_info(MigrationInfo *info)
+ static void fill_source_migration_info(MigrationInfo *info)
+ {
+     MigrationState *s = migrate_get_current();
++    int state = qatomic_read(&s->state);
+     GSList *cur_blocker = migration_blockers;
+ 
+     info->blocked_reasons = NULL;
+@@ -1090,7 +1091,7 @@ static void fill_source_migration_info(MigrationInfo *info)
+     }
+     info->has_blocked_reasons = info->blocked_reasons != NULL;
+ 
+-    switch (s->state) {
++    switch (state) {
+     case MIGRATION_STATUS_NONE:
+         /* no migration has happened ever */
+         /* do not overwrite destination migration status */
+@@ -1135,7 +1136,7 @@ static void fill_source_migration_info(MigrationInfo *info)
+         info->has_status = true;
+         break;
+     }
+-    info->status = s->state;
++    info->status = state;
+ }
+ 
+ typedef enum WriteTrackingSupport {
+-- 
+2.37.3
+

@@ -1,0 +1,198 @@
+From ffdec41922a34b6fe4e7e11f259553d65b41563e Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 11 Jan 2022 15:36:13 +0000
+Subject: [PATCH 4/6] iotests/stream-error-on-reset: New test
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 109: block-backend: prevent dangling BDS pointers across aio_poll()
+RH-Commit: [2/2] 0ecb7010d9c121398e7ee22ee47dd85d89bcd941
+RH-Bugzilla: 2021778 2036178
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+
+Author: Hanna Reitz <hreitz@redhat.com>
+
+Test the following scenario:
+- Simple stream block in two-layer backing chain (base and top)
+- The job is drained via blk_drain(), then an error occurs while the job
+  settles the ongoing request
+- And so the job completes while in blk_drain()
+
+This was reported as a segfault, but is fixed by "block-backend: prevent
+dangling BDS pointers across aio_poll()".
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2036178
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-Id: <20220111153613.25453-3-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 2ca1d5d6b91f8a52a5c651f660b2f58c94bf97ba)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ .../qemu-iotests/tests/stream-error-on-reset  | 140 ++++++++++++++++++
+ .../tests/stream-error-on-reset.out           |   5 +
+ 2 files changed, 145 insertions(+)
+ create mode 100755 tests/qemu-iotests/tests/stream-error-on-reset
+ create mode 100644 tests/qemu-iotests/tests/stream-error-on-reset.out
+
+diff --git a/tests/qemu-iotests/tests/stream-error-on-reset b/tests/qemu-iotests/tests/stream-error-on-reset
+new file mode 100755
+index 0000000000..7eaedb24d7
+--- /dev/null
++++ b/tests/qemu-iotests/tests/stream-error-on-reset
+@@ -0,0 +1,140 @@
++#!/usr/bin/env python3
++# group: rw quick
++#
++# Test what happens when a stream job completes in a blk_drain().
++#
++# Copyright (C) 2022 Red Hat, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++
++import os
++import iotests
++from iotests import imgfmt, qemu_img_create, qemu_io_silent, QMPTestCase
++
++
++image_size = 1 * 1024 * 1024
++data_size = 64 * 1024
++base = os.path.join(iotests.test_dir, 'base.img')
++top = os.path.join(iotests.test_dir, 'top.img')
++
++
++# We want to test completing a stream job in a blk_drain().
++#
++# The blk_drain() we are going to use is a virtio-scsi device resetting,
++# which we can trigger by resetting the system.
++#
++# In order to have the block job complete on drain, we (1) throttle its
++# base image so we can start the drain after it has begun, but before it
++# completes, and (2) make it encounter an I/O error on the ensuing write.
++# (If it completes regularly, the completion happens after the drain for
++# some reason.)
++
++class TestStreamErrorOnReset(QMPTestCase):
++    def setUp(self) -> None:
++        """
++        Create two images:
++        - base image {base} with {data_size} bytes allocated
++        - top image {top} without any data allocated
++
++        And the following VM configuration:
++        - base image throttled to {data_size}
++        - top image with a blkdebug configuration so the first write access
++          to it will result in an error
++        - top image is attached to a virtio-scsi device
++        """
++        assert qemu_img_create('-f', imgfmt, base, str(image_size)) == 0
++        assert qemu_io_silent('-c', f'write 0 {data_size}', base) == 0
++        assert qemu_img_create('-f', imgfmt, top, str(image_size)) == 0
++
++        self.vm = iotests.VM()
++        self.vm.add_args('-accel', 'tcg') # Make throttling work properly
++        self.vm.add_object(self.vm.qmp_to_opts({
++            'qom-type': 'throttle-group',
++            'id': 'thrgr',
++            'x-bps-total': str(data_size)
++        }))
++        self.vm.add_blockdev(self.vm.qmp_to_opts({
++            'driver': imgfmt,
++            'node-name': 'base',
++            'file': {
++                'driver': 'throttle',
++                'throttle-group': 'thrgr',
++                'file': {
++                    'driver': 'file',
++                    'filename': base
++                }
++            }
++        }))
++        self.vm.add_blockdev(self.vm.qmp_to_opts({
++            'driver': imgfmt,
++            'node-name': 'top',
++            'file': {
++                'driver': 'blkdebug',
++                'node-name': 'top-blkdebug',
++                'inject-error': [{
++                    'event': 'pwritev',
++                    'immediately': 'true',
++                    'once': 'true'
++                }],
++                'image': {
++                    'driver': 'file',
++                    'filename': top
++                }
++            },
++            'backing': 'base'
++        }))
++        self.vm.add_device(self.vm.qmp_to_opts({
++            'driver': 'virtio-scsi',
++            'id': 'vscsi'
++        }))
++        self.vm.add_device(self.vm.qmp_to_opts({
++            'driver': 'scsi-hd',
++            'bus': 'vscsi.0',
++            'drive': 'top'
++        }))
++        self.vm.launch()
++
++    def tearDown(self) -> None:
++        self.vm.shutdown()
++        os.remove(top)
++        os.remove(base)
++
++    def test_stream_error_on_reset(self) -> None:
++        # Launch a stream job, which will take at least a second to
++        # complete, because the base image is throttled (so we can
++        # get in between it having started and it having completed)
++        res = self.vm.qmp('block-stream', job_id='stream', device='top')
++        self.assert_qmp(res, 'return', {})
++
++        while True:
++            ev = self.vm.event_wait('JOB_STATUS_CHANGE')
++            if ev['data']['status'] == 'running':
++                # Once the stream job is running, reset the system, which
++                # forces the virtio-scsi device to be reset, thus draining
++                # the stream job, and making it complete.  Completing
++                # inside of that drain should not result in a segfault.
++                res = self.vm.qmp('system_reset')
++                self.assert_qmp(res, 'return', {})
++            elif ev['data']['status'] == 'null':
++                # The test is done once the job is gone
++                break
++
++
++if __name__ == '__main__':
++    # Passes with any format with backing file support, but qed and
++    # qcow1 do not seem to exercise the used-to-be problematic code
++    # path, so there is no point in having them in this list
++    iotests.main(supported_fmts=['qcow2', 'vmdk'],
++                 supported_protocols=['file'])
+diff --git a/tests/qemu-iotests/tests/stream-error-on-reset.out b/tests/qemu-iotests/tests/stream-error-on-reset.out
+new file mode 100644
+index 0000000000..ae1213e6f8
+--- /dev/null
++++ b/tests/qemu-iotests/tests/stream-error-on-reset.out
+@@ -0,0 +1,5 @@
++.
++----------------------------------------------------------------------
++Ran 1 tests
++
++OK
+-- 
+2.27.0
+

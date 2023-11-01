@@ -1,0 +1,66 @@
+From 187eb7a418af93375e42298d06e231e2bec3cf00 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:15:42 -0500
+Subject: [PATCH 10/13] async: clarify usage of barriers in the polling case
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [10/10] 3be07ccc6137a0336becfe63a818d9cbadb38e9c
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit 6229438cca037d42f44a96d38feb15cb102a444f
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Mon Mar 6 10:43:52 2023 +0100
+
+    async: clarify usage of barriers in the polling case
+
+    Explain that aio_context_notifier_poll() relies on
+    aio_notify_accept() to catch all the memory writes that were
+    done before ctx->notified was set to true.
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ util/async.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/util/async.c b/util/async.c
+index 795fe699b6..2a63bf90f2 100644
+--- a/util/async.c
++++ b/util/async.c
+@@ -463,8 +463,9 @@ void aio_notify_accept(AioContext *ctx)
+     qatomic_set(&ctx->notified, false);
+ 
+     /*
+-     * Write ctx->notified before reading e.g. bh->flags.  Pairs with smp_wmb
+-     * in aio_notify.
++     * Order reads of ctx->notified (in aio_context_notifier_poll()) and the
++     * above clearing of ctx->notified before reads of e.g. bh->flags.  Pairs
++     * with smp_wmb() in aio_notify.
+      */
+     smp_mb();
+ }
+@@ -487,6 +488,11 @@ static bool aio_context_notifier_poll(void *opaque)
+     EventNotifier *e = opaque;
+     AioContext *ctx = container_of(e, AioContext, notifier);
+ 
++    /*
++     * No need for load-acquire because we just want to kick the
++     * event loop.  aio_notify_accept() takes care of synchronizing
++     * the event loop with the producers.
++     */
+     return qatomic_read(&ctx->notified);
+ }
+ 
+-- 
+2.37.3
+

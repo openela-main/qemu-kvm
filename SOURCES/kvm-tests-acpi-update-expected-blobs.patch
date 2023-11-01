@@ -1,0 +1,58 @@
+From 4785d2a77fbea681975e5c48ae6a1be49058e089 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 30 Mar 2022 14:52:34 -0400
+Subject: [PATCH 16/18] tests: acpi: update expected blobs
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 141: acpi: fix QEMU crash when started with SLIC table
+RH-Commit: [8/10] e069c5de88f34393d65d32b60380865832820302 (jmaloy/qemu-kvm)
+RH-Bugzilla: 2062611
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2062611
+Upstream: Merged
+
+commit 5adc3aba875416b0e077d8a29ddd0357883746f4
+Author: Igor Mammedov <imammedo@redhat.com>
+Date:   Wed Jan 12 08:03:32 2022 -0500
+
+    tests: acpi: update expected blobs
+
+    Expected changes caused by previous commit:
+
+    nvdimm ssdt (q35/pc/virt):
+      - *     OEM Table ID     "NVDIMM  "
+      + *     OEM Table ID     "NVDIMM"
+
+    SLIC test FADT (tests/data/acpi/q35/FACP.slic):
+      -[010h 0016   8]                 Oem Table ID : "ME      "
+      +[010h 0016   8]                 Oem Table ID : "ME"
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Message-Id: <20220112130332.1648664-5-imammedo@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 5adc3aba875416b0e077d8a29ddd0357883746f4)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ tests/data/acpi/pc/SSDT.dimmpxm             | Bin 734 -> 734 bytes
+ tests/data/acpi/q35/FACP.slic               | Bin 244 -> 244 bytes
+ tests/data/acpi/q35/SSDT.dimmpxm            | Bin 734 -> 734 bytes
+ tests/data/acpi/virt/SSDT.memhp             | Bin 736 -> 736 bytes
+ tests/qtest/bios-tables-test-allowed-diff.h |   4 ----
+ 5 files changed, 4 deletions(-)
+
+diff --git a/tests/qtest/bios-tables-test-allowed-diff.h b/tests/qtest/bios-tables-test-allowed-diff.h
+index 7faa8f53be..dfb8523c8b 100644
+--- a/tests/qtest/bios-tables-test-allowed-diff.h
++++ b/tests/qtest/bios-tables-test-allowed-diff.h
+@@ -1,5 +1 @@
+ /* List of comma-separated changed AML files to ignore */
+-"tests/data/acpi/virt/SSDT.memhp",
+-"tests/data/acpi/pc/SSDT.dimmpxm",
+-"tests/data/acpi/q35/SSDT.dimmpxm",
+-"tests/data/acpi/q35/FACP.slic",
+-- 
+2.27.0
+

@@ -1,0 +1,65 @@
+From 3014c7c11b6e64433fe9f3c463bd91e318ac96b6 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 9 Nov 2022 18:41:18 -0500
+Subject: [PATCH 2/2] target/arm/kvm: Retry KVM_CREATE_VM call if it fails
+ EINTR
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 228: qemu-kvm: backport some aarch64 fixes
+RH-Bugzilla: 2132609
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [2/2] 8494bbfb3fcd8693f56312f984d2964d1ca275c2 (jmaloy/qemu-kvm)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2132609
+Upstream: Merged
+
+commit bbde13cd14ad4eec18529ce0bf5876058464e124
+Author: Peter Maydell <peter.maydell@linaro.org>
+Date:   Fri Sep 30 12:38:24 2022 +0100
+
+    target/arm/kvm: Retry KVM_CREATE_VM call if it fails EINTR
+
+    Occasionally the KVM_CREATE_VM ioctl can return EINTR, even though
+    there is no pending signal to be taken. In commit 94ccff13382055
+    we added a retry-on-EINTR loop to the KVM_CREATE_VM call in the
+    generic KVM code. Adopt the same approach for the use of the
+    ioctl in the Arm-specific KVM code (where we use it to create a
+    scratch VM for probing for various things).
+
+    For more information, see the mailing list thread:
+    https://lore.kernel.org/qemu-devel/8735e0s1zw.wl-maz@kernel.org/
+
+    Reported-by: Vitaly Chikunov <vt@altlinux.org>
+    Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+    Reviewed-by: Vitaly Chikunov <vt@altlinux.org>
+    Reviewed-by: Eric Auger <eric.auger@redhat.com>
+    Acked-by: Marc Zyngier <maz@kernel.org>
+    Message-id: 20220930113824.1933293-1-peter.maydell@linaro.org
+
+(cherry picked from commit bbde13cd14ad4eec18529ce0bf5876058464e124)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ target/arm/kvm.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index bbf1ce7ba3..1ae4e51055 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -80,7 +80,9 @@ bool kvm_arm_create_scratch_host_vcpu(const uint32_t *cpus_to_try,
+     if (max_vm_pa_size < 0) {
+         max_vm_pa_size = 0;
+     }
+-    vmfd = ioctl(kvmfd, KVM_CREATE_VM, max_vm_pa_size);
++    do {
++        vmfd = ioctl(kvmfd, KVM_CREATE_VM, max_vm_pa_size);
++    } while (vmfd == -1 && errno == EINTR);
+     if (vmfd < 0) {
+         goto err;
+     }
+-- 
+2.37.3
+

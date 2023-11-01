@@ -1,0 +1,68 @@
+From 7e8d6290099b33f88621b45e62652a97704c9573 Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Mon, 17 Oct 2022 08:38:15 +0000
+Subject: [PATCH 34/42] dump: Reorder struct DumpState
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [34/41] 8d44e5e8c86ea5b33644eba141046cd657d0071e
+
+Let's move ELF related members into one block and guest memory related
+ones into another to improve readability.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20221017083822.43118-4-frankja@linux.ibm.com>
+(cherry picked from commit 8384b73c46fd474847d7e74d121318e344edc3c4)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/sysemu/dump.h | 16 +++++++++-------
+ 1 file changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/include/sysemu/dump.h b/include/sysemu/dump.h
+index 9995f65dc8..9ed811b313 100644
+--- a/include/sysemu/dump.h
++++ b/include/sysemu/dump.h
+@@ -154,15 +154,8 @@ typedef struct DumpState {
+     GuestPhysBlockList guest_phys_blocks;
+     ArchDumpInfo dump_info;
+     MemoryMappingList list;
+-    uint32_t phdr_num;
+-    uint32_t shdr_num;
+     bool resume;
+     bool detached;
+-    ssize_t note_size;
+-    hwaddr shdr_offset;
+-    hwaddr phdr_offset;
+-    hwaddr section_offset;
+-    hwaddr note_offset;
+     hwaddr memory_offset;
+     int fd;
+ 
+@@ -177,6 +170,15 @@ typedef struct DumpState {
+     int64_t filter_area_begin;  /* Start address of partial guest memory area */
+     int64_t filter_area_length; /* Length of partial guest memory area */
+ 
++    /* Elf dump related data */
++    uint32_t phdr_num;
++    uint32_t shdr_num;
++    ssize_t note_size;
++    hwaddr shdr_offset;
++    hwaddr phdr_offset;
++    hwaddr section_offset;
++    hwaddr note_offset;
++
+     void *elf_section_hdrs;     /* Pointer to section header buffer */
+ 
+     uint8_t *note_buf;          /* buffer for notes */
+-- 
+2.37.3
+

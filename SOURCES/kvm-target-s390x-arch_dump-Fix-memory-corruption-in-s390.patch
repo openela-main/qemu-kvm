@@ -1,0 +1,50 @@
+From e1870dec813fa6f8482f4f27b7a9bef8c1584b6b Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 14 Feb 2023 14:48:37 +0100
+Subject: [PATCH 3/3] target/s390x/arch_dump: Fix memory corruption in
+ s390x_write_elf64_notes()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 260: target/s390x/arch_dump: Fix memory corruption in s390x_write_elf64_notes()
+RH-Bugzilla: 2168187
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/1] 67b71ed720a1f03d5bda9119969ea95fc4a6106d
+
+Bugzilla: https://bugzilla.redhat.com/2168187
+Upstream-Status: Posted (and reviewed, but not merged yet)
+
+"note_size" can be smaller than sizeof(note), so unconditionally calling
+memset(notep, 0, sizeof(note)) could cause a memory corruption here in
+case notep has been allocated dynamically, thus let's use note_size as
+length argument for memset() instead.
+
+Fixes: 113d8f4e95 ("s390x: pv: Add dump support")
+Message-Id: <20230214141056.680969-1-thuth@redhat.com>
+Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ target/s390x/arch_dump.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/arch_dump.c b/target/s390x/arch_dump.c
+index a2329141e8..a7c44ba49d 100644
+--- a/target/s390x/arch_dump.c
++++ b/target/s390x/arch_dump.c
+@@ -248,7 +248,7 @@ static int s390x_write_elf64_notes(const char *note_name,
+             notep = g_malloc(note_size);
+         }
+ 
+-        memset(notep, 0, sizeof(note));
++        memset(notep, 0, note_size);
+ 
+         /* Setup note header data */
+         notep->hdr.n_descsz = cpu_to_be32(content_size);
+-- 
+2.37.3
+

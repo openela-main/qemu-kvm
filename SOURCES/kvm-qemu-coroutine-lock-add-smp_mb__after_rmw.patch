@@ -1,0 +1,75 @@
+From 2f03293910f3ac559f37d45c95325ae29638003a Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:15:14 -0500
+Subject: [PATCH 07/13] qemu-coroutine-lock: add smp_mb__after_rmw()
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [7/10] 9cf1b6d3b0dd154489e75ad54a3000ea58983960
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit e3a3b6ec8169eab2feb241b4982585001512cd55
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Fri Mar 3 10:52:59 2023 +0100
+
+    qemu-coroutine-lock: add smp_mb__after_rmw()
+
+    mutex->from_push and mutex->handoff in qemu-coroutine-lock implement
+    the familiar pattern:
+
+       write a                                  write b
+       smp_mb()                                 smp_mb()
+       read b                                   read a
+
+    The memory barrier is required by the C memory model even after a
+    SEQ_CST read-modify-write operation such as QSLIST_INSERT_HEAD_ATOMIC.
+    Add it and avoid the unclear qatomic_mb_read() operation.
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ util/qemu-coroutine-lock.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/util/qemu-coroutine-lock.c b/util/qemu-coroutine-lock.c
+index 2669403839..a03ed0e664 100644
+--- a/util/qemu-coroutine-lock.c
++++ b/util/qemu-coroutine-lock.c
+@@ -206,10 +206,16 @@ static void coroutine_fn qemu_co_mutex_lock_slowpath(AioContext *ctx,
+     trace_qemu_co_mutex_lock_entry(mutex, self);
+     push_waiter(mutex, &w);
+ 
++    /*
++     * Add waiter before reading mutex->handoff.  Pairs with qatomic_mb_set
++     * in qemu_co_mutex_unlock.
++     */
++    smp_mb__after_rmw();
++
+     /* This is the "Responsibility Hand-Off" protocol; a lock() picks from
+      * a concurrent unlock() the responsibility of waking somebody up.
+      */
+-    old_handoff = qatomic_mb_read(&mutex->handoff);
++    old_handoff = qatomic_read(&mutex->handoff);
+     if (old_handoff &&
+         has_waiters(mutex) &&
+         qatomic_cmpxchg(&mutex->handoff, old_handoff, 0) == old_handoff) {
+@@ -308,6 +314,7 @@ void coroutine_fn qemu_co_mutex_unlock(CoMutex *mutex)
+         }
+ 
+         our_handoff = mutex->sequence;
++        /* Set handoff before checking for waiters.  */
+         qatomic_mb_set(&mutex->handoff, our_handoff);
+         if (!has_waiters(mutex)) {
+             /* The concurrent lock has not added itself yet, so it
+-- 
+2.37.3
+

@@ -1,0 +1,108 @@
+From 2ed48247fd39ade97164dee3c65162b96a116f14 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Fri, 4 Feb 2022 12:10:12 +0100
+Subject: [PATCH 6/6] iotests/281: Let NBD connection yield in iothread
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 117: block/nbd: Handle AioContext changes
+RH-Commit: [6/6] a23706f34022d301eb7ffc84fc0d0a77d72b9844
+RH-Bugzilla: 2035185
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Put an NBD block device into an I/O thread, and then read data from it,
+hoping that the NBD connection will yield during that read.  When it
+does, the coroutine must be reentered in the block device's I/O thread,
+which will only happen if the NBD block driver attaches the connection's
+QIOChannel to the new AioContext.  It did not do that after 4ddb5d2fde
+("block/nbd: drop connection_co") and prior to "block/nbd: Move s->ioc
+on AioContext change", which would cause an assertion failure.
+
+To improve our chances of yielding, the NBD server is throttled to
+reading 64 kB/s, and the NBD client reads 128 kB, so it should yield at
+some point.
+
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+(cherry picked from commit 8cfbe929e8c26050f0a4580a1606a370a947d4ce)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ tests/qemu-iotests/281     | 28 +++++++++++++++++++++++++---
+ tests/qemu-iotests/281.out |  4 ++--
+ 2 files changed, 27 insertions(+), 5 deletions(-)
+
+diff --git a/tests/qemu-iotests/281 b/tests/qemu-iotests/281
+index 13c588be75..b2ead7f388 100755
+--- a/tests/qemu-iotests/281
++++ b/tests/qemu-iotests/281
+@@ -253,8 +253,9 @@ class TestYieldingAndTimers(iotests.QMPTestCase):
+         self.create_nbd_export()
+ 
+         # Simple VM with an NBD block device connected to the NBD export
+-        # provided by the QSD
++        # provided by the QSD, and an (initially unused) iothread
+         self.vm = iotests.VM()
++        self.vm.add_object('iothread,id=iothr')
+         self.vm.add_blockdev('nbd,node-name=nbd,server.type=unix,' +
+                              f'server.path={self.sock},export=exp,' +
+                              'reconnect-delay=1')
+@@ -293,19 +294,40 @@ class TestYieldingAndTimers(iotests.QMPTestCase):
+         # thus not see the error, and so the test will pass.)
+         time.sleep(2)
+ 
++    def test_yield_in_iothread(self):
++        # Move the NBD node to the I/O thread; the NBD block driver should
++        # attach the connection's QIOChannel to that thread's AioContext, too
++        result = self.vm.qmp('x-blockdev-set-iothread',
++                             node_name='nbd', iothread='iothr')
++        self.assert_qmp(result, 'return', {})
++
++        # Do some I/O that will be throttled by the QSD, so that the network
++        # connection hopefully will yield here.  When it is resumed, it must
++        # then be resumed in the I/O thread's AioContext.
++        result = self.vm.qmp('human-monitor-command',
++                             command_line='qemu-io nbd "read 0 128K"')
++        self.assert_qmp(result, 'return', '')
++
+     def create_nbd_export(self):
+         assert self.qsd is None
+ 
+-        # Simple NBD export of a null-co BDS
++        # Export a throttled null-co BDS: Reads are throttled (max 64 kB/s),
++        # writes are not.
+         self.qsd = QemuStorageDaemon(
++            '--object',
++            'throttle-group,id=thrgr,x-bps-read=65536,x-bps-read-max=65536',
++
+             '--blockdev',
+             'null-co,node-name=null,read-zeroes=true',
+ 
++            '--blockdev',
++            'throttle,node-name=thr,file=null,throttle-group=thrgr',
++
+             '--nbd-server',
+             f'addr.type=unix,addr.path={self.sock}',
+ 
+             '--export',
+-            'nbd,id=exp,node-name=null,name=exp,writable=true'
++            'nbd,id=exp,node-name=thr,name=exp,writable=true'
+         )
+ 
+     def stop_nbd_export(self):
+diff --git a/tests/qemu-iotests/281.out b/tests/qemu-iotests/281.out
+index 914e3737bd..3f8a935a08 100644
+--- a/tests/qemu-iotests/281.out
++++ b/tests/qemu-iotests/281.out
+@@ -1,5 +1,5 @@
+-.....
++......
+ ----------------------------------------------------------------------
+-Ran 5 tests
++Ran 6 tests
+ 
+ OK
+-- 
+2.27.0
+

@@ -1,0 +1,62 @@
+From 098d6a965ada02f5897b73f0489413a050a176bb Mon Sep 17 00:00:00 2001
+From: Jing Liu <jing2.liu@intel.com>
+Date: Wed, 16 Feb 2022 22:04:30 -0800
+Subject: [PATCH 08/24] x86: Add XFD faulting bit for state components
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [8/13] 0b1b46c5d075655ab94bc79e042b187c5dc55551
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Intel introduces XFD faulting mechanism for extended
+XSAVE features to dynamically enable the features in
+runtime. If CPUID (EAX=0Dh, ECX=n, n>1).ECX[2] is set
+as 1, it indicates support for XFD faulting of this
+state component.
+
+Signed-off-by: Jing Liu <jing2.liu@intel.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Message-Id: <20220217060434.52460-5-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 0f17f6b30f3b051f0f96ccc98c9f7f395713699f)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.c | 3 ++-
+ target/i386/cpu.h | 2 ++
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index c19b51ea32..cd27c0eb81 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5503,7 +5503,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+                 const ExtSaveArea *esa = &x86_ext_save_areas[count];
+                 *eax = esa->size;
+                 *ebx = esa->offset;
+-                *ecx = esa->ecx & ESA_FEATURE_ALIGN64_MASK;
++                *ecx = esa->ecx &
++                       (ESA_FEATURE_ALIGN64_MASK | ESA_FEATURE_XFD_MASK);
+             }
+         }
+         break;
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 58676390e6..f2bdef9c26 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -555,8 +555,10 @@ typedef enum X86Seg {
+ #define XSTATE_DYNAMIC_MASK             (XSTATE_XTILE_DATA_MASK)
+ 
+ #define ESA_FEATURE_ALIGN64_BIT         1
++#define ESA_FEATURE_XFD_BIT             2
+ 
+ #define ESA_FEATURE_ALIGN64_MASK        (1U << ESA_FEATURE_ALIGN64_BIT)
++#define ESA_FEATURE_XFD_MASK            (1U << ESA_FEATURE_XFD_BIT)
+ 
+ 
+ /* CPUID feature words */
+-- 
+2.35.3
+

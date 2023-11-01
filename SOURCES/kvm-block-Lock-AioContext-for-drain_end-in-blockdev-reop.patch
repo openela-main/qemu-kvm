@@ -1,0 +1,63 @@
+From b21fa5ecd9acf2b91839a2915fb4bb39dac4c803 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 3 Feb 2022 15:05:33 +0100
+Subject: [PATCH 2/5] block: Lock AioContext for drain_end in blockdev-reopen
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 142: block: Lock AioContext for drain_end in blockdev-reopen
+RH-Commit: [1/2] 98de3b5987f88ea6b4b503f623d6c4475574e037
+RH-Bugzilla: 2067118
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+
+bdrv_subtree_drained_end() requires the caller to hold the AioContext
+lock for the drained node. Not doing this for nodes outside of the main
+AioContext leads to crashes when AIO_WAIT_WHILE() needs to wait and
+tries to temporarily release the lock.
+
+Fixes: 3908b7a8994fa5ef7a89aa58cd5a02fc58141592
+Resolves: https://bugzilla.redhat.com/show_bug.cgi?id=2046659
+Reported-by: Qing Wang <qinwang@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20220203140534.36522-2-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit aba8205be0707b9d108e32254e186ba88107a869)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ blockdev.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/blockdev.c b/blockdev.c
+index b35072644e..565f6a81fd 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -3562,6 +3562,7 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
+ {
+     BlockReopenQueue *queue = NULL;
+     GSList *drained = NULL;
++    GSList *p;
+ 
+     /* Add each one of the BDS that we want to reopen to the queue */
+     for (; reopen_list != NULL; reopen_list = reopen_list->next) {
+@@ -3611,7 +3612,15 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
+ 
+ fail:
+     bdrv_reopen_queue_free(queue);
+-    g_slist_free_full(drained, (GDestroyNotify) bdrv_subtree_drained_end);
++    for (p = drained; p; p = p->next) {
++        BlockDriverState *bs = p->data;
++        AioContext *ctx = bdrv_get_aio_context(bs);
++
++        aio_context_acquire(ctx);
++        bdrv_subtree_drained_end(bs);
++        aio_context_release(ctx);
++    }
++    g_slist_free(drained);
+ }
+ 
+ void qmp_blockdev_del(const char *node_name, Error **errp)
+-- 
+2.27.0
+
