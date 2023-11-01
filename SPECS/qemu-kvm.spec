@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 33%{?rcrel}%{?dist}
+Release: 32%{?rcrel}%{?dist}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -652,8 +652,6 @@ Patch255: kvm-scsi-protect-req-aiocb-with-AioContext-lock.patch
 Patch256: kvm-dma-helpers-prevent-dma_blk_cb-vs-dma_aio_cancel-rac.patch
 # For bz#2090990 - qemu crash with error scsi_req_unref(SCSIRequest *): Assertion `req->refcount > 0' failed or scsi_dma_complete(void *, int): Assertion `r->req.aiocb != NULL' failed [8.7.0]
 Patch257: kvm-virtio-scsi-reset-SCSI-devices-from-main-loop-thread.patch
-# For bz#2216510 - CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.8.0.z]
-Patch258: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -1823,11 +1821,6 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
-* Fri Aug 25 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-33.el8_8
-- kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [bz#2216510]
-- Resolves: bz#2216510
-  (CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.8.0.z])
-
 * Mon Mar 13 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-32.el8_8
 - kvm-aio_wait_kick-add-missing-memory-barrier.patch [bz#2168472]
 - kvm-qatomic-add-smp_mb__before-after_rmw.patch [bz#2168472]
