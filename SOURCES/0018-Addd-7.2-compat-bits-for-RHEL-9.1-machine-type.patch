@@ -1,0 +1,26 @@
+From 21ed34787b9492c2cfe3d8fc12a32748bcf02307 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 9 Nov 2022 07:08:32 -0500
+Subject: Addd 7.2 compat bits for RHEL 9.1 machine type
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/machine.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 9edec1ca05..3d851d34da 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -54,6 +54,8 @@ GlobalProperty hw_compat_rhel_9_1[] = {
+   { "arm-gicv3-common", "force-8-bit-prio", "on" },
+   /* hw_compat_rhel_9_1 from hw_compat_7_0 */
+   { "nvme-ns", "eui64-default", "on"},
++  /* hw_compat_rhel_9_1 from hw_compat_7_1 */
++  { "virtio-device", "queue_reset", "false" },
+ };
+ const size_t hw_compat_rhel_9_1_len = G_N_ELEMENTS(hw_compat_rhel_9_1);
+ 
+-- 
+2.31.1
+

@@ -1,0 +1,49 @@
+From 48f45171b89b8ed24f2b2484d63b00ea7818b5c3 Mon Sep 17 00:00:00 2001
+From: Kfir Manor <kfir@daynix.com>
+Date: Sun, 22 Jan 2023 17:33:07 +0200
+Subject: [PATCH 9/9] qga/linux: add usb support to guest-get-fsinfo
+
+RH-Author: Kostiantyn Kostiuk <kkostiuk@redhat.com>
+RH-MergeRequest: 140: qga/linux: add usb support to guest-get-fsinfo
+RH-Bugzilla: 2149191
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: yvugenfi <None>
+RH-Commit: [1/1] bae929a2d0d0ad20e7308ede69c26499fc2119c7 (kostyanf14/redhat_centos-stream_src_qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2149191
+Upstream patch: https://patchew.org/QEMU/20230122153307.1050593-1-kfir@daynix.com/
+
+Signed-off-by: Kfir Manor <kfir@daynix.com>
+Reviewed-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+Signed-off-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+---
+ qga/commands-posix.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/qga/commands-posix.c b/qga/commands-posix.c
+index 32493d6383..f1b2b87c13 100644
+--- a/qga/commands-posix.c
++++ b/qga/commands-posix.c
+@@ -877,7 +877,9 @@ static bool build_guest_fsinfo_for_pci_dev(char const *syspath,
+                        g_str_equal(driver, "sym53c8xx") ||
+                        g_str_equal(driver, "virtio-pci") ||
+                        g_str_equal(driver, "ahci") ||
+-                       g_str_equal(driver, "nvme"))) {
++                       g_str_equal(driver, "nvme") ||
++                       g_str_equal(driver, "xhci_hcd") ||
++                       g_str_equal(driver, "ehci-pci"))) {
+             break;
+         }
+ 
+@@ -974,6 +976,8 @@ static bool build_guest_fsinfo_for_pci_dev(char const *syspath,
+         }
+     } else if (strcmp(driver, "nvme") == 0) {
+         disk->bus_type = GUEST_DISK_BUS_TYPE_NVME;
++    } else if (strcmp(driver, "ehci-pci") == 0 || strcmp(driver, "xhci_hcd") == 0) {
++        disk->bus_type = GUEST_DISK_BUS_TYPE_USB;
+     } else {
+         g_debug("unknown driver '%s' (sysfs path '%s')", driver, syspath);
+         goto cleanup;
+-- 
+2.31.1
+

@@ -1,0 +1,62 @@
+From a932b8d4296066be01613ada84241b501488f99f Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Thu, 17 Nov 2022 17:03:24 +0100
+Subject: redhat: Add new rhel-9.2.0 s390x machine type
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2136473
+Upstream Status: n/a (rhel-only)
+
+RHEL 9.2 will be an EUS release - we want to have a new machine
+type here to make sure that we have a spot where we can wire up
+fixes later.
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 97e868ada0..aa142a1a4e 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1190,10 +1190,21 @@ DEFINE_CCW_MACHINE(2_4, "2.4", false);
+ #endif
+ 
+ 
++static void ccw_machine_rhel920_instance_options(MachineState *machine)
++{
++}
++
++static void ccw_machine_rhel920_class_options(MachineClass *mc)
++{
++}
++DEFINE_CCW_MACHINE(rhel920, "rhel9.2.0", true);
++
+ static void ccw_machine_rhel900_instance_options(MachineState *machine)
+ {
+     static const S390FeatInit qemu_cpu_feat = { S390_FEAT_LIST_QEMU_V6_2 };
+ 
++    ccw_machine_rhel920_instance_options(machine);
++
+     s390_set_qemu_cpu_model(0x3906, 14, 2, qemu_cpu_feat);
+     s390_cpudef_featoff_greater(16, 1, S390_FEAT_PAIE);
+ }
+@@ -1206,12 +1217,14 @@ static void ccw_machine_rhel900_class_options(MachineClass *mc)
+         { TYPE_S390_PCI_DEVICE, "forwarding-assist", "off", },
+     };
+ 
++    ccw_machine_rhel920_class_options(mc);
++
+     compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_1, hw_compat_rhel_9_1_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_0, hw_compat_rhel_9_0_len);
+     s390mc->max_threads = S390_MAX_CPUS;
+ }
+-DEFINE_CCW_MACHINE(rhel900, "rhel9.0.0", true);
++DEFINE_CCW_MACHINE(rhel900, "rhel9.0.0", false);
+ 
+ static void ccw_machine_rhel860_instance_options(MachineState *machine)
+ {
+-- 
+2.31.1
+

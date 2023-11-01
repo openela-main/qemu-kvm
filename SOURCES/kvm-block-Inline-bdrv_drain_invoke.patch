@@ -1,0 +1,81 @@
+From 1808e560396872173f787f8e338e9837a4c3d626 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:00 +0100
+Subject: [PATCH 18/31] block: Inline bdrv_drain_invoke()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [6/16] 2c7473a36360eb43d94b967deb12308cb5ea0d3b (sgarzarella/qemu-kvm-c-9-s)
+
+bdrv_drain_invoke() has now two entirely separate cases that share no
+code any more and are selected depending on a bool parameter. Each case
+has only one caller. Just inline the function.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221118174110.55183-6-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit c7bc05f78ab31fb02fc9635f60b9bd22efc8d121)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block/io.c | 23 ++++++-----------------
+ 1 file changed, 6 insertions(+), 17 deletions(-)
+
+diff --git a/block/io.c b/block/io.c
+index f4ca62b034..a25103be6f 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -242,21 +242,6 @@ typedef struct {
+     bool ignore_bds_parents;
+ } BdrvCoDrainData;
+ 
+-/* Recursively call BlockDriver.bdrv_drain_begin/end callbacks */
+-static void bdrv_drain_invoke(BlockDriverState *bs, bool begin)
+-{
+-    if (!bs->drv || (begin && !bs->drv->bdrv_drain_begin) ||
+-            (!begin && !bs->drv->bdrv_drain_end)) {
+-        return;
+-    }
+-
+-    if (begin) {
+-        bs->drv->bdrv_drain_begin(bs);
+-    } else {
+-        bs->drv->bdrv_drain_end(bs);
+-    }
+-}
+-
+ /* Returns true if BDRV_POLL_WHILE() should go into a blocking aio_poll() */
+ bool bdrv_drain_poll(BlockDriverState *bs, bool recursive,
+                      BdrvChild *ignore_parent, bool ignore_bds_parents)
+@@ -390,7 +375,9 @@ void bdrv_do_drained_begin_quiesce(BlockDriverState *bs,
+     }
+ 
+     bdrv_parent_drained_begin(bs, parent, ignore_bds_parents);
+-    bdrv_drain_invoke(bs, true);
++    if (bs->drv && bs->drv->bdrv_drain_begin) {
++        bs->drv->bdrv_drain_begin(bs);
++    }
+ }
+ 
+ static void bdrv_do_drained_begin(BlockDriverState *bs, bool recursive,
+@@ -461,7 +448,9 @@ static void bdrv_do_drained_end(BlockDriverState *bs, bool recursive,
+     assert(bs->quiesce_counter > 0);
+ 
+     /* Re-enable things in child-to-parent order */
+-    bdrv_drain_invoke(bs, false);
++    if (bs->drv && bs->drv->bdrv_drain_end) {
++        bs->drv->bdrv_drain_end(bs);
++    }
+     bdrv_parent_drained_end(bs, parent, ignore_bds_parents);
+ 
+     old_quiesce_counter = qatomic_fetch_dec(&bs->quiesce_counter);
+-- 
+2.31.1
+

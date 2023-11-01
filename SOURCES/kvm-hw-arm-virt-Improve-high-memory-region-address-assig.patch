@@ -1,0 +1,112 @@
+From 1c7fad3776a14ca35b24dc2fdb262d4ddf40d6eb Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 5/8] hw/arm/virt: Improve high memory region address
+ assignment
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/8] 4d77fa78b5258a1bd8d30405cec5ba3311d42f92
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+
+There are three high memory regions, which are VIRT_HIGH_REDIST2,
+VIRT_HIGH_PCIE_ECAM and VIRT_HIGH_PCIE_MMIO. Their base addresses
+are floating on highest RAM address. However, they can be disabled
+in several cases.
+
+(1) One specific high memory region is likely to be disabled by
+    code by toggling vms->highmem_{redists, ecam, mmio}.
+
+(2) VIRT_HIGH_PCIE_ECAM region is disabled on machine, which is
+    'virt-2.12' or ealier than it.
+
+(3) VIRT_HIGH_PCIE_ECAM region is disabled when firmware is loaded
+    on 32-bits system.
+
+(4) One specific high memory region is disabled when it breaks the
+    PA space limit.
+
+The current implementation of virt_set_{memmap, high_memmap}() isn't
+optimized because the high memory region's PA space is always reserved,
+regardless of whatever the actual state in the corresponding
+vms->highmem_{redists, ecam, mmio} flag. In the code, 'base' and
+'vms->highest_gpa' are always increased for case (1), (2) and (3).
+It's unnecessary since the assigned PA space for the disabled high
+memory region won't be used afterwards.
+
+Improve the address assignment for those three high memory region by
+skipping the address assignment for one specific high memory region if
+it has been disabled in case (1), (2) and (3). The memory layout may
+be changed after the improvement is applied, which leads to potential
+migration breakage. So 'vms->highmem_compact' is added to control if
+the improvement should be applied. For now, 'vms->highmem_compact' is
+set to false, meaning that we don't have memory layout change until it
+becomes configurable through property 'compact-highmem' in next patch.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Marc Zyngier <maz@kernel.org>
+Tested-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Message-id: 20221029224307.138822-6-gshan@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 4a4ff9edc6a8fdc76082af5b41b059217138c09b)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c         | 15 ++++++++++-----
+ include/hw/arm/virt.h |  1 +
+ 2 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 6e3b9fc060..6896e0ca0f 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1768,18 +1768,23 @@ static void virt_set_high_memmap(VirtMachineState *vms,
+         vms->memmap[i].size = region_size;
+ 
+         /*
+-         * Check each device to see if they fit in the PA space,
+-         * moving highest_gpa as we go.
++         * Check each device to see if it fits in the PA space,
++         * moving highest_gpa as we go. For compatibility, move
++         * highest_gpa for disabled fitting devices as well, if
++         * the compact layout has been disabled.
+          *
+          * For each device that doesn't fit, disable it.
+          */
+         fits = (region_base + region_size) <= BIT_ULL(pa_bits);
+-        if (fits) {
+-            vms->highest_gpa = region_base + region_size - 1;
++        *region_enabled &= fits;
++        if (vms->highmem_compact && !*region_enabled) {
++            continue;
+         }
+ 
+-        *region_enabled &= fits;
+         base = region_base + region_size;
++        if (fits) {
++            vms->highest_gpa = base - 1;
++        }
+     }
+ }
+ 
+diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
+index 22b54ec510..15bd291311 100644
+--- a/include/hw/arm/virt.h
++++ b/include/hw/arm/virt.h
+@@ -144,6 +144,7 @@ struct VirtMachineState {
+     PFlashCFI01 *flash[2];
+     bool secure;
+     bool highmem;
++    bool highmem_compact;
+     bool highmem_ecam;
+     bool highmem_mmio;
+     bool highmem_redists;
+-- 
+2.31.1
+

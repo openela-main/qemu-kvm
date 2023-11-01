@@ -1,0 +1,155 @@
+From 6319eaee8c2206c4eca858a11ed7c9b7a2f3dff9 Mon Sep 17 00:00:00 2001
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 29 Jun 2023 15:13:57 -0300
+Subject: [PATCH] kvm: reuse per-vcpu stats fd to avoid vcpu interruption
+
+RH-Author: Marcelo Tosatti <None>
+RH-MergeRequest: 290: kvm: reuse per-vcpu stats fd to avoid vcpu interruption
+RH-Bugzilla: 2221219
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] cf6c3188e26c6eae99b48db1f75837e11d1e4489
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214884
+Commit: 3b6f485275ae95a81eec589d2773b86ca9ddec4d
+
+A regression has been detected in latency testing of KVM guests.
+More specifically, it was observed that the cyclictest
+numbers inside of an isolated vcpu (running on isolated pcpu) are:
+
+Where a maximum of 50us is acceptable.
+
+The implementation of KVM_GET_STATS_FD uses run_on_cpu to query
+per vcpu statistics, which interrupts the vcpu (and is unnecessary).
+
+To fix this, open the per vcpu stats fd on vcpu initialization,
+and read from that fd from QEMU's main thread.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ accel/kvm/kvm-all.c   | 30 +++++++++++++++---------------
+ include/hw/core/cpu.h |  1 +
+ 2 files changed, 16 insertions(+), 15 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 39ed30ab59..c86a6798c6 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -450,6 +450,8 @@ int kvm_init_vcpu(CPUState *cpu, Error **errp)
+                          "kvm_init_vcpu: kvm_arch_init_vcpu failed (%lu)",
+                          kvm_arch_vcpu_id(cpu));
+     }
++    cpu->kvm_vcpu_stats_fd = kvm_vcpu_ioctl(cpu, KVM_GET_STATS_FD, NULL);
++
+ err:
+     return ret;
+ }
+@@ -3950,7 +3952,7 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
+ 
+     /* Read stats header */
+     kvm_stats_header = &descriptors->kvm_stats_header;
+-    ret = read(stats_fd, kvm_stats_header, sizeof(*kvm_stats_header));
++    ret = pread(stats_fd, kvm_stats_header, sizeof(*kvm_stats_header), 0);
+     if (ret != sizeof(*kvm_stats_header)) {
+         error_setg(errp, "KVM stats: failed to read stats header: "
+                    "expected %zu actual %zu",
+@@ -3981,7 +3983,8 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
+ }
+ 
+ static void query_stats(StatsResultList **result, StatsTarget target,
+-                        strList *names, int stats_fd, Error **errp)
++                        strList *names, int stats_fd, CPUState *cpu,
++                        Error **errp)
+ {
+     struct kvm_stats_desc *kvm_stats_desc;
+     struct kvm_stats_header *kvm_stats_header;
+@@ -4039,7 +4042,7 @@ static void query_stats(StatsResultList **result, StatsTarget target,
+         break;
+     case STATS_TARGET_VCPU:
+         add_stats_entry(result, STATS_PROVIDER_KVM,
+-                        current_cpu->parent_obj.canonical_path,
++                        cpu->parent_obj.canonical_path,
+                         stats_list);
+         break;
+     default:
+@@ -4076,10 +4079,9 @@ static void query_stats_schema(StatsSchemaList **result, StatsTarget target,
+     add_stats_schema(result, STATS_PROVIDER_KVM, target, stats_list);
+ }
+ 
+-static void query_stats_vcpu(CPUState *cpu, run_on_cpu_data data)
++static void query_stats_vcpu(CPUState *cpu, StatsArgs *kvm_stats_args)
+ {
+-    StatsArgs *kvm_stats_args = (StatsArgs *) data.host_ptr;
+-    int stats_fd = kvm_vcpu_ioctl(cpu, KVM_GET_STATS_FD, NULL);
++    int stats_fd = cpu->kvm_vcpu_stats_fd;
+     Error *local_err = NULL;
+ 
+     if (stats_fd == -1) {
+@@ -4088,14 +4090,13 @@ static void query_stats_vcpu(CPUState *cpu, run_on_cpu_data data)
+         return;
+     }
+     query_stats(kvm_stats_args->result.stats, STATS_TARGET_VCPU,
+-                kvm_stats_args->names, stats_fd, kvm_stats_args->errp);
+-    close(stats_fd);
++                kvm_stats_args->names, stats_fd, cpu,
++                kvm_stats_args->errp);
+ }
+ 
+-static void query_stats_schema_vcpu(CPUState *cpu, run_on_cpu_data data)
++static void query_stats_schema_vcpu(CPUState *cpu, StatsArgs *kvm_stats_args)
+ {
+-    StatsArgs *kvm_stats_args = (StatsArgs *) data.host_ptr;
+-    int stats_fd = kvm_vcpu_ioctl(cpu, KVM_GET_STATS_FD, NULL);
++    int stats_fd = cpu->kvm_vcpu_stats_fd;
+     Error *local_err = NULL;
+ 
+     if (stats_fd == -1) {
+@@ -4105,7 +4106,6 @@ static void query_stats_schema_vcpu(CPUState *cpu, run_on_cpu_data data)
+     }
+     query_stats_schema(kvm_stats_args->result.schema, STATS_TARGET_VCPU, stats_fd,
+                        kvm_stats_args->errp);
+-    close(stats_fd);
+ }
+ 
+ static void query_stats_cb(StatsResultList **result, StatsTarget target,
+@@ -4123,7 +4123,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
+             error_setg_errno(errp, errno, "KVM stats: ioctl failed");
+             return;
+         }
+-        query_stats(result, target, names, stats_fd, errp);
++        query_stats(result, target, names, stats_fd, NULL, errp);
+         close(stats_fd);
+         break;
+     }
+@@ -4137,7 +4137,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
+             if (!apply_str_list_filter(cpu->parent_obj.canonical_path, targets)) {
+                 continue;
+             }
+-            run_on_cpu(cpu, query_stats_vcpu, RUN_ON_CPU_HOST_PTR(&stats_args));
++            query_stats_vcpu(cpu, &stats_args);
+         }
+         break;
+     }
+@@ -4163,6 +4163,6 @@ void query_stats_schemas_cb(StatsSchemaList **result, Error **errp)
+     if (first_cpu) {
+         stats_args.result.schema = result;
+         stats_args.errp = errp;
+-        run_on_cpu(first_cpu, query_stats_schema_vcpu, RUN_ON_CPU_HOST_PTR(&stats_args));
++        query_stats_schema_vcpu(first_cpu, &stats_args);
+     }
+ }
+diff --git a/include/hw/core/cpu.h b/include/hw/core/cpu.h
+index 2417597236..362f22ca06 100644
+--- a/include/hw/core/cpu.h
++++ b/include/hw/core/cpu.h
+@@ -397,6 +397,7 @@ struct CPUState {
+     struct kvm_dirty_gfn *kvm_dirty_gfns;
+     uint32_t kvm_fetch_index;
+     uint64_t dirty_pages;
++    int kvm_vcpu_stats_fd;
+ 
+     /* Use by accel-block: CPU is executing an ioctl() */
+     QemuLockCnt in_ioctl_lock;
+-- 
+2.39.3
+

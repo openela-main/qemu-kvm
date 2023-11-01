@@ -1,0 +1,44 @@
+From fbb177ad84d562a20e51e71c73257d2ef85be2d9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Wed, 21 Dec 2022 12:50:15 +0100
+Subject: [PATCH 4/9] vdpa: do not handle VIRTIO_NET_F_GUEST_ANNOUNCE in
+ vhost-vdpa
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 137: vDPA net SVQ guest announce support
+RH-Bugzilla: 2141088
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [4/4] b3960a8b3e4ca569b1b1e6ceccf2051d8c4b1079 (eperezmartin/qemu-kvm)
+
+So qemu emulates it even in case the device does not support it.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221221115015.1400889-5-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 980003debddd18306ea2e1364b96598383c0e257)
+---
+ net/vhost-vdpa.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 52ef9cb3a2..b06540ac89 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -72,7 +72,6 @@ const int vdpa_feature_bits[] = {
+     VIRTIO_F_RING_RESET,
+     VIRTIO_NET_F_RSS,
+     VIRTIO_NET_F_HASH_REPORT,
+-    VIRTIO_NET_F_GUEST_ANNOUNCE,
+     VIRTIO_NET_F_STATUS,
+     VHOST_INVALID_FEATURE_BIT
+ };
+-- 
+2.31.1
+

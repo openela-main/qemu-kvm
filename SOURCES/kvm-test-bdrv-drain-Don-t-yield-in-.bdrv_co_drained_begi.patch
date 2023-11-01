@@ -1,0 +1,153 @@
+From 093c4a6834f3ec5a05390a3630ae4edec80885b8 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:40:57 +0100
+Subject: [PATCH 15/31] test-bdrv-drain: Don't yield in
+ .bdrv_co_drained_begin/end()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [3/16] 5282d3e13cb85dfb480edb11b7eb2769248465df (sgarzarella/qemu-kvm-c-9-s)
+
+We want to change .bdrv_co_drained_begin/end() back to be non-coroutine
+callbacks, so in preparation, avoid yielding in their implementation.
+
+This does almost the same as the existing logic in bdrv_drain_invoke(),
+by creating and entering coroutines internally. However, since the test
+case is by far the heaviest user of coroutine code in drain callbacks,
+it is preferable to have the complexity in the test case rather than the
+drain core, which is already complicated enough without this.
+
+The behaviour for bdrv_drain_begin() is unchanged because we increase
+bs->in_flight and this is still polled. However, bdrv_drain_end()
+doesn't wait for the spawned coroutine to complete any more. This is
+fine, we don't rely on bdrv_drain_end() restarting all operations
+immediately before the next aio_poll().
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Reviewed-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221118174110.55183-3-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 7bce1c299834557bffd92294608ea528648cfe75)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ tests/unit/test-bdrv-drain.c | 64 ++++++++++++++++++++++++++----------
+ 1 file changed, 46 insertions(+), 18 deletions(-)
+
+diff --git a/tests/unit/test-bdrv-drain.c b/tests/unit/test-bdrv-drain.c
+index 09dc4a4891..24f34e24ad 100644
+--- a/tests/unit/test-bdrv-drain.c
++++ b/tests/unit/test-bdrv-drain.c
+@@ -38,12 +38,22 @@ typedef struct BDRVTestState {
+     bool sleep_in_drain_begin;
+ } BDRVTestState;
+ 
++static void coroutine_fn sleep_in_drain_begin(void *opaque)
++{
++    BlockDriverState *bs = opaque;
++
++    qemu_co_sleep_ns(QEMU_CLOCK_REALTIME, 100000);
++    bdrv_dec_in_flight(bs);
++}
++
+ static void coroutine_fn bdrv_test_co_drain_begin(BlockDriverState *bs)
+ {
+     BDRVTestState *s = bs->opaque;
+     s->drain_count++;
+     if (s->sleep_in_drain_begin) {
+-        qemu_co_sleep_ns(QEMU_CLOCK_REALTIME, 100000);
++        Coroutine *co = qemu_coroutine_create(sleep_in_drain_begin, bs);
++        bdrv_inc_in_flight(bs);
++        aio_co_enter(bdrv_get_aio_context(bs), co);
+     }
+ }
+ 
+@@ -1916,6 +1926,21 @@ static int coroutine_fn bdrv_replace_test_co_preadv(BlockDriverState *bs,
+     return 0;
+ }
+ 
++static void coroutine_fn bdrv_replace_test_drain_co(void *opaque)
++{
++    BlockDriverState *bs = opaque;
++    BDRVReplaceTestState *s = bs->opaque;
++
++    /* Keep waking io_co up until it is done */
++    while (s->io_co) {
++        aio_co_wake(s->io_co);
++        s->io_co = NULL;
++        qemu_coroutine_yield();
++    }
++    s->drain_co = NULL;
++    bdrv_dec_in_flight(bs);
++}
++
+ /**
+  * If .drain_count is 0, wake up .io_co if there is one; and set
+  * .was_drained.
+@@ -1926,20 +1951,27 @@ static void coroutine_fn bdrv_replace_test_co_drain_begin(BlockDriverState *bs)
+     BDRVReplaceTestState *s = bs->opaque;
+ 
+     if (!s->drain_count) {
+-        /* Keep waking io_co up until it is done */
+-        s->drain_co = qemu_coroutine_self();
+-        while (s->io_co) {
+-            aio_co_wake(s->io_co);
+-            s->io_co = NULL;
+-            qemu_coroutine_yield();
+-        }
+-        s->drain_co = NULL;
+-
++        s->drain_co = qemu_coroutine_create(bdrv_replace_test_drain_co, bs);
++        bdrv_inc_in_flight(bs);
++        aio_co_enter(bdrv_get_aio_context(bs), s->drain_co);
+         s->was_drained = true;
+     }
+     s->drain_count++;
+ }
+ 
++static void coroutine_fn bdrv_replace_test_read_entry(void *opaque)
++{
++    BlockDriverState *bs = opaque;
++    char data;
++    QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(qiov, &data, 1);
++    int ret;
++
++    /* Queue a read request post-drain */
++    ret = bdrv_replace_test_co_preadv(bs, 0, 1, &qiov, 0);
++    g_assert(ret >= 0);
++    bdrv_dec_in_flight(bs);
++}
++
+ /**
+  * Reduce .drain_count, set .was_undrained once it reaches 0.
+  * If .drain_count reaches 0 and the node has a backing file, issue a
+@@ -1951,17 +1983,13 @@ static void coroutine_fn bdrv_replace_test_co_drain_end(BlockDriverState *bs)
+ 
+     g_assert(s->drain_count > 0);
+     if (!--s->drain_count) {
+-        int ret;
+-
+         s->was_undrained = true;
+ 
+         if (bs->backing) {
+-            char data;
+-            QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(qiov, &data, 1);
+-
+-            /* Queue a read request post-drain */
+-            ret = bdrv_replace_test_co_preadv(bs, 0, 1, &qiov, 0);
+-            g_assert(ret >= 0);
++            Coroutine *co = qemu_coroutine_create(bdrv_replace_test_read_entry,
++                                                  bs);
++            bdrv_inc_in_flight(bs);
++            aio_co_enter(bdrv_get_aio_context(bs), co);
+         }
+     }
+ }
+-- 
+2.31.1
+

@@ -1,0 +1,73 @@
+From e01563a8de9a45937ffd8d4c1d74a6890ffb6eb6 Mon Sep 17 00:00:00 2001
+From: Cindy Lu <lulu@redhat.com>
+Date: Thu, 22 Dec 2022 15:04:46 +0800
+Subject: [PATCH 05/31] vhost-vdpa: add support for config interrupt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cindy Lu <lulu@redhat.com>
+RH-MergeRequest: 132: vhost-vdpa: support config interrupt in vhost-vdpa
+RH-Bugzilla: 1905805
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/10] 49bfd214a503f8e199ff93f4bbfcbd4c4f2405b5 (lulu6/qemu-kvm3)
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1905805
+Add new call back function in vhost-vdpa, The function
+vhost_set_config_call can set the event fd to kernel.
+This function will be called in the vhost_dev_start
+and vhost_dev_stop
+
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+Message-Id: <20221222070451.936503-6-lulu@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 259f3acc1c675dd77ebbdb28a483f5d0220bdbf6)
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+---
+ hw/virtio/trace-events | 1 +
+ hw/virtio/vhost-vdpa.c | 8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
+index 14fc5b9bb2..46f2faf04e 100644
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -62,6 +62,7 @@ vhost_vdpa_get_features(void *dev, uint64_t features) "dev: %p features: 0x%"PRI
+ vhost_vdpa_set_owner(void *dev) "dev: %p"
+ vhost_vdpa_vq_get_addr(void *dev, void *vq, uint64_t desc_user_addr, uint64_t avail_user_addr, uint64_t used_user_addr) "dev: %p vq: %p desc_user_addr: 0x%"PRIx64" avail_user_addr: 0x%"PRIx64" used_user_addr: 0x%"PRIx64
+ vhost_vdpa_get_iova_range(void *dev, uint64_t first, uint64_t last) "dev: %p first: 0x%"PRIx64" last: 0x%"PRIx64
++vhost_vdpa_set_config_call(void *dev, int fd)"dev: %p fd: %d"
+ 
+ # virtio.c
+ virtqueue_alloc_element(void *elem, size_t sz, unsigned in_num, unsigned out_num) "elem %p size %zd in_num %u out_num %u"
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index 7468e44b87..c5be2645b0 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -754,6 +754,13 @@ static int vhost_vdpa_set_vring_ready(struct vhost_dev *dev)
+     return 0;
+ }
+ 
++static int vhost_vdpa_set_config_call(struct vhost_dev *dev,
++                                       int fd)
++{
++    trace_vhost_vdpa_set_config_call(dev, fd);
++    return vhost_vdpa_call(dev, VHOST_VDPA_SET_CONFIG_CALL, &fd);
++}
++
+ static void vhost_vdpa_dump_config(struct vhost_dev *dev, const uint8_t *config,
+                                    uint32_t config_len)
+ {
+@@ -1310,4 +1317,5 @@ const VhostOps vdpa_ops = {
+         .vhost_get_device_id = vhost_vdpa_get_device_id,
+         .vhost_vq_get_addr = vhost_vdpa_vq_get_addr,
+         .vhost_force_iommu = vhost_vdpa_force_iommu,
++        .vhost_set_config_call = vhost_vdpa_set_config_call,
+ };
+-- 
+2.31.1
+

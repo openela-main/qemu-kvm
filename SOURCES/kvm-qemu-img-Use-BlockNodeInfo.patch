@@ -1,0 +1,241 @@
+From dca4cbe680baff837ca8ac8bd39b77b46af3f64b Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:26:57 +0200
+Subject: [PATCH 10/20] qemu-img: Use BlockNodeInfo
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [5/12] b599af3ec05951a0ba11d9eae2ee19148d6bf624 (hreitz/qemu-kvm-c-9-s)
+
+qemu-img info never uses ImageInfo's backing-image field, because it
+opens the backing chain one by one with BDRV_O_NO_BACKING, and prints
+all backing chain nodes' information consecutively.  Use BlockNodeInfo
+to make it clear that we only print information about a single node, and
+that we are not using the backing-image field.
+
+Notably, bdrv_image_info_dump() does not evaluate the backing-image
+field, so we can easily make it take a BlockNodeInfo pointer (and
+consequentially rename it to bdrv_node_info_dump()).  It makes more
+sense this way, because again, the interface now makes it syntactically
+clear that backing-image is ignored by this function.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-6-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit b1f4cd1589a16fec02f264a09bd3560e4ccce3c2)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/monitor/block-hmp-cmds.c |  2 +-
+ block/qapi.c                   |  2 +-
+ include/block/qapi.h           |  2 +-
+ qapi/block-core.json           |  4 +--
+ qemu-img.c                     | 48 +++++++++++++++++-----------------
+ 5 files changed, 29 insertions(+), 29 deletions(-)
+
+diff --git a/block/monitor/block-hmp-cmds.c b/block/monitor/block-hmp-cmds.c
+index b6135e9bfe..aa37faa601 100644
+--- a/block/monitor/block-hmp-cmds.c
++++ b/block/monitor/block-hmp-cmds.c
+@@ -734,7 +734,7 @@ static void print_block_info(Monitor *mon, BlockInfo *info,
+         monitor_printf(mon, "\nImages:\n");
+         image_info = inserted->image;
+         while (1) {
+-                bdrv_image_info_dump(image_info);
++            bdrv_node_info_dump(qapi_ImageInfo_base(image_info));
+             if (image_info->has_backing_image) {
+                 image_info = image_info->backing_image;
+             } else {
+diff --git a/block/qapi.c b/block/qapi.c
+index e5022b4481..ad88bf9b38 100644
+--- a/block/qapi.c
++++ b/block/qapi.c
+@@ -865,7 +865,7 @@ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
+     visit_free(v);
+ }
+ 
+-void bdrv_image_info_dump(ImageInfo *info)
++void bdrv_node_info_dump(BlockNodeInfo *info)
+ {
+     char *size_buf, *dsize_buf;
+     if (!info->has_actual_size) {
+diff --git a/include/block/qapi.h b/include/block/qapi.h
+index c7de4e3fa9..22198dcd0c 100644
+--- a/include/block/qapi.h
++++ b/include/block/qapi.h
+@@ -45,5 +45,5 @@ void bdrv_query_image_info(BlockDriverState *bs,
+ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn);
+ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
+                                    const char *prefix);
+-void bdrv_image_info_dump(ImageInfo *info);
++void bdrv_node_info_dump(BlockNodeInfo *info);
+ #endif
+diff --git a/qapi/block-core.json b/qapi/block-core.json
+index 7720da0498..4cf2deeb6c 100644
+--- a/qapi/block-core.json
++++ b/qapi/block-core.json
+@@ -5796,9 +5796,9 @@
+ ##
+ # @DummyBlockCoreForceArrays:
+ #
+-# Not used by QMP; hack to let us use ImageInfoList internally
++# Not used by QMP; hack to let us use BlockNodeInfoList internally
+ #
+ # Since: 8.0
+ ##
+ { 'struct': 'DummyBlockCoreForceArrays',
+-  'data': { 'unused-image-info': ['ImageInfo'] } }
++  'data': { 'unused-block-node-info': ['BlockNodeInfo'] } }
+diff --git a/qemu-img.c b/qemu-img.c
+index 2f85bb7ede..3b2ca3bbcb 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -2816,13 +2816,13 @@ static void dump_snapshots(BlockDriverState *bs)
+     g_free(sn_tab);
+ }
+ 
+-static void dump_json_image_info_list(ImageInfoList *list)
++static void dump_json_block_node_info_list(BlockNodeInfoList *list)
+ {
+     GString *str;
+     QObject *obj;
+     Visitor *v = qobject_output_visitor_new(&obj);
+ 
+-    visit_type_ImageInfoList(v, NULL, &list, &error_abort);
++    visit_type_BlockNodeInfoList(v, NULL, &list, &error_abort);
+     visit_complete(v, &obj);
+     str = qobject_to_json_pretty(obj, true);
+     assert(str != NULL);
+@@ -2832,13 +2832,13 @@ static void dump_json_image_info_list(ImageInfoList *list)
+     g_string_free(str, true);
+ }
+ 
+-static void dump_json_image_info(ImageInfo *info)
++static void dump_json_block_node_info(BlockNodeInfo *info)
+ {
+     GString *str;
+     QObject *obj;
+     Visitor *v = qobject_output_visitor_new(&obj);
+ 
+-    visit_type_ImageInfo(v, NULL, &info, &error_abort);
++    visit_type_BlockNodeInfo(v, NULL, &info, &error_abort);
+     visit_complete(v, &obj);
+     str = qobject_to_json_pretty(obj, true);
+     assert(str != NULL);
+@@ -2848,9 +2848,9 @@ static void dump_json_image_info(ImageInfo *info)
+     g_string_free(str, true);
+ }
+ 
+-static void dump_human_image_info_list(ImageInfoList *list)
++static void dump_human_image_info_list(BlockNodeInfoList *list)
+ {
+-    ImageInfoList *elem;
++    BlockNodeInfoList *elem;
+     bool delim = false;
+ 
+     for (elem = list; elem; elem = elem->next) {
+@@ -2859,7 +2859,7 @@ static void dump_human_image_info_list(ImageInfoList *list)
+         }
+         delim = true;
+ 
+-        bdrv_image_info_dump(elem->value);
++        bdrv_node_info_dump(elem->value);
+     }
+ }
+ 
+@@ -2869,24 +2869,24 @@ static gboolean str_equal_func(gconstpointer a, gconstpointer b)
+ }
+ 
+ /**
+- * Open an image file chain and return an ImageInfoList
++ * Open an image file chain and return an BlockNodeInfoList
+  *
+  * @filename: topmost image filename
+  * @fmt: topmost image format (may be NULL to autodetect)
+  * @chain: true  - enumerate entire backing file chain
+  *         false - only topmost image file
+  *
+- * Returns a list of ImageInfo objects or NULL if there was an error opening an
+- * image file.  If there was an error a message will have been printed to
+- * stderr.
++ * Returns a list of BlockNodeInfo objects or NULL if there was an error
++ * opening an image file.  If there was an error a message will have been
++ * printed to stderr.
+  */
+-static ImageInfoList *collect_image_info_list(bool image_opts,
+-                                              const char *filename,
+-                                              const char *fmt,
+-                                              bool chain, bool force_share)
++static BlockNodeInfoList *collect_image_info_list(bool image_opts,
++                                                  const char *filename,
++                                                  const char *fmt,
++                                                  bool chain, bool force_share)
+ {
+-    ImageInfoList *head = NULL;
+-    ImageInfoList **tail = &head;
++    BlockNodeInfoList *head = NULL;
++    BlockNodeInfoList **tail = &head;
+     GHashTable *filenames;
+     Error *err = NULL;
+ 
+@@ -2895,7 +2895,7 @@ static ImageInfoList *collect_image_info_list(bool image_opts,
+     while (filename) {
+         BlockBackend *blk;
+         BlockDriverState *bs;
+-        ImageInfo *info;
++        BlockNodeInfo *info;
+ 
+         if (g_hash_table_lookup_extended(filenames, filename, NULL, NULL)) {
+             error_report("Backing file '%s' creates an infinite loop.",
+@@ -2912,7 +2912,7 @@ static ImageInfoList *collect_image_info_list(bool image_opts,
+         }
+         bs = blk_bs(blk);
+ 
+-        bdrv_query_image_info(bs, &info, &err);
++        bdrv_query_block_node_info(bs, &info, &err);
+         if (err) {
+             error_report_err(err);
+             blk_unref(blk);
+@@ -2945,7 +2945,7 @@ static ImageInfoList *collect_image_info_list(bool image_opts,
+     return head;
+ 
+ err:
+-    qapi_free_ImageInfoList(head);
++    qapi_free_BlockNodeInfoList(head);
+     g_hash_table_destroy(filenames);
+     return NULL;
+ }
+@@ -2956,7 +2956,7 @@ static int img_info(int argc, char **argv)
+     OutputFormat output_format = OFORMAT_HUMAN;
+     bool chain = false;
+     const char *filename, *fmt, *output;
+-    ImageInfoList *list;
++    BlockNodeInfoList *list;
+     bool image_opts = false;
+     bool force_share = false;
+ 
+@@ -3035,14 +3035,14 @@ static int img_info(int argc, char **argv)
+         break;
+     case OFORMAT_JSON:
+         if (chain) {
+-            dump_json_image_info_list(list);
++            dump_json_block_node_info_list(list);
+         } else {
+-            dump_json_image_info(list->value);
++            dump_json_block_node_info(list->value);
+         }
+         break;
+     }
+ 
+-    qapi_free_ImageInfoList(list);
++    qapi_free_BlockNodeInfoList(list);
+     return 0;
+ }
+ 
+-- 
+2.31.1
+

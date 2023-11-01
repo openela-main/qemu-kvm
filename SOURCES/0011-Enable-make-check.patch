@@ -1,0 +1,261 @@
+From badfb1290c8eea8a2e1769b2392c7899d5077698 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 2 Sep 2020 09:39:41 +0200
+Subject: Enable make check
+
+Fixing tests after device disabling and machine types changes and enabling
+make check run during build.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+Rebase changes (6.1.0):
+- removed unnecessary test changes
+
+Rebase changes (6.2.0):
+- new way of disabling bios-table-test
+
+Rebase changes (7.0.0):
+- Disable testing virtio-iommu-pci
+- Rename default_bus_bypass_iommu property to default-bus-bypass-iommu
+- Disable qtest-bios-table for aarch64
+- Removed redhat chunks for boot-serial-test.c, cdrom-test.c and cpu-plug-test.c qtests
+- Do not disable boot-order-test, prom-env-test and boot-serial-test qtests
+- Use rhel machine type for new intel hda qtest
+- Remove unnecessary changes in iotest 051
+- Remove changes in bios-tables-test.c and prom-env-test.c qtests
+
+Rebase changes (7.1.0 rc0):
+- Disable bcm2835-dma-test (added upstream)
+
+Merged patches (6.1.0):
+- 2f129df7d3 redhat: Enable the 'test-block-iothread' test again
+
+Merged patches (7.1.0 rc0):
+- 64d736640e RHEL-only: tests/avocado: Switch aarch64 tests from a53 to a57
+---
+ .distro/qemu-kvm.spec.template      | 5 ++---
+ tests/avocado/replay_kernel.py      | 2 +-
+ tests/avocado/reverse_debugging.py  | 2 +-
+ tests/avocado/tcg_plugins.py        | 6 +++---
+ tests/qtest/fuzz-e1000e-test.c      | 2 +-
+ tests/qtest/fuzz-virtio-scsi-test.c | 2 +-
+ tests/qtest/intel-hda-test.c        | 2 +-
+ tests/qtest/libqos/meson.build      | 2 +-
+ tests/qtest/lpc-ich9-test.c         | 2 +-
+ tests/qtest/meson.build             | 7 +------
+ tests/qtest/usb-hcd-xhci-test.c     | 4 ++++
+ tests/qtest/virtio-net-failover.c   | 1 +
+ 12 files changed, 18 insertions(+), 19 deletions(-)
+
+diff --git a/tests/avocado/replay_kernel.py b/tests/avocado/replay_kernel.py
+index 00a26e4a0c..fe5ecf238a 100644
+--- a/tests/avocado/replay_kernel.py
++++ b/tests/avocado/replay_kernel.py
+@@ -147,7 +147,7 @@ def test_aarch64_virt(self):
+         """
+         :avocado: tags=arch:aarch64
+         :avocado: tags=machine:virt
+-        :avocado: tags=cpu:cortex-a53
++        :avocado: tags=cpu:cortex-a57
+         """
+         kernel_url = ('https://archives.fedoraproject.org/pub/archive/fedora'
+                       '/linux/releases/29/Everything/aarch64/os/images/pxeboot'
+diff --git a/tests/avocado/reverse_debugging.py b/tests/avocado/reverse_debugging.py
+index d2921e70c3..66d185ed42 100644
+--- a/tests/avocado/reverse_debugging.py
++++ b/tests/avocado/reverse_debugging.py
+@@ -198,7 +198,7 @@ def test_aarch64_virt(self):
+         """
+         :avocado: tags=arch:aarch64
+         :avocado: tags=machine:virt
+-        :avocado: tags=cpu:cortex-a53
++        :avocado: tags=cpu:cortex-a57
+         """
+         kernel_url = ('https://archives.fedoraproject.org/pub/archive/fedora'
+                       '/linux/releases/29/Everything/aarch64/os/images/pxeboot'
+diff --git a/tests/avocado/tcg_plugins.py b/tests/avocado/tcg_plugins.py
+index 642d2e49e3..93b3afd823 100644
+--- a/tests/avocado/tcg_plugins.py
++++ b/tests/avocado/tcg_plugins.py
+@@ -68,7 +68,7 @@ def test_aarch64_virt_insn(self):
+         :avocado: tags=accel:tcg
+         :avocado: tags=arch:aarch64
+         :avocado: tags=machine:virt
+-        :avocado: tags=cpu:cortex-a53
++        :avocado: tags=cpu:cortex-a57
+         """
+         kernel_path = self._grab_aarch64_kernel()
+         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
+@@ -94,7 +94,7 @@ def test_aarch64_virt_insn_icount(self):
+         :avocado: tags=accel:tcg
+         :avocado: tags=arch:aarch64
+         :avocado: tags=machine:virt
+-        :avocado: tags=cpu:cortex-a53
++        :avocado: tags=cpu:cortex-a57
+         """
+         kernel_path = self._grab_aarch64_kernel()
+         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
+@@ -120,7 +120,7 @@ def test_aarch64_virt_mem_icount(self):
+         :avocado: tags=accel:tcg
+         :avocado: tags=arch:aarch64
+         :avocado: tags=machine:virt
+-        :avocado: tags=cpu:cortex-a53
++        :avocado: tags=cpu:cortex-a57
+         """
+         kernel_path = self._grab_aarch64_kernel()
+         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
+diff --git a/tests/qtest/fuzz-e1000e-test.c b/tests/qtest/fuzz-e1000e-test.c
+index 5052883fb6..b5286f4b12 100644
+--- a/tests/qtest/fuzz-e1000e-test.c
++++ b/tests/qtest/fuzz-e1000e-test.c
+@@ -17,7 +17,7 @@ static void test_lp1879531_eth_get_rss_ex_dst_addr(void)
+ {
+     QTestState *s;
+ 
+-    s = qtest_init("-nographic -monitor none -serial none -M pc-q35-5.0");
++    s = qtest_init("-nographic -monitor none -serial none -M pc-q35-rhel8.4.0");
+ 
+     qtest_outl(s, 0xcf8, 0x80001010);
+     qtest_outl(s, 0xcfc, 0xe1020000);
+diff --git a/tests/qtest/fuzz-virtio-scsi-test.c b/tests/qtest/fuzz-virtio-scsi-test.c
+index e37b48b2cc..88647da054 100644
+--- a/tests/qtest/fuzz-virtio-scsi-test.c
++++ b/tests/qtest/fuzz-virtio-scsi-test.c
+@@ -19,7 +19,7 @@ static void test_mmio_oob_from_memory_region_cache(void)
+ {
+     QTestState *s;
+ 
+-    s = qtest_init("-M pc-q35-5.2 -m 512M "
++    s = qtest_init("-M pc-q35-rhel8.4.0 -m 512M "
+                    "-device virtio-scsi,num_queues=8,addr=03.0 ");
+ 
+     qtest_outl(s, 0xcf8, 0x80001811);
+diff --git a/tests/qtest/intel-hda-test.c b/tests/qtest/intel-hda-test.c
+index d4a8db6fd6..1a796ec15a 100644
+--- a/tests/qtest/intel-hda-test.c
++++ b/tests/qtest/intel-hda-test.c
+@@ -38,7 +38,7 @@ static void test_issue542_ich6(void)
+ {
+     QTestState *s;
+ 
+-    s = qtest_init("-nographic -nodefaults -M pc-q35-6.2 "
++    s = qtest_init("-nographic -nodefaults -M pc-q35-rhel9.0.0 "
+                    "-device intel-hda,id=" HDA_ID CODEC_DEVICES);
+ 
+     qtest_outl(s, 0xcf8, 0x80000804);
+diff --git a/tests/qtest/libqos/meson.build b/tests/qtest/libqos/meson.build
+index 32f028872c..1e78a1a055 100644
+--- a/tests/qtest/libqos/meson.build
++++ b/tests/qtest/libqos/meson.build
+@@ -43,7 +43,7 @@ libqos_srcs = files(
+         'virtio-rng.c',
+         'virtio-scsi.c',
+         'virtio-serial.c',
+-        'virtio-iommu.c',
++#        'virtio-iommu.c',
+         'virtio-gpio.c',
+         'generic-pcihost.c',
+ 
+diff --git a/tests/qtest/lpc-ich9-test.c b/tests/qtest/lpc-ich9-test.c
+index 8ac95b89f7..cd2102555c 100644
+--- a/tests/qtest/lpc-ich9-test.c
++++ b/tests/qtest/lpc-ich9-test.c
+@@ -15,7 +15,7 @@ static void test_lp1878642_pci_bus_get_irq_level_assert(void)
+ {
+     QTestState *s;
+ 
+-    s = qtest_init("-M pc-q35-5.0 "
++    s = qtest_init("-M pc-q35-rhel8.4.0 "
+                    "-nographic -monitor none -serial none");
+ 
+     qtest_outl(s, 0xcf8, 0x8000f840); /* PMBASE */
+diff --git a/tests/qtest/meson.build b/tests/qtest/meson.build
+index c07a5b1a5f..9df3f9f8b9 100644
+--- a/tests/qtest/meson.build
++++ b/tests/qtest/meson.build
+@@ -82,7 +82,6 @@ qtests_i386 = \
+    config_all_devices.has_key('CONFIG_Q35') and                                             \
+    config_all_devices.has_key('CONFIG_VIRTIO_PCI') and                                      \
+    slirp.found() ? ['virtio-net-failover'] : []) +                                          \
+-  (unpack_edk2_blobs ? ['bios-tables-test'] : []) +                                         \
+   qtests_pci +                                                                              \
+   qtests_cxl +                                                                              \
+   ['fdc-test',
+@@ -96,7 +95,6 @@ qtests_i386 = \
+    'drive_del-test',
+    'tco-test',
+    'cpu-plug-test',
+-   'q35-test',
+    'vmgenid-test',
+    'migration-test',
+    'test-x86-cpuid-compat',
+@@ -209,15 +207,13 @@ qtests_arm = \
+ 
+ # TODO: once aarch64 TCG is fixed on ARM 32 bit host, make bios-tables-test unconditional
+ qtests_aarch64 = \
+-  (cpu != 'arm' and unpack_edk2_blobs ? ['bios-tables-test'] : []) +                            \
+   (config_all_devices.has_key('CONFIG_TPM_TIS_SYSBUS') ? ['tpm-tis-device-test'] : []) +        \
+   (config_all_devices.has_key('CONFIG_TPM_TIS_SYSBUS') ? ['tpm-tis-device-swtpm-test'] : []) +  \
+   (config_all_devices.has_key('CONFIG_XLNX_ZYNQMP_ARM') ? ['xlnx-can-test', 'fuzz-xlnx-dp-test'] : []) + \
+   ['arm-cpu-features',
+    'numa-test',
+    'boot-serial-test',
+-   'migration-test',
+-   'bcm2835-dma-test']
++   'migration-test']
+ 
+ qtests_s390x = \
+   (slirp.found() ? ['pxe-test', 'test-netfilter'] : []) +                 \
+@@ -225,7 +221,6 @@ qtests_s390x = \
+   (config_host.has_key('CONFIG_POSIX') ? ['test-filter-redirector'] : []) +                     \
+   ['boot-serial-test',
+    'drive_del-test',
+-   'device-plug-test',
+    'virtio-ccw-test',
+    'cpu-plug-test',
+    'migration-test']
+diff --git a/tests/qtest/usb-hcd-xhci-test.c b/tests/qtest/usb-hcd-xhci-test.c
+index 10ef9d2a91..3855873050 100644
+--- a/tests/qtest/usb-hcd-xhci-test.c
++++ b/tests/qtest/usb-hcd-xhci-test.c
+@@ -21,6 +21,7 @@ static void test_xhci_hotplug(void)
+     usb_test_hotplug(global_qtest, "xhci", "1", NULL);
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void test_usb_uas_hotplug(void)
+ {
+     QTestState *qts = global_qtest;
+@@ -36,6 +37,7 @@ static void test_usb_uas_hotplug(void)
+     qtest_qmp_device_del(qts, "scsihd");
+     qtest_qmp_device_del(qts, "uas");
+ }
++#endif
+ 
+ static void test_usb_ccid_hotplug(void)
+ {
+@@ -56,7 +58,9 @@ int main(int argc, char **argv)
+ 
+     qtest_add_func("/xhci/pci/init", test_xhci_init);
+     qtest_add_func("/xhci/pci/hotplug", test_xhci_hotplug);
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     qtest_add_func("/xhci/pci/hotplug/usb-uas", test_usb_uas_hotplug);
++#endif
+     qtest_add_func("/xhci/pci/hotplug/usb-ccid", test_usb_ccid_hotplug);
+ 
+     qtest_start("-device nec-usb-xhci,id=xhci"
+diff --git a/tests/qtest/virtio-net-failover.c b/tests/qtest/virtio-net-failover.c
+index 4a809590bf..1bf3fa641c 100644
+--- a/tests/qtest/virtio-net-failover.c
++++ b/tests/qtest/virtio-net-failover.c
+@@ -25,6 +25,7 @@
+ #define PCI_SEL_BASE            0x0010
+ 
+ #define BASE_MACHINE "-M q35 -nodefaults " \
++    "-global ICH9-LPC.acpi-pci-hotplug-with-bridge-support=on " \
+     "-device pcie-root-port,id=root0,addr=0x1,bus=pcie.0,chassis=1 " \
+     "-device pcie-root-port,id=root1,addr=0x2,bus=pcie.0,chassis=2 "
+ 
+-- 
+2.31.1
+

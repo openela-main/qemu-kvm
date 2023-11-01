@@ -1,0 +1,157 @@
+From ad52cb621daad45d3c2a0e2e670d6ca2e16690bd Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:02 +0100
+Subject: [PATCH 20/31] block: Drain individual nodes during reopen
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [8/16] 5441b6f0ae9102ef40d1093e1db3084eea81e3b0 (sgarzarella/qemu-kvm-c-9-s)
+
+bdrv_reopen() and friends use subtree drains as a lazy way of covering
+all the nodes they touch. Turns out that this lazy way is a lot more
+complicated than just draining the nodes individually, even not
+accounting for the additional complexity in the drain mechanism itself.
+
+Simplify the code by switching to draining the individual nodes that are
+already managed in the BlockReopenQueue anyway.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-8-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit d22933acd2f470eeef779e4d444e848f76dcfaf8)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c             | 16 +++++++++-------
+ block/replication.c |  6 ------
+ blockdev.c          | 13 -------------
+ 3 files changed, 9 insertions(+), 26 deletions(-)
+
+diff --git a/block.c b/block.c
+index 46df410b07..cb5e96b1cf 100644
+--- a/block.c
++++ b/block.c
+@@ -4150,7 +4150,7 @@ static bool bdrv_recurse_has_child(BlockDriverState *bs,
+  * returns a pointer to bs_queue, which is either the newly allocated
+  * bs_queue, or the existing bs_queue being used.
+  *
+- * bs must be drained between bdrv_reopen_queue() and bdrv_reopen_multiple().
++ * bs is drained here and undrained by bdrv_reopen_queue_free().
+  *
+  * To be called with bs->aio_context locked.
+  */
+@@ -4172,12 +4172,10 @@ static BlockReopenQueue *bdrv_reopen_queue_child(BlockReopenQueue *bs_queue,
+     int flags;
+     QemuOpts *opts;
+ 
+-    /* Make sure that the caller remembered to use a drained section. This is
+-     * important to avoid graph changes between the recursive queuing here and
+-     * bdrv_reopen_multiple(). */
+-    assert(bs->quiesce_counter > 0);
+     GLOBAL_STATE_CODE();
+ 
++    bdrv_drained_begin(bs);
++
+     if (bs_queue == NULL) {
+         bs_queue = g_new0(BlockReopenQueue, 1);
+         QTAILQ_INIT(bs_queue);
+@@ -4328,6 +4326,12 @@ void bdrv_reopen_queue_free(BlockReopenQueue *bs_queue)
+     if (bs_queue) {
+         BlockReopenQueueEntry *bs_entry, *next;
+         QTAILQ_FOREACH_SAFE(bs_entry, bs_queue, entry, next) {
++            AioContext *ctx = bdrv_get_aio_context(bs_entry->state.bs);
++
++            aio_context_acquire(ctx);
++            bdrv_drained_end(bs_entry->state.bs);
++            aio_context_release(ctx);
++
+             qobject_unref(bs_entry->state.explicit_options);
+             qobject_unref(bs_entry->state.options);
+             g_free(bs_entry);
+@@ -4475,7 +4479,6 @@ int bdrv_reopen(BlockDriverState *bs, QDict *opts, bool keep_old_opts,
+ 
+     GLOBAL_STATE_CODE();
+ 
+-    bdrv_subtree_drained_begin(bs);
+     queue = bdrv_reopen_queue(NULL, bs, opts, keep_old_opts);
+ 
+     if (ctx != qemu_get_aio_context()) {
+@@ -4486,7 +4489,6 @@ int bdrv_reopen(BlockDriverState *bs, QDict *opts, bool keep_old_opts,
+     if (ctx != qemu_get_aio_context()) {
+         aio_context_acquire(ctx);
+     }
+-    bdrv_subtree_drained_end(bs);
+ 
+     return ret;
+ }
+diff --git a/block/replication.c b/block/replication.c
+index f1eed25e43..c62f48a874 100644
+--- a/block/replication.c
++++ b/block/replication.c
+@@ -374,9 +374,6 @@ static void reopen_backing_file(BlockDriverState *bs, bool writable,
+         s->orig_secondary_read_only = bdrv_is_read_only(secondary_disk->bs);
+     }
+ 
+-    bdrv_subtree_drained_begin(hidden_disk->bs);
+-    bdrv_subtree_drained_begin(secondary_disk->bs);
+-
+     if (s->orig_hidden_read_only) {
+         QDict *opts = qdict_new();
+         qdict_put_bool(opts, BDRV_OPT_READ_ONLY, !writable);
+@@ -401,9 +398,6 @@ static void reopen_backing_file(BlockDriverState *bs, bool writable,
+             aio_context_acquire(ctx);
+         }
+     }
+-
+-    bdrv_subtree_drained_end(hidden_disk->bs);
+-    bdrv_subtree_drained_end(secondary_disk->bs);
+ }
+ 
+ static void backup_job_cleanup(BlockDriverState *bs)
+diff --git a/blockdev.c b/blockdev.c
+index 3f1dec6242..8ffb3d9537 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -3547,8 +3547,6 @@ fail:
+ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
+ {
+     BlockReopenQueue *queue = NULL;
+-    GSList *drained = NULL;
+-    GSList *p;
+ 
+     /* Add each one of the BDS that we want to reopen to the queue */
+     for (; reopen_list != NULL; reopen_list = reopen_list->next) {
+@@ -3585,9 +3583,7 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
+         ctx = bdrv_get_aio_context(bs);
+         aio_context_acquire(ctx);
+ 
+-        bdrv_subtree_drained_begin(bs);
+         queue = bdrv_reopen_queue(queue, bs, qdict, false);
+-        drained = g_slist_prepend(drained, bs);
+ 
+         aio_context_release(ctx);
+     }
+@@ -3598,15 +3594,6 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
+ 
+ fail:
+     bdrv_reopen_queue_free(queue);
+-    for (p = drained; p; p = p->next) {
+-        BlockDriverState *bs = p->data;
+-        AioContext *ctx = bdrv_get_aio_context(bs);
+-
+-        aio_context_acquire(ctx);
+-        bdrv_subtree_drained_end(bs);
+-        aio_context_release(ctx);
+-    }
+-    g_slist_free(drained);
+ }
+ 
+ void qmp_blockdev_del(const char *node_name, Error **errp)
+-- 
+2.31.1
+

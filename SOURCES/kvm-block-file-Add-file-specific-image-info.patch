@@ -1,0 +1,145 @@
+From 4af86458d6bea2a6e15fd57d4d4bbe88e35f7e72 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:26:54 +0200
+Subject: [PATCH 07/20] block/file: Add file-specific image info
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [2/12] d8cc351d6c16c41b2000e41dc555f13093a9edce (hreitz/qemu-kvm-c-9-s)
+
+Add some (optional) information that the file driver can provide for
+image files, namely the extent size hint.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-3-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 7f36a50ab4e7d39369cac67be4ba9d6ee4081dc0)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/file-posix.c   | 30 ++++++++++++++++++++++++++++++
+ qapi/block-core.json | 26 ++++++++++++++++++++++++--
+ 2 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/block/file-posix.c b/block/file-posix.c
+index b9647c5ffc..df3da79aed 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -3095,6 +3095,34 @@ static int raw_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
+     return 0;
+ }
+ 
++static ImageInfoSpecific *raw_get_specific_info(BlockDriverState *bs,
++                                                Error **errp)
++{
++    ImageInfoSpecificFile *file_info = g_new0(ImageInfoSpecificFile, 1);
++    ImageInfoSpecific *spec_info = g_new(ImageInfoSpecific, 1);
++
++    *spec_info = (ImageInfoSpecific){
++        .type = IMAGE_INFO_SPECIFIC_KIND_FILE,
++        .u.file.data = file_info,
++    };
++
++#ifdef FS_IOC_FSGETXATTR
++    {
++        BDRVRawState *s = bs->opaque;
++        struct fsxattr attr;
++        int ret;
++
++        ret = ioctl(s->fd, FS_IOC_FSGETXATTR, &attr);
++        if (!ret && attr.fsx_extsize != 0) {
++            file_info->has_extent_size_hint = true;
++            file_info->extent_size_hint = attr.fsx_extsize;
++        }
++    }
++#endif
++
++    return spec_info;
++}
++
+ static BlockStatsSpecificFile get_blockstats_specific_file(BlockDriverState *bs)
+ {
+     BDRVRawState *s = bs->opaque;
+@@ -3328,6 +3356,7 @@ BlockDriver bdrv_file = {
+     .bdrv_co_truncate = raw_co_truncate,
+     .bdrv_getlength = raw_getlength,
+     .bdrv_get_info = raw_get_info,
++    .bdrv_get_specific_info             = raw_get_specific_info,
+     .bdrv_get_allocated_file_size
+                         = raw_get_allocated_file_size,
+     .bdrv_get_specific_stats = raw_get_specific_stats,
+@@ -3700,6 +3729,7 @@ static BlockDriver bdrv_host_device = {
+     .bdrv_co_truncate       = raw_co_truncate,
+     .bdrv_getlength	= raw_getlength,
+     .bdrv_get_info = raw_get_info,
++    .bdrv_get_specific_info             = raw_get_specific_info,
+     .bdrv_get_allocated_file_size
+                         = raw_get_allocated_file_size,
+     .bdrv_get_specific_stats = hdev_get_specific_stats,
+diff --git a/qapi/block-core.json b/qapi/block-core.json
+index 95ac4fa634..f5d822cbd6 100644
+--- a/qapi/block-core.json
++++ b/qapi/block-core.json
+@@ -139,16 +139,29 @@
+       '*encryption-format': 'RbdImageEncryptionFormat'
+   } }
+ 
++##
++# @ImageInfoSpecificFile:
++#
++# @extent-size-hint: Extent size hint (if available)
++#
++# Since: 8.0
++##
++{ 'struct': 'ImageInfoSpecificFile',
++  'data': {
++      '*extent-size-hint': 'size'
++  } }
++
+ ##
+ # @ImageInfoSpecificKind:
+ #
+ # @luks: Since 2.7
+ # @rbd: Since 6.1
++# @file: Since 8.0
+ #
+ # Since: 1.7
+ ##
+ { 'enum': 'ImageInfoSpecificKind',
+-  'data': [ 'qcow2', 'vmdk', 'luks', 'rbd' ] }
++  'data': [ 'qcow2', 'vmdk', 'luks', 'rbd', 'file' ] }
+ 
+ ##
+ # @ImageInfoSpecificQCow2Wrapper:
+@@ -185,6 +198,14 @@
+ { 'struct': 'ImageInfoSpecificRbdWrapper',
+   'data': { 'data': 'ImageInfoSpecificRbd' } }
+ 
++##
++# @ImageInfoSpecificFileWrapper:
++#
++# Since: 8.0
++##
++{ 'struct': 'ImageInfoSpecificFileWrapper',
++  'data': { 'data': 'ImageInfoSpecificFile' } }
++
+ ##
+ # @ImageInfoSpecific:
+ #
+@@ -199,7 +220,8 @@
+       'qcow2': 'ImageInfoSpecificQCow2Wrapper',
+       'vmdk': 'ImageInfoSpecificVmdkWrapper',
+       'luks': 'ImageInfoSpecificLUKSWrapper',
+-      'rbd': 'ImageInfoSpecificRbdWrapper'
++      'rbd': 'ImageInfoSpecificRbdWrapper',
++      'file': 'ImageInfoSpecificFileWrapper'
+   } }
+ 
+ ##
+-- 
+2.31.1
+

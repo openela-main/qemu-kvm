@@ -1,0 +1,62 @@
+From 28163d7d61b6b0b8312b78d57dabc8f44bf39c46 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:42 +0100
+Subject: [PATCH 10/14] vdpa: store x-svq parameter in VhostVDPAState
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [10/13] 53f3b2698b4a5caca434f55e4300103a78778548 (eperezmartin/qemu-kvm)
+
+CVQ can be shadowed two ways:
+- Device has x-svq=on parameter (current way)
+- The device can isolate CVQ in its own vq group
+
+QEMU needs to check for the second condition dynamically, because CVQ
+index is not known before the driver ack the features. Since this is
+dynamic, the CVQ isolation could vary with different conditions, making
+it possible to go from "not isolated group" to "isolated".
+
+Saving the cmdline parameter in an extra field so we never disable CVQ
+SVQ in case the device was started with x-svq cmdline.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-11-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 7f211a28fd5482f76583988beecd8ee61588d45e)
+---
+ net/vhost-vdpa.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index c2f319eb88..1757f1d028 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -38,6 +38,8 @@ typedef struct VhostVDPAState {
+     void *cvq_cmd_out_buffer;
+     virtio_net_ctrl_ack *status;
+ 
++    /* The device always have SVQ enabled */
++    bool always_svq;
+     bool started;
+ } VhostVDPAState;
+ 
+@@ -576,6 +578,7 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+ 
+     s->vhost_vdpa.device_fd = vdpa_device_fd;
+     s->vhost_vdpa.index = queue_pair_index;
++    s->always_svq = svq;
+     s->vhost_vdpa.shadow_vqs_enabled = svq;
+     s->vhost_vdpa.iova_range = iova_range;
+     s->vhost_vdpa.iova_tree = iova_tree;
+-- 
+2.31.1
+

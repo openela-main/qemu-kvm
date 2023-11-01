@@ -1,0 +1,82 @@
+From 305a369fd18f29914bf96cc181add532d435d8ed Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 3/8] hw/arm/virt: Introduce variable region_base in
+ virt_set_high_memmap()
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/8] 15de90df217d680ccc858b679898b3993e1c050a
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+
+This introduces variable 'region_base' for the base address of the
+specific high memory region. It's the preparatory work to optimize
+high memory region address assignment.
+
+No functional change intended.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Marc Zyngier <maz@kernel.org>
+Tested-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Message-id: 20221029224307.138822-4-gshan@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit fa245799b9407fc7b561da185b3d889df5e16a88)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index ca098d40b8..ddcf7ee2f8 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1739,15 +1739,15 @@ static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
+ static void virt_set_high_memmap(VirtMachineState *vms,
+                                  hwaddr base, int pa_bits)
+ {
+-    hwaddr region_size;
++    hwaddr region_base, region_size;
+     bool fits;
+     int i;
+ 
+     for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
++        region_base = ROUND_UP(base, extended_memmap[i].size);
+         region_size = extended_memmap[i].size;
+ 
+-        base = ROUND_UP(base, region_size);
+-        vms->memmap[i].base = base;
++        vms->memmap[i].base = region_base;
+         vms->memmap[i].size = region_size;
+ 
+         /*
+@@ -1756,9 +1756,9 @@ static void virt_set_high_memmap(VirtMachineState *vms,
+          *
+          * For each device that doesn't fit, disable it.
+          */
+-        fits = (base + region_size) <= BIT_ULL(pa_bits);
++        fits = (region_base + region_size) <= BIT_ULL(pa_bits);
+         if (fits) {
+-            vms->highest_gpa = base + region_size - 1;
++            vms->highest_gpa = region_base + region_size - 1;
+         }
+ 
+         switch (i) {
+@@ -1773,7 +1773,7 @@ static void virt_set_high_memmap(VirtMachineState *vms,
+             break;
+         }
+ 
+-        base += region_size;
++        base = region_base + region_size;
+     }
+ }
+ 
+-- 
+2.31.1
+

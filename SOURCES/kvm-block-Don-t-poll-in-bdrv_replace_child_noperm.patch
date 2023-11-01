@@ -1,0 +1,298 @@
+From 150ef3356cc6732fede7ca059168fc0565ed0b76 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:09 +0100
+Subject: [PATCH 27/31] block: Don't poll in bdrv_replace_child_noperm()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [15/16] 5fc7d6b703a2d6c1118d875056f0afbd6ba5cca9 (sgarzarella/qemu-kvm-c-9-s)
+
+In order to make sure that bdrv_replace_child_noperm() doesn't have to
+poll any more, get rid of the bdrv_parent_drained_begin_single() call.
+
+This is possible now because we can require that the parent is already
+drained through the child in question when the function is called and we
+don't call the parent drain callbacks more than once.
+
+The additional drain calls needed in callers cause the test case to run
+its code in the drain handler too early (bdrv_attach_child() drains
+now), so modify it to only enable the code after the test setup has
+completed.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-15-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 23987471285a26397e3152a9244b652445fd36c4)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c                      | 103 ++++++++++++++++++++++++++++++-----
+ block/io.c                   |   2 +-
+ include/block/block-io.h     |   8 +++
+ tests/unit/test-bdrv-drain.c |  10 ++++
+ 4 files changed, 108 insertions(+), 15 deletions(-)
+
+diff --git a/block.c b/block.c
+index af31a94863..65588d313a 100644
+--- a/block.c
++++ b/block.c
+@@ -2407,6 +2407,20 @@ static void bdrv_replace_child_abort(void *opaque)
+ 
+     GLOBAL_STATE_CODE();
+     /* old_bs reference is transparently moved from @s to @s->child */
++    if (!s->child->bs) {
++        /*
++         * The parents were undrained when removing old_bs from the child. New
++         * requests can't have been made, though, because the child was empty.
++         *
++         * TODO Make bdrv_replace_child_noperm() transactionable to avoid
++         * undraining the parent in the first place. Once this is done, having
++         * new_bs drained when calling bdrv_replace_child_tran() is not a
++         * requirement any more.
++         */
++        bdrv_parent_drained_begin_single(s->child, false);
++        assert(!bdrv_parent_drained_poll_single(s->child));
++    }
++    assert(s->child->quiesced_parent);
+     bdrv_replace_child_noperm(s->child, s->old_bs);
+     bdrv_unref(new_bs);
+ }
+@@ -2422,12 +2436,19 @@ static TransactionActionDrv bdrv_replace_child_drv = {
+  *
+  * Note: real unref of old_bs is done only on commit.
+  *
++ * Both @child->bs and @new_bs (if non-NULL) must be drained. @new_bs must be
++ * kept drained until the transaction is completed.
++ *
+  * The function doesn't update permissions, caller is responsible for this.
+  */
+ static void bdrv_replace_child_tran(BdrvChild *child, BlockDriverState *new_bs,
+                                     Transaction *tran)
+ {
+     BdrvReplaceChildState *s = g_new(BdrvReplaceChildState, 1);
++
++    assert(child->quiesced_parent);
++    assert(!new_bs || new_bs->quiesce_counter);
++
+     *s = (BdrvReplaceChildState) {
+         .child = child,
+         .old_bs = child->bs,
+@@ -2819,6 +2840,14 @@ uint64_t bdrv_qapi_perm_to_blk_perm(BlockPermission qapi_perm)
+     return permissions[qapi_perm];
+ }
+ 
++/*
++ * Replaces the node that a BdrvChild points to without updating permissions.
++ *
++ * If @new_bs is non-NULL, the parent of @child must already be drained through
++ * @child.
++ *
++ * This function does not poll.
++ */
+ static void bdrv_replace_child_noperm(BdrvChild *child,
+                                       BlockDriverState *new_bs)
+ {
+@@ -2826,6 +2855,28 @@ static void bdrv_replace_child_noperm(BdrvChild *child,
+     int new_bs_quiesce_counter;
+ 
+     assert(!child->frozen);
++
++    /*
++     * If we want to change the BdrvChild to point to a drained node as its new
++     * child->bs, we need to make sure that its new parent is drained, too. In
++     * other words, either child->quiesce_parent must already be true or we must
++     * be able to set it and keep the parent's quiesce_counter consistent with
++     * that, but without polling or starting new requests (this function
++     * guarantees that it doesn't poll, and starting new requests would be
++     * against the invariants of drain sections).
++     *
++     * To keep things simple, we pick the first option (child->quiesce_parent
++     * must already be true). We also generalise the rule a bit to make it
++     * easier to verify in callers and more likely to be covered in test cases:
++     * The parent must be quiesced through this child even if new_bs isn't
++     * currently drained.
++     *
++     * The only exception is for callers that always pass new_bs == NULL. In
++     * this case, we obviously never need to consider the case of a drained
++     * new_bs, so we can keep the callers simpler by allowing them not to drain
++     * the parent.
++     */
++    assert(!new_bs || child->quiesced_parent);
+     assert(old_bs != new_bs);
+     GLOBAL_STATE_CODE();
+ 
+@@ -2833,15 +2884,6 @@ static void bdrv_replace_child_noperm(BdrvChild *child,
+         assert(bdrv_get_aio_context(old_bs) == bdrv_get_aio_context(new_bs));
+     }
+ 
+-    /*
+-     * If the new child node is drained but the old one was not, flush
+-     * all outstanding requests to the old child node.
+-     */
+-    new_bs_quiesce_counter = (new_bs ? new_bs->quiesce_counter : 0);
+-    if (new_bs_quiesce_counter && !child->quiesced_parent) {
+-        bdrv_parent_drained_begin_single(child, true);
+-    }
+-
+     if (old_bs) {
+         if (child->klass->detach) {
+             child->klass->detach(child);
+@@ -2861,11 +2903,9 @@ static void bdrv_replace_child_noperm(BdrvChild *child,
+     }
+ 
+     /*
+-     * If the old child node was drained but the new one is not, allow
+-     * requests to come in only after the new node has been attached.
+-     *
+-     * Update new_bs_quiesce_counter because bdrv_parent_drained_begin_single()
+-     * polls, which could have changed the value.
++     * If the parent was drained through this BdrvChild previously, but new_bs
++     * is not drained, allow requests to come in only after the new node has
++     * been attached.
+      */
+     new_bs_quiesce_counter = (new_bs ? new_bs->quiesce_counter : 0);
+     if (!new_bs_quiesce_counter && child->quiesced_parent) {
+@@ -3002,6 +3042,24 @@ static BdrvChild *bdrv_attach_child_common(BlockDriverState *child_bs,
+     }
+ 
+     bdrv_ref(child_bs);
++    /*
++     * Let every new BdrvChild start with a drained parent. Inserting the child
++     * in the graph with bdrv_replace_child_noperm() will undrain it if
++     * @child_bs is not drained.
++     *
++     * The child was only just created and is not yet visible in global state
++     * until bdrv_replace_child_noperm() inserts it into the graph, so nobody
++     * could have sent requests and polling is not necessary.
++     *
++     * Note that this means that the parent isn't fully drained yet, we only
++     * stop new requests from coming in. This is fine, we don't care about the
++     * old requests here, they are not for this child. If another place enters a
++     * drain section for the same parent, but wants it to be fully quiesced, it
++     * will not run most of the the code in .drained_begin() again (which is not
++     * a problem, we already did this), but it will still poll until the parent
++     * is fully quiesced, so it will not be negatively affected either.
++     */
++    bdrv_parent_drained_begin_single(new_child, false);
+     bdrv_replace_child_noperm(new_child, child_bs);
+ 
+     BdrvAttachChildCommonState *s = g_new(BdrvAttachChildCommonState, 1);
+@@ -5059,12 +5117,24 @@ static void bdrv_remove_child(BdrvChild *child, Transaction *tran)
+     }
+ 
+     if (child->bs) {
++        BlockDriverState *bs = child->bs;
++        bdrv_drained_begin(bs);
+         bdrv_replace_child_tran(child, NULL, tran);
++        bdrv_drained_end(bs);
+     }
+ 
+     tran_add(tran, &bdrv_remove_child_drv, child);
+ }
+ 
++static void undrain_on_clean_cb(void *opaque)
++{
++    bdrv_drained_end(opaque);
++}
++
++static TransactionActionDrv undrain_on_clean = {
++    .clean = undrain_on_clean_cb,
++};
++
+ static int bdrv_replace_node_noperm(BlockDriverState *from,
+                                     BlockDriverState *to,
+                                     bool auto_skip, Transaction *tran,
+@@ -5074,6 +5144,11 @@ static int bdrv_replace_node_noperm(BlockDriverState *from,
+ 
+     GLOBAL_STATE_CODE();
+ 
++    bdrv_drained_begin(from);
++    bdrv_drained_begin(to);
++    tran_add(tran, &undrain_on_clean, from);
++    tran_add(tran, &undrain_on_clean, to);
++
+     QLIST_FOREACH_SAFE(c, &from->parents, next_parent, next) {
+         assert(c->bs == from);
+         if (!should_update_child(c, to)) {
+diff --git a/block/io.c b/block/io.c
+index 5e9150d92c..ae64830eac 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -81,7 +81,7 @@ static void bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore)
+     }
+ }
+ 
+-static bool bdrv_parent_drained_poll_single(BdrvChild *c)
++bool bdrv_parent_drained_poll_single(BdrvChild *c)
+ {
+     if (c->klass->drained_poll) {
+         return c->klass->drained_poll(c);
+diff --git a/include/block/block-io.h b/include/block/block-io.h
+index 8f5e75756a..65e6d2569b 100644
+--- a/include/block/block-io.h
++++ b/include/block/block-io.h
+@@ -292,6 +292,14 @@ bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
+  */
+ void bdrv_parent_drained_begin_single(BdrvChild *c, bool poll);
+ 
++/**
++ * bdrv_parent_drained_poll_single:
++ *
++ * Returns true if there is any pending activity to cease before @c can be
++ * called quiesced, false otherwise.
++ */
++bool bdrv_parent_drained_poll_single(BdrvChild *c);
++
+ /**
+  * bdrv_parent_drained_end_single:
+  *
+diff --git a/tests/unit/test-bdrv-drain.c b/tests/unit/test-bdrv-drain.c
+index 172bc6debc..2686a8acee 100644
+--- a/tests/unit/test-bdrv-drain.c
++++ b/tests/unit/test-bdrv-drain.c
+@@ -1654,6 +1654,7 @@ static void test_drop_intermediate_poll(void)
+ 
+ 
+ typedef struct BDRVReplaceTestState {
++    bool setup_completed;
+     bool was_drained;
+     bool was_undrained;
+     bool has_read;
+@@ -1738,6 +1739,10 @@ static void bdrv_replace_test_drain_begin(BlockDriverState *bs)
+ {
+     BDRVReplaceTestState *s = bs->opaque;
+ 
++    if (!s->setup_completed) {
++        return;
++    }
++
+     if (!s->drain_count) {
+         s->drain_co = qemu_coroutine_create(bdrv_replace_test_drain_co, bs);
+         bdrv_inc_in_flight(bs);
+@@ -1769,6 +1774,10 @@ static void bdrv_replace_test_drain_end(BlockDriverState *bs)
+ {
+     BDRVReplaceTestState *s = bs->opaque;
+ 
++    if (!s->setup_completed) {
++        return;
++    }
++
+     g_assert(s->drain_count > 0);
+     if (!--s->drain_count) {
+         s->was_undrained = true;
+@@ -1867,6 +1876,7 @@ static void do_test_replace_child_mid_drain(int old_drain_count,
+     bdrv_ref(old_child_bs);
+     bdrv_attach_child(parent_bs, old_child_bs, "child", &child_of_bds,
+                       BDRV_CHILD_COW, &error_abort);
++    parent_s->setup_completed = true;
+ 
+     for (i = 0; i < old_drain_count; i++) {
+         bdrv_drained_begin(old_child_bs);
+-- 
+2.31.1
+

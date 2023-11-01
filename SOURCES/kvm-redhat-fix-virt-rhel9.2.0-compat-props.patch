@@ -1,0 +1,43 @@
+From 546e4213c4e8a7b2e369315a71bc9aec091eed6e Mon Sep 17 00:00:00 2001
+From: Cornelia Huck <cohuck@redhat.com>
+Date: Mon, 19 Dec 2022 10:30:26 +0100
+Subject: redhat: fix virt-rhel9.2.0 compat props
+
+RH-Author: Cornelia Huck <cohuck@redhat.com>
+RH-MergeRequest: 127: redhat: fix virt-rhel9.2.0 compat props
+RH-Bugzilla: 2154640
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] 49635fdc1d9a934ece78abd160b07c19909f876a (cohuck/qemu-kvm-c9s)
+
+We need to include arm_rhel_compat props in the latest machine.
+
+Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+---
+ hw/arm/virt.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 0a94f31dd1..bf18838b87 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3520,6 +3520,7 @@ type_init(rhel_machine_init);
+ 
+ static void rhel920_virt_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, arm_rhel_compat, arm_rhel_compat_len);
+ }
+ DEFINE_RHEL_MACHINE_AS_LATEST(9, 2, 0)
+ 
+@@ -3529,7 +3530,6 @@ static void rhel900_virt_options(MachineClass *mc)
+ 
+     rhel920_virt_options(mc);
+ 
+-    compat_props_add(mc->compat_props, arm_rhel_compat, arm_rhel_compat_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_1, hw_compat_rhel_9_1_len);
+ 
+     /* Disable FEAT_LPA2 since old kernels (<= v5.12) don't boot with that feature */
+-- 
+2.38.1
+

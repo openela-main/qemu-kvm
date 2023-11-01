@@ -1,0 +1,80 @@
+From 181705090c9963c2da97811838ace5bb058737c6 Mon Sep 17 00:00:00 2001
+From: Cindy Lu <lulu@redhat.com>
+Date: Thu, 22 Dec 2022 15:04:50 +0800
+Subject: [PATCH 09/31] virtio-mmio: add support for configure interrupt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cindy Lu <lulu@redhat.com>
+RH-MergeRequest: 132: vhost-vdpa: support config interrupt in vhost-vdpa
+RH-Bugzilla: 1905805
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [9/10] 742cc2b425ffd7bbd393772526e7481446ee131c (lulu6/qemu-kvm3)
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1905805
+Add configure interrupt support in virtio-mmio bus.
+add function to set configure guest notifier.
+
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+Message-Id: <20221222070451.936503-10-lulu@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit cd336e834620ea78edef049c3567f312974e475b)
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+---
+ hw/virtio/virtio-mmio.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index d240efef97..103260ec15 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -670,7 +670,30 @@ static int virtio_mmio_set_guest_notifier(DeviceState *d, int n, bool assign,
+ 
+     return 0;
+ }
++static int virtio_mmio_set_config_guest_notifier(DeviceState *d, bool assign,
++                                                 bool with_irqfd)
++{
++    VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
++    VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
++    VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
++    EventNotifier *notifier = virtio_config_get_guest_notifier(vdev);
++    int r = 0;
+ 
++    if (assign) {
++        r = event_notifier_init(notifier, 0);
++        if (r < 0) {
++            return r;
++        }
++        virtio_config_set_guest_notifier_fd_handler(vdev, assign, with_irqfd);
++    } else {
++        virtio_config_set_guest_notifier_fd_handler(vdev, assign, with_irqfd);
++        event_notifier_cleanup(notifier);
++    }
++    if (vdc->guest_notifier_mask && vdev->use_guest_notifier_mask) {
++        vdc->guest_notifier_mask(vdev, VIRTIO_CONFIG_IRQ_IDX, !assign);
++    }
++    return r;
++}
+ static int virtio_mmio_set_guest_notifiers(DeviceState *d, int nvqs,
+                                            bool assign)
+ {
+@@ -692,6 +715,10 @@ static int virtio_mmio_set_guest_notifiers(DeviceState *d, int nvqs,
+             goto assign_error;
+         }
+     }
++    r = virtio_mmio_set_config_guest_notifier(d, assign, with_irqfd);
++    if (r < 0) {
++        goto assign_error;
++    }
+ 
+     return 0;
+ 
+-- 
+2.31.1
+

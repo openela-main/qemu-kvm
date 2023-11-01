@@ -1,0 +1,58 @@
+From ab68e13b7628f2348d41a4518a92508542af712f Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 3 Feb 2023 18:15:10 +0100
+Subject: [PATCH 05/20] accel/tcg: Test CPUJumpCache in tb_jmp_cache_clear_page
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 144: accel/tcg: Test CPUJumpCache in tb_jmp_cache_clear_page
+RH-Bugzilla: 2165280
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Shaoqin Huang <None>
+RH-Commit: [1/1] 5b0863c34ba06c01c4e343d1ecd72402779c7de3 (eauger1/centos-qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/2165280
+Upstream: yes
+Brew: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=50530041
+Test: 'kvm unit test ./run_tests.sh -g debug' does not SIGSEV anymore
+
+After commit 4e4fa6c12d ("accel/tcg: Complete cpu initialization
+before registration"), it looks the CPUJumpCache pointer can be NULL.
+This causes a SIGSEV when running debug-wp-migration kvm unit test.
+
+At the first place it should be clarified why this TCG code is called
+with KVM acceleration. This may hide another bug.
+
+Fixes: 4e4fa6c12d ("accel/tcg: Complete cpu initialization before registration")
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Message-Id: <20230203171510.2867451-1-eric.auger@redhat.com>
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+(cherry picked from commit 99ab4d500af638ba3ebb20e8aa89d72201b70860)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ accel/tcg/cputlb.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/accel/tcg/cputlb.c b/accel/tcg/cputlb.c
+index 6f1c00682b..4244b0e4e3 100644
+--- a/accel/tcg/cputlb.c
++++ b/accel/tcg/cputlb.c
+@@ -100,9 +100,14 @@ static void tlb_window_reset(CPUTLBDesc *desc, int64_t ns,
+ 
+ static void tb_jmp_cache_clear_page(CPUState *cpu, target_ulong page_addr)
+ {
+-    int i, i0 = tb_jmp_cache_hash_page(page_addr);
+     CPUJumpCache *jc = cpu->tb_jmp_cache;
++    int i, i0;
+ 
++    if (unlikely(!jc)) {
++        return;
++    }
++
++    i0 = tb_jmp_cache_hash_page(page_addr);
+     for (i = 0; i < TB_JMP_PAGE_SIZE; i++) {
+         qatomic_set(&jc->array[i0 + i].tb, NULL);
+     }
+-- 
+2.31.1
+

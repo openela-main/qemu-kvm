@@ -1,0 +1,176 @@
+From 0a4f5bcc2a6f8ac31431e971c1dce9e6ab2191c2 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 21 Feb 2023 16:22:16 -0500
+Subject: [PATCH 01/12] scsi: protect req->aiocb with AioContext lock
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 155: virtio-scsi: reset SCSI devices from main loop thread
+RH-Bugzilla: 2155748
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Commit: [1/3] 61727297bd31dfe18220b61f1d265ced0649c60d (stefanha/centos-stream-qemu-kvm)
+
+If requests are being processed in the IOThread when a SCSIDevice is
+unplugged, scsi_device_purge_requests() -> scsi_req_cancel_async() races
+with I/O completion callbacks. Both threads load and store req->aiocb.
+This can lead to assert(r->req.aiocb == NULL) failures and undefined
+behavior.
+
+Protect r->req.aiocb with the AioContext lock to prevent the race.
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-Id: <20230221212218.1378734-2-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 7b7fc3d0102dafe8eb44802493036a526e921a71)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-disk.c    | 23 ++++++++++++++++-------
+ hw/scsi/scsi-generic.c | 11 ++++++-----
+ 2 files changed, 22 insertions(+), 12 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index e493c28814..5327f93f4c 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -273,9 +273,11 @@ static void scsi_aio_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     if (scsi_disk_req_check_error(r, ret, true)) {
+         goto done;
+     }
+@@ -357,10 +359,11 @@ static void scsi_dma_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     } else {
+@@ -393,10 +396,11 @@ static void scsi_read_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     } else {
+@@ -446,10 +450,11 @@ static void scsi_do_read_cb(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert (r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     } else {
+@@ -530,10 +535,11 @@ static void scsi_write_complete(void * opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert (r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     } else {
+@@ -1737,10 +1743,11 @@ static void scsi_unmap_complete(void *opaque, int ret)
+     SCSIDiskReq *r = data->r;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+     if (scsi_disk_req_check_error(r, ret, true)) {
+         scsi_req_unref(&r->req);
+         g_free(data);
+@@ -1816,9 +1823,11 @@ static void scsi_write_same_complete(void *opaque, int ret)
+     SCSIDiskReq *r = data->r;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
++
+     if (scsi_disk_req_check_error(r, ret, true)) {
+         goto done;
+     }
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 92cce20a4d..ac9fa662b4 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -111,10 +111,11 @@ static void scsi_command_complete(void *opaque, int ret)
+     SCSIGenericReq *r = (SCSIGenericReq *)opaque;
+     SCSIDevice *s = r->req.dev;
+ 
++    aio_context_acquire(blk_get_aio_context(s->conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+     scsi_command_complete_noio(r, ret);
+     aio_context_release(blk_get_aio_context(s->conf.blk));
+ }
+@@ -269,11 +270,11 @@ static void scsi_read_complete(void * opaque, int ret)
+     SCSIDevice *s = r->req.dev;
+     int len;
+ 
++    aio_context_acquire(blk_get_aio_context(s->conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+-
+     if (ret || r->req.io_canceled) {
+         scsi_command_complete_noio(r, ret);
+         goto done;
+@@ -386,11 +387,11 @@ static void scsi_write_complete(void * opaque, int ret)
+ 
+     trace_scsi_generic_write_complete(ret);
+ 
++    aio_context_acquire(blk_get_aio_context(s->conf.blk));
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+-
+     if (ret || r->req.io_canceled) {
+         scsi_command_complete_noio(r, ret);
+         goto done;
+-- 
+2.39.1
+

@@ -1,0 +1,143 @@
+From 9fb47ad317ad8cdda9960190d499ad6c3a9817f0 Mon Sep 17 00:00:00 2001
+From: Greg Kurz <groug@kaod.org>
+Date: Thu, 19 Jan 2023 18:24:23 +0100
+Subject: [PATCH 18/20] Revert "vhost-user: Monitor slave channel in
+ vhost_user_read()"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 146: Fix vhost-user with dpdk
+RH-Bugzilla: 2155173
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Greg Kurz (RH) <gkurz@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Commit: [1/2] c583a7f121ca9c93c9a2ad17bf0ccf5c1241dc99 (lvivier/qemu-kvm-centos)
+
+This reverts commit db8a3772e300c1a656331a92da0785d81667dc81.
+
+Motivation : this is breaking vhost-user with DPDK as reported in [0].
+
+Received unexpected msg type. Expected 22 received 40
+Fail to update device iotlb
+Received unexpected msg type. Expected 40 received 22
+Received unexpected msg type. Expected 22 received 11
+Fail to update device iotlb
+Received unexpected msg type. Expected 11 received 22
+vhost VQ 1 ring restore failed: -71: Protocol error (71)
+Received unexpected msg type. Expected 22 received 11
+Fail to update device iotlb
+Received unexpected msg type. Expected 11 received 22
+vhost VQ 0 ring restore failed: -71: Protocol error (71)
+unable to start vhost net: 71: falling back on userspace virtio
+
+The failing sequence that leads to the first error is :
+- QEMU sends a VHOST_USER_GET_STATUS (40) request to DPDK on the master
+  socket
+- QEMU starts a nested event loop in order to wait for the
+  VHOST_USER_GET_STATUS response and to be able to process messages from
+  the slave channel
+- DPDK sends a couple of legitimate IOTLB miss messages on the slave
+  channel
+- QEMU processes each IOTLB request and sends VHOST_USER_IOTLB_MSG (22)
+  updates on the master socket
+- QEMU assumes to receive a response for the latest VHOST_USER_IOTLB_MSG
+  but it gets the response for the VHOST_USER_GET_STATUS instead
+
+The subsequent errors have the same root cause : the nested event loop
+breaks the order by design. It lures QEMU to expect responses to the
+latest message sent on the master socket to arrive first.
+
+Since this was only needed for DAX enablement which is still not merged
+upstream, just drop the code for now. A working solution will have to
+be merged later on. Likely protect the master socket with a mutex
+and service the slave channel with a separate thread, as discussed with
+Maxime in the mail thread below.
+
+[0] https://lore.kernel.org/qemu-devel/43145ede-89dc-280e-b953-6a2b436de395@redhat.com/
+
+Reported-by: Yanghang Liu <yanghliu@redhat.com>
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2155173
+Signed-off-by: Greg Kurz <groug@kaod.org>
+Message-Id: <20230119172424.478268-2-groug@kaod.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+Acked-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+(cherry picked from commit f340a59d5a852d75ae34555723694c7e8eafbd0c)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/virtio/vhost-user.c | 35 +++--------------------------------
+ 1 file changed, 3 insertions(+), 32 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 8f635844af..0ac00eb901 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -356,35 +356,6 @@ end:
+     return G_SOURCE_REMOVE;
+ }
+ 
+-static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
+-                           gpointer opaque);
+-
+-/*
+- * This updates the read handler to use a new event loop context.
+- * Event sources are removed from the previous context : this ensures
+- * that events detected in the previous context are purged. They will
+- * be re-detected and processed in the new context.
+- */
+-static void slave_update_read_handler(struct vhost_dev *dev,
+-                                      GMainContext *ctxt)
+-{
+-    struct vhost_user *u = dev->opaque;
+-
+-    if (!u->slave_ioc) {
+-        return;
+-    }
+-
+-    if (u->slave_src) {
+-        g_source_destroy(u->slave_src);
+-        g_source_unref(u->slave_src);
+-    }
+-
+-    u->slave_src = qio_channel_add_watch_source(u->slave_ioc,
+-                                                G_IO_IN | G_IO_HUP,
+-                                                slave_read, dev, NULL,
+-                                                ctxt);
+-}
+-
+ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+ {
+     struct vhost_user *u = dev->opaque;
+@@ -406,7 +377,6 @@ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+      * be prepared for re-entrancy. So we create a new one and switch chr
+      * to use it.
+      */
+-    slave_update_read_handler(dev, ctxt);
+     qemu_chr_be_update_read_handlers(chr->chr, ctxt);
+     qemu_chr_fe_add_watch(chr, G_IO_IN | G_IO_HUP, vhost_user_read_cb, &data);
+ 
+@@ -418,7 +388,6 @@ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+      * context that have been processed by the nested loop are purged.
+      */
+     qemu_chr_be_update_read_handlers(chr->chr, prev_ctxt);
+-    slave_update_read_handler(dev, NULL);
+ 
+     g_main_loop_unref(loop);
+     g_main_context_unref(ctxt);
+@@ -1802,7 +1771,9 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
+         return -ECONNREFUSED;
+     }
+     u->slave_ioc = ioc;
+-    slave_update_read_handler(dev, NULL);
++    u->slave_src = qio_channel_add_watch_source(u->slave_ioc,
++                                                G_IO_IN | G_IO_HUP,
++                                                slave_read, dev, NULL, NULL);
+ 
+     if (reply_supported) {
+         msg.hdr.flags |= VHOST_USER_NEED_REPLY_MASK;
+-- 
+2.31.1
+

@@ -1,0 +1,169 @@
+From 80445fed73a7d1a87e8ce96f6cb7d505e437f845 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 1 Feb 2023 16:10:54 -0500
+Subject: [PATCH 4/8] util/userfaultfd: Add uffd_open()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 149: Support /dev/userfaultfd
+RH-Bugzilla: 2158704
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/3] 4c81696314ab26db47c3415fa2c2501c6a572b5c (peterx/qemu-kvm)
+
+Add a helper to create the uffd handle.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit d5890ea0722831eea76a0efd23a496b3e8815fe8)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ include/qemu/userfaultfd.h   | 12 ++++++++++++
+ migration/postcopy-ram.c     | 11 +++++------
+ tests/qtest/migration-test.c |  4 ++--
+ util/userfaultfd.c           | 13 +++++++++++--
+ 4 files changed, 30 insertions(+), 10 deletions(-)
+
+diff --git a/include/qemu/userfaultfd.h b/include/qemu/userfaultfd.h
+index 6b74f92792..d764496f0b 100644
+--- a/include/qemu/userfaultfd.h
++++ b/include/qemu/userfaultfd.h
+@@ -13,10 +13,20 @@
+ #ifndef USERFAULTFD_H
+ #define USERFAULTFD_H
+ 
++#ifdef CONFIG_LINUX
++
+ #include "qemu/osdep.h"
+ #include "exec/hwaddr.h"
+ #include <linux/userfaultfd.h>
+ 
++/**
++ * uffd_open(): Open an userfaultfd handle for current context.
++ *
++ * @flags: The flags we want to pass in when creating the handle.
++ *
++ * Returns: the uffd handle if >=0, or <0 if error happens.
++ */
++int uffd_open(int flags);
+ int uffd_query_features(uint64_t *features);
+ int uffd_create_fd(uint64_t features, bool non_blocking);
+ void uffd_close_fd(int uffd_fd);
+@@ -32,4 +42,6 @@ int uffd_wakeup(int uffd_fd, void *addr, uint64_t length);
+ int uffd_read_events(int uffd_fd, struct uffd_msg *msgs, int count);
+ bool uffd_poll_events(int uffd_fd, int tmo);
+ 
++#endif /* CONFIG_LINUX */
++
+ #endif /* USERFAULTFD_H */
+diff --git a/migration/postcopy-ram.c b/migration/postcopy-ram.c
+index b9a37ef255..0c55df0e52 100644
+--- a/migration/postcopy-ram.c
++++ b/migration/postcopy-ram.c
+@@ -37,6 +37,7 @@
+ #include "qemu-file.h"
+ #include "yank_functions.h"
+ #include "tls.h"
++#include "qemu/userfaultfd.h"
+ 
+ /* Arbitrary limit on size of each discard command,
+  * keeps them around ~200 bytes
+@@ -226,11 +227,9 @@ static bool receive_ufd_features(uint64_t *features)
+     int ufd;
+     bool ret = true;
+ 
+-    /* if we are here __NR_userfaultfd should exists */
+-    ufd = syscall(__NR_userfaultfd, O_CLOEXEC);
++    ufd = uffd_open(O_CLOEXEC);
+     if (ufd == -1) {
+-        error_report("%s: syscall __NR_userfaultfd failed: %s", __func__,
+-                     strerror(errno));
++        error_report("%s: uffd_open() failed: %s", __func__, strerror(errno));
+         return false;
+     }
+ 
+@@ -375,7 +374,7 @@ bool postcopy_ram_supported_by_host(MigrationIncomingState *mis)
+         goto out;
+     }
+ 
+-    ufd = syscall(__NR_userfaultfd, O_CLOEXEC);
++    ufd = uffd_open(O_CLOEXEC);
+     if (ufd == -1) {
+         error_report("%s: userfaultfd not available: %s", __func__,
+                      strerror(errno));
+@@ -1160,7 +1159,7 @@ static int postcopy_temp_pages_setup(MigrationIncomingState *mis)
+ int postcopy_ram_incoming_setup(MigrationIncomingState *mis)
+ {
+     /* Open the fd for the kernel to give us userfaults */
+-    mis->userfault_fd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
++    mis->userfault_fd = uffd_open(O_CLOEXEC | O_NONBLOCK);
+     if (mis->userfault_fd == -1) {
+         error_report("%s: Failed to open userfault fd: %s", __func__,
+                      strerror(errno));
+diff --git a/tests/qtest/migration-test.c b/tests/qtest/migration-test.c
+index dbde726adf..0100e1bdbc 100644
+--- a/tests/qtest/migration-test.c
++++ b/tests/qtest/migration-test.c
+@@ -61,14 +61,14 @@ static bool uffd_feature_thread_id;
+ #if defined(__linux__) && defined(__NR_userfaultfd) && defined(CONFIG_EVENTFD)
+ #include <sys/eventfd.h>
+ #include <sys/ioctl.h>
+-#include <linux/userfaultfd.h>
++#include "qemu/userfaultfd.h"
+ 
+ static bool ufd_version_check(void)
+ {
+     struct uffdio_api api_struct;
+     uint64_t ioctl_mask;
+ 
+-    int ufd = syscall(__NR_userfaultfd, O_CLOEXEC);
++    int ufd = uffd_open(O_CLOEXEC);
+ 
+     if (ufd == -1) {
+         g_test_message("Skipping test: userfaultfd not available");
+diff --git a/util/userfaultfd.c b/util/userfaultfd.c
+index f1cd6af2b1..4953b3137d 100644
+--- a/util/userfaultfd.c
++++ b/util/userfaultfd.c
+@@ -19,6 +19,15 @@
+ #include <sys/syscall.h>
+ #include <sys/ioctl.h>
+ 
++int uffd_open(int flags)
++{
++#if defined(__NR_userfaultfd)
++    return syscall(__NR_userfaultfd, flags);
++#else
++    return -EINVAL;
++#endif
++}
++
+ /**
+  * uffd_query_features: query UFFD features
+  *
+@@ -32,7 +41,7 @@ int uffd_query_features(uint64_t *features)
+     struct uffdio_api api_struct = { 0 };
+     int ret = -1;
+ 
+-    uffd_fd = syscall(__NR_userfaultfd, O_CLOEXEC);
++    uffd_fd = uffd_open(O_CLOEXEC);
+     if (uffd_fd < 0) {
+         trace_uffd_query_features_nosys(errno);
+         return -1;
+@@ -69,7 +78,7 @@ int uffd_create_fd(uint64_t features, bool non_blocking)
+     uint64_t ioctl_mask = BIT(_UFFDIO_REGISTER) | BIT(_UFFDIO_UNREGISTER);
+ 
+     flags = O_CLOEXEC | (non_blocking ? O_NONBLOCK : 0);
+-    uffd_fd = syscall(__NR_userfaultfd, flags);
++    uffd_fd = uffd_open(flags);
+     if (uffd_fd < 0) {
+         trace_uffd_create_fd_nosys(errno);
+         return -1;
+-- 
+2.31.1
+

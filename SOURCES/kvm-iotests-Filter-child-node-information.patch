@@ -1,0 +1,171 @@
+From 3102e62f80757729c97e58e2b3d62a6a9de952a7 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:27:01 +0200
+Subject: [PATCH 14/20] iotests: Filter child node information
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [9/12] 0b0a42d54397791f7f149e53c9175b7863707e70 (hreitz/qemu-kvm-c-9-s)
+
+Before we let qemu-img info print child node information, have
+common.filter, common.rc, and iotests.py filter it from the test output
+so we get as few reference output changes as possible.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-10-hreitz@redhat.com>
+Tested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit bcc6777ad6facede73c0cf8b1700045bf4365f7d)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ tests/qemu-iotests/common.filter | 22 ++++++++++++++--------
+ tests/qemu-iotests/common.rc     | 22 ++++++++++++++--------
+ tests/qemu-iotests/iotests.py    | 18 +++++++++++++++---
+ 3 files changed, 43 insertions(+), 19 deletions(-)
+
+diff --git a/tests/qemu-iotests/common.filter b/tests/qemu-iotests/common.filter
+index 6a13757177..6ddda2ee64 100644
+--- a/tests/qemu-iotests/common.filter
++++ b/tests/qemu-iotests/common.filter
+@@ -224,6 +224,7 @@ _filter_img_info()
+ 
+     discard=0
+     regex_json_spec_start='^ *"format-specific": \{'
++    regex_json_child_start='^ *"children": \['
+     gsed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
+         -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
+         -e "s#$TEST_DIR#TEST_DIR#g" \
+@@ -252,20 +253,25 @@ _filter_img_info()
+         -e 's/\(compression type: \)\(zlib\|zstd\)/\1COMPRESSION_TYPE/' \
+         -e "s/uuid: [-a-f0-9]\\+/uuid: 00000000-0000-0000-0000-000000000000/" | \
+     while IFS='' read -r line; do
+-        if [[ $format_specific == 1 ]]; then
+-            discard=0
+-        elif [[ $line == "Format specific information:" ]]; then
+-            discard=1
+-        elif [[ $line =~ $regex_json_spec_start ]]; then
+-            discard=2
+-            regex_json_spec_end="^${line%%[^ ]*}\\},? *$"
++        if [[ $discard == 0 ]]; then
++            if [[ $format_specific == 0 && $line == "Format specific information:" ]]; then
++                discard=1
++            elif [[ $line =~ "Child node '/" ]]; then
++                discard=1
++            elif [[ $line =~ $regex_json_spec_start ]]; then
++                discard=2
++                regex_json_end="^${line%%[^ ]*}\\},? *$"
++            elif [[ $line =~ $regex_json_child_start ]]; then
++                discard=2
++                regex_json_end="^${line%%[^ ]*}\\],? *$"
++            fi
+         fi
+         if [[ $discard == 0 ]]; then
+             echo "$line"
+         elif [[ $discard == 1 && ! $line ]]; then
+             echo
+             discard=0
+-        elif [[ $discard == 2 && $line =~ $regex_json_spec_end ]]; then
++        elif [[ $discard == 2 && $line =~ $regex_json_end ]]; then
+             discard=0
+         fi
+     done
+diff --git a/tests/qemu-iotests/common.rc b/tests/qemu-iotests/common.rc
+index db757025cb..f4476b62f7 100644
+--- a/tests/qemu-iotests/common.rc
++++ b/tests/qemu-iotests/common.rc
+@@ -711,6 +711,7 @@ _img_info()
+ 
+     discard=0
+     regex_json_spec_start='^ *"format-specific": \{'
++    regex_json_child_start='^ *"children": \['
+     $QEMU_IMG info $QEMU_IMG_EXTRA_ARGS "$@" "$TEST_IMG" 2>&1 | \
+         sed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
+             -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
+@@ -721,20 +722,25 @@ _img_info()
+             -e "/^disk size:/ D" \
+             -e "/actual-size/ D" | \
+         while IFS='' read -r line; do
+-            if [[ $format_specific == 1 ]]; then
+-                discard=0
+-            elif [[ $line == "Format specific information:" ]]; then
+-                discard=1
+-            elif [[ $line =~ $regex_json_spec_start ]]; then
+-                discard=2
+-                regex_json_spec_end="^${line%%[^ ]*}\\},? *$"
++            if [[ $discard == 0 ]]; then
++                if [[ $format_specific == 0 && $line == "Format specific information:" ]]; then
++                    discard=1
++                elif [[ $line =~ "Child node '/" ]]; then
++                    discard=1
++                elif [[ $format_specific == 0 && $line =~ $regex_json_spec_start ]]; then
++                    discard=2
++                    regex_json_end="^${line%%[^ ]*}\\},? *$"
++                elif [[ $line =~ $regex_json_child_start ]]; then
++                    discard=2
++                    regex_json_end="^${line%%[^ ]*}\\],? *$"
++                fi
+             fi
+             if [[ $discard == 0 ]]; then
+                 echo "$line"
+             elif [[ $discard == 1 && ! $line ]]; then
+                 echo
+                 discard=0
+-            elif [[ $discard == 2 && $line =~ $regex_json_spec_end ]]; then
++            elif [[ $discard == 2 && $line =~ $regex_json_end ]]; then
+                 discard=0
+             fi
+         done
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index da7d6637e1..94aeb3f3b2 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -329,7 +329,7 @@ def qemu_img_log(*args: str, check: bool = True
+ 
+ def img_info_log(filename: str, filter_path: Optional[str] = None,
+                  use_image_opts: bool = False, extra_args: Sequence[str] = (),
+-                 check: bool = True,
++                 check: bool = True, drop_child_info: bool = True,
+                  ) -> None:
+     args = ['info']
+     if use_image_opts:
+@@ -342,7 +342,7 @@ def img_info_log(filename: str, filter_path: Optional[str] = None,
+     output = qemu_img(*args, check=check).stdout
+     if not filter_path:
+         filter_path = filename
+-    log(filter_img_info(output, filter_path))
++    log(filter_img_info(output, filter_path, drop_child_info))
+ 
+ def qemu_io_wrap_args(args: Sequence[str]) -> List[str]:
+     if '-f' in args or '--image-opts' in args:
+@@ -642,11 +642,23 @@ def _filter(_key, value):
+ def filter_generated_node_ids(msg):
+     return re.sub("#block[0-9]+", "NODE_NAME", msg)
+ 
+-def filter_img_info(output, filename):
++def filter_img_info(output: str, filename: str,
++                    drop_child_info: bool = True) -> str:
+     lines = []
++    drop_indented = False
+     for line in output.split('\n'):
+         if 'disk size' in line or 'actual-size' in line:
+             continue
++
++        # Drop child node info
++        if drop_indented:
++            if line.startswith(' '):
++                continue
++            drop_indented = False
++        if drop_child_info and "Child node '/" in line:
++            drop_indented = True
++            continue
++
+         line = line.replace(filename, 'TEST_IMG')
+         line = filter_testfiles(line)
+         line = line.replace(imgfmt, 'IMGFMT')
+-- 
+2.31.1
+

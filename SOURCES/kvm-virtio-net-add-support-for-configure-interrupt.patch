@@ -1,0 +1,115 @@
+From 2b8e3409edb8a17d89c3829cfa3d92bdfdd43c53 Mon Sep 17 00:00:00 2001
+From: Cindy Lu <lulu@redhat.com>
+Date: Thu, 22 Dec 2022 15:04:49 +0800
+Subject: [PATCH 08/31] virtio-net: add support for configure interrupt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cindy Lu <lulu@redhat.com>
+RH-MergeRequest: 132: vhost-vdpa: support config interrupt in vhost-vdpa
+RH-Bugzilla: 1905805
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [8/10] 1b125169bea6c81c508b154fa1bae68af153b312 (lulu6/qemu-kvm3)
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1905805
+Add functions to support configure interrupt in virtio_net
+Add the functions to support vhost_net_config_pending
+and vhost_net_config_mask.
+
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+Message-Id: <20221222070451.936503-9-lulu@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 8aab0d1dbe90c7b5ac6672a1a09b0578178f5f4c)
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+---
+ hw/net/vhost_net-stub.c | 9 +++++++++
+ hw/net/vhost_net.c      | 9 +++++++++
+ hw/net/virtio-net.c     | 4 ++--
+ include/net/vhost_net.h | 2 ++
+ 4 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/hw/net/vhost_net-stub.c b/hw/net/vhost_net-stub.c
+index 9f7daae99c..c36f258201 100644
+--- a/hw/net/vhost_net-stub.c
++++ b/hw/net/vhost_net-stub.c
+@@ -82,6 +82,15 @@ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+ {
+ }
+ 
++bool vhost_net_config_pending(VHostNetState *net)
++{
++    return false;
++}
++
++void vhost_net_config_mask(VHostNetState *net, VirtIODevice *dev, bool mask)
++{
++}
++
+ int vhost_net_notify_migration_done(struct vhost_net *net, char* mac_addr)
+ {
+     return -1;
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 043058ff43..6a55f5a473 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -478,6 +478,15 @@ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+     vhost_virtqueue_mask(&net->dev, dev, idx, mask);
+ }
+ 
++bool vhost_net_config_pending(VHostNetState *net)
++{
++    return vhost_config_pending(&net->dev);
++}
++
++void vhost_net_config_mask(VHostNetState *net, VirtIODevice *dev, bool mask)
++{
++    vhost_config_mask(&net->dev, dev, mask);
++}
+ VHostNetState *get_vhost_net(NetClientState *nc)
+ {
+     VHostNetState *vhost_net = 0;
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index bee35d6f9f..ec974f7a76 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -3323,7 +3323,7 @@ static bool virtio_net_guest_notifier_pending(VirtIODevice *vdev, int idx)
+      */
+ 
+     if (idx == VIRTIO_CONFIG_IRQ_IDX) {
+-        return false;
++        return vhost_net_config_pending(get_vhost_net(nc->peer));
+     }
+     return vhost_net_virtqueue_pending(get_vhost_net(nc->peer), idx);
+ }
+@@ -3355,9 +3355,9 @@ static void virtio_net_guest_notifier_mask(VirtIODevice *vdev, int idx,
+      */
+ 
+     if (idx == VIRTIO_CONFIG_IRQ_IDX) {
++        vhost_net_config_mask(get_vhost_net(nc->peer), vdev, mask);
+         return;
+     }
+-
+     vhost_net_virtqueue_mask(get_vhost_net(nc->peer), vdev, idx, mask);
+ }
+ 
+diff --git a/include/net/vhost_net.h b/include/net/vhost_net.h
+index 40b9a40074..dbbd0dc04e 100644
+--- a/include/net/vhost_net.h
++++ b/include/net/vhost_net.h
+@@ -39,6 +39,8 @@ int vhost_net_set_config(struct vhost_net *net, const uint8_t *data,
+ bool vhost_net_virtqueue_pending(VHostNetState *net, int n);
+ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+                               int idx, bool mask);
++bool vhost_net_config_pending(VHostNetState *net);
++void vhost_net_config_mask(VHostNetState *net, VirtIODevice *dev, bool mask);
+ int vhost_net_notify_migration_done(VHostNetState *net, char* mac_addr);
+ VHostNetState *get_vhost_net(NetClientState *nc);
+ 
+-- 
+2.31.1
+

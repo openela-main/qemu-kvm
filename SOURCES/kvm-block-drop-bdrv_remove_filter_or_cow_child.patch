@@ -1,0 +1,70 @@
+From defd6b325264d94ffb1355a8b19f9a77bd694a2f Mon Sep 17 00:00:00 2001
+From: Vladimir Sementsov-Ogievskiy <vladimir.sementsov-ogievskiy@openvz.org>
+Date: Mon, 7 Nov 2022 19:35:56 +0300
+Subject: [PATCH 13/31] block: drop bdrv_remove_filter_or_cow_child
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/16] 6339edd738c3b79f8ecb6c1e012e52b6afb1a622 (sgarzarella/qemu-kvm-c-9-s)
+
+Drop this simple wrapper used only in one place. We have too many graph
+modifying functions even without it.
+
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@openvz.org>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221107163558.618889-3-vsementsov@yandex-team.ru>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit f38eaec4c3618dfc4a23e20435cefb5bf8325264)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c | 15 +--------------
+ 1 file changed, 1 insertion(+), 14 deletions(-)
+
+diff --git a/block.c b/block.c
+index a18f052374..ec184150a2 100644
+--- a/block.c
++++ b/block.c
+@@ -93,8 +93,6 @@ static bool bdrv_recurse_has_child(BlockDriverState *bs,
+ static void bdrv_replace_child_noperm(BdrvChild *child,
+                                       BlockDriverState *new_bs);
+ static void bdrv_remove_child(BdrvChild *child, Transaction *tran);
+-static void bdrv_remove_filter_or_cow_child(BlockDriverState *bs,
+-                                            Transaction *tran);
+ 
+ static int bdrv_reopen_prepare(BDRVReopenState *reopen_state,
+                                BlockReopenQueue *queue,
+@@ -5073,17 +5071,6 @@ static void bdrv_remove_child(BdrvChild *child, Transaction *tran)
+     tran_add(tran, &bdrv_remove_child_drv, child);
+ }
+ 
+-/*
+- * A function to remove backing-chain child of @bs if exists: cow child for
+- * format nodes (always .backing) and filter child for filters (may be .file or
+- * .backing)
+- */
+-static void bdrv_remove_filter_or_cow_child(BlockDriverState *bs,
+-                                            Transaction *tran)
+-{
+-    bdrv_remove_child(bdrv_filter_or_cow_child(bs), tran);
+-}
+-
+ static int bdrv_replace_node_noperm(BlockDriverState *from,
+                                     BlockDriverState *to,
+                                     bool auto_skip, Transaction *tran,
+@@ -5168,7 +5155,7 @@ static int bdrv_replace_node_common(BlockDriverState *from,
+     }
+ 
+     if (detach_subchain) {
+-        bdrv_remove_filter_or_cow_child(to_cow_parent, tran);
++        bdrv_remove_child(bdrv_filter_or_cow_child(to_cow_parent), tran);
+     }
+ 
+     found = g_hash_table_new(NULL, NULL);
+-- 
+2.31.1
+
