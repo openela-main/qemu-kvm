@@ -1,0 +1,92 @@
+From 4fe096a6fad61ab721fd29324d48383c7f427ac9 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Mon, 5 Jun 2023 16:21:25 +0200
+Subject: [PATCH 7/9] virtio-net: correctly report maximum tx_queue_size value
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 191: virtio-net: correctly report maximum tx_queue_size value
+RH-Bugzilla: 2040509
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Commit: [1/1] afb944c6d75fe476ac86fe267b1cca5f272dfbbd (lvivier/qemu-kvm-centos)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2040509
+
+Maximum value for tx_queue_size depends on the backend type.
+1024 for vDPA/vhost-user, 256 for all the others.
+
+The value is returned by virtio_net_max_tx_queue_size() to set the
+parameter:
+
+    n->net_conf.tx_queue_size = MIN(virtio_net_max_tx_queue_size(n),
+                                    n->net_conf.tx_queue_size);
+
+But the parameter checking uses VIRTQUEUE_MAX_SIZE (1024).
+
+So the parameter is silently ignored and ethtool reports a different
+value than the one provided by the user.
+
+   ... -netdev tap,... -device virtio-net,tx_queue_size=1024
+
+    # ethtool -g enp0s2
+    Ring parameters for enp0s2:
+    Pre-set maximums:
+    RX:		256
+    RX Mini:	n/a
+    RX Jumbo:	n/a
+    TX:		256
+    Current hardware settings:
+    RX:		256
+    RX Mini:	n/a
+    RX Jumbo:	n/a
+    TX:		256
+
+   ... -netdev vhost-user,... -device virtio-net,tx_queue_size=2048
+
+    Invalid tx_queue_size (= 2048), must be a power of 2 between 256 and 1024
+
+With this patch the correct maximum value is checked and displayed.
+
+For vDPA/vhost-user:
+
+    Invalid tx_queue_size (= 2048), must be a power of 2 between 256 and 1024
+
+For all the others:
+
+    Invalid tx_queue_size (= 512), must be a power of 2 between 256 and 256
+
+Fixes: 2eef278b9e63 ("virtio-net: fix tx queue size for !vhost-user")
+Cc: mst@redhat.com
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit 4271f4038372f174dbafffacca1a748d058a03ba)
+---
+ hw/net/virtio-net.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 447f669921..ae1e6a5e3d 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -3628,12 +3628,12 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
+     }
+ 
+     if (n->net_conf.tx_queue_size < VIRTIO_NET_TX_QUEUE_MIN_SIZE ||
+-        n->net_conf.tx_queue_size > VIRTQUEUE_MAX_SIZE ||
++        n->net_conf.tx_queue_size > virtio_net_max_tx_queue_size(n) ||
+         !is_power_of_2(n->net_conf.tx_queue_size)) {
+         error_setg(errp, "Invalid tx_queue_size (= %" PRIu16 "), "
+                    "must be a power of 2 between %d and %d",
+                    n->net_conf.tx_queue_size, VIRTIO_NET_TX_QUEUE_MIN_SIZE,
+-                   VIRTQUEUE_MAX_SIZE);
++                   virtio_net_max_tx_queue_size(n));
+         virtio_cleanup(vdev);
+         return;
+     }
+-- 
+2.39.3
+

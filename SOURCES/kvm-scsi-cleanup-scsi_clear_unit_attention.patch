@@ -1,0 +1,81 @@
+From 5dd7d26c034c26b2d4d9b91b8d1a7b605e19730f Mon Sep 17 00:00:00 2001
+From: Stefano Garzarella <sgarzare@redhat.com>
+Date: Wed, 12 Jul 2023 15:43:51 +0200
+Subject: [PATCH 02/12] scsi: cleanup scsi_clear_unit_attention()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 184: scsi: fix issue with Linux guest and unit attention
+RH-Bugzilla: 2176702
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/3] b3a06a91644e44fae3d76d0fbe72448652db517a (sgarzarella/qemu-kvm-c-9-s)
+
+The previous commit moved the unit attention clearing when we create
+the request. So now we can clean scsi_clear_unit_attention() to handle
+only the case of the REPORT LUNS command: this is the only case in
+which a UNIT ATTENTION is cleared without having been reported.
+
+Suggested-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+Message-ID: <20230712134352.118655-3-sgarzare@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit ba947dab98e7cd4337c70975bd255701a2a6aad8)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ hw/scsi/scsi-bus.c | 28 ++++++----------------------
+ 1 file changed, 6 insertions(+), 22 deletions(-)
+
+diff --git a/hw/scsi/scsi-bus.c b/hw/scsi/scsi-bus.c
+index 5d22313b9d..cecd26479e 100644
+--- a/hw/scsi/scsi-bus.c
++++ b/hw/scsi/scsi-bus.c
+@@ -828,26 +828,12 @@ static void scsi_clear_unit_attention(SCSIRequest *req)
+         return;
+     }
+ 
+-    if (req->dev->unit_attention.key != UNIT_ATTENTION &&
+-        req->bus->unit_attention.key != UNIT_ATTENTION) {
+-        return;
+-    }
+-
+-    /*
+-     * If an INQUIRY command enters the enabled command state,
+-     * the device server shall [not] clear any unit attention condition;
+-     * See also MMC-6, paragraphs 6.5 and 6.6.2.
+-     */
+-    if (req->cmd.buf[0] == INQUIRY ||
+-        req->cmd.buf[0] == GET_CONFIGURATION ||
+-        req->cmd.buf[0] == GET_EVENT_STATUS_NOTIFICATION) {
+-        return;
+-    }
+-
+     if (req->dev->unit_attention.key == UNIT_ATTENTION) {
+         ua = &req->dev->unit_attention;
+-    } else {
++    } else if (req->bus->unit_attention.key == UNIT_ATTENTION) {
+         ua = &req->bus->unit_attention;
++    } else {
++        return;
+     }
+ 
+     /*
+@@ -856,12 +842,10 @@ static void scsi_clear_unit_attention(SCSIRequest *req)
+      * with an additional sense code of REPORTED LUNS DATA HAS CHANGED.
+      */
+     if (req->cmd.buf[0] == REPORT_LUNS &&
+-        !(ua->asc == SENSE_CODE(REPORTED_LUNS_CHANGED).asc &&
+-          ua->ascq == SENSE_CODE(REPORTED_LUNS_CHANGED).ascq)) {
+-        return;
++        ua->asc == SENSE_CODE(REPORTED_LUNS_CHANGED).asc &&
++        ua->ascq == SENSE_CODE(REPORTED_LUNS_CHANGED).ascq) {
++        *ua = SENSE_CODE(NO_SENSE);
+     }
+-
+-    *ua = SENSE_CODE(NO_SENSE);
+ }
+ 
+ int scsi_req_get_sense(SCSIRequest *req, uint8_t *buf, int len)
+-- 
+2.39.3
+

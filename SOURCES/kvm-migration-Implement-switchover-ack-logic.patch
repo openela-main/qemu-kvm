@@ -1,0 +1,339 @@
+From 387c39f198d94f600be525e363edc7ca916dc261 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 11/37] migration: Implement switchover ack logic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [9/28] 853e1978f3b9f87942863bba894a0ed908bde6b1 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 1b4adb10f898
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Jun 21 14:11:55 2023 +0300
+
+    migration: Implement switchover ack logic
+
+    Implement switchover ack logic. This prevents the source from stopping
+    the VM and completing the migration until an ACK is received from the
+    destination that it's OK to do so.
+
+    To achieve this, a new SaveVMHandlers handler switchover_ack_needed()
+    and a new return path message MIG_RP_MSG_SWITCHOVER_ACK are added.
+
+    The switchover_ack_needed() handler is called during migration setup in
+    the destination to check if switchover ack is used by the migrated
+    device.
+
+    When switchover is approved by all migrated devices in the destination
+    that support this capability, the MIG_RP_MSG_SWITCHOVER_ACK return path
+    message is sent to the source to notify it that it's OK to do
+    switchover.
+
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Tested-by: YangHang Liu <yanghliu@redhat.com>
+    Acked-by: Alex Williamson <alex.williamson@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Conflicts:
+    - migration/migration.c
+      context changes due to commit f4584076fc31 ("migration: switch
+      from .vm_was_running to .vm_old_state")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/migration/register.h |  2 ++
+ migration/migration.c        | 32 +++++++++++++++++++--
+ migration/migration.h        | 14 ++++++++++
+ migration/savevm.c           | 54 ++++++++++++++++++++++++++++++++++++
+ migration/savevm.h           |  1 +
+ migration/trace-events       |  3 ++
+ 6 files changed, 104 insertions(+), 2 deletions(-)
+
+diff --git a/include/migration/register.h b/include/migration/register.h
+index a8dfd8fefd..90914f32f5 100644
+--- a/include/migration/register.h
++++ b/include/migration/register.h
+@@ -71,6 +71,8 @@ typedef struct SaveVMHandlers {
+     int (*load_cleanup)(void *opaque);
+     /* Called when postcopy migration wants to resume from failure */
+     int (*resume_prepare)(MigrationState *s, void *opaque);
++    /* Checks if switchover ack should be used. Called only in dest */
++    bool (*switchover_ack_needed)(void *opaque);
+ } SaveVMHandlers;
+ 
+ int register_savevm_live(const char *idstr,
+diff --git a/migration/migration.c b/migration/migration.c
+index 1ac5f19bc2..9bf1caee6c 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -76,6 +76,7 @@ enum mig_rp_message_type {
+     MIG_RP_MSG_REQ_PAGES,    /* data (start: be64, len: be32) */
+     MIG_RP_MSG_RECV_BITMAP,  /* send recved_bitmap back to source */
+     MIG_RP_MSG_RESUME_ACK,   /* tell source that we are ready to resume */
++    MIG_RP_MSG_SWITCHOVER_ACK, /* Tell source it's OK to do switchover */
+ 
+     MIG_RP_MSG_MAX
+ };
+@@ -756,6 +757,11 @@ bool migration_has_all_channels(void)
+     return true;
+ }
+ 
++int migrate_send_rp_switchover_ack(MigrationIncomingState *mis)
++{
++    return migrate_send_rp_message(mis, MIG_RP_MSG_SWITCHOVER_ACK, 0, NULL);
++}
++
+ /*
+  * Send a 'SHUT' message on the return channel with the given value
+  * to indicate that we've finished with the RP.  Non-0 value indicates
+@@ -1415,6 +1421,7 @@ void migrate_init(MigrationState *s)
+     s->vm_was_running = false;
+     s->iteration_initial_bytes = 0;
+     s->threshold_size = 0;
++    s->switchover_acked = false;
+ }
+ 
+ int migrate_add_blocker_internal(Error *reason, Error **errp)
+@@ -1731,6 +1738,7 @@ static struct rp_cmd_args {
+     [MIG_RP_MSG_REQ_PAGES_ID]   = { .len = -1, .name = "REQ_PAGES_ID" },
+     [MIG_RP_MSG_RECV_BITMAP]    = { .len = -1, .name = "RECV_BITMAP" },
+     [MIG_RP_MSG_RESUME_ACK]     = { .len =  4, .name = "RESUME_ACK" },
++    [MIG_RP_MSG_SWITCHOVER_ACK] = { .len =  0, .name = "SWITCHOVER_ACK" },
+     [MIG_RP_MSG_MAX]            = { .len = -1, .name = "MAX" },
+ };
+ 
+@@ -1969,6 +1977,11 @@ retry:
+             }
+             break;
+ 
++        case MIG_RP_MSG_SWITCHOVER_ACK:
++            ms->switchover_acked = true;
++            trace_source_return_path_thread_switchover_acked();
++            break;
++
+         default:
+             break;
+         }
+@@ -2720,6 +2733,20 @@ static void migration_update_counters(MigrationState *s,
+                               bandwidth, s->threshold_size);
+ }
+ 
++static bool migration_can_switchover(MigrationState *s)
++{
++    if (!migrate_switchover_ack()) {
++        return true;
++    }
++
++    /* No reason to wait for switchover ACK if VM is stopped */
++    if (!runstate_is_running()) {
++        return true;
++    }
++
++    return s->switchover_acked;
++}
++
+ /* Migration thread iteration status */
+ typedef enum {
+     MIG_ITERATE_RESUME,         /* Resume current iteration */
+@@ -2735,6 +2762,7 @@ static MigIterateState migration_iteration_run(MigrationState *s)
+ {
+     uint64_t must_precopy, can_postcopy;
+     bool in_postcopy = s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE;
++    bool can_switchover = migration_can_switchover(s);
+ 
+     qemu_savevm_state_pending_estimate(&must_precopy, &can_postcopy);
+     uint64_t pending_size = must_precopy + can_postcopy;
+@@ -2747,14 +2775,14 @@ static MigIterateState migration_iteration_run(MigrationState *s)
+         trace_migrate_pending_exact(pending_size, must_precopy, can_postcopy);
+     }
+ 
+-    if (!pending_size || pending_size < s->threshold_size) {
++    if ((!pending_size || pending_size < s->threshold_size) && can_switchover) {
+         trace_migration_thread_low_pending(pending_size);
+         migration_completion(s);
+         return MIG_ITERATE_BREAK;
+     }
+ 
+     /* Still a significant amount to transfer */
+-    if (!in_postcopy && must_precopy <= s->threshold_size &&
++    if (!in_postcopy && must_precopy <= s->threshold_size && can_switchover &&
+         qatomic_read(&s->start_postcopy)) {
+         if (postcopy_start(s)) {
+             error_report("%s: postcopy failed to start", __func__);
+diff --git a/migration/migration.h b/migration/migration.h
+index 2b71df8617..e9679f8029 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -204,6 +204,13 @@ struct MigrationIncomingState {
+      * contains valid information.
+      */
+     QemuMutex page_request_mutex;
++
++    /*
++     * Number of devices that have yet to approve switchover. When this reaches
++     * zero an ACK that it's OK to do switchover is sent to the source. No lock
++     * is needed as this field is updated serially.
++     */
++    unsigned int switchover_ack_pending_num;
+ };
+ 
+ MigrationIncomingState *migration_incoming_get_current(void);
+@@ -421,6 +428,12 @@ struct MigrationState {
+ 
+     /* QEMU_VM_VMDESCRIPTION content filled for all non-iterable devices. */
+     JSONWriter *vmdesc;
++
++    /*
++     * Indicates whether an ACK from the destination that it's OK to do
++     * switchover has been received.
++     */
++    bool switchover_acked;
+ };
+ 
+ void migrate_set_state(int *state, int old_state, int new_state);
+@@ -461,6 +474,7 @@ int migrate_send_rp_message_req_pages(MigrationIncomingState *mis,
+ void migrate_send_rp_recv_bitmap(MigrationIncomingState *mis,
+                                  char *block_name);
+ void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value);
++int migrate_send_rp_switchover_ack(MigrationIncomingState *mis);
+ 
+ void dirty_bitmap_mig_before_vm_start(void);
+ void dirty_bitmap_mig_cancel_outgoing(void);
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 211eff3a8b..aff70e6263 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -2358,6 +2358,21 @@ static int loadvm_process_command(QEMUFile *f)
+             error_report("CMD_OPEN_RETURN_PATH failed");
+             return -1;
+         }
++
++        /*
++         * Switchover ack is enabled but no device uses it, so send an ACK to
++         * source that it's OK to switchover. Do it here, after return path has
++         * been created.
++         */
++        if (migrate_switchover_ack() && !mis->switchover_ack_pending_num) {
++            int ret = migrate_send_rp_switchover_ack(mis);
++            if (ret) {
++                error_report(
++                    "Could not send switchover ack RP MSG, err %d (%s)", ret,
++                    strerror(-ret));
++                return ret;
++            }
++        }
+         break;
+ 
+     case MIG_CMD_PING:
+@@ -2584,6 +2599,23 @@ static int qemu_loadvm_state_header(QEMUFile *f)
+     return 0;
+ }
+ 
++static void qemu_loadvm_state_switchover_ack_needed(MigrationIncomingState *mis)
++{
++    SaveStateEntry *se;
++
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
++        if (!se->ops || !se->ops->switchover_ack_needed) {
++            continue;
++        }
++
++        if (se->ops->switchover_ack_needed(se->opaque)) {
++            mis->switchover_ack_pending_num++;
++        }
++    }
++
++    trace_loadvm_state_switchover_ack_needed(mis->switchover_ack_pending_num);
++}
++
+ static int qemu_loadvm_state_setup(QEMUFile *f)
+ {
+     SaveStateEntry *se;
+@@ -2787,6 +2819,10 @@ int qemu_loadvm_state(QEMUFile *f)
+         return -EINVAL;
+     }
+ 
++    if (migrate_switchover_ack()) {
++        qemu_loadvm_state_switchover_ack_needed(mis);
++    }
++
+     cpu_synchronize_all_pre_loadvm();
+ 
+     ret = qemu_loadvm_state_main(f, mis);
+@@ -2860,6 +2896,24 @@ int qemu_load_device_state(QEMUFile *f)
+     return 0;
+ }
+ 
++int qemu_loadvm_approve_switchover(void)
++{
++    MigrationIncomingState *mis = migration_incoming_get_current();
++
++    if (!mis->switchover_ack_pending_num) {
++        return -EINVAL;
++    }
++
++    mis->switchover_ack_pending_num--;
++    trace_loadvm_approve_switchover(mis->switchover_ack_pending_num);
++
++    if (mis->switchover_ack_pending_num) {
++        return 0;
++    }
++
++    return migrate_send_rp_switchover_ack(mis);
++}
++
+ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
+                   bool has_devices, strList *devices, Error **errp)
+ {
+diff --git a/migration/savevm.h b/migration/savevm.h
+index fb636735f0..e894bbc143 100644
+--- a/migration/savevm.h
++++ b/migration/savevm.h
+@@ -65,6 +65,7 @@ int qemu_loadvm_state(QEMUFile *f);
+ void qemu_loadvm_state_cleanup(void);
+ int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis);
+ int qemu_load_device_state(QEMUFile *f);
++int qemu_loadvm_approve_switchover(void);
+ int qemu_savevm_state_complete_precopy_non_iterable(QEMUFile *f,
+         bool in_postcopy, bool inactivate_disks);
+ 
+diff --git a/migration/trace-events b/migration/trace-events
+index 92161eeac5..cda807d271 100644
+--- a/migration/trace-events
++++ b/migration/trace-events
+@@ -7,6 +7,7 @@ qemu_loadvm_state_section_partend(uint32_t section_id) "%u"
+ qemu_loadvm_state_post_main(int ret) "%d"
+ qemu_loadvm_state_section_startfull(uint32_t section_id, const char *idstr, uint32_t instance_id, uint32_t version_id) "%u(%s) %u %u"
+ qemu_savevm_send_packaged(void) ""
++loadvm_state_switchover_ack_needed(unsigned int switchover_ack_pending_num) "Switchover ack pending num=%u"
+ loadvm_state_setup(void) ""
+ loadvm_state_cleanup(void) ""
+ loadvm_handle_cmd_packaged(unsigned int length) "%u"
+@@ -23,6 +24,7 @@ loadvm_postcopy_ram_handle_discard_end(void) ""
+ loadvm_postcopy_ram_handle_discard_header(const char *ramid, uint16_t len) "%s: %ud"
+ loadvm_process_command(const char *s, uint16_t len) "com=%s len=%d"
+ loadvm_process_command_ping(uint32_t val) "0x%x"
++loadvm_approve_switchover(unsigned int switchover_ack_pending_num) "Switchover ack pending num=%u"
+ postcopy_ram_listen_thread_exit(void) ""
+ postcopy_ram_listen_thread_start(void) ""
+ qemu_savevm_send_postcopy_advise(void) ""
+@@ -180,6 +182,7 @@ source_return_path_thread_loop_top(void) ""
+ source_return_path_thread_pong(uint32_t val) "0x%x"
+ source_return_path_thread_shut(uint32_t val) "0x%x"
+ source_return_path_thread_resume_ack(uint32_t v) "%"PRIu32
++source_return_path_thread_switchover_acked(void) ""
+ migration_thread_low_pending(uint64_t pending) "%" PRIu64
+ migrate_transferred(uint64_t tranferred, uint64_t time_spent, uint64_t bandwidth, uint64_t size) "transferred %" PRIu64 " time_spent %" PRIu64 " bandwidth %" PRIu64 " max_size %" PRId64
+ process_incoming_migration_co_end(int ret, int ps) "ret=%d postcopy-state=%d"
+-- 
+2.39.3
+

@@ -1,0 +1,109 @@
+From 7e27e7ea83856e1a7222ff46d91495f48fb6be4d Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 19 Apr 2023 18:19:45 +0200
+Subject: [PATCH 17/56] migration: Rename normal to normal_pages
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [16/50] 7df8b946918def9657bbe357861a6d72b5399ac6 (peterx/qemu-kvm)
+
+Rest of counters that refer to pages has a _pages suffix.
+And historically, this showed the number of full pages transferred.
+The name "normal" refered to the fact that they were sent without any
+optimization (compression, xbzrle, zero_page, ...).
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 8c0cda8fa0de0a50148e2c60552afca9cffca643)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c |  2 +-
+ migration/ram.c       | 10 +++++-----
+ migration/ram.h       |  2 +-
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index c15e2a61ca..f1b3439e5f 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1145,7 +1145,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->duplicate = stat64_get(&ram_counters.zero_pages);
+     /* legacy value.  It is not used anymore */
+     info->ram->skipped = 0;
+-    info->ram->normal = stat64_get(&ram_counters.normal);
++    info->ram->normal = stat64_get(&ram_counters.normal_pages);
+     info->ram->normal_bytes = info->ram->normal * page_size;
+     info->ram->mbps = s->mbps;
+     info->ram->dirty_sync_count =
+diff --git a/migration/ram.c b/migration/ram.c
+index 19d345a030..229714045a 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -1118,7 +1118,7 @@ uint64_t ram_pagesize_summary(void)
+ 
+ uint64_t ram_get_total_transferred_pages(void)
+ {
+-    return stat64_get(&ram_counters.normal) +
++    return stat64_get(&ram_counters.normal_pages) +
+         stat64_get(&ram_counters.zero_pages) +
+         compression_counters.pages + xbzrle_counters.pages;
+ }
+@@ -1357,7 +1357,7 @@ static bool control_save_page(PageSearchStatus *pss, RAMBlock *block,
+     }
+ 
+     if (bytes_xmit > 0) {
+-        stat64_add(&ram_counters.normal, 1);
++        stat64_add(&ram_counters.normal_pages, 1);
+     } else if (bytes_xmit == 0) {
+         stat64_add(&ram_counters.zero_pages, 1);
+     }
+@@ -1391,7 +1391,7 @@ static int save_normal_page(PageSearchStatus *pss, RAMBlock *block,
+         qemu_put_buffer(file, buf, TARGET_PAGE_SIZE);
+     }
+     ram_transferred_add(TARGET_PAGE_SIZE);
+-    stat64_add(&ram_counters.normal, 1);
++    stat64_add(&ram_counters.normal_pages, 1);
+     return 1;
+ }
+ 
+@@ -1447,7 +1447,7 @@ static int ram_save_multifd_page(QEMUFile *file, RAMBlock *block,
+     if (multifd_queue_page(file, block, offset) < 0) {
+         return -1;
+     }
+-    stat64_add(&ram_counters.normal, 1);
++    stat64_add(&ram_counters.normal_pages, 1);
+ 
+     return 1;
+ }
+@@ -2623,7 +2623,7 @@ void acct_update_position(QEMUFile *f, size_t size, bool zero)
+     if (zero) {
+         stat64_add(&ram_counters.zero_pages, pages);
+     } else {
+-        stat64_add(&ram_counters.normal, pages);
++        stat64_add(&ram_counters.normal_pages, pages);
+         ram_transferred_add(size);
+         qemu_file_credit_transfer(f, size);
+     }
+diff --git a/migration/ram.h b/migration/ram.h
+index 55258334fe..a6e0d70226 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -47,7 +47,7 @@ typedef struct {
+     Stat64 downtime_bytes;
+     Stat64 zero_pages;
+     Stat64 multifd_bytes;
+-    Stat64 normal;
++    Stat64 normal_pages;
+     Stat64 postcopy_bytes;
+     Stat64 postcopy_requests;
+     Stat64 precopy_bytes;
+-- 
+2.39.1
+

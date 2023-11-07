@@ -1,0 +1,44 @@
+From 93c9a1ae812720d3a29980a3c5fcfc1e916993de Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E6=9D=8E=E7=9A=86=E4=BF=8A?= <a_lijiejun@163.com>
+Date: Fri, 17 Mar 2023 09:57:13 +0000
+Subject: [PATCH 07/56] migration: remove extra whitespace character for code
+ style
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [6/50] bc1cd812f8dfc18e47e1644b5333c703eae23d2d (peterx/qemu-kvm)
+
+Fix code style.
+
+Signed-off-by: 李皆俊 <a_lijiejun@163.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 8ebb6ecc3798e66a9ba98355983762bedfa1b72d)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/ram.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/migration/ram.c b/migration/ram.c
+index 79d881f735..0e68099bf9 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -3293,7 +3293,7 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
+ 
+     migration_ops = g_malloc0(sizeof(MigrationOps));
+     migration_ops->ram_save_target_page = ram_save_target_page_legacy;
+-    ret =  multifd_send_sync_main(f);
++    ret = multifd_send_sync_main(f);
+     if (ret < 0) {
+         return ret;
+     }
+-- 
+2.39.1
+

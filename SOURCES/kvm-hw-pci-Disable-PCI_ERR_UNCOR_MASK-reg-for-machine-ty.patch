@@ -1,0 +1,44 @@
+From 491cf9e251026d135f315b7fe0d8771841f06e9f Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Tue, 25 Jul 2023 15:34:45 -0300
+Subject: [PATCH 8/9] hw/pci: Disable PCI_ERR_UNCOR_MASK reg for machine type
+ <= pc-q35-rhel9.2.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 192: hw/pci: Disable PCI_ERR_UNCOR_MASK reg for machine type <= pc-q35-rhel9.2.0
+RH-Bugzilla: 2223691
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [1/1] e57816f8ad15a9ce5f342b061c103ae011ec1223 (LeoBras/centos-qemu-kvm)
+
+This is a downstream-only patch to that sets off the property
+x-pcie-err-unc-mask for machine types <= pc-q35-rhel9.2.0, allowing
+live migrations to RHEL9.2 happen successfully.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2223691
+Fixes: 293a34b4be ("hw/pci: Disable PCI_ERR_UNCOR_MASK register for machine
+type < 8.0")
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ hw/core/machine.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 5ea52317b9..6f5117669d 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -62,6 +62,8 @@ GlobalProperty hw_compat_rhel_9_2[] = {
+   { "virtio-mem", "x-early-migration", "false" },
+   /* hw_compat_rhel_9_2 from hw_compat_7_2 */
+   { "migration", "x-preempt-pre-7-2", "true" },
++  /* hw_compat_rhel_9_2 from hw_compat_7_2 */
++  { TYPE_PCI_DEVICE, "x-pcie-err-unc-mask", "off" },
+ };
+ const size_t hw_compat_rhel_9_2_len = G_N_ELEMENTS(hw_compat_rhel_9_2);
+ 
+-- 
+2.39.3
+

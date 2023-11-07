@@ -1,0 +1,53 @@
+From 6de2f37d9a5db6578554929227377e4fd6d2feb3 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 14/21] loongarch: mark loongarch_ipi_iocsr re-entrnacy safe
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 165: memory: prevent dma-reentracy issues
+RH-Jira: RHEL-516
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [10/13] 02435b9148b906960137de32eb5a3c4961e44a57 (jmaloy/jmaloy-qemu-kvm-2)
+
+Jira: https://issues.redhat.com/browse/RHEL-516
+Upstream: Merged
+CVE: CVE-2023-2680
+
+commit 6d0589e0e6c64b888864a2bf980537be20389264
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Sat May 6 07:21:45 2023 -0400
+
+    loongarch: mark loongarch_ipi_iocsr re-entrnacy safe
+
+    loongarch_ipi_iocsr MRs rely on re-entrant IO through the ipi_send
+    function. As such, mark these MRs re-entrancy-safe.
+
+    Fixes: a2e1753b80 ("memory: prevent dma-reentracy issues")
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Song Gao <gaosong@loongson.cn>
+    Message-Id: <20230506112145.3563708-1-alxndr@bu.edu>
+    Signed-off-by: Song Gao <gaosong@loongson.cn>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/intc/loongarch_ipi.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/intc/loongarch_ipi.c b/hw/intc/loongarch_ipi.c
+index aa4bf9eb74..40e98af2ce 100644
+--- a/hw/intc/loongarch_ipi.c
++++ b/hw/intc/loongarch_ipi.c
+@@ -215,6 +215,10 @@ static void loongarch_ipi_init(Object *obj)
+     for (cpu = 0; cpu < MAX_IPI_CORE_NUM; cpu++) {
+         memory_region_init_io(&s->ipi_iocsr_mem[cpu], obj, &loongarch_ipi_ops,
+                             &lams->ipi_core[cpu], "loongarch_ipi_iocsr", 0x48);
++
++        /* loongarch_ipi_iocsr performs re-entrant IO through ipi_send */
++        s->ipi_iocsr_mem[cpu].disable_reentrancy_guard = true;
++
+         sysbus_init_mmio(sbd, &s->ipi_iocsr_mem[cpu]);
+ 
+         memory_region_init_io(&s->ipi64_iocsr_mem[cpu], obj, &loongarch_ipi64_ops,
+-- 
+2.39.3
+

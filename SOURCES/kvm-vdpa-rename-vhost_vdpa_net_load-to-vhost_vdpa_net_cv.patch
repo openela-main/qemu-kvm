@@ -1,0 +1,49 @@
+From db7ca7692e264e8bf1bd9e08e3de7a92fc76a363 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Wed, 9 Aug 2023 18:07:26 +0200
+Subject: [PATCH 5/7] vdpa: rename vhost_vdpa_net_load to
+ vhost_vdpa_net_cvq_load
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [5/7] aea91f3274786665725af892eb905818eb0f44f1 (eperezmartin/qemu-kvm)
+
+Next patches will add the corresponding data load.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+---
+ net/vhost-vdpa.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 29d3fd3ca6..a1b16bbc52 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -673,7 +673,7 @@ static int vhost_vdpa_net_load_mq(VhostVDPAState *s,
+     return *s->status != VIRTIO_NET_OK;
+ }
+ 
+-static int vhost_vdpa_net_load(NetClientState *nc)
++static int vhost_vdpa_net_cvq_load(NetClientState *nc)
+ {
+     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
+     struct vhost_vdpa *v = &s->vhost_vdpa;
+@@ -704,7 +704,7 @@ static NetClientInfo net_vhost_vdpa_cvq_info = {
+     .size = sizeof(VhostVDPAState),
+     .receive = vhost_vdpa_receive,
+     .start = vhost_vdpa_net_cvq_start,
+-    .load = vhost_vdpa_net_load,
++    .load = vhost_vdpa_net_cvq_load,
+     .stop = vhost_vdpa_net_cvq_stop,
+     .cleanup = vhost_vdpa_cleanup,
+     .has_vnet_hdr = vhost_vdpa_has_vnet_hdr,
+-- 
+2.39.3
+

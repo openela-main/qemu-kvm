@@ -1,0 +1,94 @@
+From a90cae0dae6382cc1af63dfed8a51a3a27dc4bae Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 11 Sep 2023 16:10:19 +0200
+Subject: [PATCH 2/4] migration: Move more initializations to migrate_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 318: VFIO migration: fix a QEMU crash when postcopy is enabled
+RH-Bugzilla: 2229868
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [2/4] 3706a3308c33046e2658ee511b364087e202708e
+
+Bugzilla: https://bugzilla.redhat.com/2229868
+
+commit f543aa222da183ac37424d1ea3a65e5fb6202732
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Sep 6 18:08:50 2023 +0300
+
+    migration: Move more initializations to migrate_init()
+
+    Initialization of mig_stats, compression_counters and VFIO bytes
+    transferred is hard-coded in migration code path and snapshot code path.
+
+    Make the code cleaner by initializing them in migrate_init().
+
+    Suggested-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Conflicts:
+    - migration/migration.c, migration/savevm.c
+      context changes in migrate_prepare() and qemu_savevm_state() due
+      to missing commit aff3f6606d14 ("migration: Rename ram_counters
+      to mig_stats")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ migration/migration.c | 14 +++++++-------
+ migration/savevm.c    |  3 ---
+ 2 files changed, 7 insertions(+), 10 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 5aa9e5dada..a85c8936d9 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1422,6 +1422,13 @@ void migrate_init(MigrationState *s)
+     s->iteration_initial_bytes = 0;
+     s->threshold_size = 0;
+     s->switchover_acked = false;
++    /*
++     * set mig_stats compression_counters memory to zero for a
++     * new migration
++     */
++    memset(&ram_counters, 0, sizeof(ram_counters));
++    memset(&compression_counters, 0, sizeof(compression_counters));
++    migration_reset_vfio_bytes_transferred();
+ }
+ 
+ int migrate_add_blocker_internal(Error *reason, Error **errp)
+@@ -1632,13 +1639,6 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+     }
+ 
+     migrate_init(s);
+-    /*
+-     * set ram_counters compression_counters memory to zero for a
+-     * new migration
+-     */
+-    memset(&ram_counters, 0, sizeof(ram_counters));
+-    memset(&compression_counters, 0, sizeof(compression_counters));
+-    migration_reset_vfio_bytes_transferred();
+ 
+     return true;
+ }
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 05db79bfad..13c1a9afa1 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1618,9 +1618,6 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
+     }
+ 
+     migrate_init(ms);
+-    memset(&ram_counters, 0, sizeof(ram_counters));
+-    memset(&compression_counters, 0, sizeof(compression_counters));
+-    migration_reset_vfio_bytes_transferred();
+     ms->to_dst_file = f;
+ 
+     qemu_mutex_unlock_iothread();
+-- 
+2.39.3
+

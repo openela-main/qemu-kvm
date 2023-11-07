@@ -1,0 +1,121 @@
+From 96e6914cbfb18bb8287c57b9ac9a6b364d3e7a22 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 22 Feb 2023 17:18:05 +0100
+Subject: [PATCH 20/56] migration: move migration_global_dump() to
+ migration-hmp-cmds.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [19/50] c8d330a2833c706b9bd78f7154be882e3977ad06 (peterx/qemu-kvm)
+
+It is only used there, so we can make it static.
+Once there, remove spice.h that it is not used.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+
+---
+
+fix David Edmonson ui/qemu-spice.h unintended removal
+
+(cherry picked from commit c938157713e723165a42cb6e8364adb6fcbd0e22)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ include/migration/misc.h       |  1 -
+ migration/migration-hmp-cmds.c | 22 +++++++++++++++++++++-
+ migration/migration.c          | 19 -------------------
+ 3 files changed, 21 insertions(+), 21 deletions(-)
+
+diff --git a/include/migration/misc.h b/include/migration/misc.h
+index 8b49841016..5ebe13b4b9 100644
+--- a/include/migration/misc.h
++++ b/include/migration/misc.h
+@@ -66,7 +66,6 @@ bool migration_has_finished(MigrationState *);
+ bool migration_has_failed(MigrationState *);
+ /* ...and after the device transmission */
+ bool migration_in_postcopy_after_devices(MigrationState *);
+-void migration_global_dump(Monitor *mon);
+ /* True if incoming migration entered POSTCOPY_INCOMING_DISCARD */
+ bool migration_in_incoming_postcopy(void);
+ /* True if incoming migration entered POSTCOPY_INCOMING_ADVISE */
+diff --git a/migration/migration-hmp-cmds.c b/migration/migration-hmp-cmds.c
+index 72519ea99f..71da91967a 100644
+--- a/migration/migration-hmp-cmds.c
++++ b/migration/migration-hmp-cmds.c
+@@ -15,7 +15,6 @@
+ 
+ #include "qemu/osdep.h"
+ #include "block/qapi.h"
+-#include "migration/misc.h"
+ #include "migration/snapshot.h"
+ #include "monitor/hmp.h"
+ #include "monitor/monitor.h"
+@@ -30,6 +29,27 @@
+ #include "qemu/sockets.h"
+ #include "sysemu/runstate.h"
+ #include "ui/qemu-spice.h"
++#include "sysemu/sysemu.h"
++#include "migration.h"
++
++static void migration_global_dump(Monitor *mon)
++{
++    MigrationState *ms = migrate_get_current();
++
++    monitor_printf(mon, "globals:\n");
++    monitor_printf(mon, "store-global-state: %s\n",
++                   ms->store_global_state ? "on" : "off");
++    monitor_printf(mon, "only-migratable: %s\n",
++                   only_migratable ? "on" : "off");
++    monitor_printf(mon, "send-configuration: %s\n",
++                   ms->send_configuration ? "on" : "off");
++    monitor_printf(mon, "send-section-footer: %s\n",
++                   ms->send_section_footer ? "on" : "off");
++    monitor_printf(mon, "decompress-error-check: %s\n",
++                   ms->decompress_error_check ? "on" : "off");
++    monitor_printf(mon, "clear-bitmap-shift: %u\n",
++                   ms->clear_bitmap_shift);
++}
+ 
+ void hmp_info_migrate(Monitor *mon, const QDict *qdict)
+ {
+diff --git a/migration/migration.c b/migration/migration.c
+index e8f596bcfa..aa96ffdc5b 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -4420,25 +4420,6 @@ void migrate_fd_connect(MigrationState *s, Error *error_in)
+     s->migration_thread_running = true;
+ }
+ 
+-void migration_global_dump(Monitor *mon)
+-{
+-    MigrationState *ms = migrate_get_current();
+-
+-    monitor_printf(mon, "globals:\n");
+-    monitor_printf(mon, "store-global-state: %s\n",
+-                   ms->store_global_state ? "on" : "off");
+-    monitor_printf(mon, "only-migratable: %s\n",
+-                   only_migratable ? "on" : "off");
+-    monitor_printf(mon, "send-configuration: %s\n",
+-                   ms->send_configuration ? "on" : "off");
+-    monitor_printf(mon, "send-section-footer: %s\n",
+-                   ms->send_section_footer ? "on" : "off");
+-    monitor_printf(mon, "decompress-error-check: %s\n",
+-                   ms->decompress_error_check ? "on" : "off");
+-    monitor_printf(mon, "clear-bitmap-shift: %u\n",
+-                   ms->clear_bitmap_shift);
+-}
+-
+ #define DEFINE_PROP_MIG_CAP(name, x)             \
+     DEFINE_PROP_BOOL(name, MigrationState, capabilities[x], false)
+ 
+-- 
+2.39.1
+

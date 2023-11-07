@@ -1,0 +1,40 @@
+From b4645e7682aa1bde6f89df0eff2a9de83720eecc Mon Sep 17 00:00:00 2001
+From: Ani Sinha <anisinha@redhat.com>
+Date: Tue, 2 May 2023 15:51:53 +0530
+Subject: [PATCH 3/3] hw/acpi: Mark acpi blobs as resizable on RHEL pc machines
+ version 7.6 and above
+
+RH-Author: Ani Sinha <None>
+RH-MergeRequest: 160: hw/acpi: limit warning on acpi table size to pc machines older than version 2.3
+RH-Bugzilla: 1934134
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [2/2] 95d443af6e75c569d89d04d028012c3c56c0c3a4 (anisinha/centos-qemu-kvm)
+
+Please look at QEMU upstream commit
+1af507756bae7 ("hw/acpi: limit warning on acpi table size to pc machines older than version 2.3")
+This patch adapts the above change so that it applies to RHEL pc machines of
+version 7.6 and newer. These are the machine types that are currently supported
+in RHEL. Q35 machines are not affected.
+
+Signed-off-by: Ani Sinha <anisinha@redhat.com>
+---
+ hw/i386/pc_piix.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 4d5880e249..6c7be628e1 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -914,6 +914,7 @@ static void pc_machine_rhel7_options(MachineClass *m)
+     m->default_machine_opts = "firmware=bios-256k.bin,hpet=off";
+     pcmc->default_nic_model = "e1000";
+     pcmc->pci_root_uid = 0;
++    pcmc->resizable_acpi_blob = true;
+     m->default_display = "std";
+     m->no_parallel = 1;
+     m->numa_mem_supported = true;
+-- 
+2.39.1
+

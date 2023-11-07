@@ -1,0 +1,68 @@
+From 4c6af064277b5445b31db4a598e1c4402ba56452 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 11 Apr 2023 17:38:11 +0200
+Subject: [PATCH 13/56] migration: Make downtime_bytes atomic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [12/50] ebfc16aae8bc4a8c1fec431780a062950e6f50c4 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 296a4ac2aa63038b6b702f2ee8f0f93ae26727ae)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 2 +-
+ migration/ram.c       | 2 +-
+ migration/ram.h       | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 3a68d93d69..8f2847d298 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1156,7 +1156,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->multifd_bytes = stat64_get(&ram_counters.multifd_bytes);
+     info->ram->pages_per_second = s->pages_per_second;
+     info->ram->precopy_bytes = stat64_get(&ram_counters.precopy_bytes);
+-    info->ram->downtime_bytes = ram_counters.downtime_bytes;
++    info->ram->downtime_bytes = stat64_get(&ram_counters.downtime_bytes);
+     info->ram->postcopy_bytes = stat64_get(&ram_counters.postcopy_bytes);
+ 
+     if (migrate_use_xbzrle()) {
+diff --git a/migration/ram.c b/migration/ram.c
+index 0b4693215e..b1722b6071 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -467,7 +467,7 @@ void ram_transferred_add(uint64_t bytes)
+     } else if (migration_in_postcopy()) {
+         stat64_add(&ram_counters.postcopy_bytes, bytes);
+     } else {
+-        ram_counters.downtime_bytes += bytes;
++        stat64_add(&ram_counters.downtime_bytes, bytes);
+     }
+     stat64_add(&ram_counters.transferred, bytes);
+ }
+diff --git a/migration/ram.h b/migration/ram.h
+index a766b895fa..bb52632424 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -44,7 +44,7 @@ typedef struct {
+     int64_t dirty_pages_rate;
+     int64_t dirty_sync_count;
+     Stat64 dirty_sync_missed_zero_copy;
+-    uint64_t downtime_bytes;
++    Stat64 downtime_bytes;
+     Stat64 duplicate;
+     Stat64 multifd_bytes;
+     Stat64 normal;
+-- 
+2.39.1
+

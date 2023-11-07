@@ -1,0 +1,138 @@
+From 145b630767dbc7020ddf39b20075f4691f71321a Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:25:47 +0100
+Subject: [PATCH 31/56] migration: Move migrate_use_return() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [30/50] 5cc150188bcc61b69ea0844253597594ab18fc13 (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to migrate_return_path()
+to be consistent with all other capabilities.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 38ad1110e368bf91453c0abbd657224d57b65d47)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 11 +----------
+ migration/migration.h |  1 -
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ migration/rdma.c      |  6 +++---
+ 5 files changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 96f82bd165..f7facecd66 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2622,15 +2622,6 @@ static int64_t migrate_max_postcopy_bandwidth(void)
+     return s->parameters.max_postcopy_bandwidth;
+ }
+ 
+-bool migrate_use_return_path(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->capabilities[MIGRATION_CAPABILITY_RETURN_PATH];
+-}
+-
+ bool migrate_use_block_incremental(void)
+ {
+     MigrationState *s;
+@@ -4175,7 +4166,7 @@ void migrate_fd_connect(MigrationState *s, Error *error_in)
+      * precopy, only if user specified "return-path" capability would
+      * QEMU uses the return path.
+      */
+-    if (migrate_postcopy_ram() || migrate_use_return_path()) {
++    if (migrate_postcopy_ram() || migrate_return_path()) {
+         if (open_return_path_on_source(s, !resume)) {
+             error_report("Unable to open return-path for postcopy");
+             migrate_set_state(&s->state, s->state, MIGRATION_STATUS_FAILED);
+diff --git a/migration/migration.h b/migration/migration.h
+index d4b68b08a5..24184622a8 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -459,7 +459,6 @@ uint64_t migrate_xbzrle_cache_size(void);
+ 
+ bool migrate_use_block_incremental(void);
+ int migrate_max_cpu_throttle(void);
+-bool migrate_use_return_path(void);
+ 
+ uint64_t ram_get_total_transferred_pages(void);
+ 
+diff --git a/migration/options.c b/migration/options.c
+index fe1eadeed6..2003e413da 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -147,6 +147,15 @@ bool migrate_release_ram(void)
+     return s->capabilities[MIGRATION_CAPABILITY_RELEASE_RAM];
+ }
+ 
++bool migrate_return_path(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_RETURN_PATH];
++}
++
+ bool migrate_validate_uuid(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index e985a5233e..316efd1063 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -31,6 +31,7 @@ bool migrate_postcopy_blocktime(void);
+ bool migrate_postcopy_preempt(void);
+ bool migrate_postcopy_ram(void);
+ bool migrate_release_ram(void);
++bool migrate_return_path(void);
+ bool migrate_validate_uuid(void);
+ bool migrate_xbzrle(void);
+ bool migrate_zero_blocks(void);
+diff --git a/migration/rdma.c b/migration/rdma.c
+index f35f021963..bf55e2f163 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -3373,7 +3373,7 @@ static int qemu_rdma_accept(RDMAContext *rdma)
+      * initialize the RDMAContext for return path for postcopy after first
+      * connection request reached.
+      */
+-    if ((migrate_postcopy() || migrate_use_return_path())
++    if ((migrate_postcopy() || migrate_return_path())
+         && !rdma->is_return_path) {
+         rdma_return_path = qemu_rdma_data_init(rdma->host_port, NULL);
+         if (rdma_return_path == NULL) {
+@@ -3456,7 +3456,7 @@ static int qemu_rdma_accept(RDMAContext *rdma)
+     }
+ 
+     /* Accept the second connection request for return path */
+-    if ((migrate_postcopy() || migrate_use_return_path())
++    if ((migrate_postcopy() || migrate_return_path())
+         && !rdma->is_return_path) {
+         qemu_set_fd_handler(rdma->channel->fd, rdma_accept_incoming_migration,
+                             NULL,
+@@ -4193,7 +4193,7 @@ void rdma_start_outgoing_migration(void *opaque,
+     }
+ 
+     /* RDMA postcopy need a separate queue pair for return path */
+-    if (migrate_postcopy() || migrate_use_return_path()) {
++    if (migrate_postcopy() || migrate_return_path()) {
+         rdma_return_path = qemu_rdma_data_init(host_port, errp);
+ 
+         if (rdma_return_path == NULL) {
+-- 
+2.39.1
+

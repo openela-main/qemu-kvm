@@ -1,0 +1,78 @@
+From d6b3f9e4b388b8d621761104ddf075d6087f6d6c Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Fri, 9 Jun 2023 09:27:47 +0200
+Subject: [PATCH 09/12] net: socket: move fd type checking to its own function
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 187: net: socket: do not close file descriptor if it's not a socket
+RH-Jira: RHEL-582
+RH-Acked-by: Stefano Brivio <None>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: David Gibson (Red Hat) <dgibson@redhat.com>
+RH-Commit: [2/3] 9726f0ae81ac209b5db33dc7767f652867d8ca0a (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-582
+
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit 23455ae341656ca867ee4a171826b9d280d6acb5)
+---
+ net/socket.c | 28 ++++++++++++++++++++--------
+ 1 file changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/net/socket.c b/net/socket.c
+index 24dcaa55bc..6b1f0fec3a 100644
+--- a/net/socket.c
++++ b/net/socket.c
+@@ -446,16 +446,32 @@ static NetSocketState *net_socket_fd_init_stream(NetClientState *peer,
+     return s;
+ }
+ 
++static int net_socket_fd_check(int fd, Error **errp)
++{
++    int so_type, optlen = sizeof(so_type);
++
++    if (getsockopt(fd, SOL_SOCKET, SO_TYPE, (char *)&so_type,
++        (socklen_t *)&optlen) < 0) {
++        error_setg(errp, "can't get socket option SO_TYPE");
++        return -1;
++    }
++    if (so_type != SOCK_DGRAM && so_type != SOCK_STREAM) {
++        error_setg(errp, "socket type=%d for fd=%d must be either"
++                   " SOCK_DGRAM or SOCK_STREAM", so_type, fd);
++        return -1;
++    }
++    return so_type;
++}
++
+ static NetSocketState *net_socket_fd_init(NetClientState *peer,
+                                           const char *model, const char *name,
+                                           int fd, int is_connected,
+                                           const char *mc, Error **errp)
+ {
+-    int so_type = -1, optlen=sizeof(so_type);
++    int so_type;
+ 
+-    if(getsockopt(fd, SOL_SOCKET, SO_TYPE, (char *)&so_type,
+-        (socklen_t *)&optlen)< 0) {
+-        error_setg(errp, "can't get socket option SO_TYPE");
++    so_type = net_socket_fd_check(fd, errp);
++    if (so_type < 0) {
+         close(fd);
+         return NULL;
+     }
+@@ -465,10 +481,6 @@ static NetSocketState *net_socket_fd_init(NetClientState *peer,
+                                         mc, errp);
+     case SOCK_STREAM:
+         return net_socket_fd_init_stream(peer, model, name, fd, is_connected);
+-    default:
+-        error_setg(errp, "socket type=%d for fd=%d must be either"
+-                   " SOCK_DGRAM or SOCK_STREAM", so_type, fd);
+-        close(fd);
+     }
+     return NULL;
+ }
+-- 
+2.39.3
+

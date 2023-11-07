@@ -1,0 +1,42 @@
+From ab9b8620c62540f3267d005c198920671ef9abc3 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 3 Mar 2023 11:15:28 +0100
+Subject: [PATCH 06/56] postcopy-ram: do not use qatomic_mb_read
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [5/50] 534c0e13362dfc994fa90c79bfb5ed6ee8c27dfc (peterx/qemu-kvm)
+
+It does not even pair with a qatomic_mb_set(), so it is clearer to use
+load-acquire in this case; they are synonyms.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 4592eaf38755a28300d113cd128f65b5b38495f2)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/postcopy-ram.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/migration/postcopy-ram.c b/migration/postcopy-ram.c
+index bbb8af61ae..d7b48dd920 100644
+--- a/migration/postcopy-ram.c
++++ b/migration/postcopy-ram.c
+@@ -1526,7 +1526,7 @@ static PostcopyState incoming_postcopy_state;
+ 
+ PostcopyState  postcopy_state_get(void)
+ {
+-    return qatomic_mb_read(&incoming_postcopy_state);
++    return qatomic_load_acquire(&incoming_postcopy_state);
+ }
+ 
+ /* Set the state and return the old state */
+-- 
+2.39.1
+

@@ -1,0 +1,88 @@
+From 59cd85621b1b14ada843ea0562cc76b6a7c93df4 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Jul 2023 20:21:36 +0200
+Subject: [PATCH 08/14] virtio-iommu: Standardize granule extraction and
+ formatting
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 197: virtio-iommu/smmu: backport some late fixes
+RH-Bugzilla: 2229133
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [2/3] 48784ef2a19174518f66479dcb532230bffe8bf1 (eauger1/centos-qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2229133
+
+At several locations we compute the granule from the config
+page_size_mask using ctz() and then format it in traces using
+BIT(). As the page_size_mask is 64b we should use ctz64 and
+BIT_ULL() for formatting. We failed to be consistent.
+
+Note the page_size_mask is garanteed to be non null. The spec
+mandates the device to set at least one bit, so ctz64 cannot
+return 64. This is garanteed by the fact the device
+initializes the page_size_mask to qemu_target_page_mask()
+and then the page_size_mask is further constrained by
+virtio_iommu_set_page_size_mask() callback which can't
+result in a new mask being null. So if Coverity complains
+round those ctz64/BIT_ULL with CID 1517772 this is a false
+positive
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Fixes: 94df5b2180 ("virtio-iommu: Fix 64kB host page size VFIO device assignment")
+Message-Id: <20230718182136.40096-1-eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jean-Philippe Brucker <jean-philippe@linaro.org>
+(cherry picked from commit 1084feddc6a677cdfdde56936bfb97cf32cc4dee)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/virtio/virtio-iommu.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/hw/virtio/virtio-iommu.c b/hw/virtio/virtio-iommu.c
+index 17ce630200..17b3dcd158 100644
+--- a/hw/virtio/virtio-iommu.c
++++ b/hw/virtio/virtio-iommu.c
+@@ -854,17 +854,19 @@ static IOMMUTLBEntry virtio_iommu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
+     VirtIOIOMMUEndpoint *ep;
+     uint32_t sid, flags;
+     bool bypass_allowed;
++    int granule;
+     bool found;
+     int i;
+ 
+     interval.low = addr;
+     interval.high = addr + 1;
++    granule = ctz64(s->config.page_size_mask);
+ 
+     IOMMUTLBEntry entry = {
+         .target_as = &address_space_memory,
+         .iova = addr,
+         .translated_addr = addr,
+-        .addr_mask = (1 << ctz32(s->config.page_size_mask)) - 1,
++        .addr_mask = BIT_ULL(granule) - 1,
+         .perm = IOMMU_NONE,
+     };
+ 
+@@ -1117,7 +1119,7 @@ static int virtio_iommu_set_page_size_mask(IOMMUMemoryRegion *mr,
+     if (s->granule_frozen) {
+         int cur_granule = ctz64(cur_mask);
+ 
+-        if (!(BIT(cur_granule) & new_mask)) {
++        if (!(BIT_ULL(cur_granule) & new_mask)) {
+             error_setg(errp, "virtio-iommu %s does not support frozen granule 0x%llx",
+                        mr->parent_obj.name, BIT_ULL(cur_granule));
+             return -1;
+@@ -1163,7 +1165,7 @@ static void virtio_iommu_freeze_granule(Notifier *notifier, void *data)
+     }
+     s->granule_frozen = true;
+     granule = ctz64(s->config.page_size_mask);
+-    trace_virtio_iommu_freeze_granule(BIT(granule));
++    trace_virtio_iommu_freeze_granule(BIT_ULL(granule));
+ }
+ 
+ static void virtio_iommu_device_realize(DeviceState *dev, Error **errp)
+-- 
+2.39.3
+

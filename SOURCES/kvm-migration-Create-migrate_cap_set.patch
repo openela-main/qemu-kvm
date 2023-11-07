@@ -1,0 +1,93 @@
+From d772464e9a51a085e10864b2dc7ffd49991fc23b Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 21:02:42 +0100
+Subject: [PATCH 22/56] migration: Create migrate_cap_set()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [21/50] 5b12f04013cf2d374a869134bb67c938c789e24d (peterx/qemu-kvm)
+
+And remove the convoluted use of qmp_migrate_set_capabilities() to
+enable disable MIGRATION_CAPABILITY_BLOCK.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit 9eb1109cfba5415dd0b0cb82e80fc5e42fe861b7)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 34 ++++++++++++++++------------------
+ 1 file changed, 16 insertions(+), 18 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index b745d829a4..18058fb597 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1912,25 +1912,24 @@ void migrate_set_state(int *state, int old_state, int new_state)
+     }
+ }
+ 
+-static MigrationCapabilityStatus *migrate_cap_add(MigrationCapability index,
+-                                                  bool state)
++static bool migrate_cap_set(int cap, bool value, Error **errp)
+ {
+-    MigrationCapabilityStatus *cap;
+-
+-    cap = g_new0(MigrationCapabilityStatus, 1);
+-    cap->capability = index;
+-    cap->state = state;
++    MigrationState *s = migrate_get_current();
++    bool new_caps[MIGRATION_CAPABILITY__MAX];
+ 
+-    return cap;
+-}
++    if (migration_is_running(s->state)) {
++        error_setg(errp, QERR_MIGRATION_ACTIVE);
++        return false;
++    }
+ 
+-void migrate_set_block_enabled(bool value, Error **errp)
+-{
+-    MigrationCapabilityStatusList *cap = NULL;
++    memcpy(new_caps, s->capabilities, sizeof(new_caps));
++    new_caps[cap] = value;
+ 
+-    QAPI_LIST_PREPEND(cap, migrate_cap_add(MIGRATION_CAPABILITY_BLOCK, value));
+-    qmp_migrate_set_capabilities(cap, errp);
+-    qapi_free_MigrationCapabilityStatusList(cap);
++    if (!migrate_caps_check(s->capabilities, new_caps, errp)) {
++        return false;
++    }
++    s->capabilities[cap] = value;
++    return true;
+ }
+ 
+ static void migrate_set_block_incremental(MigrationState *s, bool value)
+@@ -1942,7 +1941,7 @@ static void block_cleanup_parameters(MigrationState *s)
+ {
+     if (s->must_remove_block_options) {
+         /* setting to false can never fail */
+-        migrate_set_block_enabled(false, &error_abort);
++        migrate_cap_set(MIGRATION_CAPABILITY_BLOCK, false, &error_abort);
+         migrate_set_block_incremental(s, false);
+         s->must_remove_block_options = false;
+     }
+@@ -2429,8 +2428,7 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+                        "current migration capabilities");
+             return false;
+         }
+-        migrate_set_block_enabled(true, &local_err);
+-        if (local_err) {
++        if (!migrate_cap_set(MIGRATION_CAPABILITY_BLOCK, true, &local_err)) {
+             error_propagate(errp, local_err);
+             return false;
+         }
+-- 
+2.39.1
+

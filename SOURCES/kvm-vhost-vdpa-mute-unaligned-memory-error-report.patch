@@ -1,0 +1,86 @@
+From 3b51a7b84ea21360c6d551284aecb8b6f371e888 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Tue, 4 Jul 2023 09:19:31 +0200
+Subject: [PATCH 9/9] vhost-vdpa: mute unaligned memory error report
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 193: vhost-vdpa: mute unaligned memory error report
+RH-Bugzilla: 2141965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Commit: [1/1] 60f5385d41269ce9310e1e8e0a2f1106e3a16ada (lvivier/qemu-kvm-centos)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2141965
+
+With TPM CRM device, vhost-vdpa reports an error when it tries
+to register a listener for a non aligned memory region:
+
+  qemu-system-x86_64: vhost_vdpa_listener_region_add received unaligned region
+  qemu-system-x86_64: vhost_vdpa_listener_region_del received unaligned region
+
+This error can be confusing for the user whereas we only need to skip
+the region (as it's already done after the error_report())
+
+Rather than introducing a special case for TPM CRB memory section
+to not display the message in this case, simply replace the
+error_report() by a trace function (with more information, like the
+memory region name).
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Message-Id: <20230704071931.575888-2-lvivier@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 77812aa7b1fdf8f547c35a7f9a4eb1cbf3a073db)
+---
+ hw/virtio/trace-events | 2 ++
+ hw/virtio/vhost-vdpa.c | 8 ++++++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
+index 68b752e304..300dec8d3e 100644
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -34,7 +34,9 @@ vhost_vdpa_dma_map(void *vdpa, int fd, uint32_t msg_type, uint32_t asid, uint64_
+ vhost_vdpa_dma_unmap(void *vdpa, int fd, uint32_t msg_type, uint32_t asid, uint64_t iova, uint64_t size, uint8_t type) "vdpa:%p fd: %d msg_type: %"PRIu32" asid: %"PRIu32" iova: 0x%"PRIx64" size: 0x%"PRIx64" type: %"PRIu8
+ vhost_vdpa_listener_begin_batch(void *v, int fd, uint32_t msg_type, uint8_t type)  "vdpa:%p fd: %d msg_type: %"PRIu32" type: %"PRIu8
+ vhost_vdpa_listener_commit(void *v, int fd, uint32_t msg_type, uint8_t type)  "vdpa:%p fd: %d msg_type: %"PRIu32" type: %"PRIu8
++vhost_vdpa_listener_region_add_unaligned(void *v, const char *name, uint64_t offset_as, uint64_t offset_page) "vdpa: %p region %s offset_within_address_space %"PRIu64" offset_within_region %"PRIu64
+ vhost_vdpa_listener_region_add(void *vdpa, uint64_t iova, uint64_t llend, void *vaddr, bool readonly) "vdpa: %p iova 0x%"PRIx64" llend 0x%"PRIx64" vaddr: %p read-only: %d"
++vhost_vdpa_listener_region_del_unaligned(void *v, const char *name, uint64_t offset_as, uint64_t offset_page) "vdpa: %p region %s offset_within_address_space %"PRIu64" offset_within_region %"PRIu64
+ vhost_vdpa_listener_region_del(void *vdpa, uint64_t iova, uint64_t llend) "vdpa: %p iova 0x%"PRIx64" llend 0x%"PRIx64
+ vhost_vdpa_add_status(void *dev, uint8_t status) "dev: %p status: 0x%"PRIx8
+ vhost_vdpa_init(void *dev, void *vdpa) "dev: %p vdpa: %p"
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index bc6bad23d5..c04f14420d 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -202,7 +202,9 @@ static void vhost_vdpa_listener_region_add(MemoryListener *listener,
+ 
+     if (unlikely((section->offset_within_address_space & ~TARGET_PAGE_MASK) !=
+                  (section->offset_within_region & ~TARGET_PAGE_MASK))) {
+-        error_report("%s received unaligned region", __func__);
++        trace_vhost_vdpa_listener_region_add_unaligned(v, section->mr->name,
++                       section->offset_within_address_space & ~TARGET_PAGE_MASK,
++                       section->offset_within_region & ~TARGET_PAGE_MASK);
+         return;
+     }
+ 
+@@ -281,7 +283,9 @@ static void vhost_vdpa_listener_region_del(MemoryListener *listener,
+ 
+     if (unlikely((section->offset_within_address_space & ~TARGET_PAGE_MASK) !=
+                  (section->offset_within_region & ~TARGET_PAGE_MASK))) {
+-        error_report("%s received unaligned region", __func__);
++        trace_vhost_vdpa_listener_region_del_unaligned(v, section->mr->name,
++                       section->offset_within_address_space & ~TARGET_PAGE_MASK,
++                       section->offset_within_region & ~TARGET_PAGE_MASK);
+         return;
+     }
+ 
+-- 
+2.39.3
+

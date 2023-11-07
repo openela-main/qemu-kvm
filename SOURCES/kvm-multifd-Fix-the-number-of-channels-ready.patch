@@ -1,0 +1,58 @@
+From af6f2a543c7db6d67d33fd12615a50e57fc3fe66 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 26 Apr 2023 12:20:36 +0200
+Subject: [PATCH 19/21] multifd: Fix the number of channels ready
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 171: multifd: Fix the number of channels ready
+RH-Bugzilla: 2196289
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] a5e271ba249d85b27a68d3cff10480ca3a112c5d (LeoBras/centos-qemu-kvm)
+
+We don't wait in the sem when we are doing a sync_main.  Make it wait
+there.  To make things clearer, we mark the channel ready at the
+begining of the thread loop.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit d2026ee117147893f8d80f060cede6d872ecbd7f)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/migration/multifd.c b/migration/multifd.c
+index cce3ad6988..6a59c03dd2 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -635,6 +635,7 @@ int multifd_send_sync_main(QEMUFile *f)
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+         MultiFDSendParams *p = &multifd_send_state->params[i];
+ 
++        qemu_sem_wait(&multifd_send_state->channels_ready);
+         trace_multifd_send_sync_main_wait(p->id);
+         qemu_sem_wait(&p->sem_sync);
+ 
+@@ -668,6 +669,7 @@ static void *multifd_send_thread(void *opaque)
+     p->num_packets = 1;
+ 
+     while (true) {
++        qemu_sem_post(&multifd_send_state->channels_ready);
+         qemu_sem_wait(&p->sem);
+ 
+         if (qatomic_read(&multifd_send_state->exiting)) {
+@@ -736,7 +738,6 @@ static void *multifd_send_thread(void *opaque)
+             if (flags & MULTIFD_FLAG_SYNC) {
+                 qemu_sem_post(&p->sem_sync);
+             }
+-            qemu_sem_post(&multifd_send_state->channels_ready);
+         } else if (p->quit) {
+             qemu_mutex_unlock(&p->mutex);
+             break;
+-- 
+2.39.3
+

@@ -1,0 +1,67 @@
+From 0b1ab3aacc02e70bfe8440236eb9def426bbe10e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 22/37] vfio/pci: Fix a segfault in vfio_realize
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [20/28] 48b9c1efe295c2672693d9c99f6d11738d2b98d1 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 357bd7932a13
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Thu Jun 29 16:40:38 2023 +0800
+
+    vfio/pci: Fix a segfault in vfio_realize
+
+    The kvm irqchip notifier is only registered if the device supports
+    INTx, however it's unconditionally removed in vfio realize error
+    path. If the assigned device does not support INTx, this will cause
+    QEMU to crash when vfio realize fails. Change it to conditionally
+    remove the notifier only if the notify hook is setup.
+
+    Before fix:
+    (qemu) device_add vfio-pci,host=81:11.1,id=vfio1,bus=root1,xres=1
+    Connection closed by foreign host.
+
+    After fix:
+    (qemu) device_add vfio-pci,host=81:11.1,id=vfio1,bus=root1,xres=1
+    Error: vfio 0000:81:11.1: xres and yres properties require display=on
+    (qemu)
+
+    Fixes: c5478fea27ac ("vfio/pci: Respond to KVM irqchip change notifier")
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 6634945a70..d08e6c1a20 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3245,7 +3245,9 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+ 
+ out_deregister:
+     pci_device_set_intx_routing_notifier(&vdev->pdev, NULL);
+-    kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
++    if (vdev->irqchip_change_notifier.notify) {
++        kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
++    }
+ out_teardown:
+     vfio_teardown_msi(vdev);
+     vfio_bars_exit(vdev);
+-- 
+2.39.3
+

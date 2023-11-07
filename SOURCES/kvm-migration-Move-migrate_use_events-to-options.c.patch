@@ -1,0 +1,120 @@
+From 940f1eb4347c72edb3e1abc02c8d7e7c95753dcf Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:08:09 +0100
+Subject: [PATCH 26/56] migration: Move migrate_use_events() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [25/50] b3acd949af2a0fae18061d360e4f51dc12d32c6c (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to migrate_events()
+to be consistent with all other capabilities.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit b890902c9c025b87d02e718eec3090fd3525ab18)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 11 +----------
+ migration/migration.h |  1 -
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ migration/ram.c       |  2 +-
+ 5 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index c6e32555a8..032cd5c050 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -353,7 +353,7 @@ void migration_incoming_state_destroy(void)
+ 
+ static void migrate_generate_event(int new_state)
+ {
+-    if (migrate_use_events()) {
++    if (migrate_events()) {
+         qapi_event_send_migration(new_state);
+     }
+ }
+@@ -2558,15 +2558,6 @@ int migrate_decompress_threads(void)
+     return s->parameters.decompress_threads;
+ }
+ 
+-bool migrate_use_events(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->capabilities[MIGRATION_CAPABILITY_EVENTS];
+-}
+-
+ bool migrate_use_multifd(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 77aa91c840..bd06520c19 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -475,7 +475,6 @@ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
+ int migrate_decompress_threads(void);
+-bool migrate_use_events(void);
+ 
+ /* Sending on the return path - generic and then for each message type */
+ void migrate_send_rp_shut(MigrationIncomingState *mis,
+diff --git a/migration/options.c b/migration/options.c
+index fa7a13d3dc..d2219ee0e4 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -57,6 +57,15 @@ bool migrate_dirty_bitmaps(void)
+     return s->capabilities[MIGRATION_CAPABILITY_DIRTY_BITMAPS];
+ }
+ 
++bool migrate_events(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_EVENTS];
++}
++
+ bool migrate_ignore_shared(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index da2193fd94..b998024eba 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -21,6 +21,7 @@ bool migrate_background_snapshot(void);
+ bool migrate_colo(void);
+ bool migrate_compress(void);
+ bool migrate_dirty_bitmaps(void);
++bool migrate_events(void);
+ bool migrate_ignore_shared(void);
+ bool migrate_late_block_activate(void);
+ bool migrate_pause_before_switchover(void);
+diff --git a/migration/ram.c b/migration/ram.c
+index d050d0c5fd..ee454a3849 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -1246,7 +1246,7 @@ static void migration_bitmap_sync(RAMState *rs)
+         rs->num_dirty_pages_period = 0;
+         rs->bytes_xfer_prev = stat64_get(&ram_counters.transferred);
+     }
+-    if (migrate_use_events()) {
++    if (migrate_events()) {
+         uint64_t generation = stat64_get(&ram_counters.dirty_sync_count);
+         qapi_event_send_migration_pass(generation);
+     }
+-- 
+2.39.1
+

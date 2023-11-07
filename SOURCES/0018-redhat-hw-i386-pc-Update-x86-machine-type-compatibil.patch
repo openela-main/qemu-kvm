@@ -1,0 +1,76 @@
+From c6eaf73adda2e87fe91c9a3836f45dd58a553e06 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 27 Mar 2023 15:14:03 +0200
+Subject: redhat: hw/i386/pc: Update x86 machine type compatibility for QEMU
+ 8.0.0 update
+
+Add pc_rhel_9_2_compat based on upstream pc_compat_7_2.
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/i386/pc.c         | 6 ++++++
+ hw/i386/pc_piix.c    | 2 ++
+ hw/i386/pc_q35.c     | 2 ++
+ include/hw/i386/pc.h | 3 +++
+ 4 files changed, 13 insertions(+)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 8abb1f872e..f216922cee 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -429,6 +429,12 @@ GlobalProperty pc_rhel_compat[] = {
+ };
+ const size_t pc_rhel_compat_len = G_N_ELEMENTS(pc_rhel_compat);
+ 
++GlobalProperty pc_rhel_9_2_compat[] = {
++    /* pc_rhel_9_2_compat from pc_compat_7_2 */
++    { "ICH9-LPC", "noreboot", "true" },
++};
++const size_t pc_rhel_9_2_compat_len = G_N_ELEMENTS(pc_rhel_9_2_compat);
++
+ GlobalProperty pc_rhel_9_0_compat[] = {
+     /* pc_rhel_9_0_compat from pc_compat_6_2 */
+     { "virtio-mem", "unplugged-inaccessible", "off" },
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 90fb6e2e03..fc704d783f 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -949,6 +949,8 @@ static void pc_machine_rhel760_options(MachineClass *m)
+     pcmc->enforce_amd_1tb_hole = false;
+     compat_props_add(m->compat_props, hw_compat_rhel_9_2,
+                      hw_compat_rhel_9_2_len);
++    compat_props_add(m->compat_props, pc_rhel_9_2_compat,
++                     pc_rhel_9_2_compat_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_1,
+                      hw_compat_rhel_9_1_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_0,
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 8945b69175..e97655616a 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -704,6 +704,8 @@ static void pc_q35_machine_rhel920_options(MachineClass *m)
+ 
+     compat_props_add(m->compat_props, hw_compat_rhel_9_2,
+                      hw_compat_rhel_9_2_len);
++    compat_props_add(m->compat_props, pc_rhel_9_2_compat,
++                     pc_rhel_9_2_compat_len);
+ }
+ 
+ DEFINE_PC_MACHINE(q35_rhel920, "pc-q35-rhel9.2.0", pc_q35_init_rhel920,
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 4376f64a47..d218ad1628 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -296,6 +296,9 @@ int pc_machine_kvm_type(MachineState *machine, const char *vm_type);
+ extern GlobalProperty pc_rhel_compat[];
+ extern const size_t pc_rhel_compat_len;
+ 
++extern GlobalProperty pc_rhel_9_2_compat[];
++extern const size_t pc_rhel_9_2_compat_len;
++
+ extern GlobalProperty pc_rhel_9_0_compat[];
+ extern const size_t pc_rhel_9_0_compat_len;
+ 
+-- 
+2.39.1
+

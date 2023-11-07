@@ -1,0 +1,78 @@
+From 7495a51c586818925470fb247882f5ba0f7b0ffd Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 27 Jun 2023 09:47:03 +0200
+Subject: [PATCH 34/37] pc-bios/s390-ccw: Don't use __bss_start with the "larl"
+ instruction
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 180: Fix misaligned symbol error in the s390-ccw image during qemu-kvm build with binutils 2.40
+RH-Bugzilla: 2220866
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/4] 2483a50c0ed37fa29db649ec44220ac83c215698 (thuth/qemu-kvm-cs9)
+
+start.S currently cannot be compiled with Clang 16 and binutils 2.40:
+
+ ld: start.o(.text+0x8): misaligned symbol `__bss_start' (0xc1e5) for
+     relocation R_390_PC32DBL
+
+According to the built-in linker script of ld, the symbol __bss_start
+can actually point *before* the .bss section and does not need to have
+any alignment, so in certain situations (like when using the internal
+assembler of Clang), the __bss_start symbol can indeed be unaligned
+and thus it is not suitable for being used with the "larl" instruction
+that needs an address that is at least aligned to halfwords.
+The problem went unnoticed so far since binutils <= 2.39 did not
+check the alignment, but starting with binutils 2.40, such unaligned
+addresses are now refused.
+
+Fix it by loading the address indirectly instead.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2216662
+Reported-by: Miroslav Rezanina <mrezanin@redhat.com>
+Suggested-by:  Andreas Krebbel <andreas.krebbel@de.ibm.com>
+Message-Id: <20230629104821.194859-8-thuth@redhat.com>
+Reviewed-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 7cd50cbe4ca3e2860b31b06ec92c17c54bd82d48)
+---
+ pc-bios/s390-ccw/start.S | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/start.S b/pc-bios/s390-ccw/start.S
+index abd6fe6639..22c1c296df 100644
+--- a/pc-bios/s390-ccw/start.S
++++ b/pc-bios/s390-ccw/start.S
+@@ -19,7 +19,8 @@ _start:
+     larl    %r15,stack + STACK_SIZE - STACK_FRAME_SIZE   /* Set up stack */
+ 
+     /* clear bss */
+-    larl    %r2,__bss_start
++    larl    %r2,bss_start_literal   /* __bss_start might be unaligned ... */
++    lg      %r2,0(%r2)              /* ... so load it indirectly */
+     larl    %r3,_end
+     slgr    %r3,%r2    /* get sizeof bss */
+     ltgr    %r3,%r3    /* bss empty? */
+@@ -45,7 +46,6 @@ done:
+ memsetxc:
+     xc      0(1,%r1),0(%r1)
+ 
+-
+ /*
+  * void disabled_wait(void)
+  *
+@@ -113,6 +113,8 @@ io_new_code:
+     br      %r14
+ 
+     .align  8
++bss_start_literal:
++    .quad   __bss_start
+ disabled_wait_psw:
+     .quad   0x0002000180000000,0x0000000000000000
+ enabled_wait_psw:
+-- 
+2.39.3
+

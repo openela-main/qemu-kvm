@@ -1,0 +1,44 @@
+From 21d1d93abd48f613c18df7dacd986693da774175 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 11 May 2023 13:03:22 +0200
+Subject: [PATCH 54/56] iotests: Use alternative CPU type that is not
+ deprecated in RHEL
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 164: block: Fix hangs in qmp_block_resize()
+RH-Bugzilla: 2185688
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/4] 038d4718c0ee7a17ff5e6f4af8fc04d07e452f8d (kmwolf/centos-qemu-kvm)
+
+This is a downstream-only patch that is necessary because the default
+CPU in RHEL is marked as deprecated. This makes test cases fail due to
+the warning in the output:
+
+qemu-system-x86_64: warning: CPU model qemu64-x86_64-cpu is deprecated -- use at least 'Nehalem' / 'Opteron_G4', or 'host' / 'max'
+
+Fixes: 318178778db60b6475d1484509bee136317156d3
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/testenv.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/qemu-iotests/testenv.py b/tests/qemu-iotests/testenv.py
+index 9a37ad9152..963514aab3 100644
+--- a/tests/qemu-iotests/testenv.py
++++ b/tests/qemu-iotests/testenv.py
+@@ -244,6 +244,9 @@ def __init__(self, source_dir: str, build_dir: str,
+             if self.qemu_prog.endswith(f'qemu-system-{suffix}'):
+                 self.qemu_options += f' -machine {machine}'
+ 
++        if self.qemu_prog.endswith('qemu-system-x86_64'):
++            self.qemu_options += ' -cpu Nehalem'
++
+         # QEMU_DEFAULT_MACHINE
+         self.qemu_default_machine = get_default_machine(self.qemu_prog)
+ 
+-- 
+2.39.1
+

@@ -1,0 +1,431 @@
+From eaccfc91b34f93dcaf597e6b39f78741da618ff3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 08/37] migration: Make all functions check have the same
+ format
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/28] 774df2a81502d3eab5d5b8f64fa9b69f8be43669 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 8f9c532756c5
+Author: Juan Quintela <quintela@redhat.com>
+Date:   Wed Mar 1 23:11:08 2023 +0100
+
+    migration: Make all functions check have the same format
+
+    Signed-off-by: Juan Quintela <quintela@redhat.com>
+    Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ migration/options.c | 153 +++++++++++---------------------------------
+ 1 file changed, 39 insertions(+), 114 deletions(-)
+
+diff --git a/migration/options.c b/migration/options.c
+index e51d667e14..bcfe244fa9 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -33,27 +33,21 @@
+ 
+ bool migrate_auto_converge(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_AUTO_CONVERGE];
+ }
+ 
+ bool migrate_background_snapshot(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT];
+ }
+ 
+ bool migrate_block(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_BLOCK];
+ }
+@@ -61,95 +55,76 @@ bool migrate_block(void)
+ bool migrate_colo(void)
+ {
+     MigrationState *s = migrate_get_current();
++
+     return s->capabilities[MIGRATION_CAPABILITY_X_COLO];
+ }
+ 
+ bool migrate_compress(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_COMPRESS];
+ }
+ 
+ bool migrate_dirty_bitmaps(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_DIRTY_BITMAPS];
+ }
+ 
+ bool migrate_events(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_EVENTS];
+ }
+ 
+ bool migrate_ignore_shared(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_X_IGNORE_SHARED];
+ }
+ 
+ bool migrate_late_block_activate(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_LATE_BLOCK_ACTIVATE];
+ }
+ 
+ bool migrate_multifd(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_MULTIFD];
+ }
+ 
+ bool migrate_pause_before_switchover(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_PAUSE_BEFORE_SWITCHOVER];
+ }
+ 
+ bool migrate_postcopy_blocktime(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_POSTCOPY_BLOCKTIME];
+ }
+ 
+ bool migrate_postcopy_preempt(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_POSTCOPY_PREEMPT];
+ }
+ 
+ bool migrate_postcopy_ram(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_POSTCOPY_RAM];
+ }
+@@ -163,54 +138,42 @@ bool migrate_rdma_pin_all(void)
+ 
+ bool migrate_release_ram(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_RELEASE_RAM];
+ }
+ 
+ bool migrate_return_path(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_RETURN_PATH];
+ }
+ 
+ bool migrate_validate_uuid(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_VALIDATE_UUID];
+ }
+ 
+ bool migrate_xbzrle(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_XBZRLE];
+ }
+ 
+ bool migrate_zero_blocks(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_ZERO_BLOCKS];
+ }
+ 
+ bool migrate_zero_copy_send(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
+ }
+@@ -224,9 +187,7 @@ bool migrate_postcopy(void)
+ 
+ bool migrate_tls(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.tls_creds && *s->parameters.tls_creds;
+ }
+@@ -491,126 +452,98 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+ 
+ bool migrate_block_incremental(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.block_incremental;
+ }
+ 
+ uint32_t migrate_checkpoint_delay(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.x_checkpoint_delay;
+ }
+ 
+ int migrate_compress_level(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.compress_level;
+ }
+ 
+ int migrate_compress_threads(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.compress_threads;
+ }
+ 
+ int migrate_compress_wait_thread(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.compress_wait_thread;
+ }
+ 
+ uint8_t migrate_cpu_throttle_increment(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.cpu_throttle_increment;
+ }
+ 
+ uint8_t migrate_cpu_throttle_initial(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.cpu_throttle_initial;
+ }
+ 
+ bool migrate_cpu_throttle_tailslow(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.cpu_throttle_tailslow;
+ }
+ 
+ int migrate_decompress_threads(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.decompress_threads;
+ }
+ 
+ uint8_t migrate_max_cpu_throttle(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.max_cpu_throttle;
+ }
+ 
+ uint64_t migrate_max_bandwidth(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.max_bandwidth;
+ }
+ 
+ int64_t migrate_max_postcopy_bandwidth(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.max_postcopy_bandwidth;
+ }
+ 
+ int migrate_multifd_channels(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.multifd_channels;
+ }
+ 
+ MultiFDCompression migrate_multifd_compression(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     assert(s->parameters.multifd_compression < MULTIFD_COMPRESSION__MAX);
+     return s->parameters.multifd_compression;
+@@ -618,36 +551,28 @@ MultiFDCompression migrate_multifd_compression(void)
+ 
+ int migrate_multifd_zlib_level(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.multifd_zlib_level;
+ }
+ 
+ int migrate_multifd_zstd_level(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.multifd_zstd_level;
+ }
+ 
+ uint8_t migrate_throttle_trigger_threshold(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.throttle_trigger_threshold;
+ }
+ 
+ uint64_t migrate_xbzrle_cache_size(void)
+ {
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
++    MigrationState *s = migrate_get_current();
+ 
+     return s->parameters.xbzrle_cache_size;
+ }
+-- 
+2.39.3
+

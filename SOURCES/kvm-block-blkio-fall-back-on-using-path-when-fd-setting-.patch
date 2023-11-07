@@ -1,0 +1,67 @@
+From c1ce3ba81698b9d52ac9dff83c01ee8141ca403d Mon Sep 17 00:00:00 2001
+From: Stefano Garzarella <sgarzare@redhat.com>
+Date: Thu, 27 Jul 2023 18:10:19 +0200
+Subject: [PATCH 05/14] block/blkio: fall back on using `path` when `fd`
+ setting fails
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 194: block/blkio: backport latest fixes for virtio-blk-* drivers
+RH-Bugzilla: 2225354 2225439
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Alberto Faria <None>
+RH-Commit: [5/6] c03cea95146a59b2830ffe2dd56ef77a6630ce3e (sgarzarella/qemu-kvm-c-9-s)
+
+qemu_open() fails if called with an unix domain socket in this way:
+    -blockdev node-name=drive0,driver=virtio-blk-vhost-user,path=vhost-user-blk.sock,cache.direct=on: Could not open 'vhost-user-blk.sock': No such device or address
+
+Since virtio-blk-vhost-user does not support fd passing, let`s always fall back
+on using `path` if we fail the fd passing.
+
+Fixes: cad2ccc395 ("block/blkio: use qemu_open() to support fd passing for virtio-blk")
+Reported-by: Qing Wang <qinwang@redhat.com>
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+Message-id: 20230727161020.84213-4-sgarzare@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 723bea27b127969931fa26bc0de79372a3d9e148)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block/blkio.c | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/block/blkio.c b/block/blkio.c
+index 93a8f8fc5c..eef80e9ce5 100644
+--- a/block/blkio.c
++++ b/block/blkio.c
+@@ -710,19 +710,19 @@ static int blkio_virtio_blk_connect(BlockDriverState *bs, QDict *options,
+          * In order to open the device read-only, we are using the `read-only`
+          * property of the libblkio driver in blkio_file_open().
+          */
+-        fd = qemu_open(path, O_RDWR, errp);
++        fd = qemu_open(path, O_RDWR, NULL);
+         if (fd < 0) {
+-            return -EINVAL;
++            fd_supported = false;
++        } else {
++            ret = blkio_set_int(s->blkio, "fd", fd);
++            if (ret < 0) {
++                fd_supported = false;
++                qemu_close(fd);
++            }
+         }
++    }
+ 
+-        ret = blkio_set_int(s->blkio, "fd", fd);
+-        if (ret < 0) {
+-            error_setg_errno(errp, -ret, "failed to set fd: %s",
+-                             blkio_get_error_msg());
+-            qemu_close(fd);
+-            return ret;
+-        }
+-    } else {
++    if (!fd_supported) {
+         ret = blkio_set_str(s->blkio, "path", path);
+         if (ret < 0) {
+             error_setg_errno(errp, -ret, "failed to set path: %s",
+-- 
+2.39.3
+

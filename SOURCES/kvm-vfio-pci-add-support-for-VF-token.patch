@@ -1,0 +1,104 @@
+From 3022cc31bca5a5441e285c971eaf72b7643b9be0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:56 +0200
+Subject: [PATCH 03/37] vfio/pci: add support for VF token
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/28] ff24284ede2806e21f4f6709d8abd4c4029b7d5c (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 2dca1b37a760
+Author: Minwoo Im <minwoo.im@samsung.com>
+Date:   Mon Mar 20 16:35:22 2023 +0900
+
+    vfio/pci: add support for VF token
+
+    VF token was introduced [1] to kernel vfio-pci along with SR-IOV
+    support [2].  This patch adds support VF token among PF and VF(s). To
+    passthu PCIe VF to a VM, kernel >= v5.7 needs this.
+
+    It can be configured with UUID like:
+
+      -device vfio-pci,host=DDDD:BB:DD:F,vf-token=<uuid>,...
+
+    [1] https://lore.kernel.org/linux-pci/158396393244.5601.10297430724964025753.stgit@gimli.home/
+    [2] https://lore.kernel.org/linux-pci/158396044753.5601.14804870681174789709.stgit@gimli.home/
+
+    Cc: Alex Williamson <alex.williamson@redhat.com>
+    Signed-off-by: Minwoo Im <minwoo.im@samsung.com>
+    Reviewed-by: Klaus Jensen <k.jensen@samsung.com>
+    Link: https://lore.kernel.org/r/20230320073522epcms2p48f682ecdb73e0ae1a4850ad0712fd780@epcms2p4
+    Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+
+Conflicts:
+    - hw/vfio/pci.c
+      context changes in vfio_realize () due to redhat commit 267071d16b23
+      ("vfio: cap number of devices that can be assigned")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 13 ++++++++++++-
+ hw/vfio/pci.h |  1 +
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index a779053be3..579b92a6ed 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2859,6 +2859,8 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+     int groupid;
+     int ret, i = 0;
+     bool is_mdev;
++    char uuid[UUID_FMT_LEN];
++    char *name;
+ 
+     if (device_limit && device_limit != vdev->assigned_device_limit) {
+             error_setg(errp, "Assigned device limit has been redefined. "
+@@ -2960,7 +2962,15 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+         goto error;
+     }
+ 
+-    ret = vfio_get_device(group, vbasedev->name, vbasedev, errp);
++    if (!qemu_uuid_is_null(&vdev->vf_token)) {
++        qemu_uuid_unparse(&vdev->vf_token, uuid);
++        name = g_strdup_printf("%s vf_token=%s", vbasedev->name, uuid);
++    } else {
++        name = vbasedev->name;
++    }
++
++    ret = vfio_get_device(group, name, vbasedev, errp);
++    g_free(name);
+     if (ret) {
+         vfio_put_group(group);
+         goto error;
+@@ -3292,6 +3302,7 @@ static void vfio_instance_init(Object *obj)
+ 
+ static Property vfio_pci_dev_properties[] = {
+     DEFINE_PROP_PCI_HOST_DEVADDR("host", VFIOPCIDevice, host),
++    DEFINE_PROP_UUID_NODEFAULT("vf-token", VFIOPCIDevice, vf_token),
+     DEFINE_PROP_STRING("sysfsdev", VFIOPCIDevice, vbasedev.sysfsdev),
+     DEFINE_PROP_ON_OFF_AUTO("x-pre-copy-dirty-page-tracking", VFIOPCIDevice,
+                             vbasedev.pre_copy_dirty_page_tracking,
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index 45235d38ba..10530743ad 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -137,6 +137,7 @@ struct VFIOPCIDevice {
+     VFIOVGA *vga; /* 0xa0000, 0x3b0, 0x3c0 */
+     void *igd_opregion;
+     PCIHostDeviceAddress host;
++    QemuUUID vf_token;
+     EventNotifier err_notifier;
+     EventNotifier req_notifier;
+     int (*resetfn)(struct VFIOPCIDevice *);
+-- 
+2.39.3
+

@@ -1,0 +1,56 @@
+From bbe565f7d3b7fe46971e020e9bd8e79dc9ffa69c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 12/37] migration: Enable switchover ack capability
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [10/28] c4a7d7d26a97181c9516d133a6610bfa5dcb1d16 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 538ef4fe2f72
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Jun 21 14:11:56 2023 +0300
+
+    migration: Enable switchover ack capability
+
+    Now that switchover ack logic has been implemented, enable the
+    capability.
+
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Juan Quintela <quintela@redhat.com>
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Tested-by: YangHang Liu <yanghliu@redhat.com>
+    Acked-by: Alex Williamson <alex.williamson@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ migration/options.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/migration/options.c b/migration/options.c
+index c3df6c6dde..ccd7ef3907 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -547,10 +547,6 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
+                              "'return-path'");
+             return false;
+         }
+-
+-        /* Disable this capability until it's implemented */
+-        error_setg(errp, "'switchover-ack' is not implemented yet");
+-        return false;
+     }
+ 
+     return true;
+-- 
+2.39.3
+

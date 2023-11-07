@@ -1,0 +1,167 @@
+From 6eb252887378d639ad2e90dd426a1812d4b72ca6 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:17:14 +0100
+Subject: [PATCH 28/56] migration: Move migrate_use_zero_copy_send() to
+ options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [27/50] 5a4c2b5e75c62e0f60f9c4121a2756bd140a60d9 (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to
+migrate_zero_copy_send() to be consistent with all other capabilities.
+
+We can remove the CONFIG_LINUX guard.  We already check that we can't
+setup this capability in migrate_caps_check().
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit b4bc342c766640e0cb8a0b72f71e0ee5545fb790)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 13 +------------
+ migration/migration.h |  5 -----
+ migration/multifd.c   |  8 ++++----
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ migration/socket.c    |  2 +-
+ 6 files changed, 16 insertions(+), 22 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index e1d7f25786..1d63718e88 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1609,7 +1609,7 @@ static bool migrate_params_check(MigrationParameters *params, Error **errp)
+     }
+ 
+ #ifdef CONFIG_LINUX
+-    if (migrate_use_zero_copy_send() &&
++    if (migrate_zero_copy_send() &&
+         ((params->has_multifd_compression && params->multifd_compression) ||
+          (params->tls_creds && *params->tls_creds))) {
+         error_setg(errp,
+@@ -2595,17 +2595,6 @@ int migrate_multifd_zstd_level(void)
+     return s->parameters.multifd_zstd_level;
+ }
+ 
+-#ifdef CONFIG_LINUX
+-bool migrate_use_zero_copy_send(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
+-}
+-#endif
+-
+ int migrate_use_tls(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 49c0e13f41..c939f82d53 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -454,11 +454,6 @@ MultiFDCompression migrate_multifd_compression(void);
+ int migrate_multifd_zlib_level(void);
+ int migrate_multifd_zstd_level(void);
+ 
+-#ifdef CONFIG_LINUX
+-bool migrate_use_zero_copy_send(void);
+-#else
+-#define migrate_use_zero_copy_send() (false)
+-#endif
+ int migrate_use_tls(void);
+ int migrate_use_xbzrle(void);
+ uint64_t migrate_xbzrle_cache_size(void);
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 6807328189..cce3ad6988 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -25,7 +25,7 @@
+ #include "trace.h"
+ #include "multifd.h"
+ #include "threadinfo.h"
+-
++#include "options.h"
+ #include "qemu/yank.h"
+ #include "io/channel-socket.h"
+ #include "yank_functions.h"
+@@ -608,7 +608,7 @@ int multifd_send_sync_main(QEMUFile *f)
+      * all the dirty bitmaps.
+      */
+ 
+-    flush_zero_copy = migrate_use_zero_copy_send();
++    flush_zero_copy = migrate_zero_copy_send();
+ 
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+         MultiFDSendParams *p = &multifd_send_state->params[i];
+@@ -653,7 +653,7 @@ static void *multifd_send_thread(void *opaque)
+     MigrationThread *thread = NULL;
+     Error *local_err = NULL;
+     int ret = 0;
+-    bool use_zero_copy_send = migrate_use_zero_copy_send();
++    bool use_zero_copy_send = migrate_zero_copy_send();
+ 
+     thread = MigrationThreadAdd(p->name, qemu_get_thread_id());
+ 
+@@ -945,7 +945,7 @@ int multifd_save_setup(Error **errp)
+         p->page_size = qemu_target_page_size();
+         p->page_count = page_count;
+ 
+-        if (migrate_use_zero_copy_send()) {
++        if (migrate_zero_copy_send()) {
+             p->write_flags = QIO_CHANNEL_WRITE_FLAG_ZERO_COPY;
+         } else {
+             p->write_flags = 0;
+diff --git a/migration/options.c b/migration/options.c
+index 58673fc101..f357c99996 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -155,3 +155,12 @@ bool migrate_zero_blocks(void)
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_ZERO_BLOCKS];
+ }
++
++bool migrate_zero_copy_send(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
++}
+diff --git a/migration/options.h b/migration/options.h
+index d07269ee38..ad22f4d24a 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -32,5 +32,6 @@ bool migrate_postcopy_ram(void);
+ bool migrate_release_ram(void);
+ bool migrate_validate_uuid(void);
+ bool migrate_zero_blocks(void);
++bool migrate_zero_copy_send(void);
+ 
+ #endif
+diff --git a/migration/socket.c b/migration/socket.c
+index f4835a256a..1b6f5baefb 100644
+--- a/migration/socket.c
++++ b/migration/socket.c
+@@ -98,7 +98,7 @@ static void socket_outgoing_migration(QIOTask *task,
+ 
+     trace_migration_socket_outgoing_connected(data->hostname);
+ 
+-    if (migrate_use_zero_copy_send() &&
++    if (migrate_zero_copy_send() &&
+         !qio_channel_has_feature(sioc, QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY)) {
+         error_setg(&err, "Zero copy send feature not detected in host kernel");
+     }
+-- 
+2.39.1
+

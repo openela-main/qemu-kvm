@@ -1,0 +1,156 @@
+From 2184f7dae0df5fa52deba2dc884e09c6bdbc7b5f Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:20:13 +0100
+Subject: [PATCH 29/56] migration: Move migrate_use_xbzrle() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [28/50] fc8bee0f691a96e6bd0b41f2511abe507b81fea5 (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to migrate_xbzrle()
+to be consistent with all other capabilities.
+We change the type to return bool also for consistency.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 87dca0c9bb63014ef73ad82f7aedea1cb5a822e7)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 11 +----------
+ migration/migration.h |  1 -
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ migration/ram.c       | 10 +++++-----
+ 5 files changed, 16 insertions(+), 16 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 1d63718e88..a4ede4294e 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1122,7 +1122,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->downtime_bytes = stat64_get(&ram_counters.downtime_bytes);
+     info->ram->postcopy_bytes = stat64_get(&ram_counters.postcopy_bytes);
+ 
+-    if (migrate_use_xbzrle()) {
++    if (migrate_xbzrle()) {
+         info->xbzrle_cache = g_malloc0(sizeof(*info->xbzrle_cache));
+         info->xbzrle_cache->cache_size = migrate_xbzrle_cache_size();
+         info->xbzrle_cache->bytes = xbzrle_counters.bytes;
+@@ -2604,15 +2604,6 @@ int migrate_use_tls(void)
+     return s->parameters.tls_creds && *s->parameters.tls_creds;
+ }
+ 
+-int migrate_use_xbzrle(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->capabilities[MIGRATION_CAPABILITY_XBZRLE];
+-}
+-
+ uint64_t migrate_xbzrle_cache_size(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index c939f82d53..e2bb5b1e2f 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -455,7 +455,6 @@ int migrate_multifd_zlib_level(void);
+ int migrate_multifd_zstd_level(void);
+ 
+ int migrate_use_tls(void);
+-int migrate_use_xbzrle(void);
+ uint64_t migrate_xbzrle_cache_size(void);
+ 
+ bool migrate_use_block(void);
+diff --git a/migration/options.c b/migration/options.c
+index f357c99996..25264c500e 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -147,6 +147,15 @@ bool migrate_validate_uuid(void)
+     return s->capabilities[MIGRATION_CAPABILITY_VALIDATE_UUID];
+ }
+ 
++bool migrate_xbzrle(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_XBZRLE];
++}
++
+ bool migrate_zero_blocks(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index ad22f4d24a..8f76a88329 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -31,6 +31,7 @@ bool migrate_postcopy_preempt(void);
+ bool migrate_postcopy_ram(void);
+ bool migrate_release_ram(void);
+ bool migrate_validate_uuid(void);
++bool migrate_xbzrle(void);
+ bool migrate_zero_blocks(void);
+ bool migrate_zero_copy_send(void);
+ 
+diff --git a/migration/ram.c b/migration/ram.c
+index 859dd7b63f..4576d0d849 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -156,14 +156,14 @@ static struct {
+ 
+ static void XBZRLE_cache_lock(void)
+ {
+-    if (migrate_use_xbzrle()) {
++    if (migrate_xbzrle()) {
+         qemu_mutex_lock(&XBZRLE.lock);
+     }
+ }
+ 
+ static void XBZRLE_cache_unlock(void)
+ {
+-    if (migrate_use_xbzrle()) {
++    if (migrate_xbzrle()) {
+         qemu_mutex_unlock(&XBZRLE.lock);
+     }
+ }
+@@ -1137,7 +1137,7 @@ static void migration_update_rates(RAMState *rs, int64_t end_time)
+         return;
+     }
+ 
+-    if (migrate_use_xbzrle()) {
++    if (migrate_xbzrle()) {
+         double encoded_size, unencoded_size;
+ 
+         xbzrle_counters.cache_miss_rate = (double)(xbzrle_counters.cache_miss -
+@@ -1626,7 +1626,7 @@ static int find_dirty_block(RAMState *rs, PageSearchStatus *pss)
+             /* Flag that we've looped */
+             pss->complete_round = true;
+             /* After the first round, enable XBZRLE. */
+-            if (migrate_use_xbzrle()) {
++            if (migrate_xbzrle()) {
+                 rs->xbzrle_enabled = true;
+             }
+         }
+@@ -2979,7 +2979,7 @@ static int xbzrle_init(void)
+ {
+     Error *local_err = NULL;
+ 
+-    if (!migrate_use_xbzrle()) {
++    if (!migrate_xbzrle()) {
+         return 0;
+     }
+ 
+-- 
+2.39.1
+

@@ -1,0 +1,95 @@
+From 439a8cdd010dfd253fc2277ae4ec605b5ba621d9 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Apr 2023 12:17:36 -0400
+Subject: [PATCH 02/56] util/mmap-alloc: qemu_fd_getfs()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [1/50] 8970b5ae611a933d693e0c90cbf4eda073635494 (peterx/qemu-kvm)
+
+This new helper fetches file system type for a fd.  Only Linux is
+implemented so far.  Currently only tmpfs and hugetlbfs are defined,
+but it can grow as needed.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit fa45f8dab9613993c042176ea2d25552bfebc955)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ include/qemu/mmap-alloc.h |  7 +++++++
+ util/mmap-alloc.c         | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 35 insertions(+)
+
+diff --git a/include/qemu/mmap-alloc.h b/include/qemu/mmap-alloc.h
+index 2825e231a7..8344daaa03 100644
+--- a/include/qemu/mmap-alloc.h
++++ b/include/qemu/mmap-alloc.h
+@@ -1,8 +1,15 @@
+ #ifndef QEMU_MMAP_ALLOC_H
+ #define QEMU_MMAP_ALLOC_H
+ 
++typedef enum {
++    QEMU_FS_TYPE_UNKNOWN = 0,
++    QEMU_FS_TYPE_TMPFS,
++    QEMU_FS_TYPE_HUGETLBFS,
++    QEMU_FS_TYPE_NUM,
++} QemuFsType;
+ 
+ size_t qemu_fd_getpagesize(int fd);
++QemuFsType qemu_fd_getfs(int fd);
+ 
+ /**
+  * qemu_ram_mmap: mmap anonymous memory, the specified file or device.
+diff --git a/util/mmap-alloc.c b/util/mmap-alloc.c
+index 5ed7d29183..ed14f9c64d 100644
+--- a/util/mmap-alloc.c
++++ b/util/mmap-alloc.c
+@@ -27,8 +27,36 @@
+ 
+ #ifdef CONFIG_LINUX
+ #include <sys/vfs.h>
++#include <linux/magic.h>
+ #endif
+ 
++QemuFsType qemu_fd_getfs(int fd)
++{
++#ifdef CONFIG_LINUX
++    struct statfs fs;
++    int ret;
++
++    if (fd < 0) {
++        return QEMU_FS_TYPE_UNKNOWN;
++    }
++
++    do {
++        ret = fstatfs(fd, &fs);
++    } while (ret != 0 && errno == EINTR);
++
++    switch (fs.f_type) {
++    case TMPFS_MAGIC:
++        return QEMU_FS_TYPE_TMPFS;
++    case HUGETLBFS_MAGIC:
++        return QEMU_FS_TYPE_HUGETLBFS;
++    default:
++        return QEMU_FS_TYPE_UNKNOWN;
++    }
++#else
++    return QEMU_FS_TYPE_UNKNOWN;
++#endif
++}
++
+ size_t qemu_fd_getpagesize(int fd)
+ {
+ #ifdef CONFIG_LINUX
+-- 
+2.39.1
+

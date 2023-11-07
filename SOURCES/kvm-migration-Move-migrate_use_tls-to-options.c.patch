@@ -1,0 +1,134 @@
+From 2e2df63892e191e91216b8253171162f69b93387 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 10:41:23 +0100
+Subject: [PATCH 49/56] migration: Move migrate_use_tls() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [48/50] 314431b0f5e92d2211e58a8161f32d7b67d69e38 (peterx/qemu-kvm)
+
+Once there, rename it to migrate_tls() and make it return bool for
+consistency.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+
+---
+
+Fix typos found by fabiano
+
+(cherry picked from commit 10d4703be5d884bbbb6ecafe0e8bb270ad6ea937)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c |  9 ---------
+ migration/migration.h |  2 --
+ migration/options.c   | 11 ++++++++++-
+ migration/options.h   |  1 +
+ migration/tls.c       |  3 ++-
+ 5 files changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index c2e109329d..22ef83c619 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2177,15 +2177,6 @@ void qmp_migrate_continue(MigrationStatus state, Error **errp)
+     qemu_sem_post(&s->pause_sem);
+ }
+ 
+-int migrate_use_tls(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.tls_creds && *s->parameters.tls_creds;
+-}
+-
+ /* migration thread support */
+ /*
+  * Something bad happened to the RP stream, mark an error
+diff --git a/migration/migration.h b/migration/migration.h
+index dcf906868d..2b71df8617 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -447,8 +447,6 @@ bool migration_is_blocked(Error **errp);
+ bool migration_in_postcopy(void);
+ MigrationState *migrate_get_current(void);
+ 
+-int migrate_use_tls(void);
+-
+ uint64_t ram_get_total_transferred_pages(void);
+ 
+ /* Sending on the return path - generic and then for each message type */
+diff --git a/migration/options.c b/migration/options.c
+index 8e8753d9be..d4c0714683 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -214,6 +214,15 @@ bool migrate_postcopy(void)
+     return migrate_postcopy_ram() || migrate_dirty_bitmaps();
+ }
+ 
++bool migrate_tls(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.tls_creds && *s->parameters.tls_creds;
++}
++
+ typedef enum WriteTrackingSupport {
+     WT_SUPPORT_UNKNOWN = 0,
+     WT_SUPPORT_ABSENT,
+@@ -363,7 +372,7 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
+          new_caps[MIGRATION_CAPABILITY_COMPRESS] ||
+          new_caps[MIGRATION_CAPABILITY_XBZRLE] ||
+          migrate_multifd_compression() ||
+-         migrate_use_tls())) {
++         migrate_tls())) {
+         error_setg(errp,
+                    "Zero copy only available for non-compressed non-TLS multifd migration");
+         return false;
+diff --git a/migration/options.h b/migration/options.h
+index 1b78fa9f3d..13318a16c7 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -46,6 +46,7 @@ bool migrate_zero_copy_send(void);
+  */
+ 
+ bool migrate_postcopy(void);
++bool migrate_tls(void);
+ 
+ /* capabilities helpers */
+ 
+diff --git a/migration/tls.c b/migration/tls.c
+index 4d2166a209..acd38e0b62 100644
+--- a/migration/tls.c
++++ b/migration/tls.c
+@@ -22,6 +22,7 @@
+ #include "channel.h"
+ #include "migration.h"
+ #include "tls.h"
++#include "options.h"
+ #include "crypto/tlscreds.h"
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+@@ -165,7 +166,7 @@ void migration_tls_channel_connect(MigrationState *s,
+ 
+ bool migrate_channel_requires_tls_upgrade(QIOChannel *ioc)
+ {
+-    if (!migrate_use_tls()) {
++    if (!migrate_tls()) {
+         return false;
+     }
+ 
+-- 
+2.39.1
+

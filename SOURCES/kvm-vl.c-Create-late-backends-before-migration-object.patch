@@ -1,0 +1,58 @@
+From 63e2339a6f38706c6fc5eb251426812520db6a6d Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Apr 2023 12:17:37 -0400
+Subject: [PATCH 03/56] vl.c: Create late backends before migration object
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [2/50] 7209bb94faa48650388be8fef08c77afd26517d8 (peterx/qemu-kvm)
+
+The migration object may want to check against different types of memory
+when initialized.  Delay the creation to be after late backends.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit cb9d8b8ce1aaf38f53295fc59ec1b8b7eb4338d2)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ softmmu/vl.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/softmmu/vl.c b/softmmu/vl.c
+index ad4173138d..a44b49430b 100644
+--- a/softmmu/vl.c
++++ b/softmmu/vl.c
+@@ -3592,14 +3592,19 @@ void qemu_init(int argc, char **argv)
+                      machine_class->name, machine_class->deprecation_reason);
+     }
+ 
++    /*
++     * Create backends before creating migration objects, so that it can
++     * check against compatibilities on the backend memories (e.g. postcopy
++     * over memory-backend-file objects).
++     */
++    qemu_create_late_backends();
++
+     /*
+      * Note: creates a QOM object, must run only after global and
+      * compat properties have been set up.
+      */
+     migration_object_init();
+ 
+-    qemu_create_late_backends();
+-
+     /* parse features once if machine provides default cpu_type */
+     current_machine->cpu_type = machine_class->default_cpu_type;
+     if (cpu_option) {
+-- 
+2.39.1
+

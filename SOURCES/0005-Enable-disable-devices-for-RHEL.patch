@@ -1,0 +1,678 @@
+From 63829772dbc2075fc014a9d52e3968735d228018 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 7 Dec 2022 03:05:48 -0500
+Subject: Enable/disable devices for RHEL
+
+This commit adds all changes related to changes in supported devices.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+--
+Rebase notes (6.1.0):
+- Added CONFIG_TPM (except s390x)
+- default-configs moved to configs
+- Use --with-device-<ARCH> configure option to use rhel configs
+
+Rebase notes (6.2.0):
+- Add CONFIG_ISA_FDC
+- Do not remove -no-hpet documentation
+
+Rebase notes (7.0.0):
+- Added CONFIG_ARM_GIC_TCG option for aarch64
+- Fixes necessary for layout change fixes
+- Renamed CONFIG_ARM_GIC_TCG to CONFIG_ARM_GICV3_TCG
+- Removed upstream devices
+
+Rebase notes (7.1.0 rc0):
+- Added CONFIG_VHOST_VSOCK and CONFIG_VHOST_USER_VSOCK configs
+- Added CONFIG_CXL and CONFIG_CXL_MEM_DEVICE for aarch64 and x86_64
+
+Rebase notes (7.1.0 rc3):
+- Added CONFIG_VHOST_USER_FS option (all archs)
+
+Rebase notes (7.2.0 rc20):
+- Removed disabling a15mpcore.c as no longer needed
+
+Rebase notes (8.0.0-rc1):
+- Rename CONFIG_ACPI_X86_ICH to CONFIG_ACPI_ICH9
+- Inlude qemu/error-report.h in hw/display/cirrus_vga.c
+- Change virtiofsd dependency version
+
+Merged patches (6.1.0):
+- c51bf45304 Remove SPICE and QXL from x86_64-rh-devices.mak
+- 02fc745601 aarch64-rh-devices: add CONFIG_PVPANIC_PCI
+- f2fe835153 aarch64-rh-devices: add CONFIG_PXB
+- b5431733ad disable CONFIG_USB_STORAGE_BOT
+- 478ba0cdf6 Disable TPM passthrough
+- 2504d68a7c aarch64: Add USB storage devices
+- 51c2a3253c disable ac97 audio
+
+Merged patches (6.2.0):
+- 9f2f9fa2ba disable sga device
+
+Merged patches (7.0.0):
+- fd7c45a5a8 redhat: Enable virtio-mem as tech-preview on x86-64
+- c9e68ea451 Enable SGX -- RH Only
+
+Merged patches (7.1.0 rc0):
+- 38b89dc245 pc: Move s3/s4 suspend disabling to compat (only hw/acpi/ich9.c chunk)
+- 8f663466c6 configs/devices/aarch64-softmmu: Enable CONFIG_VIRTIO_MEM
+- 1bf372717a Enable virtio-iommu-pci on aarch64
+- ae3f269458 Enable virtio-iommu-pci on x86_64
+---
+ .distro/qemu-kvm.spec.template                |  18 +--
+ .../aarch64-softmmu/aarch64-rh-devices.mak    |  41 +++++++
+ .../ppc64-softmmu/ppc64-rh-devices.mak        |  37 ++++++
+ configs/devices/rh-virtio.mak                 |  10 ++
+ .../s390x-softmmu/s390x-rh-devices.mak        |  18 +++
+ .../x86_64-softmmu/x86_64-rh-devices.mak      | 109 ++++++++++++++++++
+ hw/arm/meson.build                            |   2 +-
+ hw/block/fdc.c                                |  10 ++
+ hw/cpu/meson.build                            |   3 +-
+ hw/display/cirrus_vga.c                       |   7 +-
+ hw/ide/piix.c                                 |   5 +-
+ hw/input/pckbd.c                              |   2 +
+ hw/net/e1000.c                                |   2 +
+ hw/ppc/spapr_cpu_core.c                       |   2 +
+ hw/usb/meson.build                            |   2 +-
+ target/arm/cpu_tcg.c                          |  10 ++
+ target/ppc/cpu-models.c                       |   9 ++
+ target/s390x/cpu_models_sysemu.c              |   3 +
+ target/s390x/kvm/kvm.c                        |   8 ++
+ 19 files changed, 285 insertions(+), 13 deletions(-)
+ create mode 100644 configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+ create mode 100644 configs/devices/ppc64-softmmu/ppc64-rh-devices.mak
+ create mode 100644 configs/devices/rh-virtio.mak
+ create mode 100644 configs/devices/s390x-softmmu/s390x-rh-devices.mak
+ create mode 100644 configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+
+diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+new file mode 100644
+index 0000000000..720ec0cb57
+--- /dev/null
++++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+@@ -0,0 +1,41 @@
++include ../rh-virtio.mak
++
++CONFIG_ARM_GIC_KVM=y
++CONFIG_ARM_GICV3_TCG=y
++CONFIG_ARM_GIC=y
++CONFIG_ARM_SMMUV3=y
++CONFIG_ARM_V7M=y
++CONFIG_ARM_VIRT=y
++CONFIG_CXL=y
++CONFIG_CXL_MEM_DEVICE=y
++CONFIG_EDID=y
++CONFIG_PCIE_PORT=y
++CONFIG_PCI_DEVICES=y
++CONFIG_PCI_TESTDEV=y
++CONFIG_PFLASH_CFI01=y
++CONFIG_SCSI=y
++CONFIG_SEMIHOSTING=y
++CONFIG_USB=y
++CONFIG_USB_XHCI=y
++CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_STORAGE_CORE=y
++CONFIG_USB_STORAGE_CLASSIC=y
++CONFIG_VFIO=y
++CONFIG_VFIO_PCI=y
++CONFIG_VIRTIO_MMIO=y
++CONFIG_VIRTIO_PCI=y
++CONFIG_VIRTIO_MEM=y
++CONFIG_VIRTIO_IOMMU=y
++CONFIG_XIO3130=y
++CONFIG_NVDIMM=y
++CONFIG_ACPI_APEI=y
++CONFIG_TPM=y
++CONFIG_TPM_EMULATOR=y
++CONFIG_TPM_TIS_SYSBUS=y
++CONFIG_PTIMER=y
++CONFIG_ARM_COMPATIBLE_SEMIHOSTING=y
++CONFIG_PVPANIC_PCI=y
++CONFIG_PXB=y
++CONFIG_VHOST_VSOCK=y
++CONFIG_VHOST_USER_VSOCK=y
++CONFIG_VHOST_USER_FS=y
+diff --git a/configs/devices/ppc64-softmmu/ppc64-rh-devices.mak b/configs/devices/ppc64-softmmu/ppc64-rh-devices.mak
+new file mode 100644
+index 0000000000..dbb7d30829
+--- /dev/null
++++ b/configs/devices/ppc64-softmmu/ppc64-rh-devices.mak
+@@ -0,0 +1,37 @@
++include ../rh-virtio.mak
++
++CONFIG_DIMM=y
++CONFIG_MEM_DEVICE=y
++CONFIG_NVDIMM=y
++CONFIG_PCI=y
++CONFIG_PCI_DEVICES=y
++CONFIG_PCI_TESTDEV=y
++CONFIG_PCI_EXPRESS=y
++CONFIG_PSERIES=y
++CONFIG_SCSI=y
++CONFIG_SPAPR_VSCSI=y
++CONFIG_TEST_DEVICES=y
++CONFIG_USB=y
++CONFIG_USB_OHCI=y
++CONFIG_USB_OHCI_PCI=y
++CONFIG_USB_SMARTCARD=y
++CONFIG_USB_STORAGE_CORE=y
++CONFIG_USB_STORAGE_CLASSIC=y
++CONFIG_USB_XHCI=y
++CONFIG_USB_XHCI_NEC=y
++CONFIG_USB_XHCI_PCI=y
++CONFIG_VFIO=y
++CONFIG_VFIO_PCI=y
++CONFIG_VGA=y
++CONFIG_VGA_PCI=y
++CONFIG_VHOST_USER=y
++CONFIG_VIRTIO_PCI=y
++CONFIG_VIRTIO_VGA=y
++CONFIG_WDT_IB6300ESB=y
++CONFIG_XICS=y
++CONFIG_XIVE=y
++CONFIG_TPM=y
++CONFIG_TPM_SPAPR=y
++CONFIG_TPM_EMULATOR=y
++CONFIG_VHOST_VSOCK=y
++CONFIG_VHOST_USER_VSOCK=y
+diff --git a/configs/devices/rh-virtio.mak b/configs/devices/rh-virtio.mak
+new file mode 100644
+index 0000000000..94ede1b5f6
+--- /dev/null
++++ b/configs/devices/rh-virtio.mak
+@@ -0,0 +1,10 @@
++CONFIG_VIRTIO=y
++CONFIG_VIRTIO_BALLOON=y
++CONFIG_VIRTIO_BLK=y
++CONFIG_VIRTIO_GPU=y
++CONFIG_VIRTIO_INPUT=y
++CONFIG_VIRTIO_INPUT_HOST=y
++CONFIG_VIRTIO_NET=y
++CONFIG_VIRTIO_RNG=y
++CONFIG_VIRTIO_SCSI=y
++CONFIG_VIRTIO_SERIAL=y
+diff --git a/configs/devices/s390x-softmmu/s390x-rh-devices.mak b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+new file mode 100644
+index 0000000000..69a799adbd
+--- /dev/null
++++ b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+@@ -0,0 +1,18 @@
++include ../rh-virtio.mak
++
++CONFIG_PCI=y
++CONFIG_S390_CCW_VIRTIO=y
++CONFIG_S390_FLIC=y
++CONFIG_S390_FLIC_KVM=y
++CONFIG_SCLPCONSOLE=y
++CONFIG_SCSI=y
++CONFIG_VFIO=y
++CONFIG_VFIO_AP=y
++CONFIG_VFIO_CCW=y
++CONFIG_VFIO_PCI=y
++CONFIG_VHOST_USER=y
++CONFIG_VIRTIO_CCW=y
++CONFIG_WDT_DIAG288=y
++CONFIG_VHOST_VSOCK=y
++CONFIG_VHOST_USER_VSOCK=y
++CONFIG_VHOST_USER_FS=y
+diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+new file mode 100644
+index 0000000000..668b2d0e18
+--- /dev/null
++++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+@@ -0,0 +1,109 @@
++include ../rh-virtio.mak
++
++CONFIG_ACPI=y
++CONFIG_ACPI_PCI=y
++CONFIG_ACPI_CPU_HOTPLUG=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_NVDIMM=y
++CONFIG_ACPI_SMBUS=y
++CONFIG_ACPI_VMGENID=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_ICH9=y
++CONFIG_AHCI=y
++CONFIG_APIC=y
++CONFIG_APM=y
++CONFIG_BOCHS_DISPLAY=y
++CONFIG_CXL=y
++CONFIG_CXL_MEM_DEVICE=y
++CONFIG_DIMM=y
++CONFIG_E1000E_PCI_EXPRESS=y
++CONFIG_E1000_PCI=y
++CONFIG_EDU=y
++CONFIG_FDC=y
++CONFIG_FDC_SYSBUS=y
++CONFIG_FDC_ISA=y
++CONFIG_FW_CFG_DMA=y
++CONFIG_HDA=y
++CONFIG_HYPERV=y
++CONFIG_HYPERV_TESTDEV=y
++CONFIG_I2C=y
++CONFIG_I440FX=y
++CONFIG_I8254=y
++CONFIG_I8257=y
++CONFIG_I8259=y
++CONFIG_I82801B11=y
++CONFIG_IDE_CORE=y
++CONFIG_IDE_PCI=y
++CONFIG_IDE_PIIX=y
++CONFIG_IDE_QDEV=y
++CONFIG_IOAPIC=y
++CONFIG_IOH3420=y
++CONFIG_ISA_BUS=y
++CONFIG_ISA_DEBUG=y
++CONFIG_ISA_TESTDEV=y
++CONFIG_LPC_ICH9=y
++CONFIG_MC146818RTC=y
++CONFIG_MEM_DEVICE=y
++CONFIG_NVDIMM=y
++CONFIG_OPENGL=y
++CONFIG_PAM=y
++CONFIG_PC=y
++CONFIG_PCI=y
++CONFIG_PCIE_PORT=y
++CONFIG_PCI_DEVICES=y
++CONFIG_PCI_EXPRESS=y
++CONFIG_PCI_EXPRESS_Q35=y
++CONFIG_PCI_I440FX=y
++CONFIG_PCI_TESTDEV=y
++CONFIG_PCKBD=y
++CONFIG_PCSPK=y
++CONFIG_PC_ACPI=y
++CONFIG_PC_PCI=y
++CONFIG_PFLASH_CFI01=y
++CONFIG_PVPANIC_ISA=y
++CONFIG_PXB=y
++CONFIG_Q35=y
++CONFIG_RTL8139_PCI=y
++CONFIG_SCSI=y
++CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
++CONFIG_SERIAL_PCI=y
++CONFIG_SEV=y
++CONFIG_SMBIOS=y
++CONFIG_SMBUS_EEPROM=y
++CONFIG_TEST_DEVICES=y
++CONFIG_USB=y
++CONFIG_USB_EHCI=y
++CONFIG_USB_EHCI_PCI=y
++CONFIG_USB_SMARTCARD=y
++CONFIG_USB_STORAGE_CORE=y
++CONFIG_USB_STORAGE_CLASSIC=y
++CONFIG_USB_UHCI=y
++CONFIG_USB_XHCI=y
++CONFIG_USB_XHCI_NEC=y
++CONFIG_USB_XHCI_PCI=y
++CONFIG_VFIO=y
++CONFIG_VFIO_PCI=y
++CONFIG_VGA=y
++CONFIG_VGA_CIRRUS=y
++CONFIG_VGA_PCI=y
++CONFIG_VHOST_USER=y
++CONFIG_VHOST_USER_BLK=y
++CONFIG_VIRTIO_MEM=y
++CONFIG_VIRTIO_PCI=y
++CONFIG_VIRTIO_VGA=y
++CONFIG_VIRTIO_IOMMU=y
++CONFIG_VMMOUSE=y
++CONFIG_VMPORT=y
++CONFIG_VTD=y
++CONFIG_WDT_IB6300ESB=y
++CONFIG_WDT_IB700=y
++CONFIG_XIO3130=y
++CONFIG_TPM=y
++CONFIG_TPM_CRB=y
++CONFIG_TPM_TIS_ISA=y
++CONFIG_TPM_EMULATOR=y
++CONFIG_SGX=y
++CONFIG_VHOST_VSOCK=y
++CONFIG_VHOST_USER_VSOCK=y
++CONFIG_VHOST_USER_FS=y
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index b545ba0e4f..a41a16cba7 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -29,7 +29,7 @@ arm_ss.add(when: 'CONFIG_VEXPRESS', if_true: files('vexpress.c'))
+ arm_ss.add(when: 'CONFIG_ZYNQ', if_true: files('xilinx_zynq.c'))
+ arm_ss.add(when: 'CONFIG_SABRELITE', if_true: files('sabrelite.c'))
+ 
+-arm_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('armv7m.c'))
++#arm_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('armv7m.c'))
+ arm_ss.add(when: 'CONFIG_EXYNOS4', if_true: files('exynos4210.c'))
+ arm_ss.add(when: 'CONFIG_PXA2XX', if_true: files('pxa2xx.c', 'pxa2xx_gpio.c', 'pxa2xx_pic.c'))
+ arm_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic.c'))
+diff --git a/hw/block/fdc.c b/hw/block/fdc.c
+index d7cc4d3ec1..12d0a60905 100644
+--- a/hw/block/fdc.c
++++ b/hw/block/fdc.c
+@@ -49,6 +49,8 @@
+ #include "qom/object.h"
+ #include "fdc-internal.h"
+ 
++#include "hw/boards.h"
++
+ /********************************************************/
+ /* debug Floppy devices */
+ 
+@@ -2346,6 +2348,14 @@ void fdctrl_realize_common(DeviceState *dev, FDCtrl *fdctrl, Error **errp)
+     FDrive *drive;
+     static int command_tables_inited = 0;
+ 
++    /* Restricted for Red Hat Enterprise Linux: */
++    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
++    if (!strstr(mc->name, "-rhel7.")) {
++        error_setg(errp, "Device %s is not supported with machine type %s",
++                   object_get_typename(OBJECT(dev)), mc->name);
++        return;
++    }
++
+     if (fdctrl->fallback == FLOPPY_DRIVE_TYPE_AUTO) {
+         error_setg(errp, "Cannot choose a fallback FDrive type of 'auto'");
+         return;
+diff --git a/hw/cpu/meson.build b/hw/cpu/meson.build
+index e37490074f..4431e3731c 100644
+--- a/hw/cpu/meson.build
++++ b/hw/cpu/meson.build
+@@ -1,4 +1,5 @@
+-softmmu_ss.add(files('core.c', 'cluster.c'))
++#softmmu_ss.add(files('core.c', 'cluster.c'))
++softmmu_ss.add(files('core.c'))
+ 
+ softmmu_ss.add(when: 'CONFIG_ARM11MPCORE', if_true: files('arm11mpcore.c'))
+ softmmu_ss.add(when: 'CONFIG_REALVIEW', if_true: files('realview_mpcore.c'))
+diff --git a/hw/display/cirrus_vga.c b/hw/display/cirrus_vga.c
+index b80f98b6c4..cbde6a8f15 100644
+--- a/hw/display/cirrus_vga.c
++++ b/hw/display/cirrus_vga.c
+@@ -36,6 +36,7 @@
+ #include "qemu/module.h"
+ #include "qemu/units.h"
+ #include "qemu/log.h"
++#include "qemu/error-report.h"
+ #include "sysemu/reset.h"
+ #include "qapi/error.h"
+ #include "trace.h"
+@@ -47,6 +48,7 @@
+ #include "qom/object.h"
+ #include "ui/console.h"
+ 
++
+ /*
+  * TODO:
+  *    - destination write mask support not complete (bits 5..7)
+@@ -2946,7 +2948,10 @@ static void pci_cirrus_vga_realize(PCIDevice *dev, Error **errp)
+     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
+     int16_t device_id = pc->device_id;
+ 
+-    /*
++     warn_report("'cirrus-vga' is deprecated, "
++                 "please use a different VGA card instead");
++
++     /*
+      * Follow real hardware, cirrus card emulated has 4 MB video memory.
+      * Also accept 8 MB/16 MB for backward compatibility.
+      */
+diff --git a/hw/ide/piix.c b/hw/ide/piix.c
+index 41d60921e3..a4af45b4e8 100644
+--- a/hw/ide/piix.c
++++ b/hw/ide/piix.c
+@@ -193,7 +193,8 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
+     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+-    dc->hotpluggable = false;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->user_creatable = false;
+ }
+ 
+ static const TypeInfo piix3_ide_info = {
+@@ -216,6 +217,8 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+     dc->hotpluggable = false;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->user_creatable = false;
+ }
+ 
+ static const TypeInfo piix4_ide_info = {
+diff --git a/hw/input/pckbd.c b/hw/input/pckbd.c
+index b92b63bedc..3b6235dde6 100644
+--- a/hw/input/pckbd.c
++++ b/hw/input/pckbd.c
+@@ -957,6 +957,8 @@ static void i8042_class_initfn(ObjectClass *klass, void *data)
+     dc->vmsd = &vmstate_kbd_isa;
+     adevc->build_dev_aml = i8042_build_aml;
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->user_creatable = false;
+ }
+ 
+ static const TypeInfo i8042_info = {
+diff --git a/hw/net/e1000.c b/hw/net/e1000.c
+index 23d660619f..b75c9aa799 100644
+--- a/hw/net/e1000.c
++++ b/hw/net/e1000.c
+@@ -1805,6 +1805,7 @@ static const E1000Info e1000_devices[] = {
+         .revision  = 0x03,
+         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
+     },
++#if 0 /* Disabled for Red Hat Enterprise Linux 7 */
+     {
+         .name      = "e1000-82544gc",
+         .device_id = E1000_DEV_ID_82544GC_COPPER,
+@@ -1817,6 +1818,7 @@ static const E1000Info e1000_devices[] = {
+         .revision  = 0x03,
+         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
+     },
++#endif
+ };
+ 
+ static void e1000_register_types(void)
+diff --git a/hw/ppc/spapr_cpu_core.c b/hw/ppc/spapr_cpu_core.c
+index 8a4861f45a..fcb5dfe792 100644
+--- a/hw/ppc/spapr_cpu_core.c
++++ b/hw/ppc/spapr_cpu_core.c
+@@ -379,10 +379,12 @@ static const TypeInfo spapr_cpu_core_type_infos[] = {
+         .instance_size = sizeof(SpaprCpuCore),
+         .class_size = sizeof(SpaprCpuCoreClass),
+     },
++#if 0  /* Disabled for Red Hat Enterprise Linux */
+     DEFINE_SPAPR_CPU_CORE_TYPE("970_v2.2"),
+     DEFINE_SPAPR_CPU_CORE_TYPE("970mp_v1.0"),
+     DEFINE_SPAPR_CPU_CORE_TYPE("970mp_v1.1"),
+     DEFINE_SPAPR_CPU_CORE_TYPE("power5+_v2.1"),
++#endif
+     DEFINE_SPAPR_CPU_CORE_TYPE("power7_v2.3"),
+     DEFINE_SPAPR_CPU_CORE_TYPE("power7+_v2.1"),
+     DEFINE_SPAPR_CPU_CORE_TYPE("power8_v2.0"),
+diff --git a/hw/usb/meson.build b/hw/usb/meson.build
+index 599dc24f0d..905a994c3a 100644
+--- a/hw/usb/meson.build
++++ b/hw/usb/meson.build
+@@ -52,7 +52,7 @@ softmmu_ss.add(when: 'CONFIG_USB_SMARTCARD', if_true: files('dev-smartcard-reade
+ if cacard.found()
+   usbsmartcard_ss = ss.source_set()
+   usbsmartcard_ss.add(when: 'CONFIG_USB_SMARTCARD',
+-                      if_true: [cacard, files('ccid-card-emulated.c', 'ccid-card-passthru.c')])
++                      if_true: [cacard, files('ccid-card-passthru.c')])
+   hw_usb_modules += {'smartcard': usbsmartcard_ss}
+ endif
+ 
+diff --git a/target/arm/cpu_tcg.c b/target/arm/cpu_tcg.c
+index df0c45e523..c154a4dcf2 100644
+--- a/target/arm/cpu_tcg.c
++++ b/target/arm/cpu_tcg.c
+@@ -155,6 +155,7 @@ void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu)
+ /* CPU models. These are not needed for the AArch64 linux-user build. */
+ #if !defined(CONFIG_USER_ONLY) || !defined(TARGET_AARCH64)
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ #if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TCG)
+ static bool arm_v7m_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+ {
+@@ -508,6 +509,7 @@ static void cortex_a9_initfn(Object *obj)
+     cpu->isar.reset_pmcr_el0 = 0x41093000;
+     define_arm_cp_regs(cpu, cortexa9_cp_reginfo);
+ }
++#endif /* disabled for RHEL */
+ 
+ #ifndef CONFIG_USER_ONLY
+ static uint64_t a15_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
+@@ -532,6 +534,7 @@ static const ARMCPRegInfo cortexa15_cp_reginfo[] = {
+       .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
+ };
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void cortex_a7_initfn(Object *obj)
+ {
+     ARMCPU *cpu = ARM_CPU(obj);
+@@ -580,6 +583,7 @@ static void cortex_a7_initfn(Object *obj)
+     cpu->isar.reset_pmcr_el0 = 0x41072000;
+     define_arm_cp_regs(cpu, cortexa15_cp_reginfo); /* Same as A15 */
+ }
++#endif /* disabled for RHEL */
+ 
+ static void cortex_a15_initfn(Object *obj)
+ {
+@@ -628,6 +632,7 @@ static void cortex_a15_initfn(Object *obj)
+     define_arm_cp_regs(cpu, cortexa15_cp_reginfo);
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void cortex_m0_initfn(Object *obj)
+ {
+     ARMCPU *cpu = ARM_CPU(obj);
+@@ -1110,6 +1115,7 @@ static void arm_v7m_class_init(ObjectClass *oc, void *data)
+ 
+     cc->gdb_core_xml_file = "arm-m-profile.xml";
+ }
++#endif /* disabled for RHEL */
+ 
+ #ifndef TARGET_AARCH64
+ /*
+@@ -1177,6 +1183,7 @@ static void arm_max_initfn(Object *obj)
+ #endif /* !TARGET_AARCH64 */
+ 
+ static const ARMCPUInfo arm_tcg_cpus[] = {
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     { .name = "arm926",      .initfn = arm926_initfn },
+     { .name = "arm946",      .initfn = arm946_initfn },
+     { .name = "arm1026",     .initfn = arm1026_initfn },
+@@ -1192,7 +1199,9 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
+     { .name = "cortex-a7",   .initfn = cortex_a7_initfn },
+     { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
+     { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
++#endif /* disabled for RHEL */
+     { .name = "cortex-a15",  .initfn = cortex_a15_initfn },
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     { .name = "cortex-m0",   .initfn = cortex_m0_initfn,
+                              .class_init = arm_v7m_class_init },
+     { .name = "cortex-m3",   .initfn = cortex_m3_initfn,
+@@ -1224,6 +1233,7 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
+     { .name = "pxa270-b1",   .initfn = pxa270b1_initfn },
+     { .name = "pxa270-c0",   .initfn = pxa270c0_initfn },
+     { .name = "pxa270-c5",   .initfn = pxa270c5_initfn },
++#endif /* disabled for RHEL */
+ #ifndef TARGET_AARCH64
+     { .name = "max",         .initfn = arm_max_initfn },
+ #endif
+diff --git a/target/ppc/cpu-models.c b/target/ppc/cpu-models.c
+index 912b037c63..cd3ff700ac 100644
+--- a/target/ppc/cpu-models.c
++++ b/target/ppc/cpu-models.c
+@@ -66,6 +66,7 @@
+ #define POWERPC_DEF(_name, _pvr, _type, _desc)                              \
+     POWERPC_DEF_SVR(_name, _desc, _pvr, POWERPC_SVR_NONE, _type)
+ 
++#if 0  /* Embedded and 32-bit CPUs disabled for Red Hat Enterprise Linux */
+     /* Embedded PowerPC                                                      */
+     /* PowerPC 405 family                                                    */
+     /* PowerPC 405 cores                                                     */
+@@ -698,8 +699,10 @@
+                 "PowerPC 7447A v1.2 (G4)")
+     POWERPC_DEF("7457a_v1.2",    CPU_POWERPC_74x7A_v12,              7455,
+                 "PowerPC 7457A v1.2 (G4)")
++#endif
+     /* 64 bits PowerPC                                                       */
+ #if defined(TARGET_PPC64)
++#if 0  /* Disabled for Red Hat Enterprise Linux */
+     POWERPC_DEF("970_v2.2",      CPU_POWERPC_970_v22,                970,
+                 "PowerPC 970 v2.2")
+     POWERPC_DEF("970fx_v1.0",    CPU_POWERPC_970FX_v10,              970,
+@@ -718,6 +721,7 @@
+                 "PowerPC 970MP v1.1")
+     POWERPC_DEF("power5+_v2.1",  CPU_POWERPC_POWER5P_v21,            POWER5P,
+                 "POWER5+ v2.1")
++#endif
+     POWERPC_DEF("power7_v2.3",   CPU_POWERPC_POWER7_v23,             POWER7,
+                 "POWER7 v2.3")
+     POWERPC_DEF("power7+_v2.1",  CPU_POWERPC_POWER7P_v21,            POWER7,
+@@ -896,12 +900,15 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
+     { "7447a", "7447a_v1.2" },
+     { "7457a", "7457a_v1.2" },
+     { "apollo7pm", "7457a_v1.0" },
++#endif
+ #if defined(TARGET_PPC64)
++#if 0  /* Disabled for Red Hat Enterprise Linux */
+     { "970", "970_v2.2" },
+     { "970fx", "970fx_v3.1" },
+     { "970mp", "970mp_v1.1" },
+     { "power5+", "power5+_v2.1" },
+     { "power5gs", "power5+_v2.1" },
++#endif
+     { "power7", "power7_v2.3" },
+     { "power7+", "power7+_v2.1" },
+     { "power8e", "power8e_v2.1" },
+@@ -911,12 +918,14 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
+     { "power10", "power10_v2.0" },
+ #endif
+ 
++#if 0  /* Disabled for Red Hat Enterprise Linux */
+     /* Generic PowerPCs */
+ #if defined(TARGET_PPC64)
+     { "ppc64", "970fx_v3.1" },
+ #endif
+     { "ppc32", "604" },
+     { "ppc", "604" },
++#endif
+ 
+     { NULL, NULL }
+ };
+diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
+index 63981bf36b..87a4480c05 100644
+--- a/target/s390x/cpu_models_sysemu.c
++++ b/target/s390x/cpu_models_sysemu.c
+@@ -35,6 +35,9 @@ static void check_unavailable_features(const S390CPUModel *max_model,
+         (max_model->def->gen == model->def->gen &&
+          max_model->def->ec_ga < model->def->ec_ga)) {
+         list_add_feat("type", unavailable);
++    } else if (model->def->gen < 11 && kvm_enabled()) {
++        /* Older CPU models are not supported on Red Hat Enterprise Linux */
++        list_add_feat("type", unavailable);
+     }
+ 
+     /* detect missing features if any to properly report them */
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index 3ac7ec9acf..97da1a6424 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -2529,6 +2529,14 @@ void kvm_s390_apply_cpu_model(const S390CPUModel *model, Error **errp)
+         error_setg(errp, "KVM doesn't support CPU models");
+         return;
+     }
++
++    /* Older CPU models are not supported on Red Hat Enterprise Linux */
++    if (model->def->gen < 11) {
++        error_setg(errp, "KVM: Unsupported CPU type specified: %s",
++                   MACHINE(qdev_get_machine())->cpu_type);
++        return;
++    }
++
+     prop.cpuid = s390_cpuid_from_cpu_model(model);
+     prop.ibc = s390_ibc_from_cpu_model(model);
+     /* configure cpu features indicated via STFL(e) */
+-- 
+2.39.1
+

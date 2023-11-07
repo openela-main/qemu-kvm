@@ -1,0 +1,121 @@
+From def66503f4ccb97cf8029f88efe8e955edc8d32f Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 00:49:47 +0100
+Subject: [PATCH 39/56] migration: Move migrate_use_block_incremental() to
+ option.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [38/50] 961fda6464df3384fbcee88c726b56a33c26e14e (peterx/qemu-kvm)
+
+To be consistent with every other parameter, rename to
+migrate_block_incremental().
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 6f8be7080a1f79bf3832cf798fba1697c409c597)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/block.c     |  2 +-
+ migration/migration.c | 11 +----------
+ migration/migration.h |  1 -
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ 5 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/migration/block.c b/migration/block.c
+index f0977217cf..6d532ac7a2 100644
+--- a/migration/block.c
++++ b/migration/block.c
+@@ -417,7 +417,7 @@ static int init_blk_migration(QEMUFile *f)
+         bmds->bulk_completed = 0;
+         bmds->total_sectors = sectors;
+         bmds->completed_sectors = 0;
+-        bmds->shared_base = migrate_use_block_incremental();
++        bmds->shared_base = migrate_block_incremental();
+ 
+         assert(i < num_bs);
+         bmds_bs[i].bmds = bmds;
+diff --git a/migration/migration.c b/migration/migration.c
+index 78bca9a93f..724e841eb9 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2157,7 +2157,7 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+             error_setg(errp, "No disk migration is required in COLO mode");
+             return false;
+         }
+-        if (migrate_block() || migrate_use_block_incremental()) {
++        if (migrate_block() || migrate_block_incremental()) {
+             error_setg(errp, "Command options are incompatible with "
+                        "current migration capabilities");
+             return false;
+@@ -2273,15 +2273,6 @@ int migrate_use_tls(void)
+     return s->parameters.tls_creds && *s->parameters.tls_creds;
+ }
+ 
+-bool migrate_use_block_incremental(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.block_incremental;
+-}
+-
+ /* migration thread support */
+ /*
+  * Something bad happened to the RP stream, mark an error
+diff --git a/migration/migration.h b/migration/migration.h
+index 8451e5f2fe..86051af132 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -451,7 +451,6 @@ bool migrate_postcopy(void);
+ 
+ int migrate_use_tls(void);
+ 
+-bool migrate_use_block_incremental(void);
+ int migrate_max_cpu_throttle(void);
+ 
+ uint64_t ram_get_total_transferred_pages(void);
+diff --git a/migration/options.c b/migration/options.c
+index 8d15be858c..2b6d88b4b9 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -463,6 +463,15 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+ 
+ /* parameters */
+ 
++bool migrate_block_incremental(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.block_incremental;
++}
++
+ int migrate_compress_level(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index b24ee92283..96d5a8e6e4 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -45,6 +45,7 @@ bool migrate_cap_set(int cap, bool value, Error **errp);
+ 
+ /* parameters */
+ 
++bool migrate_block_incremental(void);
+ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
+-- 
+2.39.1
+

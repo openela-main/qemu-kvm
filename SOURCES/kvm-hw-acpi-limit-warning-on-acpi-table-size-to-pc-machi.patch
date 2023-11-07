@@ -1,0 +1,101 @@
+From 3f70da88788c398877b8ded0b27689530385302b Mon Sep 17 00:00:00 2001
+From: Ani Sinha <anisinha@redhat.com>
+Date: Wed, 29 Mar 2023 10:27:26 +0530
+Subject: [PATCH 2/3] hw/acpi: limit warning on acpi table size to pc machines
+ older than version 2.3
+
+RH-Author: Ani Sinha <None>
+RH-MergeRequest: 160: hw/acpi: limit warning on acpi table size to pc machines older than version 2.3
+RH-Bugzilla: 1934134
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [1/2] 96c3b6d51e16734eb4e8de52635e0ca036964090 (anisinha/centos-qemu-kvm)
+
+i440fx machine versions 2.3 and newer supports dynamic ram
+resizing. See commit a1666142db6233 ("acpi-build: make ROMs RAM blocks resizeable") .
+Currently supported all q35 machine types (versions 2.4 and newer) supports
+resizable RAM/ROM blocks.Therefore the warning generated when the ACPI table
+size exceeds a pre-defined value does not apply to those machine versions.
+Add a check limiting the warning message to only those machines that does not
+support expandable ram blocks (that is, i440fx machines with version 2.2
+and older).
+
+Signed-off-by: Ani Sinha <anisinha@redhat.com>
+Message-Id: <20230329045726.14028-1-anisinha@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 1af507756bae775028c27d30e602e2b9c72cd074)
+---
+ hw/i386/acpi-build.c | 6 ++++--
+ hw/i386/pc.c         | 1 +
+ hw/i386/pc_piix.c    | 1 +
+ include/hw/i386/pc.h | 3 +++
+ 4 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index ec857a117e..9bc4d8a981 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -2695,7 +2695,8 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
+         int legacy_table_size =
+             ROUND_UP(tables_blob->len - aml_len + legacy_aml_len,
+                      ACPI_BUILD_ALIGN_SIZE);
+-        if (tables_blob->len > legacy_table_size) {
++        if ((tables_blob->len > legacy_table_size) &&
++            !pcmc->resizable_acpi_blob) {
+             /* Should happen only with PCI bridges and -M pc-i440fx-2.0.  */
+             warn_report("ACPI table size %u exceeds %d bytes,"
+                         " migration may not work",
+@@ -2706,7 +2707,8 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
+         g_array_set_size(tables_blob, legacy_table_size);
+     } else {
+         /* Make sure we have a buffer in case we need to resize the tables. */
+-        if (tables_blob->len > ACPI_BUILD_TABLE_SIZE / 2) {
++        if ((tables_blob->len > ACPI_BUILD_TABLE_SIZE / 2) &&
++            !pcmc->resizable_acpi_blob) {
+             /* As of QEMU 2.1, this fires with 160 VCPUs and 255 memory slots.  */
+             warn_report("ACPI table size %u exceeds %d bytes,"
+                         " migration may not work",
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index f216922cee..7db5a2348f 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -2092,6 +2092,7 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+     pcmc->acpi_data_size = 0x20000 + 0x8000;
+     pcmc->pvh_enabled = true;
+     pcmc->kvmclock_create_always = true;
++    pcmc->resizable_acpi_blob = true;
+     assert(!mc->get_hotplug_handler);
+     mc->async_pf_vmexit_disable = false;
+     mc->get_hotplug_handler = pc_get_hotplug_handler;
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index fc704d783f..4d5880e249 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -750,6 +750,7 @@ static void pc_i440fx_2_2_machine_options(MachineClass *m)
+     compat_props_add(m->compat_props, hw_compat_2_2, hw_compat_2_2_len);
+     compat_props_add(m->compat_props, pc_compat_2_2, pc_compat_2_2_len);
+     pcmc->rsdp_in_ram = false;
++    pcmc->resizable_acpi_blob = false;
+ }
+ 
+ DEFINE_I440FX_MACHINE(v2_2, "pc-i440fx-2.2", pc_compat_2_2_fn,
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index d218ad1628..2f514d13d8 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -130,6 +130,9 @@ struct PCMachineClass {
+ 
+     /* create kvmclock device even when KVM PV features are not exposed */
+     bool kvmclock_create_always;
++
++    /* resizable acpi blob compat */
++    bool resizable_acpi_blob;
+ };
+ 
+ #define TYPE_PC_MACHINE "generic-pc-machine"
+-- 
+2.39.1
+

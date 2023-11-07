@@ -1,0 +1,105 @@
+From 886b511e0a225b1c4428c646534d7bcc65bd9e2a Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 11 Apr 2023 18:02:34 +0200
+Subject: [PATCH 14/56] migration: Make dirty_sync_count atomic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [13/50] ef3ae8cdd960e944ba9e73a53d54c9a5a55bb1ce (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 536b5a4e56ec67c958f46e7d46cbd5ac34e5a239)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c |  3 ++-
+ migration/ram.c       | 13 +++++++------
+ migration/ram.h       |  2 +-
+ 3 files changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 8f2847d298..8fca751050 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1148,7 +1148,8 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->normal = stat64_get(&ram_counters.normal);
+     info->ram->normal_bytes = info->ram->normal * page_size;
+     info->ram->mbps = s->mbps;
+-    info->ram->dirty_sync_count = ram_counters.dirty_sync_count;
++    info->ram->dirty_sync_count =
++        stat64_get(&ram_counters.dirty_sync_count);
+     info->ram->dirty_sync_missed_zero_copy =
+         stat64_get(&ram_counters.dirty_sync_missed_zero_copy);
+     info->ram->postcopy_requests = ram_counters.postcopy_requests;
+diff --git a/migration/ram.c b/migration/ram.c
+index b1722b6071..3c13136559 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -764,7 +764,7 @@ static void xbzrle_cache_zero_page(RAMState *rs, ram_addr_t current_addr)
+     /* We don't care if this fails to allocate a new cache page
+      * as long as it updated an old one */
+     cache_insert(XBZRLE.cache, current_addr, XBZRLE.zero_target_page,
+-                 ram_counters.dirty_sync_count);
++                 stat64_get(&ram_counters.dirty_sync_count));
+ }
+ 
+ #define ENCODING_FLAG_XBZRLE 0x1
+@@ -790,13 +790,13 @@ static int save_xbzrle_page(RAMState *rs, PageSearchStatus *pss,
+     int encoded_len = 0, bytes_xbzrle;
+     uint8_t *prev_cached_page;
+     QEMUFile *file = pss->pss_channel;
++    uint64_t generation = stat64_get(&ram_counters.dirty_sync_count);
+ 
+-    if (!cache_is_cached(XBZRLE.cache, current_addr,
+-                         ram_counters.dirty_sync_count)) {
++    if (!cache_is_cached(XBZRLE.cache, current_addr, generation)) {
+         xbzrle_counters.cache_miss++;
+         if (!rs->last_stage) {
+             if (cache_insert(XBZRLE.cache, current_addr, *current_data,
+-                             ram_counters.dirty_sync_count) == -1) {
++                             generation) == -1) {
+                 return -1;
+             } else {
+                 /* update *current_data when the page has been
+@@ -1209,7 +1209,7 @@ static void migration_bitmap_sync(RAMState *rs)
+     RAMBlock *block;
+     int64_t end_time;
+ 
+-    ram_counters.dirty_sync_count++;
++    stat64_add(&ram_counters.dirty_sync_count, 1);
+ 
+     if (!rs->time_last_bitmap_sync) {
+         rs->time_last_bitmap_sync = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+@@ -1246,7 +1246,8 @@ static void migration_bitmap_sync(RAMState *rs)
+         rs->bytes_xfer_prev = stat64_get(&ram_counters.transferred);
+     }
+     if (migrate_use_events()) {
+-        qapi_event_send_migration_pass(ram_counters.dirty_sync_count);
++        uint64_t generation = stat64_get(&ram_counters.dirty_sync_count);
++        qapi_event_send_migration_pass(generation);
+     }
+ }
+ 
+diff --git a/migration/ram.h b/migration/ram.h
+index bb52632424..8c0d07c43a 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -42,7 +42,7 @@
+  */
+ typedef struct {
+     int64_t dirty_pages_rate;
+-    int64_t dirty_sync_count;
++    Stat64 dirty_sync_count;
+     Stat64 dirty_sync_missed_zero_copy;
+     Stat64 downtime_bytes;
+     Stat64 duplicate;
+-- 
+2.39.1
+

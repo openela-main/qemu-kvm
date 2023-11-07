@@ -1,0 +1,52 @@
+From c0d377e1bf442a09b82fddbb8588fcddf6439854 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 24 Nov 2022 17:26:19 +0100
+Subject: [PATCH 09/56] migration: Update atomic stats out of the mutex
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [8/50] 88e9dbc9a3e5aef60a7c98c871144904c7062b1f (peterx/qemu-kvm)
+
+Reviewed-by: David Edmondson <david.edmondson@oracle.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 30fb22cda45bea43a3c0e26049ebdd71a9503ffd)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/multifd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 01fab01a92..6ef3a27938 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -433,8 +433,8 @@ static int multifd_send_pages(QEMUFile *f)
+     transferred = ((uint64_t) pages->num) * p->page_size + p->packet_len;
+     qemu_file_acct_rate_limit(f, transferred);
+     ram_counters.multifd_bytes += transferred;
+-    stat64_add(&ram_counters.transferred, transferred);
+     qemu_mutex_unlock(&p->mutex);
++    stat64_add(&ram_counters.transferred, transferred);
+     qemu_sem_post(&p->sem);
+ 
+     return 1;
+@@ -628,8 +628,8 @@ int multifd_send_sync_main(QEMUFile *f)
+         p->pending_job++;
+         qemu_file_acct_rate_limit(f, p->packet_len);
+         ram_counters.multifd_bytes += p->packet_len;
+-        stat64_add(&ram_counters.transferred, p->packet_len);
+         qemu_mutex_unlock(&p->mutex);
++        stat64_add(&ram_counters.transferred, p->packet_len);
+         qemu_sem_post(&p->sem);
+     }
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+-- 
+2.39.1
+

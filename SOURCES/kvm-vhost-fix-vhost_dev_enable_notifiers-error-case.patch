@@ -1,0 +1,138 @@
+From ac54f5f746782da89ab674733af5622e524b58eb Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Fri, 2 Jun 2023 18:27:35 +0200
+Subject: [PATCH 4/6] vhost: fix vhost_dev_enable_notifiers() error case
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 176: vhost: fix vhost_dev_enable_notifiers() error case
+RH-Jira: RHEL-330
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [1/1] fd30d7501be59f7e5b9d6fc5ed84efcc4037d08e (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-330
+
+in vhost_dev_enable_notifiers(), if virtio_bus_set_host_notifier(true)
+fails, we call vhost_dev_disable_notifiers() that executes
+virtio_bus_set_host_notifier(false) on all queues, even on queues that
+have failed to be initialized.
+
+This triggers a core dump in memory_region_del_eventfd():
+
+ virtio_bus_set_host_notifier: unable to init event notifier: Too many open files (-24)
+ vhost VQ 1 notifier binding failed: 24
+ .../softmmu/memory.c:2611: memory_region_del_eventfd: Assertion `i != mr->ioeventfd_nb' failed.
+
+Fix the problem by providing to vhost_dev_disable_notifiers() the
+number of queues to disable.
+
+Fixes: 8771589b6f81 ("vhost: simplify vhost_dev_enable_notifiers")
+Cc: longpeng2@huawei.com
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Message-Id: <20230602162735.3670785-1-lvivier@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit 92099aa4e9a3bb6856c290afaf41c76f9e3dd9fd)
+---
+ hw/virtio/vhost.c | 65 ++++++++++++++++++++++++++---------------------
+ 1 file changed, 36 insertions(+), 29 deletions(-)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index a266396576..ae0a033e60 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -1545,6 +1545,40 @@ void vhost_dev_cleanup(struct vhost_dev *hdev)
+     memset(hdev, 0, sizeof(struct vhost_dev));
+ }
+ 
++static void vhost_dev_disable_notifiers_nvqs(struct vhost_dev *hdev,
++                                             VirtIODevice *vdev,
++                                             unsigned int nvqs)
++{
++    BusState *qbus = BUS(qdev_get_parent_bus(DEVICE(vdev)));
++    int i, r;
++
++    /*
++     * Batch all the host notifiers in a single transaction to avoid
++     * quadratic time complexity in address_space_update_ioeventfds().
++     */
++    memory_region_transaction_begin();
++
++    for (i = 0; i < nvqs; ++i) {
++        r = virtio_bus_set_host_notifier(VIRTIO_BUS(qbus), hdev->vq_index + i,
++                                         false);
++        if (r < 0) {
++            error_report("vhost VQ %d notifier cleanup failed: %d", i, -r);
++        }
++        assert(r >= 0);
++    }
++
++    /*
++     * The transaction expects the ioeventfds to be open when it
++     * commits. Do it now, before the cleanup loop.
++     */
++    memory_region_transaction_commit();
++
++    for (i = 0; i < nvqs; ++i) {
++        virtio_bus_cleanup_host_notifier(VIRTIO_BUS(qbus), hdev->vq_index + i);
++    }
++    virtio_device_release_ioeventfd(vdev);
++}
++
+ /* Stop processing guest IO notifications in qemu.
+  * Start processing them in vhost in kernel.
+  */
+@@ -1574,7 +1608,7 @@ int vhost_dev_enable_notifiers(struct vhost_dev *hdev, VirtIODevice *vdev)
+         if (r < 0) {
+             error_report("vhost VQ %d notifier binding failed: %d", i, -r);
+             memory_region_transaction_commit();
+-            vhost_dev_disable_notifiers(hdev, vdev);
++            vhost_dev_disable_notifiers_nvqs(hdev, vdev, i);
+             return r;
+         }
+     }
+@@ -1591,34 +1625,7 @@ int vhost_dev_enable_notifiers(struct vhost_dev *hdev, VirtIODevice *vdev)
+  */
+ void vhost_dev_disable_notifiers(struct vhost_dev *hdev, VirtIODevice *vdev)
+ {
+-    BusState *qbus = BUS(qdev_get_parent_bus(DEVICE(vdev)));
+-    int i, r;
+-
+-    /*
+-     * Batch all the host notifiers in a single transaction to avoid
+-     * quadratic time complexity in address_space_update_ioeventfds().
+-     */
+-    memory_region_transaction_begin();
+-
+-    for (i = 0; i < hdev->nvqs; ++i) {
+-        r = virtio_bus_set_host_notifier(VIRTIO_BUS(qbus), hdev->vq_index + i,
+-                                         false);
+-        if (r < 0) {
+-            error_report("vhost VQ %d notifier cleanup failed: %d", i, -r);
+-        }
+-        assert (r >= 0);
+-    }
+-
+-    /*
+-     * The transaction expects the ioeventfds to be open when it
+-     * commits. Do it now, before the cleanup loop.
+-     */
+-    memory_region_transaction_commit();
+-
+-    for (i = 0; i < hdev->nvqs; ++i) {
+-        virtio_bus_cleanup_host_notifier(VIRTIO_BUS(qbus), hdev->vq_index + i);
+-    }
+-    virtio_device_release_ioeventfd(vdev);
++    vhost_dev_disable_notifiers_nvqs(hdev, vdev, hdev->nvqs);
+ }
+ 
+ /* Test and clear event pending status.
+-- 
+2.39.3
+

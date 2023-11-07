@@ -1,0 +1,134 @@
+From 09bf0febef2512f00e71edca0fcbaf452652c2c7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 10 Aug 2023 11:27:28 +0200
+Subject: [PATCH 6/7] vdpa: move vhost_vdpa_set_vring_ready to the caller
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [6/7] cf4fd1071ca127914c8e8d6aefec451cad97ecc1 (eperezmartin/qemu-kvm)
+
+Doing that way allows CVQ to be enabled before the dataplane vqs,
+restoring the state as MQ or MAC addresses properly in the case of a
+migration.
+
+The patch does it by defining a ->load NetClientInfo callback also for
+dataplane.  Ideally, this should be done by an independent patch, but
+the function is already static so it would only add an empty
+vhost_vdpa_net_data_load stub.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+---
+v3:
+* Fix subject typo
+* Expand patch message so it explains why
+---
+ hw/virtio/vdpa-dev.c   |  3 +++
+ hw/virtio/vhost-vdpa.c |  3 ---
+ net/vhost-vdpa.c       | 41 +++++++++++++++++++++++++++++++----------
+ 3 files changed, 34 insertions(+), 13 deletions(-)
+
+diff --git a/hw/virtio/vdpa-dev.c b/hw/virtio/vdpa-dev.c
+index 01b41eb0f1..8c47d643bf 100644
+--- a/hw/virtio/vdpa-dev.c
++++ b/hw/virtio/vdpa-dev.c
+@@ -256,6 +256,9 @@ static int vhost_vdpa_device_start(VirtIODevice *vdev, Error **errp)
+         error_setg_errno(errp, -ret, "Error starting vhost");
+         goto err_guest_notifiers;
+     }
++    for (i = 0; i < s->dev.nvqs; ++i) {
++        vhost_vdpa_set_vring_ready(&s->vdpa, i);
++    }
+     s->started = true;
+ 
+     /*
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index e4d0101327..0d9d311abd 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -1154,9 +1154,6 @@ static int vhost_vdpa_dev_start(struct vhost_dev *dev, bool started)
+         if (unlikely(!ok)) {
+             return -1;
+         }
+-        for (int i = 0; i < dev->nvqs; ++i) {
+-            vhost_vdpa_set_vring_ready(v, dev->vq_index + i);
+-        }
+     } else {
+         vhost_vdpa_suspend(dev);
+         vhost_vdpa_svqs_stop(dev);
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index a1b16bbc52..47b87bf80d 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -344,6 +344,22 @@ static int vhost_vdpa_net_data_start(NetClientState *nc)
+     return 0;
+ }
+ 
++static int vhost_vdpa_net_data_load(NetClientState *nc)
++{
++    VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
++    struct vhost_vdpa *v = &s->vhost_vdpa;
++    bool has_cvq = v->dev->vq_index_end % 2;
++
++    if (has_cvq) {
++        return 0;
++    }
++
++    for (int i = 0; i < v->dev->nvqs; ++i) {
++        vhost_vdpa_set_vring_ready(v, i + v->dev->vq_index);
++    }
++    return 0;
++}
++
+ static void vhost_vdpa_net_client_stop(NetClientState *nc)
+ {
+     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
+@@ -366,6 +382,7 @@ static NetClientInfo net_vhost_vdpa_info = {
+         .size = sizeof(VhostVDPAState),
+         .receive = vhost_vdpa_receive,
+         .start = vhost_vdpa_net_data_start,
++        .load = vhost_vdpa_net_data_load,
+         .stop = vhost_vdpa_net_client_stop,
+         .cleanup = vhost_vdpa_cleanup,
+         .has_vnet_hdr = vhost_vdpa_has_vnet_hdr,
+@@ -682,18 +699,22 @@ static int vhost_vdpa_net_cvq_load(NetClientState *nc)
+ 
+     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
+ 
+-    if (!v->shadow_vqs_enabled) {
+-        return 0;
+-    }
++    vhost_vdpa_set_vring_ready(v, v->dev->vq_index);
+ 
+-    n = VIRTIO_NET(v->dev->vdev);
+-    r = vhost_vdpa_net_load_mac(s, n);
+-    if (unlikely(r < 0)) {
+-        return r;
++    if (v->shadow_vqs_enabled) {
++        n = VIRTIO_NET(v->dev->vdev);
++        r = vhost_vdpa_net_load_mac(s, n);
++        if (unlikely(r < 0)) {
++            return r;
++        }
++        r = vhost_vdpa_net_load_mq(s, n);
++        if (unlikely(r)) {
++            return r;
++        }
+     }
+-    r = vhost_vdpa_net_load_mq(s, n);
+-    if (unlikely(r)) {
+-        return r;
++
++    for (int i = 0; i < v->dev->vq_index; ++i) {
++        vhost_vdpa_set_vring_ready(v, i);
+     }
+ 
+     return 0;
+-- 
+2.39.3
+

@@ -1,0 +1,60 @@
+From 50c833fc3c7d8d3a5124cfdb2f2dc06b910c2252 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 14:21:25 -0400
+Subject: [PATCH 11/14] qemu-options.hx: Update the reduced-phys-bits
+ documentation
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 196: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214839
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/4] b0c4a19e9f4185c97ddf71857bc9367cea01ffa8 (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214839
+
+commit 326e3015c4c6f3197157ea0bb00826ae740e2fad
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:28 2022 -0500
+
+    qemu-options.hx: Update the reduced-phys-bits documentation
+
+    A guest only ever experiences, at most, 1 bit of reduced physical
+    addressing. Update the documentation to reflect this as well as change
+    the example value on the reduced-phys-bits option.
+
+    Fixes: a9b4942f48 ("target/i386: add Secure Encrypted Virtualization (SEV) object")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <13a62ced1808546c1d398e2025cf85f4c94ae123.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ qemu-options.hx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/qemu-options.hx b/qemu-options.hx
+index b18f933703..edf10a5aac 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -5417,7 +5417,7 @@ SRST
+         physical address space. The ``reduced-phys-bits`` is used to
+         provide the number of bits we loose in physical address space.
+         Similar to C-bit, the value is Host family dependent. On EPYC,
+-        the value should be 5.
++        a guest will lose a maximum of 1 bit, so the value should be 1.
+ 
+         The ``sev-device`` provides the device file to use for
+         communicating with the SEV firmware running inside AMD Secure
+@@ -5452,7 +5452,7 @@ SRST
+ 
+              # |qemu_system_x86| \\
+                  ...... \\
+-                 -object sev-guest,id=sev0,cbitpos=47,reduced-phys-bits=5 \\
++                 -object sev-guest,id=sev0,cbitpos=47,reduced-phys-bits=1 \\
+                  -machine ...,memory-encryption=sev0 \\
+                  .....
+ 
+-- 
+2.39.3
+

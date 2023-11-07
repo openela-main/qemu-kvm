@@ -1,0 +1,129 @@
+From 3cab2a638a10ece2b76d9f33a3c5dc6f64f1bbaa Mon Sep 17 00:00:00 2001
+From: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Date: Wed, 10 May 2023 12:55:31 +0200
+Subject: [PATCH 21/21] s390x/pv: Fix spurious warning with asynchronous
+ teardown
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 173: Improve memory reclaiming for z15 Secure Execution guests
+RH-Bugzilla: 2168500
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [2/2] cb690d3155ea22c6df00a4d75b72f501515e5556 (thuth/qemu-kvm-cs9)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168500
+
+Kernel commit 292a7d6fca33 ("KVM: s390: pv: fix asynchronous teardown
+for small VMs") causes the KVM_PV_ASYNC_CLEANUP_PREPARE ioctl to fail
+if the VM is not larger than 2GiB. QEMU would attempt it and fail,
+print an error message, and then proceed with a normal teardown.
+
+Avoid attempting to use asynchronous teardown altogether when the VM is
+not larger than 2 GiB. This will avoid triggering the error message and
+also avoid pointless overhead; normal teardown is fast enough for small
+VMs.
+
+Reported-by: Marc Hartmayer <mhartmay@linux.ibm.com>
+Fixes: c3a073c610 ("s390x/pv: Add support for asynchronous teardown for reboot")
+Link: https://lore.kernel.org/all/20230421085036.52511-2-imbrenda@linux.ibm.com/
+Signed-off-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Message-Id: <20230510105531.30623-2-imbrenda@linux.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+[thuth: Fix inline function parameter in pv.h]
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 88693ab2a53f2f3d25cb39a7b5034ab391bc5a81)
+---
+ hw/s390x/pv.c              | 10 ++++++++--
+ hw/s390x/s390-virtio-ccw.c |  2 +-
+ include/hw/s390x/pv.h      |  6 +++---
+ 3 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/hw/s390x/pv.c b/hw/s390x/pv.c
+index 49ea38236c..b63f3784c6 100644
+--- a/hw/s390x/pv.c
++++ b/hw/s390x/pv.c
+@@ -13,6 +13,7 @@
+ 
+ #include <linux/kvm.h>
+ 
++#include "qemu/units.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+ #include "sysemu/kvm.h"
+@@ -115,7 +116,7 @@ static void *s390_pv_do_unprot_async_fn(void *p)
+      return NULL;
+ }
+ 
+-bool s390_pv_vm_try_disable_async(void)
++bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms)
+ {
+     /*
+      * t is only needed to create the thread; once qemu_thread_create
+@@ -123,7 +124,12 @@ bool s390_pv_vm_try_disable_async(void)
+      */
+     QemuThread t;
+ 
+-    if (!kvm_check_extension(kvm_state, KVM_CAP_S390_PROTECTED_ASYNC_DISABLE)) {
++    /*
++     * If the feature is not present or if the VM is not larger than 2 GiB,
++     * KVM_PV_ASYNC_CLEANUP_PREPARE fill fail; no point in attempting it.
++     */
++    if ((MACHINE(ms)->maxram_size <= 2 * GiB) ||
++        !kvm_check_extension(kvm_state, KVM_CAP_S390_PROTECTED_ASYNC_DISABLE)) {
+         return false;
+     }
+     if (s390_pv_cmd(KVM_PV_ASYNC_CLEANUP_PREPARE, NULL) != 0) {
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 6a0b93c63d..d95c595f88 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -330,7 +330,7 @@ static inline void s390_do_cpu_ipl(CPUState *cs, run_on_cpu_data arg)
+ 
+ static void s390_machine_unprotect(S390CcwMachineState *ms)
+ {
+-    if (!s390_pv_vm_try_disable_async()) {
++    if (!s390_pv_vm_try_disable_async(ms)) {
+         s390_pv_vm_disable();
+     }
+     ms->pv = false;
+diff --git a/include/hw/s390x/pv.h b/include/hw/s390x/pv.h
+index 966306a9db..7b935e2246 100644
+--- a/include/hw/s390x/pv.h
++++ b/include/hw/s390x/pv.h
+@@ -14,10 +14,10 @@
+ 
+ #include "qapi/error.h"
+ #include "sysemu/kvm.h"
++#include "hw/s390x/s390-virtio-ccw.h"
+ 
+ #ifdef CONFIG_KVM
+ #include "cpu.h"
+-#include "hw/s390x/s390-virtio-ccw.h"
+ 
+ static inline bool s390_is_pv(void)
+ {
+@@ -41,7 +41,7 @@ static inline bool s390_is_pv(void)
+ int s390_pv_query_info(void);
+ int s390_pv_vm_enable(void);
+ void s390_pv_vm_disable(void);
+-bool s390_pv_vm_try_disable_async(void);
++bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms);
+ int s390_pv_set_sec_parms(uint64_t origin, uint64_t length);
+ int s390_pv_unpack(uint64_t addr, uint64_t size, uint64_t tweak);
+ void s390_pv_prep_reset(void);
+@@ -61,7 +61,7 @@ static inline bool s390_is_pv(void) { return false; }
+ static inline int s390_pv_query_info(void) { return 0; }
+ static inline int s390_pv_vm_enable(void) { return 0; }
+ static inline void s390_pv_vm_disable(void) {}
+-static inline bool s390_pv_vm_try_disable_async(void) { return false; }
++static inline bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms) { return false; }
+ static inline int s390_pv_set_sec_parms(uint64_t origin, uint64_t length) { return 0; }
+ static inline int s390_pv_unpack(uint64_t addr, uint64_t size, uint64_t tweak) { return 0; }
+ static inline void s390_pv_prep_reset(void) {}
+-- 
+2.39.3
+

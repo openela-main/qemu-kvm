@@ -1,0 +1,84 @@
+From a17bee3c8ab48daa471ec53bed0e2cb0bb41fc76 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 01:04:55 +0100
+Subject: [PATCH 41/56] migration: Create migrate_checkpoint_delay()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [40/50] b972d3f12e49dc27aa78eb723ca6d0fac4d174d8 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit f94a858fa3e72ba954a338c01ae9fecc15fcce5c)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/colo.c    | 5 ++---
+ migration/options.c | 9 +++++++++
+ migration/options.h | 1 +
+ 3 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/migration/colo.c b/migration/colo.c
+index 93b78c9270..07bfa21fea 100644
+--- a/migration/colo.c
++++ b/migration/colo.c
+@@ -576,7 +576,7 @@ static void colo_process_checkpoint(MigrationState *s)
+     trace_colo_vm_state_change("stop", "run");
+ 
+     timer_mod(s->colo_delay_timer, qemu_clock_get_ms(QEMU_CLOCK_HOST) +
+-              s->parameters.x_checkpoint_delay);
++              migrate_checkpoint_delay());
+ 
+     while (s->state == MIGRATION_STATUS_COLO) {
+         if (failover_get_state() != FAILOVER_STATUS_NONE) {
+@@ -651,8 +651,7 @@ void colo_checkpoint_notify(void *opaque)
+ 
+     qemu_event_set(&s->colo_checkpoint_event);
+     s->colo_checkpoint_time = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+-    next_notify_time = s->colo_checkpoint_time +
+-                    s->parameters.x_checkpoint_delay;
++    next_notify_time = s->colo_checkpoint_time + migrate_checkpoint_delay();
+     timer_mod(s->colo_delay_timer, next_notify_time);
+ }
+ 
+diff --git a/migration/options.c b/migration/options.c
+index b9f3815f7e..0e102e5700 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -472,6 +472,15 @@ bool migrate_block_incremental(void)
+     return s->parameters.block_incremental;
+ }
+ 
++uint32_t migrate_checkpoint_delay(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.x_checkpoint_delay;
++}
++
+ int migrate_compress_level(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index aa54443353..adc2879bbb 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -46,6 +46,7 @@ bool migrate_cap_set(int cap, bool value, Error **errp);
+ /* parameters */
+ 
+ bool migrate_block_incremental(void);
++uint32_t migrate_checkpoint_delay(void);
+ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
+-- 
+2.39.1
+

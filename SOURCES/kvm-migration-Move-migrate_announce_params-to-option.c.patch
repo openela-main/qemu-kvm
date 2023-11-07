@@ -1,0 +1,90 @@
+From 1f5232d611ecaaf61bcac151e7d90b8b452ac161 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 01:17:23 +0100
+Subject: [PATCH 43/56] migration: Move migrate_announce_params() to option.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [42/50] 541be7adc7f81c269058485aef5b14e787b2efe6 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+
+---
+
+Fix extra whitespace (fabiano)
+
+(cherry picked from commit 2682c4eea72c621dfd0fb0151cbd758e81d1bdff)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 14 --------------
+ migration/options.c   | 17 +++++++++++++++++
+ 2 files changed, 17 insertions(+), 14 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 724e841eb9..f27ce30be2 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -954,20 +954,6 @@ MigrationParameters *qmp_query_migrate_parameters(Error **errp)
+     return params;
+ }
+ 
+-AnnounceParameters *migrate_announce_params(void)
+-{
+-    static AnnounceParameters ap;
+-
+-    MigrationState *s = migrate_get_current();
+-
+-    ap.initial = s->parameters.announce_initial;
+-    ap.max = s->parameters.announce_max;
+-    ap.rounds = s->parameters.announce_rounds;
+-    ap.step = s->parameters.announce_step;
+-
+-    return &ap;
+-}
+-
+ /*
+  * Return true if we're already in the middle of a migration
+  * (i.e. any of the active or setup states)
+diff --git a/migration/options.c b/migration/options.c
+index 2cb04fbbd1..418aafac64 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -16,6 +16,7 @@
+ #include "qapi/qapi-commands-migration.h"
+ #include "qapi/qmp/qerror.h"
+ #include "sysemu/runstate.h"
++#include "migration/misc.h"
+ #include "migration.h"
+ #include "ram.h"
+ #include "options.h"
+@@ -589,3 +590,19 @@ uint64_t migrate_xbzrle_cache_size(void)
+ 
+     return s->parameters.xbzrle_cache_size;
+ }
++
++/* parameters helpers */
++
++AnnounceParameters *migrate_announce_params(void)
++{
++    static AnnounceParameters ap;
++
++    MigrationState *s = migrate_get_current();
++
++    ap.initial = s->parameters.announce_initial;
++    ap.max = s->parameters.announce_max;
++    ap.rounds = s->parameters.announce_rounds;
++    ap.step = s->parameters.announce_step;
++
++    return &ap;
++}
+-- 
+2.39.1
+

@@ -1,0 +1,75 @@
+From 7ff430e011780dad00e5ebaad0318c5fa3aec102 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 10:20:49 +0100
+Subject: [PATCH 45/56] migration: Create migrate_cpu_throttle_increment()
+ function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [44/50] aec990a106a0347b265f5c056a516e0b91e8183c (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit 9605c2ac282c565bb00b5f344217161bef29eff8)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/options.c | 9 +++++++++
+ migration/options.h | 1 +
+ migration/ram.c     | 2 +-
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/migration/options.c b/migration/options.c
+index f7fb6999f7..31435d2b45 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -509,6 +509,15 @@ int migrate_compress_wait_thread(void)
+     return s->parameters.compress_wait_thread;
+ }
+ 
++uint8_t migrate_cpu_throttle_increment(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.cpu_throttle_increment;
++}
++
+ uint8_t migrate_cpu_throttle_initial(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index fd8b91d767..49b29bdafd 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -50,6 +50,7 @@ uint32_t migrate_checkpoint_delay(void);
+ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
++uint8_t migrate_cpu_throttle_increment(void);
+ uint8_t migrate_cpu_throttle_initial(void);
+ int migrate_decompress_threads(void);
+ uint8_t migrate_max_cpu_throttle(void);
+diff --git a/migration/ram.c b/migration/ram.c
+index 5e855d5c22..5645745a42 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -713,7 +713,7 @@ static void mig_throttle_guest_down(uint64_t bytes_dirty_period,
+ {
+     MigrationState *s = migrate_get_current();
+     uint64_t pct_initial = migrate_cpu_throttle_initial();
+-    uint64_t pct_increment = s->parameters.cpu_throttle_increment;
++    uint64_t pct_increment = migrate_cpu_throttle_increment();
+     bool pct_tailslow = s->parameters.cpu_throttle_tailslow;
+     int pct_max = migrate_max_cpu_throttle();
+ 
+-- 
+2.39.1
+

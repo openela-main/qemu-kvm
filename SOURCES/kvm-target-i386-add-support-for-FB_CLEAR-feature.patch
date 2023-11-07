@@ -1,0 +1,71 @@
+From 0d056d6da9e4147d5965bf3507f6d6d6a413924d Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Wed, 24 May 2023 06:52:43 -0400
+Subject: [PATCH 2/5] target/i386: add support for FB_CLEAR feature
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 167: target/i386: add support for FB_CLEAR feature
+RH-Bugzilla: 2216201
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/2] 5f191964ba25754107a06ef907f4ac614280aaa1 (eesposit/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2216201
+
+commit 22e1094ca82d5518c1b69aff3e87c550776ae1eb
+Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date:   Wed Feb 1 08:57:59 2023 -0500
+
+    target/i386: add support for FB_CLEAR feature
+
+    As reported by the Intel's doc:
+    "FB_CLEAR: The processor will overwrite fill buffer values as part of
+    MD_CLEAR operations with the VERW instruction.
+    On these processors, L1D_FLUSH does not overwrite fill buffer values."
+
+    If this cpu feature is present in host, allow QEMU to choose whether to
+    show it to the guest too.
+    One disadvantage of not exposing it is that the guest will report
+    a non existing vulnerability in
+    /sys/devices/system/cpu/vulnerabilities/mmio_stale_data
+    because the mitigation is present only when the cpu has
+            (FLUSH_L1D and MD_CLEAR) or FB_CLEAR
+    features enabled.
+
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Message-Id: <20230201135759.555607-3-eesposit@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ target/i386/cpu.c | 2 +-
+ target/i386/cpu.h | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index caf6338cc0..839706b430 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1012,7 +1012,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             "ssb-no", "mds-no", "pschange-mc-no", "tsx-ctrl",
+             "taa-no", NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL,
+-            NULL, NULL, NULL, NULL,
++            NULL, "fb-clear", NULL, NULL,
+             NULL, NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL,
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 74fa649b60..c28b9df217 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -989,6 +989,7 @@ uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
+ #define MSR_ARCH_CAP_PSCHANGE_MC_NO     (1U << 6)
+ #define MSR_ARCH_CAP_TSX_CTRL_MSR       (1U << 7)
+ #define MSR_ARCH_CAP_TAA_NO             (1U << 8)
++#define MSR_ARCH_CAP_FB_CLEAR           (1U << 17)
+ 
+ #define MSR_CORE_CAP_SPLIT_LOCK_DETECT  (1U << 5)
+ 
+-- 
+2.39.3
+

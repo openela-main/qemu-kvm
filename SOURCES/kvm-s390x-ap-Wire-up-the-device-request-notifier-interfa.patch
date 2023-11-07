@@ -1,0 +1,220 @@
+From 41987ce0dd79d8734088002cbd34f20704dd017a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 17 Jul 2023 17:36:07 +0200
+Subject: [PATCH 04/12] s390x/ap: Wire up the device request notifier interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 185: Backport s390x fixes from QEMU 8.1
+RH-Jira: RHEL-794
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Commit: [1/1] ab6c912a1b8cdb584adacac16af79352fdfe7355 (clegoate/qemu-kvm-c9s)
+
+Jira: https://issues.redhat.com/browse/RHEL-794
+
+commit 1360b2ad1f673d32a09de5826cd71ecd0510164a
+Author: Tony Krowiak <akrowiak@linux.ibm.com>
+Date:   Fri Jun 2 10:11:25 2023 -0400
+
+    s390x/ap: Wire up the device request notifier interface
+
+    Let's wire up the device request notifier interface to handle device unplug
+    requests for AP.
+
+    Signed-off-by: Tony Krowiak <akrowiak@linux.ibm.com>
+    Link: https://lore.kernel.org/qemu-devel/20230530225544.280031-1-akrowiak@linux.ibm.com/
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Backport note:
+
+    - linux-headers/linux/vfio.h
+      updated to v6.5-rc1 level for VFIO_AP_REQ_IRQ_INDEX definition
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/ap.c               | 113 +++++++++++++++++++++++++++++++++++++
+ linux-headers/linux/vfio.h |   9 +++
+ 2 files changed, 122 insertions(+)
+
+diff --git a/hw/vfio/ap.c b/hw/vfio/ap.c
+index e0dd561e85..6e21d1da5a 100644
+--- a/hw/vfio/ap.c
++++ b/hw/vfio/ap.c
+@@ -18,6 +18,8 @@
+ #include "hw/vfio/vfio-common.h"
+ #include "hw/s390x/ap-device.h"
+ #include "qemu/error-report.h"
++#include "qemu/event_notifier.h"
++#include "qemu/main-loop.h"
+ #include "qemu/module.h"
+ #include "qemu/option.h"
+ #include "qemu/config-file.h"
+@@ -33,6 +35,7 @@
+ struct VFIOAPDevice {
+     APDevice apdev;
+     VFIODevice vdev;
++    EventNotifier req_notifier;
+ };
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOAPDevice, VFIO_AP_DEVICE)
+@@ -84,10 +87,110 @@ static VFIOGroup *vfio_ap_get_group(VFIOAPDevice *vapdev, Error **errp)
+     return vfio_get_group(groupid, &address_space_memory, errp);
+ }
+ 
++static void vfio_ap_req_notifier_handler(void *opaque)
++{
++    VFIOAPDevice *vapdev = opaque;
++    Error *err = NULL;
++
++    if (!event_notifier_test_and_clear(&vapdev->req_notifier)) {
++        return;
++    }
++
++    qdev_unplug(DEVICE(vapdev), &err);
++
++    if (err) {
++        warn_reportf_err(err, VFIO_MSG_PREFIX, vapdev->vdev.name);
++    }
++}
++
++static void vfio_ap_register_irq_notifier(VFIOAPDevice *vapdev,
++                                          unsigned int irq, Error **errp)
++{
++    int fd;
++    size_t argsz;
++    IOHandler *fd_read;
++    EventNotifier *notifier;
++    struct vfio_irq_info *irq_info;
++    VFIODevice *vdev = &vapdev->vdev;
++
++    switch (irq) {
++    case VFIO_AP_REQ_IRQ_INDEX:
++        notifier = &vapdev->req_notifier;
++        fd_read = vfio_ap_req_notifier_handler;
++        break;
++    default:
++        error_setg(errp, "vfio: Unsupported device irq(%d)", irq);
++        return;
++    }
++
++    if (vdev->num_irqs < irq + 1) {
++        error_setg(errp, "vfio: IRQ %u not available (number of irqs %u)",
++                   irq, vdev->num_irqs);
++        return;
++    }
++
++    argsz = sizeof(*irq_info);
++    irq_info = g_malloc0(argsz);
++    irq_info->index = irq;
++    irq_info->argsz = argsz;
++
++    if (ioctl(vdev->fd, VFIO_DEVICE_GET_IRQ_INFO,
++              irq_info) < 0 || irq_info->count < 1) {
++        error_setg_errno(errp, errno, "vfio: Error getting irq info");
++        goto out_free_info;
++    }
++
++    if (event_notifier_init(notifier, 0)) {
++        error_setg_errno(errp, errno,
++                         "vfio: Unable to init event notifier for irq (%d)",
++                         irq);
++        goto out_free_info;
++    }
++
++    fd = event_notifier_get_fd(notifier);
++    qemu_set_fd_handler(fd, fd_read, NULL, vapdev);
++
++    if (vfio_set_irq_signaling(vdev, irq, 0, VFIO_IRQ_SET_ACTION_TRIGGER, fd,
++                               errp)) {
++        qemu_set_fd_handler(fd, NULL, NULL, vapdev);
++        event_notifier_cleanup(notifier);
++    }
++
++out_free_info:
++    g_free(irq_info);
++
++}
++
++static void vfio_ap_unregister_irq_notifier(VFIOAPDevice *vapdev,
++                                            unsigned int irq)
++{
++    Error *err = NULL;
++    EventNotifier *notifier;
++
++    switch (irq) {
++    case VFIO_AP_REQ_IRQ_INDEX:
++        notifier = &vapdev->req_notifier;
++        break;
++    default:
++        error_report("vfio: Unsupported device irq(%d)", irq);
++        return;
++    }
++
++    if (vfio_set_irq_signaling(&vapdev->vdev, irq, 0,
++                               VFIO_IRQ_SET_ACTION_TRIGGER, -1, &err)) {
++        warn_reportf_err(err, VFIO_MSG_PREFIX, vapdev->vdev.name);
++    }
++
++    qemu_set_fd_handler(event_notifier_get_fd(notifier),
++                        NULL, NULL, vapdev);
++    event_notifier_cleanup(notifier);
++}
++
+ static void vfio_ap_realize(DeviceState *dev, Error **errp)
+ {
+     int ret;
+     char *mdevid;
++    Error *err = NULL;
+     VFIOGroup *vfio_group;
+     APDevice *apdev = AP_DEVICE(dev);
+     VFIOAPDevice *vapdev = VFIO_AP_DEVICE(apdev);
+@@ -116,6 +219,15 @@ static void vfio_ap_realize(DeviceState *dev, Error **errp)
+         goto out_get_dev_err;
+     }
+ 
++    vfio_ap_register_irq_notifier(vapdev, VFIO_AP_REQ_IRQ_INDEX, &err);
++    if (err) {
++        /*
++         * Report this error, but do not make it a failing condition.
++         * Lack of this IRQ in the host does not prevent normal operation.
++         */
++        error_report_err(err);
++    }
++
+     return;
+ 
+ out_get_dev_err:
+@@ -129,6 +241,7 @@ static void vfio_ap_unrealize(DeviceState *dev)
+     VFIOAPDevice *vapdev = VFIO_AP_DEVICE(apdev);
+     VFIOGroup *group = vapdev->vdev.group;
+ 
++    vfio_ap_unregister_irq_notifier(vapdev, VFIO_AP_REQ_IRQ_INDEX);
+     vfio_ap_put_device(vapdev);
+     vfio_put_group(group);
+ }
+diff --git a/linux-headers/linux/vfio.h b/linux-headers/linux/vfio.h
+index c59692ce0b..ce464957c8 100644
+--- a/linux-headers/linux/vfio.h
++++ b/linux-headers/linux/vfio.h
+@@ -642,6 +642,15 @@ enum {
+ 	VFIO_CCW_NUM_IRQS
+ };
+ 
++/*
++ * The vfio-ap bus driver makes use of the following IRQ index mapping.
++ * Unimplemented IRQ types return a count of zero.
++ */
++enum {
++        VFIO_AP_REQ_IRQ_INDEX,
++        VFIO_AP_NUM_IRQS
++};
++
+ /**
+  * VFIO_DEVICE_GET_PCI_HOT_RESET_INFO - _IOWR(VFIO_TYPE, VFIO_BASE + 12,
+  *					      struct vfio_pci_hot_reset_info)
+-- 
+2.39.3
+

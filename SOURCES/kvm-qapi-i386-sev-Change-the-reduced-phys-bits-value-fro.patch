@@ -1,0 +1,50 @@
+From cbf9c74ef46d71c015b9de53f4514941dca8a035 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 14:19:37 -0400
+Subject: [PATCH 10/14] qapi, i386/sev: Change the reduced-phys-bits value from
+ 5 to 1
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 196: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214839
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/4] 4243578db33f89461e60b745eb96fee402218c9f (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214839
+
+commit 798a818f50a9bfc01e8b5943090de458863b897b
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:27 2022 -0500
+
+    qapi, i386/sev: Change the reduced-phys-bits value from 5 to 1
+
+    A guest only ever experiences, at most, 1 bit of reduced physical
+    addressing. Change the query-sev-capabilities json comment to use 1.
+
+    Fixes: 31dd67f684 ("sev/i386: qmp: add query-sev-capabilities command")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <cb96d8e09154533af4b4e6988469bc0b32390b65.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ qapi/misc-target.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qapi/misc-target.json b/qapi/misc-target.json
+index de91054523..bf04042f45 100644
+--- a/qapi/misc-target.json
++++ b/qapi/misc-target.json
+@@ -172,7 +172,7 @@
+ # -> { "execute": "query-sev-capabilities" }
+ # <- { "return": { "pdh": "8CCDD8DDD", "cert-chain": "888CCCDDDEE",
+ #                  "cpu0-id": "2lvmGwo+...61iEinw==",
+-#                  "cbitpos": 47, "reduced-phys-bits": 5}}
++#                  "cbitpos": 47, "reduced-phys-bits": 1}}
+ #
+ ##
+ { 'command': 'query-sev-capabilities', 'returns': 'SevCapability',
+-- 
+2.39.3
+

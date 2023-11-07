@@ -1,0 +1,55 @@
+From 9c5016c9b3f9cf66d1b531de829e8b5010962695 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 23/37] vfio/pci: Free leaked timer in vfio_realize error path
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [21/28] dbaae4e484de4613f7f7735be519b7357627326e (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 0cc889c8826c
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Thu Jun 29 16:40:39 2023 +0800
+
+    vfio/pci: Free leaked timer in vfio_realize error path
+
+    When vfio_realize fails, the mmap_timer used for INTx optimization
+    isn't freed. As this timer isn't activated yet, the potential impact
+    is just a piece of leaked memory.
+
+    Fixes: ea486926b07d ("vfio-pci: Update slow path INTx algorithm timer related")
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index d08e6c1a20..87bd440504 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3248,6 +3248,9 @@ out_deregister:
+     if (vdev->irqchip_change_notifier.notify) {
+         kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
+     }
++    if (vdev->intx.mmap_timer) {
++        timer_free(vdev->intx.mmap_timer);
++    }
+ out_teardown:
+     vfio_teardown_msi(vdev);
+     vfio_bars_exit(vdev);
+-- 
+2.39.3
+

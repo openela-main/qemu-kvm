@@ -1,0 +1,94 @@
+From 2d7fb99c02a7666f1d8fe70a4749f0b7771a68ed Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Wed, 9 Aug 2023 12:29:55 -0400
+Subject: [PATCH 3/7] target/i386: Add a couple of feature bits in
+ 8000_0008_EBX
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 198: Add EPYC-Genoa CPU model in qemu
+RH-Bugzilla: 2094913
+RH-Acked-by: Wei Huang <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/7] b11020b249d4ecc2e3e1ddf4fdc4b52c42ec2642 (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2094913
+
+commit bb039a230e6a7920d71d21fa9afee2653a678c48
+Author: Babu Moger <babu.moger@amd.com>
+Date:   Thu May 4 15:53:08 2023 -0500
+
+    target/i386: Add a couple of feature bits in 8000_0008_EBX
+
+    Add the following feature bits.
+
+    amd-psfd : Predictive Store Forwarding Disable:
+               PSF is a hardware-based micro-architectural optimization
+               designed to improve the performance of code execution by
+               predicting address dependencies between loads and stores.
+               While SSBD (Speculative Store Bypass Disable) disables both
+               PSF and speculative store bypass, PSFD only disables PSF.
+               PSFD may be desirable for the software which is concerned
+               with the speculative behavior of PSF but desires a smaller
+               performance impact than setting SSBD.
+               Depends on the following kernel commit:
+               b73a54321ad8 ("KVM: x86: Expose Predictive Store Forwarding Disable")
+
+    stibp-always-on :
+               Single Thread Indirect Branch Prediction mode has enhanced
+               performance and may be left always on.
+
+    The documentation for the features are available in the links below.
+    a. Processor Programming Reference (PPR) for AMD Family 19h Model 01h,
+       Revision B1 Processors
+    b. SECURITY ANALYSIS OF AMD PREDICTIVE STORE FORWARDING
+
+    Signed-off-by: Babu Moger <babu.moger@amd.com>
+    Acked-by: Michael S. Tsirkin <mst@redhat.com>
+    Link: https://www.amd.com/system/files/documents/security-analysis-predictive-store-forwarding.pdf
+    Link: https://www.amd.com/system/files/TechDocs/55898_B1_pub_0.50.zip
+    Message-Id: <20230504205313.225073-4-babu.moger@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/cpu.c | 4 ++--
+ target/i386/cpu.h | 4 ++++
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 8aa7eb611c..c8f88aefc7 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -911,10 +911,10 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             NULL, NULL, NULL, NULL,
+             NULL, "wbnoinvd", NULL, NULL,
+             "ibpb", NULL, "ibrs", "amd-stibp",
+-            NULL, NULL, NULL, NULL,
++            NULL, "stibp-always-on", NULL, NULL,
+             NULL, NULL, NULL, NULL,
+             "amd-ssbd", "virt-ssbd", "amd-no-ssb", NULL,
+-            NULL, NULL, NULL, NULL,
++            "amd-psfd", NULL, NULL, NULL,
+         },
+         .cpuid = { .eax = 0x80000008, .reg = R_EBX, },
+         .tcg_features = 0,
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index c28b9df217..81d2200543 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -934,8 +934,12 @@ uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
+ #define CPUID_8000_0008_EBX_IBRS        (1U << 14)
+ /* Single Thread Indirect Branch Predictors */
+ #define CPUID_8000_0008_EBX_STIBP       (1U << 15)
++/* STIBP mode has enhanced performance and may be left always on */
++#define CPUID_8000_0008_EBX_STIBP_ALWAYS_ON    (1U << 17)
+ /* Speculative Store Bypass Disable */
+ #define CPUID_8000_0008_EBX_AMD_SSBD    (1U << 24)
++/* Predictive Store Forwarding Disable */
++#define CPUID_8000_0008_EBX_AMD_PSFD    (1U << 28)
+ 
+ #define CPUID_XSAVE_XSAVEOPT   (1U << 0)
+ #define CPUID_XSAVE_XSAVEC     (1U << 1)
+-- 
+2.39.3
+

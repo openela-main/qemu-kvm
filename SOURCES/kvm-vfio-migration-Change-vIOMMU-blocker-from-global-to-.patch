@@ -1,0 +1,171 @@
+From 35c7d0d3b02d61d6f29afae74bd83edd70a6a1b4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 26/37] vfio/migration: Change vIOMMU blocker from global to
+ per device
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [24/28] 8fda1c82a81fadd4f38e6a5e878c9228a81c0f6e (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 3c26c80a0a26
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Mon Jul 3 15:15:07 2023 +0800
+
+    vfio/migration: Change vIOMMU blocker from global to per device
+
+    Contrary to multiple device blocker which needs to consider already-attached
+    devices to unblock/block dynamically, the vIOMMU migration blocker is a device
+    specific config. Meaning it only needs to know whether the device is bypassing
+    or not the vIOMMU (via machine property, or per pxb-pcie::bypass_iommu), and
+    does not need the state of currently present devices. For this reason, the
+    vIOMMU global migration blocker can be consolidated into the per-device
+    migration blocker, allowing us to remove some unnecessary code.
+
+    This change also makes vfio_mig_active() more accurate as it doesn't check for
+    global blocker.
+
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/common.c              | 51 ++---------------------------------
+ hw/vfio/migration.c           |  7 ++---
+ hw/vfio/pci.c                 |  1 -
+ include/hw/vfio/vfio-common.h |  3 +--
+ 4 files changed, 7 insertions(+), 55 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 136d8243d6..e815f6ba30 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -362,7 +362,6 @@ bool vfio_mig_active(void)
+ }
+ 
+ static Error *multiple_devices_migration_blocker;
+-static Error *giommu_migration_blocker;
+ 
+ static unsigned int vfio_migratable_device_num(void)
+ {
+@@ -420,55 +419,9 @@ void vfio_unblock_multiple_devices_migration(void)
+     multiple_devices_migration_blocker = NULL;
+ }
+ 
+-static bool vfio_viommu_preset(void)
++bool vfio_viommu_preset(VFIODevice *vbasedev)
+ {
+-    VFIOAddressSpace *space;
+-
+-    QLIST_FOREACH(space, &vfio_address_spaces, list) {
+-        if (space->as != &address_space_memory) {
+-            return true;
+-        }
+-    }
+-
+-    return false;
+-}
+-
+-int vfio_block_giommu_migration(VFIODevice *vbasedev, Error **errp)
+-{
+-    int ret;
+-
+-    if (giommu_migration_blocker ||
+-        !vfio_viommu_preset()) {
+-        return 0;
+-    }
+-
+-    if (vbasedev->enable_migration == ON_OFF_AUTO_ON) {
+-        error_setg(errp,
+-                   "Migration is currently not supported with vIOMMU enabled");
+-        return -EINVAL;
+-    }
+-
+-    error_setg(&giommu_migration_blocker,
+-               "Migration is currently not supported with vIOMMU enabled");
+-    ret = migrate_add_blocker(giommu_migration_blocker, errp);
+-    if (ret < 0) {
+-        error_free(giommu_migration_blocker);
+-        giommu_migration_blocker = NULL;
+-    }
+-
+-    return ret;
+-}
+-
+-void vfio_migration_finalize(void)
+-{
+-    if (!giommu_migration_blocker ||
+-        vfio_viommu_preset()) {
+-        return;
+-    }
+-
+-    migrate_del_blocker(giommu_migration_blocker);
+-    error_free(giommu_migration_blocker);
+-    giommu_migration_blocker = NULL;
++    return vbasedev->group->container->space->as != &address_space_memory;
+ }
+ 
+ static void vfio_set_migration_error(int err)
+diff --git a/hw/vfio/migration.c b/hw/vfio/migration.c
+index 1db7d52ab2..e6e5e85f75 100644
+--- a/hw/vfio/migration.c
++++ b/hw/vfio/migration.c
+@@ -878,9 +878,10 @@ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+         return ret;
+     }
+ 
+-    ret = vfio_block_giommu_migration(vbasedev, errp);
+-    if (ret) {
+-        return ret;
++    if (vfio_viommu_preset(vbasedev)) {
++        error_setg(&err, "%s: Migration is currently not supported "
++                   "with vIOMMU enabled", vbasedev->name);
++        return vfio_block_migration(vbasedev, err, errp);
+     }
+ 
+     trace_vfio_migration_realize(vbasedev->name);
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 2d059832a4..922c81872c 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3279,7 +3279,6 @@ static void vfio_instance_finalize(Object *obj)
+      */
+     vfio_put_device(vdev);
+     vfio_put_group(group);
+-    vfio_migration_finalize();
+ }
+ 
+ static void vfio_exitfn(PCIDevice *pdev)
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 93429b9abb..45167c8a8a 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -227,7 +227,7 @@ extern VFIOGroupList vfio_group_list;
+ bool vfio_mig_active(void);
+ int vfio_block_multiple_devices_migration(VFIODevice *vbasedev, Error **errp);
+ void vfio_unblock_multiple_devices_migration(void);
+-int vfio_block_giommu_migration(VFIODevice *vbasedev, Error **errp);
++bool vfio_viommu_preset(VFIODevice *vbasedev);
+ int64_t vfio_mig_bytes_transferred(void);
+ void vfio_reset_bytes_transferred(void);
+ 
+@@ -254,6 +254,5 @@ int vfio_spapr_remove_window(VFIOContainer *container,
+ 
+ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp);
+ void vfio_migration_exit(VFIODevice *vbasedev);
+-void vfio_migration_finalize(void);
+ 
+ #endif /* HW_VFIO_VFIO_COMMON_H */
+-- 
+2.39.3
+

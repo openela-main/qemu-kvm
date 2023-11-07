@@ -1,0 +1,116 @@
+From 457e74c076e0fe7b64631dfd4369d167f0762c9a Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Wed, 9 Aug 2023 12:22:41 -0400
+Subject: [PATCH 1/7] target/i386: allow versioned CPUs to specify new
+ cache_info
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 198: Add EPYC-Genoa CPU model in qemu
+RH-Bugzilla: 2094913
+RH-Acked-by: Wei Huang <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/7] 6070e07a4bb070d1c15a811b2bd3195929c18d61 (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2094913
+
+commit cca0a000d06f897411a8af4402e5d0522bbe450b
+Author: Michael Roth <michael.roth@amd.com>
+Date:   Thu May 4 15:53:06 2023 -0500
+
+    target/i386: allow versioned CPUs to specify new cache_info
+
+    New EPYC CPUs versions require small changes to their cache_info's.
+    Because current QEMU x86 CPU definition does not support versioned
+    cach_info, we would have to declare a new CPU type for each such case.
+    To avoid the dup work, add "cache_info" in X86CPUVersionDefinition",
+    to allow new cache_info pointers to be specified for a new CPU version.
+
+    Co-developed-by: Wei Huang <wei.huang2@amd.com>
+    Signed-off-by: Wei Huang <wei.huang2@amd.com>
+    Signed-off-by: Michael Roth <michael.roth@amd.com>
+    Signed-off-by: Babu Moger <babu.moger@amd.com>
+    Acked-by: Michael S. Tsirkin <mst@redhat.com>
+    Message-Id: <20230504205313.225073-2-babu.moger@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/cpu.c | 35 ++++++++++++++++++++++++++++++++---
+ 1 file changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 4ac3046313..3558c92ed0 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1598,6 +1598,7 @@ typedef struct X86CPUVersionDefinition {
+     const char *alias;
+     const char *note;
+     PropValue *props;
++    const CPUCaches *const cache_info;
+ } X86CPUVersionDefinition;
+ 
+ /* Base definition for a CPU model */
+@@ -5213,6 +5214,31 @@ static void x86_cpu_apply_version_props(X86CPU *cpu, X86CPUModel *model)
+     assert(vdef->version == version);
+ }
+ 
++static const CPUCaches *x86_cpu_get_versioned_cache_info(X86CPU *cpu,
++                                                         X86CPUModel *model)
++{
++    const X86CPUVersionDefinition *vdef;
++    X86CPUVersion version = x86_cpu_model_resolve_version(model);
++    const CPUCaches *cache_info = model->cpudef->cache_info;
++
++    if (version == CPU_VERSION_LEGACY) {
++        return cache_info;
++    }
++
++    for (vdef = x86_cpu_def_get_versions(model->cpudef); vdef->version; vdef++) {
++        if (vdef->cache_info) {
++            cache_info = vdef->cache_info;
++        }
++
++        if (vdef->version == version) {
++            break;
++        }
++    }
++
++    assert(vdef->version == version);
++    return cache_info;
++}
++
+ /*
+  * Load data from X86CPUDefinition into a X86CPU object.
+  * Only for builtin_x86_defs models initialized with x86_register_cpudef_types.
+@@ -5245,7 +5271,7 @@ static void x86_cpu_load_model(X86CPU *cpu, X86CPUModel *model)
+     }
+ 
+     /* legacy-cache defaults to 'off' if CPU model provides cache info */
+-    cpu->legacy_cache = !def->cache_info;
++    cpu->legacy_cache = !x86_cpu_get_versioned_cache_info(cpu, model);
+ 
+     env->features[FEAT_1_ECX] |= CPUID_EXT_HYPERVISOR;
+ 
+@@ -6724,14 +6750,17 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+ 
+     /* Cache information initialization */
+     if (!cpu->legacy_cache) {
+-        if (!xcc->model || !xcc->model->cpudef->cache_info) {
++        const CPUCaches *cache_info =
++            x86_cpu_get_versioned_cache_info(cpu, xcc->model);
++
++        if (!xcc->model || !cache_info) {
+             g_autofree char *name = x86_cpu_class_get_model_name(xcc);
+             error_setg(errp,
+                        "CPU model '%s' doesn't support legacy-cache=off", name);
+             return;
+         }
+         env->cache_info_cpuid2 = env->cache_info_cpuid4 = env->cache_info_amd =
+-            *xcc->model->cpudef->cache_info;
++            *cache_info;
+     } else {
+         /* Build legacy cache information */
+         env->cache_info_cpuid2.l1d_cache = &legacy_l1d_cache;
+-- 
+2.39.3
+
