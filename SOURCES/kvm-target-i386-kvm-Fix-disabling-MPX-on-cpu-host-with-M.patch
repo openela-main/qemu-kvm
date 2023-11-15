@@ -1,0 +1,57 @@
+From 522ce31b4998b714b03e781f49403b71531ebe5a Mon Sep 17 00:00:00 2001
+From: "Maciej S. Szmigiero" <maciej.szmigiero@oracle.com>
+Date: Mon, 23 May 2022 18:26:58 +0200
+Subject: [PATCH 5/5] target/i386/kvm: Fix disabling MPX on "-cpu host" with
+ MPX-capable host
+
+RH-Author: Ani Sinha <None>
+RH-MergeRequest: 297: target/i386/kvm: Fix disabling MPX on "-cpu host" with MPX-capable host
+RH-Bugzilla: 2223947
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/1] 90098294a873a53b366389606fd0402efcbd70ad
+
+Since KVM commit 5f76f6f5ff96 ("KVM: nVMX: Do not expose MPX VMX controls when guest MPX disabled")
+it is not possible to disable MPX on a "-cpu host" just by adding "-mpx"
+there if the host CPU does indeed support MPX.
+QEMU will fail to set MSR_IA32_VMX_TRUE_{EXIT,ENTRY}_CTLS MSRs in this case
+and so trigger an assertion failure.
+
+Instead, besides "-mpx" one has to explicitly add also
+"-vmx-exit-clear-bndcfgs" and "-vmx-entry-load-bndcfgs" to QEMU command
+line to make it work, which is a bit convoluted.
+
+Make the MPX-related bits in FEAT_VMX_{EXIT,ENTRY}_CTLS dependent on MPX
+being actually enabled so such workarounds are no longer necessary.
+
+Signed-off-by: Maciej S. Szmigiero <maciej.szmigiero@oracle.com>
+Message-Id: <51aa2125c76363204cc23c27165e778097c33f0b.1653323077.git.maciej.szmigiero@oracle.com>
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 267b5e7e378afd260004cb37a66a6fcd641e3b53)
+---
+ target/i386/cpu.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 265f0aadfc..726814ee2e 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1326,6 +1326,14 @@ static FeatureDep feature_dependencies[] = {
+         .from = { FEAT_7_0_EBX,             CPUID_7_0_EBX_INVPCID },
+         .to = { FEAT_VMX_SECONDARY_CTLS,    VMX_SECONDARY_EXEC_ENABLE_INVPCID },
+     },
++    {
++        .from = { FEAT_7_0_EBX,             CPUID_7_0_EBX_MPX },
++        .to = { FEAT_VMX_EXIT_CTLS,         VMX_VM_EXIT_CLEAR_BNDCFGS },
++    },
++    {
++        .from = { FEAT_7_0_EBX,             CPUID_7_0_EBX_MPX },
++        .to = { FEAT_VMX_ENTRY_CTLS,        VMX_VM_ENTRY_LOAD_BNDCFGS },
++    },
+     {
+         .from = { FEAT_7_0_EBX,             CPUID_7_0_EBX_RDSEED },
+         .to = { FEAT_VMX_SECONDARY_CTLS,    VMX_SECONDARY_EXEC_RDSEED_EXITING },
+-- 
+2.37.3
+

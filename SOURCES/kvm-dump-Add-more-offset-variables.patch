@@ -1,0 +1,138 @@
+From bee31226b87d0b05faae84e88cce3af1b8dabbfd Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:35:59 +0000
+Subject: [PATCH 17/42] dump: Add more offset variables
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [17/41] fbe629e1476e8a0e039f989af6e1f4707075ba01
+
+Offset calculations are easy enough to get wrong. Let's add a few
+variables to make moving around elf headers and data sections easier.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Message-Id: <20220330123603.107120-6-frankja@linux.ibm.com>
+(cherry picked from commit e71d353360bb09a8e784e35d78370c691f6ea185)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c           | 35 +++++++++++++++--------------------
+ include/sysemu/dump.h |  4 ++++
+ 2 files changed, 19 insertions(+), 20 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 5cc2322325..85a402b38c 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -142,13 +142,11 @@ static void write_elf64_header(DumpState *s, Error **errp)
+     elf_header.e_machine = cpu_to_dump16(s, s->dump_info.d_machine);
+     elf_header.e_version = cpu_to_dump32(s, EV_CURRENT);
+     elf_header.e_ehsize = cpu_to_dump16(s, sizeof(elf_header));
+-    elf_header.e_phoff = cpu_to_dump64(s, sizeof(Elf64_Ehdr));
++    elf_header.e_phoff = cpu_to_dump64(s, s->phdr_offset);
+     elf_header.e_phentsize = cpu_to_dump16(s, sizeof(Elf64_Phdr));
+     elf_header.e_phnum = cpu_to_dump16(s, phnum);
+     if (s->shdr_num) {
+-        uint64_t shoff = sizeof(Elf64_Ehdr) + sizeof(Elf64_Phdr) * s->phdr_num;
+-
+-        elf_header.e_shoff = cpu_to_dump64(s, shoff);
++        elf_header.e_shoff = cpu_to_dump64(s, s->shdr_offset);
+         elf_header.e_shentsize = cpu_to_dump16(s, sizeof(Elf64_Shdr));
+         elf_header.e_shnum = cpu_to_dump16(s, s->shdr_num);
+     }
+@@ -179,13 +177,11 @@ static void write_elf32_header(DumpState *s, Error **errp)
+     elf_header.e_machine = cpu_to_dump16(s, s->dump_info.d_machine);
+     elf_header.e_version = cpu_to_dump32(s, EV_CURRENT);
+     elf_header.e_ehsize = cpu_to_dump16(s, sizeof(elf_header));
+-    elf_header.e_phoff = cpu_to_dump32(s, sizeof(Elf32_Ehdr));
++    elf_header.e_phoff = cpu_to_dump32(s, s->phdr_offset);
+     elf_header.e_phentsize = cpu_to_dump16(s, sizeof(Elf32_Phdr));
+     elf_header.e_phnum = cpu_to_dump16(s, phnum);
+     if (s->shdr_num) {
+-        uint32_t shoff = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr) * s->phdr_num;
+-
+-        elf_header.e_shoff = cpu_to_dump32(s, shoff);
++        elf_header.e_shoff = cpu_to_dump32(s, s->shdr_offset);
+         elf_header.e_shentsize = cpu_to_dump16(s, sizeof(Elf32_Shdr));
+         elf_header.e_shnum = cpu_to_dump16(s, s->shdr_num);
+     }
+@@ -248,12 +244,11 @@ static void write_elf32_load(DumpState *s, MemoryMapping *memory_mapping,
+ static void write_elf64_note(DumpState *s, Error **errp)
+ {
+     Elf64_Phdr phdr;
+-    hwaddr begin = s->memory_offset - s->note_size;
+     int ret;
+ 
+     memset(&phdr, 0, sizeof(Elf64_Phdr));
+     phdr.p_type = cpu_to_dump32(s, PT_NOTE);
+-    phdr.p_offset = cpu_to_dump64(s, begin);
++    phdr.p_offset = cpu_to_dump64(s, s->note_offset);
+     phdr.p_paddr = 0;
+     phdr.p_filesz = cpu_to_dump64(s, s->note_size);
+     phdr.p_memsz = cpu_to_dump64(s, s->note_size);
+@@ -313,13 +308,12 @@ static void write_elf64_notes(WriteCoreDumpFunction f, DumpState *s,
+ 
+ static void write_elf32_note(DumpState *s, Error **errp)
+ {
+-    hwaddr begin = s->memory_offset - s->note_size;
+     Elf32_Phdr phdr;
+     int ret;
+ 
+     memset(&phdr, 0, sizeof(Elf32_Phdr));
+     phdr.p_type = cpu_to_dump32(s, PT_NOTE);
+-    phdr.p_offset = cpu_to_dump32(s, begin);
++    phdr.p_offset = cpu_to_dump32(s, s->note_offset);
+     phdr.p_paddr = 0;
+     phdr.p_filesz = cpu_to_dump32(s, s->note_size);
+     phdr.p_memsz = cpu_to_dump32(s, s->note_size);
+@@ -1826,15 +1820,16 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+     }
+ 
+     if (s->dump_info.d_class == ELFCLASS64) {
+-        s->memory_offset = sizeof(Elf64_Ehdr) +
+-                           sizeof(Elf64_Phdr) * s->phdr_num +
+-                           sizeof(Elf64_Shdr) * s->shdr_num +
+-                           s->note_size;
++        s->phdr_offset = sizeof(Elf64_Ehdr);
++        s->shdr_offset = s->phdr_offset + sizeof(Elf64_Phdr) * s->phdr_num;
++        s->note_offset = s->shdr_offset + sizeof(Elf64_Shdr) * s->shdr_num;
++        s->memory_offset = s->note_offset + s->note_size;
+     } else {
+-        s->memory_offset = sizeof(Elf32_Ehdr) +
+-                           sizeof(Elf32_Phdr) * s->phdr_num +
+-                           sizeof(Elf32_Shdr) * s->shdr_num +
+-                           s->note_size;
++
++        s->phdr_offset = sizeof(Elf32_Ehdr);
++        s->shdr_offset = s->phdr_offset + sizeof(Elf32_Phdr) * s->phdr_num;
++        s->note_offset = s->shdr_offset + sizeof(Elf32_Shdr) * s->shdr_num;
++        s->memory_offset = s->note_offset + s->note_size;
+     }
+ 
+     return;
+diff --git a/include/sysemu/dump.h b/include/sysemu/dump.h
+index 19458bffbd..ffc2ea1072 100644
+--- a/include/sysemu/dump.h
++++ b/include/sysemu/dump.h
+@@ -159,6 +159,10 @@ typedef struct DumpState {
+     bool resume;
+     bool detached;
+     ssize_t note_size;
++    hwaddr shdr_offset;
++    hwaddr phdr_offset;
++    hwaddr section_offset;
++    hwaddr note_offset;
+     hwaddr memory_offset;
+     int fd;
+ 
+-- 
+2.37.3
+

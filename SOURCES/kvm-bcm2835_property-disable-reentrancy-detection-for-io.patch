@@ -1,0 +1,58 @@
+From 7715635d018351e0a5c4c25aec2c71a2fe3b9e69 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 06/15] bcm2835_property: disable reentrancy detection for
+ iomem
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/12] 4d6187430ca1c4309a36824c0c6815d2a763db1a (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit 985c4a4e547afb9573b6bd6843d20eb2c3d1d1cd
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Thu Apr 27 17:10:11 2023 -0400
+
+    bcm2835_property: disable reentrancy detection for iomem
+
+    As the code is designed for re-entrant calls from bcm2835_property to
+    bcm2835_mbox and back into bcm2835_property, mark iomem as
+    reentrancy-safe.
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Message-Id: <20230427211013.2994127-7-alxndr@bu.edu>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/misc/bcm2835_property.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/misc/bcm2835_property.c b/hw/misc/bcm2835_property.c
+index 73941bdae9..022b5a849c 100644
+--- a/hw/misc/bcm2835_property.c
++++ b/hw/misc/bcm2835_property.c
+@@ -377,6 +377,13 @@ static void bcm2835_property_init(Object *obj)
+ 
+     memory_region_init_io(&s->iomem, OBJECT(s), &bcm2835_property_ops, s,
+                           TYPE_BCM2835_PROPERTY, 0x10);
++
++    /*
++     * bcm2835_property_ops call into bcm2835_mbox, which in-turn reads from
++     * iomem. As such, mark iomem as re-entracy safe.
++     */
++    s->iomem.disable_reentrancy_guard = true;
++
+     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->iomem);
+     sysbus_init_irq(SYS_BUS_DEVICE(s), &s->mbox_irq);
+ }
+-- 
+2.37.3
+

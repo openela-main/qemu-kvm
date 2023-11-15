@@ -1,0 +1,140 @@
+From c9ceb175667cdeead59384a97a812367ae19c570 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 23 Mar 2022 13:21:40 -0400
+Subject: [PATCH 06/18] acpi: pcihp: pcie: set power on cap on parent slot
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 134: pci: expose TYPE_XIO3130_DOWNSTREAM name
+RH-Commit: [2/2] d883872647a6e90ec573140b2c171f3f53b600ab (jmaloy/qemu-kvm)
+RH-Bugzilla: 2062610
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+
+BZ: https://bugzilla.redhat.com/2062610
+UPSTREAM: merged
+BREW: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=44038138
+
+commit 6b0969f1ec825984cd74619f0730be421b0c46fb
+Author: Igor Mammedov <imammedo@redhat.com>
+Date:   Tue Mar 1 10:11:59 2022 -0500
+
+    acpi: pcihp: pcie: set power on cap on parent slot
+
+    on creation a PCIDevice has power turned on at the end of pci_qdev_realize()
+    however later on if PCIe slot isn't populated with any children
+    it's power is turned off. It's fine if native hotplug is used
+    as plug callback will power slot on among other things.
+    However when ACPI hotplug is enabled it replaces native PCIe plug
+    callbacks with ACPI specific ones (acpi_pcihp_device_*plug_cb) and
+    as result slot stays powered off. It works fine as ACPI hotplug
+    on guest side takes care of enumerating/initializing hotplugged
+    device. But when later guest is migrated, call chain introduced by]
+    commit d5daff7d312 (pcie: implement slot power control for pcie root ports)
+
+       pcie_cap_slot_post_load()
+           -> pcie_cap_update_power()
+               -> pcie_set_power_device()
+                   -> pci_set_power()
+                       -> pci_update_mappings()
+
+    will disable earlier initialized BARs for the hotplugged device
+    in powered off slot due to commit 23786d13441 (pci: implement power state)
+    which disables BARs if power is off.
+
+    Fix it by setting PCI_EXP_SLTCTL_PCC to PCI_EXP_SLTCTL_PWR_ON
+    on slot (root port/downstream port) at the time a device
+    hotplugged into it. As result PCI_EXP_SLTCTL_PWR_ON is migrated
+    to target and above call chain keeps device plugged into it
+    powered on.
+
+    Fixes: d5daff7d312 ("pcie: implement slot power control for pcie root ports")
+    Fixes: 23786d13441 ("pci: implement power state")
+    Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=2053584
+    Suggested-by: "Michael S. Tsirkin" <mst@redhat.com>
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Message-Id: <20220301151200.3507298-3-imammedo@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 6b0969f1ec825984cd74619f0730be421b0c46fb)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/acpi/pcihp.c       | 12 +++++++++++-
+ hw/pci/pcie.c         | 11 +++++++++++
+ include/hw/pci/pcie.h |  1 +
+ 3 files changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/hw/acpi/pcihp.c b/hw/acpi/pcihp.c
+index a5e182dd3a..be0e846b34 100644
+--- a/hw/acpi/pcihp.c
++++ b/hw/acpi/pcihp.c
+@@ -32,6 +32,7 @@
+ #include "hw/pci/pci_bridge.h"
+ #include "hw/pci/pci_host.h"
+ #include "hw/pci/pcie_port.h"
++#include "hw/pci-bridge/xio3130_downstream.h"
+ #include "hw/i386/acpi-build.h"
+ #include "hw/acpi/acpi.h"
+ #include "hw/pci/pci_bus.h"
+@@ -341,6 +342,8 @@ void acpi_pcihp_device_plug_cb(HotplugHandler *hotplug_dev, AcpiPciHpState *s,
+ {
+     PCIDevice *pdev = PCI_DEVICE(dev);
+     int slot = PCI_SLOT(pdev->devfn);
++    PCIDevice *bridge;
++    PCIBus *bus;
+     int bsel;
+ 
+     /* Don't send event when device is enabled during qemu machine creation:
+@@ -370,7 +373,14 @@ void acpi_pcihp_device_plug_cb(HotplugHandler *hotplug_dev, AcpiPciHpState *s,
+         return;
+     }
+ 
+-    bsel = acpi_pcihp_get_bsel(pci_get_bus(pdev));
++    bus = pci_get_bus(pdev);
++    bridge = pci_bridge_get_device(bus);
++    if (object_dynamic_cast(OBJECT(bridge), TYPE_PCIE_ROOT_PORT) ||
++        object_dynamic_cast(OBJECT(bridge), TYPE_XIO3130_DOWNSTREAM)) {
++        pcie_cap_slot_enable_power(bridge);
++    }
++
++    bsel = acpi_pcihp_get_bsel(bus);
+     g_assert(bsel >= 0);
+     s->acpi_pcihp_pci_status[bsel].up |= (1U << slot);
+     acpi_send_event(DEVICE(hotplug_dev), ACPI_PCI_HOTPLUG_STATUS);
+diff --git a/hw/pci/pcie.c b/hw/pci/pcie.c
+index d7d73a31e4..996f0e24fe 100644
+--- a/hw/pci/pcie.c
++++ b/hw/pci/pcie.c
+@@ -366,6 +366,17 @@ static void hotplug_event_clear(PCIDevice *dev)
+     }
+ }
+ 
++void pcie_cap_slot_enable_power(PCIDevice *dev)
++{
++    uint8_t *exp_cap = dev->config + dev->exp.exp_cap;
++    uint32_t sltcap = pci_get_long(exp_cap + PCI_EXP_SLTCAP);
++
++    if (sltcap & PCI_EXP_SLTCAP_PCP) {
++        pci_set_word_by_mask(exp_cap + PCI_EXP_SLTCTL,
++                             PCI_EXP_SLTCTL_PCC, PCI_EXP_SLTCTL_PWR_ON);
++    }
++}
++
+ static void pcie_set_power_device(PCIBus *bus, PCIDevice *dev, void *opaque)
+ {
+     bool *power = opaque;
+diff --git a/include/hw/pci/pcie.h b/include/hw/pci/pcie.h
+index 6063bee0ec..c27368d077 100644
+--- a/include/hw/pci/pcie.h
++++ b/include/hw/pci/pcie.h
+@@ -112,6 +112,7 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
+                                 uint32_t addr, uint32_t val, int len);
+ int pcie_cap_slot_post_load(void *opaque, int version_id);
+ void pcie_cap_slot_push_attention_button(PCIDevice *dev);
++void pcie_cap_slot_enable_power(PCIDevice *dev);
+ 
+ void pcie_cap_root_init(PCIDevice *dev);
+ void pcie_cap_root_reset(PCIDevice *dev);
+-- 
+2.27.0
+

@@ -1,0 +1,55 @@
+From 01c09f31978154f0d2fd699621ae958a8c3ea2a5 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:15:24 -0500
+Subject: [PATCH 08/13] physmem: add missing memory barrier
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [8/10] f6a9659f7cf40b78de6e85e4a7c06842273aa770
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit 33828ca11da08436e1b32f3e79dabce3061a0427
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Fri Mar 3 14:36:32 2023 +0100
+
+    physmem: add missing memory barrier
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ softmmu/physmem.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/softmmu/physmem.c b/softmmu/physmem.c
+index 4d0ef5f92f..2b96fad302 100644
+--- a/softmmu/physmem.c
++++ b/softmmu/physmem.c
+@@ -3087,6 +3087,8 @@ void cpu_register_map_client(QEMUBH *bh)
+     qemu_mutex_lock(&map_client_list_lock);
+     client->bh = bh;
+     QLIST_INSERT_HEAD(&map_client_list, client, link);
++    /* Write map_client_list before reading in_use.  */
++    smp_mb();
+     if (!qatomic_read(&bounce.in_use)) {
+         cpu_notify_map_clients_locked();
+     }
+@@ -3279,6 +3281,7 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
+     qemu_vfree(bounce.buffer);
+     bounce.buffer = NULL;
+     memory_region_unref(bounce.mr);
++    /* Clear in_use before reading map_client_list.  */
+     qatomic_mb_set(&bounce.in_use, false);
+     cpu_notify_map_clients();
+ }
+-- 
+2.37.3
+

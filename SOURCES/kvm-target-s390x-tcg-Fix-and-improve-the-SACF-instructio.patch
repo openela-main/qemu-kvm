@@ -1,0 +1,90 @@
+From b83e60b3a2488e988986f2c7e63cb7eb40d7cf27 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 20/22] target/s390x/tcg: Fix and improve the SACF instruction
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [19/21] 62030baceb0b0d1d651ba9026bb419ed4b2a8149
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 21be74a9a59d1e4954ebb59dcbee0fda0b19de00
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Thu Dec 1 19:44:43 2022 +0100
+
+    target/s390x/tcg: Fix and improve the SACF instruction
+
+    The SET ADDRESS SPACE CONTROL FAST instruction is not privileged, it can be
+    used from problem space, too. Just the switching to the home address space
+    is privileged and should still generate a privilege exception. This bug is
+    e.g. causing programs like Java that use the "getcpu" vdso kernel function
+    to crash (see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=990417#26 ).
+
+    While we're at it, also check if DAT is not enabled. In that case the
+    instruction is supposed to generate a special operation exception.
+
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/655
+    Message-Id: <20221201184443.136355-1-thuth@redhat.com>
+    Reviewed-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Conflicts:
+   file rename target/s390x/tcg/insn-data.h.in -> insn-data.def
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/cc_helper.c   | 7 +++++++
+ target/s390x/tcg/insn-data.def | 2 +-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/cc_helper.c b/target/s390x/tcg/cc_helper.c
+index b2e8d3d9f5..b36f8cdc8b 100644
+--- a/target/s390x/tcg/cc_helper.c
++++ b/target/s390x/tcg/cc_helper.c
+@@ -487,6 +487,10 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
+ {
+     HELPER_LOG("%s: %16" PRIx64 "\n", __func__, a1);
+ 
++    if (!(env->psw.mask & PSW_MASK_DAT)) {
++        tcg_s390_program_interrupt(env, PGM_SPECIAL_OP, GETPC());
++    }
++
+     switch (a1 & 0xf00) {
+     case 0x000:
+         env->psw.mask &= ~PSW_MASK_ASC;
+@@ -497,6 +501,9 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
+         env->psw.mask |= PSW_ASC_SECONDARY;
+         break;
+     case 0x300:
++        if ((env->psw.mask & PSW_MASK_PSTATE) != 0) {
++            tcg_s390_program_interrupt(env, PGM_PRIVILEGED, GETPC());
++        }
+         env->psw.mask &= ~PSW_MASK_ASC;
+         env->psw.mask |= PSW_ASC_HOME;
+         break;
+diff --git a/target/s390x/tcg/insn-data.def b/target/s390x/tcg/insn-data.def
+index d54673a3ba..548b0eedc2 100644
+--- a/target/s390x/tcg/insn-data.def
++++ b/target/s390x/tcg/insn-data.def
+@@ -1315,7 +1315,7 @@
+ /* SERVICE CALL LOGICAL PROCESSOR (PV hypercall) */
+     F(0xb220, SERVC,   RRE,   Z,   r1_o, r2_o, 0, 0, servc, 0, IF_PRIV | IF_IO)
+ /* SET ADDRESS SPACE CONTROL FAST */
+-    F(0xb279, SACF,    S,     Z,   0, a2, 0, 0, sacf, 0, IF_PRIV)
++    C(0xb279, SACF,    S,     Z,   0, a2, 0, 0, sacf, 0)
+ /* SET CLOCK */
+     F(0xb204, SCK,     S,     Z,   la2, 0, 0, 0, sck, 0, IF_PRIV | IF_IO)
+ /* SET CLOCK COMPARATOR */
+-- 
+2.37.3
+

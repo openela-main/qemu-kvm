@@ -1,0 +1,57 @@
+From 300a84c83fc6f112bed7e488f0e64eb6c07d47bf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 05/22] target/s390x: Fix cc_calc_sla_64() missing overflows
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [4/21] 2f91de2ac980d6ffa4da0ec41bb30562624a2396
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit df103c09bc2f549d36ba6313a69c18fc003ef1ee
+Author: Ilya Leoshkevich <iii@linux.ibm.com>
+Date:   Wed Jan 12 17:50:14 2022 +0100
+
+    target/s390x: Fix cc_calc_sla_64() missing overflows
+
+    An overflow occurs for SLAG when at least one shifted bit is not equal
+    to sign bit. Therefore, we need to check that `shift + 1` bits are
+    neither all 0s nor all 1s. The current code checks only `shift` bits,
+    missing some overflows.
+
+    Fixes: cbe24bfa91d2 ("target-s390: Convert SHIFT, ROTATE SINGLE")
+    Co-developed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Message-Id: <20220112165016.226996-4-iii@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/cc_helper.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/cc_helper.c b/target/s390x/tcg/cc_helper.c
+index c2c96c3a3c..c9b7b0e8c6 100644
+--- a/target/s390x/tcg/cc_helper.c
++++ b/target/s390x/tcg/cc_helper.c
+@@ -297,7 +297,7 @@ static uint32_t cc_calc_sla_32(uint32_t src, int shift)
+ 
+ static uint32_t cc_calc_sla_64(uint64_t src, int shift)
+ {
+-    uint64_t mask = ((1ULL << shift) - 1ULL) << (64 - shift);
++    uint64_t mask = -1ULL << (63 - shift);
+     uint64_t sign = 1ULL << 63;
+     uint64_t match;
+     int64_t r;
+-- 
+2.37.3
+

@@ -1,0 +1,52 @@
+From 100f33ff8a1d55986e43b99ba8726abc29ee8d26 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Mon, 5 Dec 2022 15:32:55 -0500
+Subject: [PATCH 5/5] hw/display/qxl: Assert memory slot fits in preallocated
+ MemoryRegion
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 240: hw/display/qxl: Have qxl_log_command Return early if no log_cmd handler
+RH-Bugzilla: 2148545
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [5/5] f809ce48e7989dd6547b7c8bf1a5efc3fdcacbac (jmaloy/jons-qemu-kvm)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2148545
+CVE: CVE-2022-4144
+Upstream: Merged
+
+commit 86fdb0582c653a9824183679403a85f588260d62
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Mon Nov 28 21:27:41 2022 +0100
+
+    hw/display/qxl: Assert memory slot fits in preallocated MemoryRegion
+
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Message-Id: <20221128202741.4945-6-philmd@linaro.org>
+
+(cherry picked from commit 86fdb0582c653a9824183679403a85f588260d62)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/display/qxl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/display/qxl.c b/hw/display/qxl.c
+index 2a4b2d4158..bcd9e8716a 100644
+--- a/hw/display/qxl.c
++++ b/hw/display/qxl.c
+@@ -1372,6 +1372,7 @@ static int qxl_add_memslot(PCIQXLDevice *d, uint32_t slot_id, uint64_t delta,
+         qxl_set_guest_bug(d, "%s: pci_region = %d", __func__, pci_region);
+         return 1;
+     }
++    assert(guest_end - pci_start <= memory_region_size(mr));
+ 
+     virt_start = (intptr_t)memory_region_get_ram_ptr(mr);
+     memslot.slot_id = slot_id;
+-- 
+2.37.3
+

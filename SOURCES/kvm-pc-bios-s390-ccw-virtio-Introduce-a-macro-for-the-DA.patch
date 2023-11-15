@@ -1,0 +1,63 @@
+From 511d05f31824b375057ba8dea3f0343ce6e1c1e8 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 8 Jul 2022 12:29:50 +0200
+Subject: [PATCH 29/37] pc-bios/s390-ccw/virtio: Introduce a macro for the DASD
+ block size
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 198: pc-bios/s390-ccw: Fix boot from disks with 4k sectors that do not have the typical DASD geometry
+RH-Commit: [1/9] 1053101fd5fb591131c567ff98c7d92b63a9dfa9
+RH-Bugzilla: 2098076
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2098076
+
+commit 1f2c2ee48e87ea743f8e23cc7569dd26c4cf9623
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Jul 4 13:18:53 2022 +0200
+
+    pc-bios/s390-ccw/virtio: Introduce a macro for the DASD block size
+
+    Use VIRTIO_DASD_DEFAULT_BLOCK_SIZE instead of the magic value 4096.
+
+    Message-Id: <20220704111903.62400-3-thuth@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ pc-bios/s390-ccw/virtio-blkdev.c | 2 +-
+ pc-bios/s390-ccw/virtio.h        | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pc-bios/s390-ccw/virtio-blkdev.c b/pc-bios/s390-ccw/virtio-blkdev.c
+index 7d35050292..6483307630 100644
+--- a/pc-bios/s390-ccw/virtio-blkdev.c
++++ b/pc-bios/s390-ccw/virtio-blkdev.c
+@@ -155,7 +155,7 @@ void virtio_assume_eckd(void)
+     vdev->config.blk.physical_block_exp = 0;
+     switch (vdev->senseid.cu_model) {
+     case VIRTIO_ID_BLOCK:
+-        vdev->config.blk.blk_size = 4096;
++        vdev->config.blk.blk_size = VIRTIO_DASD_DEFAULT_BLOCK_SIZE;
+         break;
+     case VIRTIO_ID_SCSI:
+         vdev->config.blk.blk_size = vdev->scsi_block_size;
+diff --git a/pc-bios/s390-ccw/virtio.h b/pc-bios/s390-ccw/virtio.h
+index 19fceb6495..9e410bde6f 100644
+--- a/pc-bios/s390-ccw/virtio.h
++++ b/pc-bios/s390-ccw/virtio.h
+@@ -198,6 +198,7 @@ extern int virtio_read_many(ulong sector, void *load_addr, int sec_num);
+ #define VIRTIO_SECTOR_SIZE 512
+ #define VIRTIO_ISO_BLOCK_SIZE 2048
+ #define VIRTIO_SCSI_BLOCK_SIZE 512
++#define VIRTIO_DASD_DEFAULT_BLOCK_SIZE 4096
+ 
+ static inline ulong virtio_sector_adjust(ulong sector)
+ {
+-- 
+2.35.3
+

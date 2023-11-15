@@ -1,0 +1,58 @@
+From abd84f26e0fe0bc9952d91fbd35fb3a7253cfecf Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@rehat.com>
+Date: Wed, 13 Apr 2022 20:54:45 -0400
+Subject: [PATCH 1/2] display/qxl-render: fix race condition in qxl_cursor
+ (CVE-2021-4207)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 152: display/qxl-render: fix race condition in qxl_cursor (CVE-2021-4207)
+RH-Commit: [1/1] f05b9a956f2e0ca522b5be127beff813d04b5588 (jmaloy/qemu-kvm)
+RH-Bugzilla: 2040738
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Mauro Matteo Cascella <None>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2040738
+Upstream: Merged
+CVE: CVE-2021-4207
+
+commit 9569f5cb5b4bffa9d3ebc8ba7da1e03830a9a895
+Author: Mauro Matteo Cascella <mcascell@redhat.com>
+Date:   Thu Apr 7 10:11:06 2022 +0200
+
+    display/qxl-render: fix race condition in qxl_cursor (CVE-2021-4207)
+
+    Avoid fetching 'width' and 'height' a second time to prevent possible
+    race condition. Refer to security advisory
+    https://starlabs.sg/advisories/22-4207/ for more information.
+
+    Fixes: CVE-2021-4207
+    Signed-off-by: Mauro Matteo Cascella <mcascell@redhat.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Message-Id: <20220407081106.343235-1-mcascell@redhat.com>
+    Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+
+(cherry picked from commit 9569f5cb5b4bffa9d3ebc8ba7da1e03830a9a895)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/display/qxl-render.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/display/qxl-render.c b/hw/display/qxl-render.c
+index d28849b121..237ed293ba 100644
+--- a/hw/display/qxl-render.c
++++ b/hw/display/qxl-render.c
+@@ -266,7 +266,7 @@ static QEMUCursor *qxl_cursor(PCIQXLDevice *qxl, QXLCursor *cursor,
+         }
+         break;
+     case SPICE_CURSOR_TYPE_ALPHA:
+-        size = sizeof(uint32_t) * cursor->header.width * cursor->header.height;
++        size = sizeof(uint32_t) * c->width * c->height;
+         qxl_unpack_chunks(c->data, size, qxl, &cursor->chunk, group_id);
+         if (qxl->debug > 2) {
+             cursor_print_ascii_art(c, "qxl/alpha");
+-- 
+2.27.0
+

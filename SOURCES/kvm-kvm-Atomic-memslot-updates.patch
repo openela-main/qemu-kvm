@@ -1,0 +1,290 @@
+From 93ec857c46911b95ed8e3abc6a9d432ae847c084 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Mon, 16 Jan 2023 07:51:56 -0500
+Subject: [PATCH 06/11] kvm: Atomic memslot updates
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 247: accel: introduce accelerator blocker API
+RH-Bugzilla: 2161188
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/3] 520e41c0f58066a7381a5f6b32b81bc01cce51c0
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2161188
+
+commit f39b7d2b96e3e73c01bb678cd096f7baf0b9ab39
+Author: David Hildenbrand <david@redhat.com>
+Date:   Fri Nov 11 10:47:58 2022 -0500
+
+    kvm: Atomic memslot updates
+
+    If we update an existing memslot (e.g., resize, split), we temporarily
+    remove the memslot to re-add it immediately afterwards. These updates
+    are not atomic, especially not for KVM VCPU threads, such that we can
+    get spurious faults.
+
+    Let's inhibit most KVM ioctls while performing relevant updates, such
+    that we can perform the update just as if it would happen atomically
+    without additional kernel support.
+
+    We capture the add/del changes and apply them in the notifier commit
+    stage instead. There, we can check for overlaps and perform the ioctl
+    inhibiting only if really required (-> overlap).
+
+    To keep things simple we don't perform additional checks that wouldn't
+    actually result in an overlap -- such as !RAM memory regions in some
+    cases (see kvm_set_phys_mem()).
+
+    To minimize cache-line bouncing, use a separate indicator
+    (in_ioctl_lock) per CPU.  Also, make sure to hold the kvm_slots_lock
+    while performing both actions (removing+re-adding).
+
+    We have to wait until all IOCTLs were exited and block new ones from
+    getting executed.
+
+    This approach cannot result in a deadlock as long as the inhibitor does
+    not hold any locks that might hinder an IOCTL from getting finished and
+    exited - something fairly unusual. The inhibitor will always hold the BQL.
+
+    AFAIKs, one possible candidate would be userfaultfd. If a page cannot be
+    placed (e.g., during postcopy), because we're waiting for a lock, or if the
+    userfaultfd thread cannot process a fault, because it is waiting for a
+    lock, there could be a deadlock. However, the BQL is not applicable here,
+    because any other guest memory access while holding the BQL would already
+    result in a deadlock.
+
+    Nothing else in the kernel should block forever and wait for userspace
+    intervention.
+
+    Note: pause_all_vcpus()/resume_all_vcpus() or
+    start_exclusive()/end_exclusive() cannot be used, as they either drop
+    the BQL or require to be called without the BQL - something inhibitors
+    cannot handle. We need a low-level locking mechanism that is
+    deadlock-free even when not releasing the BQL.
+
+    Signed-off-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Tested-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Message-Id: <20221111154758.1372674-4-eesposit@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflicts:
+	accel/kvm/kvm-all.c: include "sysemu/dirtylimit.h" is missing in
+	rhel 8.8.0
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ accel/kvm/kvm-all.c      | 101 ++++++++++++++++++++++++++++++++++-----
+ include/sysemu/kvm_int.h |   8 ++++
+ 2 files changed, 98 insertions(+), 11 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 221aadfda7..3b7bc39823 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -31,6 +31,7 @@
+ #include "sysemu/kvm_int.h"
+ #include "sysemu/runstate.h"
+ #include "sysemu/cpus.h"
++#include "sysemu/accel-blocker.h"
+ #include "qemu/bswap.h"
+ #include "exec/memory.h"
+ #include "exec/ram_addr.h"
+@@ -45,6 +46,7 @@
+ #include "qemu/guest-random.h"
+ #include "sysemu/hw_accel.h"
+ #include "kvm-cpus.h"
++#include "qemu/range.h"
+ 
+ #include "hw/boards.h"
+ 
+@@ -1334,6 +1336,7 @@ void kvm_set_max_memslot_size(hwaddr max_slot_size)
+     kvm_max_slot_size = max_slot_size;
+ }
+ 
++/* Called with KVMMemoryListener.slots_lock held */
+ static void kvm_set_phys_mem(KVMMemoryListener *kml,
+                              MemoryRegionSection *section, bool add)
+ {
+@@ -1368,14 +1371,12 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
+     ram = memory_region_get_ram_ptr(mr) + mr_offset;
+     ram_start_offset = memory_region_get_ram_addr(mr) + mr_offset;
+ 
+-    kvm_slots_lock();
+-
+     if (!add) {
+         do {
+             slot_size = MIN(kvm_max_slot_size, size);
+             mem = kvm_lookup_matching_slot(kml, start_addr, slot_size);
+             if (!mem) {
+-                goto out;
++                return;
+             }
+             if (mem->flags & KVM_MEM_LOG_DIRTY_PAGES) {
+                 /*
+@@ -1413,7 +1414,7 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
+             start_addr += slot_size;
+             size -= slot_size;
+         } while (size);
+-        goto out;
++        return;
+     }
+ 
+     /* register the new slot */
+@@ -1438,9 +1439,6 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
+         ram += slot_size;
+         size -= slot_size;
+     } while (size);
+-
+-out:
+-    kvm_slots_unlock();
+ }
+ 
+ static void *kvm_dirty_ring_reaper_thread(void *data)
+@@ -1492,18 +1490,95 @@ static void kvm_region_add(MemoryListener *listener,
+                            MemoryRegionSection *section)
+ {
+     KVMMemoryListener *kml = container_of(listener, KVMMemoryListener, listener);
++    KVMMemoryUpdate *update;
++
++    update = g_new0(KVMMemoryUpdate, 1);
++    update->section = *section;
+ 
+-    memory_region_ref(section->mr);
+-    kvm_set_phys_mem(kml, section, true);
++    QSIMPLEQ_INSERT_TAIL(&kml->transaction_add, update, next);
+ }
+ 
+ static void kvm_region_del(MemoryListener *listener,
+                            MemoryRegionSection *section)
+ {
+     KVMMemoryListener *kml = container_of(listener, KVMMemoryListener, listener);
++    KVMMemoryUpdate *update;
++
++    update = g_new0(KVMMemoryUpdate, 1);
++    update->section = *section;
++
++    QSIMPLEQ_INSERT_TAIL(&kml->transaction_del, update, next);
++}
++
++static void kvm_region_commit(MemoryListener *listener)
++{
++    KVMMemoryListener *kml = container_of(listener, KVMMemoryListener,
++                                          listener);
++    KVMMemoryUpdate *u1, *u2;
++    bool need_inhibit = false;
++
++    if (QSIMPLEQ_EMPTY(&kml->transaction_add) &&
++        QSIMPLEQ_EMPTY(&kml->transaction_del)) {
++        return;
++    }
++
++    /*
++     * We have to be careful when regions to add overlap with ranges to remove.
++     * We have to simulate atomic KVM memslot updates by making sure no ioctl()
++     * is currently active.
++     *
++     * The lists are order by addresses, so it's easy to find overlaps.
++     */
++    u1 = QSIMPLEQ_FIRST(&kml->transaction_del);
++    u2 = QSIMPLEQ_FIRST(&kml->transaction_add);
++    while (u1 && u2) {
++        Range r1, r2;
++
++        range_init_nofail(&r1, u1->section.offset_within_address_space,
++                          int128_get64(u1->section.size));
++        range_init_nofail(&r2, u2->section.offset_within_address_space,
++                          int128_get64(u2->section.size));
++
++        if (range_overlaps_range(&r1, &r2)) {
++            need_inhibit = true;
++            break;
++        }
++        if (range_lob(&r1) < range_lob(&r2)) {
++            u1 = QSIMPLEQ_NEXT(u1, next);
++        } else {
++            u2 = QSIMPLEQ_NEXT(u2, next);
++        }
++    }
++
++    kvm_slots_lock();
++    if (need_inhibit) {
++        accel_ioctl_inhibit_begin();
++    }
++
++    /* Remove all memslots before adding the new ones. */
++    while (!QSIMPLEQ_EMPTY(&kml->transaction_del)) {
++        u1 = QSIMPLEQ_FIRST(&kml->transaction_del);
++        QSIMPLEQ_REMOVE_HEAD(&kml->transaction_del, next);
+ 
+-    kvm_set_phys_mem(kml, section, false);
+-    memory_region_unref(section->mr);
++        kvm_set_phys_mem(kml, &u1->section, false);
++        memory_region_unref(u1->section.mr);
++
++        g_free(u1);
++    }
++    while (!QSIMPLEQ_EMPTY(&kml->transaction_add)) {
++        u1 = QSIMPLEQ_FIRST(&kml->transaction_add);
++        QSIMPLEQ_REMOVE_HEAD(&kml->transaction_add, next);
++
++        memory_region_ref(u1->section.mr);
++        kvm_set_phys_mem(kml, &u1->section, true);
++
++        g_free(u1);
++    }
++
++    if (need_inhibit) {
++        accel_ioctl_inhibit_end();
++    }
++    kvm_slots_unlock();
+ }
+ 
+ static void kvm_log_sync(MemoryListener *listener,
+@@ -1647,8 +1722,12 @@ void kvm_memory_listener_register(KVMState *s, KVMMemoryListener *kml,
+         kml->slots[i].slot = i;
+     }
+ 
++    QSIMPLEQ_INIT(&kml->transaction_add);
++    QSIMPLEQ_INIT(&kml->transaction_del);
++
+     kml->listener.region_add = kvm_region_add;
+     kml->listener.region_del = kvm_region_del;
++    kml->listener.commit = kvm_region_commit;
+     kml->listener.log_start = kvm_log_start;
+     kml->listener.log_stop = kvm_log_stop;
+     kml->listener.priority = 10;
+diff --git a/include/sysemu/kvm_int.h b/include/sysemu/kvm_int.h
+index 1f5487d9b7..7e18c0a3c0 100644
+--- a/include/sysemu/kvm_int.h
++++ b/include/sysemu/kvm_int.h
+@@ -11,6 +11,7 @@
+ 
+ #include "exec/memory.h"
+ #include "qemu/accel.h"
++#include "qemu/queue.h"
+ #include "sysemu/kvm.h"
+ 
+ typedef struct KVMSlot
+@@ -30,10 +31,17 @@ typedef struct KVMSlot
+     ram_addr_t ram_start_offset;
+ } KVMSlot;
+ 
++typedef struct KVMMemoryUpdate {
++    QSIMPLEQ_ENTRY(KVMMemoryUpdate) next;
++    MemoryRegionSection section;
++} KVMMemoryUpdate;
++
+ typedef struct KVMMemoryListener {
+     MemoryListener listener;
+     KVMSlot *slots;
+     int as_id;
++    QSIMPLEQ_HEAD(, KVMMemoryUpdate) transaction_add;
++    QSIMPLEQ_HEAD(, KVMMemoryUpdate) transaction_del;
+ } KVMMemoryListener;
+ 
+ void kvm_memory_listener_register(KVMState *s, KVMMemoryListener *kml,
+-- 
+2.37.3
+

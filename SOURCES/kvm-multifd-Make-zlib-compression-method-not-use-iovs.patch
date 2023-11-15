@@ -1,0 +1,98 @@
+From 75cd92cb7cff055f46163e64d66ba3f685f9ac04 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 18 May 2022 02:52:23 -0300
+Subject: [PATCH 09/37] multifd: Make zlib compression method not use iovs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [9/26] d33dd62b833d50fee989a195aebcc8d5e7d43181
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit a5ed22948873b50fcf1415d1ce15c71d61a9388d)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd-zlib.c | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/migration/multifd-zlib.c b/migration/multifd-zlib.c
+index 330fc021c5..a1950a4588 100644
+--- a/migration/multifd-zlib.c
++++ b/migration/multifd-zlib.c
+@@ -13,6 +13,7 @@
+ #include "qemu/osdep.h"
+ #include <zlib.h>
+ #include "qemu/rcu.h"
++#include "exec/ramblock.h"
+ #include "exec/target_page.h"
+ #include "qapi/error.h"
+ #include "migration.h"
+@@ -100,8 +101,8 @@ static void zlib_send_cleanup(MultiFDSendParams *p, Error **errp)
+  */
+ static int zlib_send_prepare(MultiFDSendParams *p, Error **errp)
+ {
+-    struct iovec *iov = p->pages->iov;
+     struct zlib_data *z = p->data;
++    size_t page_size = qemu_target_page_size();
+     z_stream *zs = &z->zs;
+     uint32_t out_size = 0;
+     int ret;
+@@ -115,8 +116,8 @@ static int zlib_send_prepare(MultiFDSendParams *p, Error **errp)
+             flush = Z_SYNC_FLUSH;
+         }
+ 
+-        zs->avail_in = iov[i].iov_len;
+-        zs->next_in = iov[i].iov_base;
++        zs->avail_in = page_size;
++        zs->next_in = p->pages->block->host + p->pages->offset[i];
+ 
+         zs->avail_out = available;
+         zs->next_out = z->zbuff + out_size;
+@@ -240,6 +241,7 @@ static void zlib_recv_cleanup(MultiFDRecvParams *p)
+ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+ {
+     struct zlib_data *z = p->data;
++    size_t page_size = qemu_target_page_size();
+     z_stream *zs = &z->zs;
+     uint32_t in_size = p->next_packet_size;
+     /* we measure the change of total_out */
+@@ -264,7 +266,6 @@ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+     zs->next_in = z->zbuff;
+ 
+     for (i = 0; i < p->pages->num; i++) {
+-        struct iovec *iov = &p->pages->iov[i];
+         int flush = Z_NO_FLUSH;
+         unsigned long start = zs->total_out;
+ 
+@@ -272,8 +273,8 @@ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+             flush = Z_SYNC_FLUSH;
+         }
+ 
+-        zs->avail_out = iov->iov_len;
+-        zs->next_out = iov->iov_base;
++        zs->avail_out = page_size;
++        zs->next_out = p->pages->block->host + p->pages->offset[i];
+ 
+         /*
+          * Welcome to inflate semantics
+@@ -286,8 +287,8 @@ static int zlib_recv_pages(MultiFDRecvParams *p, Error **errp)
+         do {
+             ret = inflate(zs, flush);
+         } while (ret == Z_OK && zs->avail_in
+-                             && (zs->total_out - start) < iov->iov_len);
+-        if (ret == Z_OK && (zs->total_out - start) < iov->iov_len) {
++                             && (zs->total_out - start) < page_size);
++        if (ret == Z_OK && (zs->total_out - start) < page_size) {
+             error_setg(errp, "multifd %d: inflate generated too few output",
+                        p->id);
+             return -1;
+-- 
+2.35.3
+

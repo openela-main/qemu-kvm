@@ -1,0 +1,86 @@
+From d7eae0ff4c7f7f7bf10f10272adf7c6971c0db9b Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 09:26:35 -0500
+Subject: [PATCH 01/13] aio_wait_kick: add missing memory barrier
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [1/10] eb774aee79864052e14e706d931e52e7bd1162c8
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit 7455ff1aa01564cc175db5b2373e610503ad4411
+Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date:   Tue May 24 13:30:54 2022 -0400
+
+    aio_wait_kick: add missing memory barrier
+
+    It seems that aio_wait_kick always required a memory barrier
+    or atomic operation in the caller, but nobody actually
+    took care of doing it.
+
+    Let's put the barrier in the function instead, and pair it
+    with another one in AIO_WAIT_WHILE. Read aio_wait_kick()
+    comment for further explanation.
+
+    Suggested-by: Paolo Bonzini <pbonzini@redhat.com>
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Message-Id: <20220524173054.12651-1-eesposit@redhat.com>
+    Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ include/block/aio-wait.h |  2 ++
+ util/aio-wait.c          | 16 +++++++++++++++-
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/include/block/aio-wait.h b/include/block/aio-wait.h
+index b39eefb38d..54840f8622 100644
+--- a/include/block/aio-wait.h
++++ b/include/block/aio-wait.h
+@@ -81,6 +81,8 @@ extern AioWait global_aio_wait;
+     AioContext *ctx_ = (ctx);                                      \
+     /* Increment wait_->num_waiters before evaluating cond. */     \
+     qatomic_inc(&wait_->num_waiters);                              \
++    /* Paired with smp_mb in aio_wait_kick(). */                   \
++    smp_mb();                                                      \
+     if (ctx_ && in_aio_context_home_thread(ctx_)) {                \
+         while ((cond)) {                                           \
+             aio_poll(ctx_, true);                                  \
+diff --git a/util/aio-wait.c b/util/aio-wait.c
+index bdb3d3af22..98c5accd29 100644
+--- a/util/aio-wait.c
++++ b/util/aio-wait.c
+@@ -35,7 +35,21 @@ static void dummy_bh_cb(void *opaque)
+ 
+ void aio_wait_kick(void)
+ {
+-    /* The barrier (or an atomic op) is in the caller.  */
++    /*
++     * Paired with smp_mb in AIO_WAIT_WHILE. Here we have:
++     * write(condition);
++     * aio_wait_kick() {
++     *      smp_mb();
++     *      read(num_waiters);
++     * }
++     *
++     * And in AIO_WAIT_WHILE:
++     * write(num_waiters);
++     * smp_mb();
++     * read(condition);
++     */
++    smp_mb();
++
+     if (qatomic_read(&global_aio_wait.num_waiters)) {
+         aio_bh_schedule_oneshot(qemu_get_aio_context(), dummy_bh_cb, NULL);
+     }
+-- 
+2.37.3
+

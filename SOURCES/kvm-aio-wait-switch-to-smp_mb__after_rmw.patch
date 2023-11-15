@@ -1,0 +1,50 @@
+From 953c5c0982b61b0a3f8f03452844b5487eb22fc7 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Thu, 9 Mar 2023 08:13:17 -0500
+Subject: [PATCH 06/13] aio-wait: switch to smp_mb__after_rmw()
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 263: qatomic: add smp_mb__before/after_rmw()
+RH-Bugzilla: 2168472
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [6/10] 9f30f97754139ffd18d36b2350f9ed4e59ac496e
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2168472
+
+commit b532526a07ef3b903ead2e055fe6cc87b41057a3
+Author: Paolo Bonzini <pbonzini@redhat.com>
+Date:   Fri Mar 3 11:03:52 2023 +0100
+
+    aio-wait: switch to smp_mb__after_rmw()
+
+    The barrier comes after an atomic increment, so it is enough to use
+    smp_mb__after_rmw(); this avoids a double barrier on x86 systems.
+
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ include/block/aio-wait.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/block/aio-wait.h b/include/block/aio-wait.h
+index 54840f8622..03b6394c78 100644
+--- a/include/block/aio-wait.h
++++ b/include/block/aio-wait.h
+@@ -82,7 +82,7 @@ extern AioWait global_aio_wait;
+     /* Increment wait_->num_waiters before evaluating cond. */     \
+     qatomic_inc(&wait_->num_waiters);                              \
+     /* Paired with smp_mb in aio_wait_kick(). */                   \
+-    smp_mb();                                                      \
++    smp_mb__after_rmw();                                           \
+     if (ctx_ && in_aio_context_home_thread(ctx_)) {                \
+         while ((cond)) {                                           \
+             aio_poll(ctx_, true);                                  \
+-- 
+2.37.3
+

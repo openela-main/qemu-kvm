@@ -1,0 +1,88 @@
+From 3c7bc4319d4e475c820a63176d18afb7b4b2ed78 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 02/22] s390: kvm: adjust diag318 resets to retain data
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/21] 16f2ff166efdd26a3be98d7c97d3b184598d1ca4
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit c35aff184b2ed5be930da671ea25c857713555af
+Author: Collin L. Walling <walling@linux.ibm.com>
+Date:   Wed Nov 17 10:23:03 2021 -0500
+
+    s390: kvm: adjust diag318 resets to retain data
+
+    The CPNC portion of the diag318 data is erroneously reset during an
+    initial CPU reset caused by SIGP. Let's go ahead and relocate the
+    diag318_info field within the CPUS390XState struct such that it is
+    only zeroed during a clear reset. This way, the CPNC will be retained
+    for each VCPU in the configuration after the diag318 instruction
+    has been invoked.
+
+    The s390_machine_reset code already takes care of zeroing the diag318
+    data on VM resets, which also cover resets caused by diag308.
+
+    Fixes: fabdada9357b ("s390: guest support for diagnose 0x318")
+    Reported-by: Christian Borntraeger <borntraeger@de.ibm.com>
+    Signed-off-by: Collin Walling <walling@linux.ibm.com>
+    Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-Id: <20211117152303.627969-1-walling@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/cpu.h     | 4 ++--
+ target/s390x/kvm/kvm.c | 4 ++++
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/target/s390x/cpu.h b/target/s390x/cpu.h
+index ca3845d023..a75e559134 100644
+--- a/target/s390x/cpu.h
++++ b/target/s390x/cpu.h
+@@ -63,6 +63,8 @@ struct CPUS390XState {
+     uint64_t etoken;       /* etoken */
+     uint64_t etoken_extension; /* etoken extension */
+ 
++    uint64_t diag318_info;
++
+     /* Fields up to this point are not cleared by initial CPU reset */
+     struct {} start_initial_reset_fields;
+ 
+@@ -118,8 +120,6 @@ struct CPUS390XState {
+     uint16_t external_call_addr;
+     DECLARE_BITMAP(emergency_signals, S390_MAX_CPUS);
+ 
+-    uint64_t diag318_info;
+-
+ #if !defined(CONFIG_USER_ONLY)
+     uint64_t tlb_fill_tec;   /* translation exception code during tlb_fill */
+     int tlb_fill_exc;        /* exception number seen during tlb_fill */
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index d36b44f32a..8d36c377b5 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -1598,6 +1598,10 @@ void kvm_s390_set_diag318(CPUState *cs, uint64_t diag318_info)
+         env->diag318_info = diag318_info;
+         cs->kvm_run->s.regs.diag318 = diag318_info;
+         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_DIAG318;
++        /*
++         * diag 318 info is zeroed during a clear reset and
++         * diag 308 IPL subcodes.
++         */
+     }
+ }
+ 
+-- 
+2.37.3
+

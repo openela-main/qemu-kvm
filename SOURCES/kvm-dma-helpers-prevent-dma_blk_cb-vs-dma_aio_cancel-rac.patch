@@ -1,0 +1,127 @@
+From 103608465b8bd2edf7f9aaef5c3c93309ccf9ec2 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 21 Feb 2023 16:22:17 -0500
+Subject: [PATCH 12/13] dma-helpers: prevent dma_blk_cb() vs dma_aio_cancel()
+ race
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 264: scsi: protect req->aiocb with AioContext lock
+RH-Bugzilla: 2090990
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [2/3] 14f5835093ba8c5111f3ada2fe87730371aca733
+
+dma_blk_cb() only takes the AioContext lock around ->io_func(). That
+means the rest of dma_blk_cb() is not protected. In particular, the
+DMAAIOCB field accesses happen outside the lock.
+
+There is a race when the main loop thread holds the AioContext lock and
+invokes scsi_device_purge_requests() -> bdrv_aio_cancel() ->
+dma_aio_cancel() while an IOThread executes dma_blk_cb(). The dbs->acb
+field determines how cancellation proceeds. If dma_aio_cancel() sees
+dbs->acb == NULL while dma_blk_cb() is still running, the request can be
+completed twice (-ECANCELED and the actual return value).
+
+The following assertion can occur with virtio-scsi when an IOThread is
+used:
+
+  ../hw/scsi/scsi-disk.c:368: scsi_dma_complete: Assertion `r->req.aiocb != NULL' failed.
+
+Fix the race by holding the AioContext across dma_blk_cb(). Now
+dma_aio_cancel() under the AioContext lock will not see
+inconsistent/intermediate states.
+
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-Id: <20230221212218.1378734-3-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit abfcd2760b3e70727bbc0792221b8b98a733dc32)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-disk.c   |  4 +---
+ softmmu/dma-helpers.c | 12 +++++++-----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 179ce22c4a..c8109a673e 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -351,13 +351,12 @@ done:
+     scsi_req_unref(&r->req);
+ }
+ 
++/* Called with AioContext lock held */
+ static void scsi_dma_complete(void *opaque, int ret)
+ {
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -367,7 +366,6 @@ static void scsi_dma_complete(void *opaque, int ret)
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     }
+     scsi_dma_complete_noio(r, ret);
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ static void scsi_read_complete_noio(SCSIDiskReq *r, int ret)
+diff --git a/softmmu/dma-helpers.c b/softmmu/dma-helpers.c
+index 7d766a5e89..42af18719a 100644
+--- a/softmmu/dma-helpers.c
++++ b/softmmu/dma-helpers.c
+@@ -127,17 +127,19 @@ static void dma_complete(DMAAIOCB *dbs, int ret)
+ static void dma_blk_cb(void *opaque, int ret)
+ {
+     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
++    AioContext *ctx = dbs->ctx;
+     dma_addr_t cur_addr, cur_len;
+     void *mem;
+ 
+     trace_dma_blk_cb(dbs, ret);
+ 
++    aio_context_acquire(ctx);
+     dbs->acb = NULL;
+     dbs->offset += dbs->iov.size;
+ 
+     if (dbs->sg_cur_index == dbs->sg->nsg || ret < 0) {
+         dma_complete(dbs, ret);
+-        return;
++        goto out;
+     }
+     dma_blk_unmap(dbs);
+ 
+@@ -177,9 +179,9 @@ static void dma_blk_cb(void *opaque, int ret)
+ 
+     if (dbs->iov.size == 0) {
+         trace_dma_map_wait(dbs);
+-        dbs->bh = aio_bh_new(dbs->ctx, reschedule_dma, dbs);
++        dbs->bh = aio_bh_new(ctx, reschedule_dma, dbs);
+         cpu_register_map_client(dbs->bh);
+-        return;
++        goto out;
+     }
+ 
+     if (!QEMU_IS_ALIGNED(dbs->iov.size, dbs->align)) {
+@@ -187,11 +189,11 @@ static void dma_blk_cb(void *opaque, int ret)
+                                 QEMU_ALIGN_DOWN(dbs->iov.size, dbs->align));
+     }
+ 
+-    aio_context_acquire(dbs->ctx);
+     dbs->acb = dbs->io_func(dbs->offset, &dbs->iov,
+                             dma_blk_cb, dbs, dbs->io_func_opaque);
+-    aio_context_release(dbs->ctx);
+     assert(dbs->acb);
++out:
++    aio_context_release(ctx);
+ }
+ 
+ static void dma_aio_cancel(BlockAIOCB *acb)
+-- 
+2.37.3
+

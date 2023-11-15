@@ -1,0 +1,59 @@
+From ccaa1135bd1aa90c94f0e8b5417bd2a420134e6c Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 30 Mar 2022 14:52:34 -0400
+Subject: [PATCH 08/18] i386: Add Icelake-Server-v6 CPU model with 5-level EPT
+ support
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 139: vmxcap: Add 5-level EPT bit
+RH-Commit: [2/2] e913746b2df9cbd0308014ab5cc72577458857fa (jmaloy/qemu-kvm)
+RH-Bugzilla: 2065207
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2065207
+UPSTREAM: Merged
+
+commit: 12cab535db6440af41ed8dfefe908a594321b6ce
+Author: Vitaly Kuznetsov <vkuznets@redhat.com>
+Date:   Mon Feb 21 15:53:15 2022 +0100
+
+    i386: Add Icelake-Server-v6 CPU model with 5-level EPT support
+
+    Windows 11 with WSL2 enabled (Hyper-V) fails to boot with Icelake-Server
+    {-v5} CPU model but boots well with '-cpu host'. Apparently, it expects
+    5-level paging and 5-level EPT support to come in pair but QEMU's
+    Icelake-Server CPU model lacks the later. Introduce 'Icelake-Server-v6'
+    CPU model with 'vmx-page-walk-5' enabled by default.
+
+    Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+    Message-Id: <20220221145316.576138-1-vkuznets@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+(cherry picked from commit 12cab535db6440af41ed8dfefe908a594321b6ce)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ target/i386/cpu.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index aa9e636800..6e25d13339 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -3505,6 +3505,14 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+                     { /* end of list */ }
+                 },
+             },
++            {
++                .version = 6,
++                .note = "5-level EPT",
++                .props = (PropValue[]) {
++                    { "vmx-page-walk-5", "on" },
++                    { /* end of list */ }
++                },
++            },
+             { /* end of list */ }
+         }
+     },
+-- 
+2.27.0
+

@@ -1,0 +1,420 @@
+From 7eeec7c008e947bc3e1fed682791092b408852c6 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Wed, 18 May 2022 02:52:24 -0300
+Subject: [PATCH 17/37] QIOChannel: Add flags on io_writev and introduce
+ io_flush callback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [17/26] 7bde4e79fd3f76a6cc84d9cacf50420584ddd35c
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Add flags to io_writev and introduce io_flush as optional callback to
+QIOChannelClass, allowing the implementation of zero copy writes by
+subclasses.
+
+How to use them:
+- Write data using qio_channel_writev*(...,QIO_CHANNEL_WRITE_FLAG_ZERO_COPY),
+- Wait write completion with qio_channel_flush().
+
+Notes:
+As some zero copy write implementations work asynchronously, it's
+recommended to keep the write buffer untouched until the return of
+qio_channel_flush(), to avoid the risk of sending an updated buffer
+instead of the buffer state during write.
+
+As io_flush callback is optional, if a subclass does not implement it, then:
+- io_flush will return 0 without changing anything.
+
+Also, some functions like qio_channel_writev_full_all() were adapted to
+receive a flag parameter. That allows shared code between zero copy and
+non-zero copy writev, and also an easier implementation on new flags.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Message-Id: <20220513062836.965425-3-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit b88651cb4d4fa416fdbb6afaf5b26ec8c035eaad)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ chardev/char-io.c                   |  2 +-
+ hw/remote/mpqemu-link.c             |  2 +-
+ include/io/channel.h                | 38 +++++++++++++++++++++-
+ io/channel-buffer.c                 |  1 +
+ io/channel-command.c                |  1 +
+ io/channel-file.c                   |  1 +
+ io/channel-socket.c                 |  2 ++
+ io/channel-tls.c                    |  1 +
+ io/channel-websock.c                |  1 +
+ io/channel.c                        | 49 +++++++++++++++++++++++------
+ migration/rdma.c                    |  1 +
+ scsi/pr-manager-helper.c            |  2 +-
+ tests/unit/test-io-channel-socket.c |  1 +
+ 13 files changed, 88 insertions(+), 14 deletions(-)
+
+diff --git a/chardev/char-io.c b/chardev/char-io.c
+index 8ced184160..4451128cba 100644
+--- a/chardev/char-io.c
++++ b/chardev/char-io.c
+@@ -122,7 +122,7 @@ int io_channel_send_full(QIOChannel *ioc,
+ 
+         ret = qio_channel_writev_full(
+             ioc, &iov, 1,
+-            fds, nfds, NULL);
++            fds, nfds, 0, NULL);
+         if (ret == QIO_CHANNEL_ERR_BLOCK) {
+             if (offset) {
+                 return offset;
+diff --git a/hw/remote/mpqemu-link.c b/hw/remote/mpqemu-link.c
+index 7e841820e5..e8f556bd27 100644
+--- a/hw/remote/mpqemu-link.c
++++ b/hw/remote/mpqemu-link.c
+@@ -69,7 +69,7 @@ bool mpqemu_msg_send(MPQemuMsg *msg, QIOChannel *ioc, Error **errp)
+     }
+ 
+     if (!qio_channel_writev_full_all(ioc, send, G_N_ELEMENTS(send),
+-                                    fds, nfds, errp)) {
++                                    fds, nfds, 0, errp)) {
+         ret = true;
+     } else {
+         trace_mpqemu_send_io_error(msg->cmd, msg->size, nfds);
+diff --git a/include/io/channel.h b/include/io/channel.h
+index 88988979f8..c680ee7480 100644
+--- a/include/io/channel.h
++++ b/include/io/channel.h
+@@ -32,12 +32,15 @@ OBJECT_DECLARE_TYPE(QIOChannel, QIOChannelClass,
+ 
+ #define QIO_CHANNEL_ERR_BLOCK -2
+ 
++#define QIO_CHANNEL_WRITE_FLAG_ZERO_COPY 0x1
++
+ typedef enum QIOChannelFeature QIOChannelFeature;
+ 
+ enum QIOChannelFeature {
+     QIO_CHANNEL_FEATURE_FD_PASS,
+     QIO_CHANNEL_FEATURE_SHUTDOWN,
+     QIO_CHANNEL_FEATURE_LISTEN,
++    QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY,
+ };
+ 
+ 
+@@ -104,6 +107,7 @@ struct QIOChannelClass {
+                          size_t niov,
+                          int *fds,
+                          size_t nfds,
++                         int flags,
+                          Error **errp);
+     ssize_t (*io_readv)(QIOChannel *ioc,
+                         const struct iovec *iov,
+@@ -136,6 +140,8 @@ struct QIOChannelClass {
+                                   IOHandler *io_read,
+                                   IOHandler *io_write,
+                                   void *opaque);
++    int (*io_flush)(QIOChannel *ioc,
++                    Error **errp);
+ };
+ 
+ /* General I/O handling functions */
+@@ -228,6 +234,7 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
+  * @niov: the length of the @iov array
+  * @fds: an array of file handles to send
+  * @nfds: number of file handles in @fds
++ * @flags: write flags (QIO_CHANNEL_WRITE_FLAG_*)
+  * @errp: pointer to a NULL-initialized error object
+  *
+  * Write data to the IO channel, reading it from the
+@@ -260,6 +267,7 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
+                                 size_t niov,
+                                 int *fds,
+                                 size_t nfds,
++                                int flags,
+                                 Error **errp);
+ 
+ /**
+@@ -837,6 +845,7 @@ int qio_channel_readv_full_all(QIOChannel *ioc,
+  * @niov: the length of the @iov array
+  * @fds: an array of file handles to send
+  * @nfds: number of file handles in @fds
++ * @flags: write flags (QIO_CHANNEL_WRITE_FLAG_*)
+  * @errp: pointer to a NULL-initialized error object
+  *
+  *
+@@ -846,6 +855,14 @@ int qio_channel_readv_full_all(QIOChannel *ioc,
+  * to be written, yielding from the current coroutine
+  * if required.
+  *
++ * If QIO_CHANNEL_WRITE_FLAG_ZERO_COPY is passed in flags,
++ * instead of waiting for all requested data to be written,
++ * this function will wait until it's all queued for writing.
++ * In this case, if the buffer gets changed between queueing and
++ * sending, the updated buffer will be sent. If this is not a
++ * desired behavior, it's suggested to call qio_channel_flush()
++ * before reusing the buffer.
++ *
+  * Returns: 0 if all bytes were written, or -1 on error
+  */
+ 
+@@ -853,6 +870,25 @@ int qio_channel_writev_full_all(QIOChannel *ioc,
+                                 const struct iovec *iov,
+                                 size_t niov,
+                                 int *fds, size_t nfds,
+-                                Error **errp);
++                                int flags, Error **errp);
++
++/**
++ * qio_channel_flush:
++ * @ioc: the channel object
++ * @errp: pointer to a NULL-initialized error object
++ *
++ * Will block until every packet queued with
++ * qio_channel_writev_full() + QIO_CHANNEL_WRITE_FLAG_ZERO_COPY
++ * is sent, or return in case of any error.
++ *
++ * If not implemented, acts as a no-op, and returns 0.
++ *
++ * Returns -1 if any error is found,
++ *          1 if every send failed to use zero copy.
++ *          0 otherwise.
++ */
++
++int qio_channel_flush(QIOChannel *ioc,
++                      Error **errp);
+ 
+ #endif /* QIO_CHANNEL_H */
+diff --git a/io/channel-buffer.c b/io/channel-buffer.c
+index baa4e2b089..bf52011be2 100644
+--- a/io/channel-buffer.c
++++ b/io/channel-buffer.c
+@@ -81,6 +81,7 @@ static ssize_t qio_channel_buffer_writev(QIOChannel *ioc,
+                                          size_t niov,
+                                          int *fds,
+                                          size_t nfds,
++                                         int flags,
+                                          Error **errp)
+ {
+     QIOChannelBuffer *bioc = QIO_CHANNEL_BUFFER(ioc);
+diff --git a/io/channel-command.c b/io/channel-command.c
+index b2a9e27138..5ff1691bad 100644
+--- a/io/channel-command.c
++++ b/io/channel-command.c
+@@ -258,6 +258,7 @@ static ssize_t qio_channel_command_writev(QIOChannel *ioc,
+                                           size_t niov,
+                                           int *fds,
+                                           size_t nfds,
++                                          int flags,
+                                           Error **errp)
+ {
+     QIOChannelCommand *cioc = QIO_CHANNEL_COMMAND(ioc);
+diff --git a/io/channel-file.c b/io/channel-file.c
+index c4bf799a80..348a48545e 100644
+--- a/io/channel-file.c
++++ b/io/channel-file.c
+@@ -114,6 +114,7 @@ static ssize_t qio_channel_file_writev(QIOChannel *ioc,
+                                        size_t niov,
+                                        int *fds,
+                                        size_t nfds,
++                                       int flags,
+                                        Error **errp)
+ {
+     QIOChannelFile *fioc = QIO_CHANNEL_FILE(ioc);
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index 606ec97cf7..bfbd64787e 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -525,6 +525,7 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+                                          size_t niov,
+                                          int *fds,
+                                          size_t nfds,
++                                         int flags,
+                                          Error **errp)
+ {
+     QIOChannelSocket *sioc = QIO_CHANNEL_SOCKET(ioc);
+@@ -620,6 +621,7 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+                                          size_t niov,
+                                          int *fds,
+                                          size_t nfds,
++                                         int flags,
+                                          Error **errp)
+ {
+     QIOChannelSocket *sioc = QIO_CHANNEL_SOCKET(ioc);
+diff --git a/io/channel-tls.c b/io/channel-tls.c
+index 2ae1b92fc0..4ce890a538 100644
+--- a/io/channel-tls.c
++++ b/io/channel-tls.c
+@@ -301,6 +301,7 @@ static ssize_t qio_channel_tls_writev(QIOChannel *ioc,
+                                       size_t niov,
+                                       int *fds,
+                                       size_t nfds,
++                                      int flags,
+                                       Error **errp)
+ {
+     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
+diff --git a/io/channel-websock.c b/io/channel-websock.c
+index 70889bb54d..035dd6075b 100644
+--- a/io/channel-websock.c
++++ b/io/channel-websock.c
+@@ -1127,6 +1127,7 @@ static ssize_t qio_channel_websock_writev(QIOChannel *ioc,
+                                           size_t niov,
+                                           int *fds,
+                                           size_t nfds,
++                                          int flags,
+                                           Error **errp)
+ {
+     QIOChannelWebsock *wioc = QIO_CHANNEL_WEBSOCK(ioc);
+diff --git a/io/channel.c b/io/channel.c
+index e8b019dc36..0640941ac5 100644
+--- a/io/channel.c
++++ b/io/channel.c
+@@ -72,18 +72,32 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
+                                 size_t niov,
+                                 int *fds,
+                                 size_t nfds,
++                                int flags,
+                                 Error **errp)
+ {
+     QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
+ 
+-    if ((fds || nfds) &&
+-        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_FD_PASS)) {
++    if (fds || nfds) {
++        if (!qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_FD_PASS)) {
++            error_setg_errno(errp, EINVAL,
++                             "Channel does not support file descriptor passing");
++            return -1;
++        }
++        if (flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) {
++            error_setg_errno(errp, EINVAL,
++                             "Zero Copy does not support file descriptor passing");
++            return -1;
++        }
++    }
++
++    if ((flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) &&
++        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY)) {
+         error_setg_errno(errp, EINVAL,
+-                         "Channel does not support file descriptor passing");
++                         "Requested Zero Copy feature is not available");
+         return -1;
+     }
+ 
+-    return klass->io_writev(ioc, iov, niov, fds, nfds, errp);
++    return klass->io_writev(ioc, iov, niov, fds, nfds, flags, errp);
+ }
+ 
+ 
+@@ -217,14 +231,14 @@ int qio_channel_writev_all(QIOChannel *ioc,
+                            size_t niov,
+                            Error **errp)
+ {
+-    return qio_channel_writev_full_all(ioc, iov, niov, NULL, 0, errp);
++    return qio_channel_writev_full_all(ioc, iov, niov, NULL, 0, 0, errp);
+ }
+ 
+ int qio_channel_writev_full_all(QIOChannel *ioc,
+                                 const struct iovec *iov,
+                                 size_t niov,
+                                 int *fds, size_t nfds,
+-                                Error **errp)
++                                int flags, Error **errp)
+ {
+     int ret = -1;
+     struct iovec *local_iov = g_new(struct iovec, niov);
+@@ -237,8 +251,10 @@ int qio_channel_writev_full_all(QIOChannel *ioc,
+ 
+     while (nlocal_iov > 0) {
+         ssize_t len;
+-        len = qio_channel_writev_full(ioc, local_iov, nlocal_iov, fds, nfds,
+-                                      errp);
++
++        len = qio_channel_writev_full(ioc, local_iov, nlocal_iov, fds,
++                                            nfds, flags, errp);
++
+         if (len == QIO_CHANNEL_ERR_BLOCK) {
+             if (qemu_in_coroutine()) {
+                 qio_channel_yield(ioc, G_IO_OUT);
+@@ -277,7 +293,7 @@ ssize_t qio_channel_writev(QIOChannel *ioc,
+                            size_t niov,
+                            Error **errp)
+ {
+-    return qio_channel_writev_full(ioc, iov, niov, NULL, 0, errp);
++    return qio_channel_writev_full(ioc, iov, niov, NULL, 0, 0, errp);
+ }
+ 
+ 
+@@ -297,7 +313,7 @@ ssize_t qio_channel_write(QIOChannel *ioc,
+                           Error **errp)
+ {
+     struct iovec iov = { .iov_base = (char *)buf, .iov_len = buflen };
+-    return qio_channel_writev_full(ioc, &iov, 1, NULL, 0, errp);
++    return qio_channel_writev_full(ioc, &iov, 1, NULL, 0, 0, errp);
+ }
+ 
+ 
+@@ -473,6 +489,19 @@ off_t qio_channel_io_seek(QIOChannel *ioc,
+     return klass->io_seek(ioc, offset, whence, errp);
+ }
+ 
++int qio_channel_flush(QIOChannel *ioc,
++                                Error **errp)
++{
++    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
++
++    if (!klass->io_flush ||
++        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY)) {
++        return 0;
++    }
++
++    return klass->io_flush(ioc, errp);
++}
++
+ 
+ static void qio_channel_restart_read(void *opaque)
+ {
+diff --git a/migration/rdma.c b/migration/rdma.c
+index f5d3bbe7e9..54acd2000e 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -2833,6 +2833,7 @@ static ssize_t qio_channel_rdma_writev(QIOChannel *ioc,
+                                        size_t niov,
+                                        int *fds,
+                                        size_t nfds,
++                                       int flags,
+                                        Error **errp)
+ {
+     QIOChannelRDMA *rioc = QIO_CHANNEL_RDMA(ioc);
+diff --git a/scsi/pr-manager-helper.c b/scsi/pr-manager-helper.c
+index 451c7631b7..3be52a98d5 100644
+--- a/scsi/pr-manager-helper.c
++++ b/scsi/pr-manager-helper.c
+@@ -77,7 +77,7 @@ static int pr_manager_helper_write(PRManagerHelper *pr_mgr,
+         iov.iov_base = (void *)buf;
+         iov.iov_len = sz;
+         n_written = qio_channel_writev_full(QIO_CHANNEL(pr_mgr->ioc), &iov, 1,
+-                                            nfds ? &fd : NULL, nfds, errp);
++                                            nfds ? &fd : NULL, nfds, 0, errp);
+ 
+         if (n_written <= 0) {
+             assert(n_written != QIO_CHANNEL_ERR_BLOCK);
+diff --git a/tests/unit/test-io-channel-socket.c b/tests/unit/test-io-channel-socket.c
+index c49eec1f03..6713886d02 100644
+--- a/tests/unit/test-io-channel-socket.c
++++ b/tests/unit/test-io-channel-socket.c
+@@ -444,6 +444,7 @@ static void test_io_channel_unix_fd_pass(void)
+                             G_N_ELEMENTS(iosend),
+                             fdsend,
+                             G_N_ELEMENTS(fdsend),
++                            0,
+                             &error_abort);
+ 
+     qio_channel_readv_full(dst,
+-- 
+2.35.3
+

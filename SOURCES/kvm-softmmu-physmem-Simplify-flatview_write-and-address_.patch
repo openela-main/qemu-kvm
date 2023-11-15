@@ -1,0 +1,80 @@
+From 916423392b46167c6683b0240610bb5a745590da Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 13 Apr 2022 14:51:06 -0400
+Subject: [PATCH 2/3] softmmu/physmem: Simplify flatview_write and
+ address_space_access_valid
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 151: hw/intc/arm_gicv3: Check for !MEMTX_OK instead of MEMTX_ERROR
+RH-Commit: [2/3] daabe41eefd5c519def592e374fa368e32a680d3 (jmaloy/qemu-kvm)
+RH-Bugzilla: 1999236
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit 58e74682baf4e1ad26b064d8c02e5bc99c75c5d9
+Author: Philippe Mathieu-Daudé <philmd@redhat.com>
+Date:   Wed Dec 15 19:24:20 2021 +0100
+
+    softmmu/physmem: Simplify flatview_write and address_space_access_valid
+
+    Remove unuseful local 'result' variables.
+
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Reviewed-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+    Message-Id: <20211215182421.418374-3-philmd@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+(cherry picked from commit 58e74682baf4e1ad26b064d8c02e5bc99c75c5d9)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ softmmu/physmem.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/softmmu/physmem.c b/softmmu/physmem.c
+index 3524c04c2a..483a31be81 100644
+--- a/softmmu/physmem.c
++++ b/softmmu/physmem.c
+@@ -2815,14 +2815,11 @@ static MemTxResult flatview_write(FlatView *fv, hwaddr addr, MemTxAttrs attrs,
+     hwaddr l;
+     hwaddr addr1;
+     MemoryRegion *mr;
+-    MemTxResult result = MEMTX_OK;
+ 
+     l = len;
+     mr = flatview_translate(fv, addr, &addr1, &l, true, attrs);
+-    result = flatview_write_continue(fv, addr, attrs, buf, len,
+-                                     addr1, l, mr);
+-
+-    return result;
++    return flatview_write_continue(fv, addr, attrs, buf, len,
++                                   addr1, l, mr);
+ }
+ 
+ /* Called within RCU critical section.  */
+@@ -3119,12 +3116,10 @@ bool address_space_access_valid(AddressSpace *as, hwaddr addr,
+                                 MemTxAttrs attrs)
+ {
+     FlatView *fv;
+-    bool result;
+ 
+     RCU_READ_LOCK_GUARD();
+     fv = address_space_to_flatview(as);
+-    result = flatview_access_valid(fv, addr, len, is_write, attrs);
+-    return result;
++    return flatview_access_valid(fv, addr, len, is_write, attrs);
+ }
+ 
+ static hwaddr
+-- 
+2.27.0
+

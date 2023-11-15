@@ -1,0 +1,367 @@
+From 88b5e059462a72ca758d84c0d4d0895a03baac50 Mon Sep 17 00:00:00 2001
+From: "manish.mishra" <manish.mishra@nutanix.com>
+Date: Tue, 20 Dec 2022 18:44:17 +0000
+Subject: [PATCH 1/3] io: Add support for MSG_PEEK for socket channel
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 258: migration: Fix multifd crash due to channel disorder
+RH-Bugzilla: 2137740
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Commit: [1/2] 04fc6fae358599b8509f5355469d2e8720f01903
+
+Conflicts:
+	io/channel-null.c
+	migration/channel-block.c
+
+        Because these two files do not exist in rhel8.8 tree, dropping the
+        changes.
+
+MSG_PEEK peeks at the channel, The data is treated as unread and
+the next read shall still return this data. This support is
+currently added only for socket class. Extra parameter 'flags'
+is added to io_readv calls to pass extra read flags like MSG_PEEK.
+
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Daniel P. Berrange <berrange@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Suggested-by: Daniel P. Berrange <berrange@redhat.com>
+Signed-off-by: manish.mishra <manish.mishra@nutanix.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 84615a19ddf2bfb38d7b3a0d487d2397ee55e4f3)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ chardev/char-socket.c               |  4 ++--
+ include/io/channel.h                |  6 ++++++
+ io/channel-buffer.c                 |  1 +
+ io/channel-command.c                |  1 +
+ io/channel-file.c                   |  1 +
+ io/channel-socket.c                 | 19 ++++++++++++++++++-
+ io/channel-tls.c                    |  1 +
+ io/channel-websock.c                |  1 +
+ io/channel.c                        | 16 ++++++++++++----
+ migration/rdma.c                    |  1 +
+ scsi/qemu-pr-helper.c               |  2 +-
+ tests/qtest/tpm-emu.c               |  2 +-
+ tests/unit/test-io-channel-socket.c |  1 +
+ util/vhost-user-server.c            |  2 +-
+ 14 files changed, 48 insertions(+), 10 deletions(-)
+
+diff --git a/chardev/char-socket.c b/chardev/char-socket.c
+index 836cfa0bc2..4cdf79e0c2 100644
+--- a/chardev/char-socket.c
++++ b/chardev/char-socket.c
+@@ -339,11 +339,11 @@ static ssize_t tcp_chr_recv(Chardev *chr, char *buf, size_t len)
+     if (qio_channel_has_feature(s->ioc, QIO_CHANNEL_FEATURE_FD_PASS)) {
+         ret = qio_channel_readv_full(s->ioc, &iov, 1,
+                                      &msgfds, &msgfds_num,
+-                                     NULL);
++                                     0, NULL);
+     } else {
+         ret = qio_channel_readv_full(s->ioc, &iov, 1,
+                                      NULL, NULL,
+-                                     NULL);
++                                     0, NULL);
+     }
+ 
+     if (ret == QIO_CHANNEL_ERR_BLOCK) {
+diff --git a/include/io/channel.h b/include/io/channel.h
+index c680ee7480..716235d496 100644
+--- a/include/io/channel.h
++++ b/include/io/channel.h
+@@ -34,6 +34,8 @@ OBJECT_DECLARE_TYPE(QIOChannel, QIOChannelClass,
+ 
+ #define QIO_CHANNEL_WRITE_FLAG_ZERO_COPY 0x1
+ 
++#define QIO_CHANNEL_READ_FLAG_MSG_PEEK 0x1
++
+ typedef enum QIOChannelFeature QIOChannelFeature;
+ 
+ enum QIOChannelFeature {
+@@ -41,6 +43,7 @@ enum QIOChannelFeature {
+     QIO_CHANNEL_FEATURE_SHUTDOWN,
+     QIO_CHANNEL_FEATURE_LISTEN,
+     QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY,
++    QIO_CHANNEL_FEATURE_READ_MSG_PEEK,
+ };
+ 
+ 
+@@ -114,6 +117,7 @@ struct QIOChannelClass {
+                         size_t niov,
+                         int **fds,
+                         size_t *nfds,
++                        int flags,
+                         Error **errp);
+     int (*io_close)(QIOChannel *ioc,
+                     Error **errp);
+@@ -188,6 +192,7 @@ void qio_channel_set_name(QIOChannel *ioc,
+  * @niov: the length of the @iov array
+  * @fds: pointer to an array that will received file handles
+  * @nfds: pointer filled with number of elements in @fds on return
++ * @flags: read flags (QIO_CHANNEL_READ_FLAG_*)
+  * @errp: pointer to a NULL-initialized error object
+  *
+  * Read data from the IO channel, storing it in the
+@@ -224,6 +229,7 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
+                                size_t niov,
+                                int **fds,
+                                size_t *nfds,
++                               int flags,
+                                Error **errp);
+ 
+ 
+diff --git a/io/channel-buffer.c b/io/channel-buffer.c
+index bf52011be2..8096180f85 100644
+--- a/io/channel-buffer.c
++++ b/io/channel-buffer.c
+@@ -54,6 +54,7 @@ static ssize_t qio_channel_buffer_readv(QIOChannel *ioc,
+                                         size_t niov,
+                                         int **fds,
+                                         size_t *nfds,
++                                        int flags,
+                                         Error **errp)
+ {
+     QIOChannelBuffer *bioc = QIO_CHANNEL_BUFFER(ioc);
+diff --git a/io/channel-command.c b/io/channel-command.c
+index 5ff1691bad..2834413b3a 100644
+--- a/io/channel-command.c
++++ b/io/channel-command.c
+@@ -230,6 +230,7 @@ static ssize_t qio_channel_command_readv(QIOChannel *ioc,
+                                          size_t niov,
+                                          int **fds,
+                                          size_t *nfds,
++                                         int flags,
+                                          Error **errp)
+ {
+     QIOChannelCommand *cioc = QIO_CHANNEL_COMMAND(ioc);
+diff --git a/io/channel-file.c b/io/channel-file.c
+index 348a48545e..490f0e5d84 100644
+--- a/io/channel-file.c
++++ b/io/channel-file.c
+@@ -86,6 +86,7 @@ static ssize_t qio_channel_file_readv(QIOChannel *ioc,
+                                       size_t niov,
+                                       int **fds,
+                                       size_t *nfds,
++                                      int flags,
+                                       Error **errp)
+ {
+     QIOChannelFile *fioc = QIO_CHANNEL_FILE(ioc);
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index 6010ad7017..ca8b180b69 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -174,6 +174,9 @@ int qio_channel_socket_connect_sync(QIOChannelSocket *ioc,
+     }
+ #endif
+ 
++    qio_channel_set_feature(QIO_CHANNEL(ioc),
++                            QIO_CHANNEL_FEATURE_READ_MSG_PEEK);
++
+     return 0;
+ }
+ 
+@@ -407,6 +410,9 @@ qio_channel_socket_accept(QIOChannelSocket *ioc,
+     }
+ #endif /* WIN32 */
+ 
++    qio_channel_set_feature(QIO_CHANNEL(cioc),
++                            QIO_CHANNEL_FEATURE_READ_MSG_PEEK);
++
+     trace_qio_channel_socket_accept_complete(ioc, cioc, cioc->fd);
+     return cioc;
+ 
+@@ -497,6 +503,7 @@ static ssize_t qio_channel_socket_readv(QIOChannel *ioc,
+                                         size_t niov,
+                                         int **fds,
+                                         size_t *nfds,
++                                        int flags,
+                                         Error **errp)
+ {
+     QIOChannelSocket *sioc = QIO_CHANNEL_SOCKET(ioc);
+@@ -518,6 +525,10 @@ static ssize_t qio_channel_socket_readv(QIOChannel *ioc,
+ 
+     }
+ 
++    if (flags & QIO_CHANNEL_READ_FLAG_MSG_PEEK) {
++        sflags |= MSG_PEEK;
++    }
++
+  retry:
+     ret = recvmsg(sioc->fd, &msg, sflags);
+     if (ret < 0) {
+@@ -625,11 +636,17 @@ static ssize_t qio_channel_socket_readv(QIOChannel *ioc,
+                                         size_t niov,
+                                         int **fds,
+                                         size_t *nfds,
++                                        int flags,
+                                         Error **errp)
+ {
+     QIOChannelSocket *sioc = QIO_CHANNEL_SOCKET(ioc);
+     ssize_t done = 0;
+     ssize_t i;
++    int sflags = 0;
++
++    if (flags & QIO_CHANNEL_READ_FLAG_MSG_PEEK) {
++        sflags |= MSG_PEEK;
++    }
+ 
+     for (i = 0; i < niov; i++) {
+         ssize_t ret;
+@@ -637,7 +654,7 @@ static ssize_t qio_channel_socket_readv(QIOChannel *ioc,
+         ret = recv(sioc->fd,
+                    iov[i].iov_base,
+                    iov[i].iov_len,
+-                   0);
++                   sflags);
+         if (ret < 0) {
+             if (errno == EAGAIN) {
+                 if (done) {
+diff --git a/io/channel-tls.c b/io/channel-tls.c
+index 4ce890a538..c730cb8ec5 100644
+--- a/io/channel-tls.c
++++ b/io/channel-tls.c
+@@ -260,6 +260,7 @@ static ssize_t qio_channel_tls_readv(QIOChannel *ioc,
+                                      size_t niov,
+                                      int **fds,
+                                      size_t *nfds,
++                                     int flags,
+                                      Error **errp)
+ {
+     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
+diff --git a/io/channel-websock.c b/io/channel-websock.c
+index 035dd6075b..13c94f2afe 100644
+--- a/io/channel-websock.c
++++ b/io/channel-websock.c
+@@ -1081,6 +1081,7 @@ static ssize_t qio_channel_websock_readv(QIOChannel *ioc,
+                                          size_t niov,
+                                          int **fds,
+                                          size_t *nfds,
++                                         int flags,
+                                          Error **errp)
+ {
+     QIOChannelWebsock *wioc = QIO_CHANNEL_WEBSOCK(ioc);
+diff --git a/io/channel.c b/io/channel.c
+index 0640941ac5..a8c7f11649 100644
+--- a/io/channel.c
++++ b/io/channel.c
+@@ -52,6 +52,7 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
+                                size_t niov,
+                                int **fds,
+                                size_t *nfds,
++                               int flags,
+                                Error **errp)
+ {
+     QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
+@@ -63,7 +64,14 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
+         return -1;
+     }
+ 
+-    return klass->io_readv(ioc, iov, niov, fds, nfds, errp);
++    if ((flags & QIO_CHANNEL_READ_FLAG_MSG_PEEK) &&
++        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_READ_MSG_PEEK)) {
++        error_setg_errno(errp, EINVAL,
++                         "Channel does not support peek read");
++        return -1;
++    }
++
++    return klass->io_readv(ioc, iov, niov, fds, nfds, flags, errp);
+ }
+ 
+ 
+@@ -146,7 +154,7 @@ int qio_channel_readv_full_all_eof(QIOChannel *ioc,
+     while ((nlocal_iov > 0) || local_fds) {
+         ssize_t len;
+         len = qio_channel_readv_full(ioc, local_iov, nlocal_iov, local_fds,
+-                                     local_nfds, errp);
++                                     local_nfds, 0, errp);
+         if (len == QIO_CHANNEL_ERR_BLOCK) {
+             if (qemu_in_coroutine()) {
+                 qio_channel_yield(ioc, G_IO_IN);
+@@ -284,7 +292,7 @@ ssize_t qio_channel_readv(QIOChannel *ioc,
+                           size_t niov,
+                           Error **errp)
+ {
+-    return qio_channel_readv_full(ioc, iov, niov, NULL, NULL, errp);
++    return qio_channel_readv_full(ioc, iov, niov, NULL, NULL, 0, errp);
+ }
+ 
+ 
+@@ -303,7 +311,7 @@ ssize_t qio_channel_read(QIOChannel *ioc,
+                          Error **errp)
+ {
+     struct iovec iov = { .iov_base = buf, .iov_len = buflen };
+-    return qio_channel_readv_full(ioc, &iov, 1, NULL, NULL, errp);
++    return qio_channel_readv_full(ioc, &iov, 1, NULL, NULL, 0, errp);
+ }
+ 
+ 
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 54acd2000e..dcf98bd7f8 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -2917,6 +2917,7 @@ static ssize_t qio_channel_rdma_readv(QIOChannel *ioc,
+                                       size_t niov,
+                                       int **fds,
+                                       size_t *nfds,
++                                      int flags,
+                                       Error **errp)
+ {
+     QIOChannelRDMA *rioc = QIO_CHANNEL_RDMA(ioc);
+diff --git a/scsi/qemu-pr-helper.c b/scsi/qemu-pr-helper.c
+index f281daeced..12ec8e9368 100644
+--- a/scsi/qemu-pr-helper.c
++++ b/scsi/qemu-pr-helper.c
+@@ -612,7 +612,7 @@ static int coroutine_fn prh_read(PRHelperClient *client, void *buf, int sz,
+         iov.iov_base = buf;
+         iov.iov_len = sz;
+         n_read = qio_channel_readv_full(QIO_CHANNEL(client->ioc), &iov, 1,
+-                                        &fds, &nfds, errp);
++                                        &fds, &nfds, 0, errp);
+ 
+         if (n_read == QIO_CHANNEL_ERR_BLOCK) {
+             qio_channel_yield(QIO_CHANNEL(client->ioc), G_IO_IN);
+diff --git a/tests/qtest/tpm-emu.c b/tests/qtest/tpm-emu.c
+index 2994d1cf42..3cf1acaf7d 100644
+--- a/tests/qtest/tpm-emu.c
++++ b/tests/qtest/tpm-emu.c
+@@ -106,7 +106,7 @@ void *tpm_emu_ctrl_thread(void *data)
+         int *pfd = NULL;
+         size_t nfd = 0;
+ 
+-        qio_channel_readv_full(ioc, &iov, 1, &pfd, &nfd, &error_abort);
++        qio_channel_readv_full(ioc, &iov, 1, &pfd, &nfd, 0, &error_abort);
+         cmd = be32_to_cpu(cmd);
+         g_assert_cmpint(cmd, ==, CMD_SET_DATAFD);
+         g_assert_cmpint(nfd, ==, 1);
+diff --git a/tests/unit/test-io-channel-socket.c b/tests/unit/test-io-channel-socket.c
+index 6713886d02..de2930f203 100644
+--- a/tests/unit/test-io-channel-socket.c
++++ b/tests/unit/test-io-channel-socket.c
+@@ -452,6 +452,7 @@ static void test_io_channel_unix_fd_pass(void)
+                            G_N_ELEMENTS(iorecv),
+                            &fdrecv,
+                            &nfdrecv,
++                           0,
+                            &error_abort);
+ 
+     g_assert(nfdrecv == G_N_ELEMENTS(fdsend));
+diff --git a/util/vhost-user-server.c b/util/vhost-user-server.c
+index 783d847a6d..e6a9ef72b7 100644
+--- a/util/vhost-user-server.c
++++ b/util/vhost-user-server.c
+@@ -102,7 +102,7 @@ vu_message_read(VuDev *vu_dev, int conn_fd, VhostUserMsg *vmsg)
+          * qio_channel_readv_full may have short reads, keeping calling it
+          * until getting VHOST_USER_HDR_SIZE or 0 bytes in total
+          */
+-        rc = qio_channel_readv_full(ioc, &iov, 1, &fds, &nfds, &local_err);
++        rc = qio_channel_readv_full(ioc, &iov, 1, &fds, &nfds, 0, &local_err);
+         if (rc < 0) {
+             if (rc == QIO_CHANNEL_ERR_BLOCK) {
+                 assert(local_err == NULL);
+-- 
+2.37.3
+

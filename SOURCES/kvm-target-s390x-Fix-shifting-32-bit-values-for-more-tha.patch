@@ -1,0 +1,278 @@
+From 9157bc045137b63b4304ffabc549b32e6f30d9b4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 06/22] target/s390x: Fix shifting 32-bit values for more than
+ 31 bits
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [5/21] fba372359f0771ec41f3ad7ee4f1376e545da088
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 6da170beda33f3e7f1d9242814acd9f428f0f0fb
+Author: Ilya Leoshkevich <iii@linux.ibm.com>
+Date:   Wed Jan 12 17:50:15 2022 +0100
+
+    target/s390x: Fix shifting 32-bit values for more than 31 bits
+
+    According to PoP, both 32- and 64-bit shifts use lowest 6 address
+    bits. The current code special-cases 32-bit shifts to use only 5 bits,
+    which is not correct. For example, shifting by 32 bits currently
+    preserves the initial value, however, it's supposed zero it out
+    instead.
+
+    Fix by merging sh32 and sh64 and adapting CC calculation to shift
+    values greater than 31.
+
+    Fixes: cbe24bfa91d2 ("target-s390: Convert SHIFT, ROTATE SINGLE")
+    Signed-off-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Message-Id: <20220112165016.226996-5-iii@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/cpu-dump.c        |  3 +--
+ target/s390x/s390x-internal.h  |  3 +--
+ target/s390x/tcg/cc_helper.c   | 36 +++-----------------------
+ target/s390x/tcg/insn-data.def | 36 +++++++++++++-------------
+ target/s390x/tcg/translate.c   | 47 ++++++++++++++++------------------
+ 5 files changed, 45 insertions(+), 80 deletions(-)
+
+diff --git a/target/s390x/cpu-dump.c b/target/s390x/cpu-dump.c
+index 0f5c062994..ffa9e94d84 100644
+--- a/target/s390x/cpu-dump.c
++++ b/target/s390x/cpu-dump.c
+@@ -121,8 +121,7 @@ const char *cc_name(enum cc_op cc_op)
+         [CC_OP_NZ_F64]    = "CC_OP_NZ_F64",
+         [CC_OP_NZ_F128]   = "CC_OP_NZ_F128",
+         [CC_OP_ICM]       = "CC_OP_ICM",
+-        [CC_OP_SLA_32]    = "CC_OP_SLA_32",
+-        [CC_OP_SLA_64]    = "CC_OP_SLA_64",
++        [CC_OP_SLA]       = "CC_OP_SLA",
+         [CC_OP_FLOGR]     = "CC_OP_FLOGR",
+         [CC_OP_LCBB]      = "CC_OP_LCBB",
+         [CC_OP_VC]        = "CC_OP_VC",
+diff --git a/target/s390x/s390x-internal.h b/target/s390x/s390x-internal.h
+index 02cf6c3f43..c9acb450ba 100644
+--- a/target/s390x/s390x-internal.h
++++ b/target/s390x/s390x-internal.h
+@@ -193,8 +193,7 @@ enum cc_op {
+     CC_OP_NZ_F128,              /* FP dst != 0 (128bit) */
+ 
+     CC_OP_ICM,                  /* insert characters under mask */
+-    CC_OP_SLA_32,               /* Calculate shift left signed (32bit) */
+-    CC_OP_SLA_64,               /* Calculate shift left signed (64bit) */
++    CC_OP_SLA,                  /* Calculate shift left signed */
+     CC_OP_FLOGR,                /* find leftmost one */
+     CC_OP_LCBB,                 /* load count to block boundary */
+     CC_OP_VC,                   /* vector compare result */
+diff --git a/target/s390x/tcg/cc_helper.c b/target/s390x/tcg/cc_helper.c
+index c9b7b0e8c6..8d04097f78 100644
+--- a/target/s390x/tcg/cc_helper.c
++++ b/target/s390x/tcg/cc_helper.c
+@@ -268,34 +268,7 @@ static uint32_t cc_calc_icm(uint64_t mask, uint64_t val)
+     }
+ }
+ 
+-static uint32_t cc_calc_sla_32(uint32_t src, int shift)
+-{
+-    uint32_t mask = ((1U << shift) - 1U) << (32 - shift);
+-    uint32_t sign = 1U << 31;
+-    uint32_t match;
+-    int32_t r;
+-
+-    /* Check if the sign bit stays the same.  */
+-    if (src & sign) {
+-        match = mask;
+-    } else {
+-        match = 0;
+-    }
+-    if ((src & mask) != match) {
+-        /* Overflow.  */
+-        return 3;
+-    }
+-
+-    r = ((src << shift) & ~sign) | (src & sign);
+-    if (r == 0) {
+-        return 0;
+-    } else if (r < 0) {
+-        return 1;
+-    }
+-    return 2;
+-}
+-
+-static uint32_t cc_calc_sla_64(uint64_t src, int shift)
++static uint32_t cc_calc_sla(uint64_t src, int shift)
+ {
+     uint64_t mask = -1ULL << (63 - shift);
+     uint64_t sign = 1ULL << 63;
+@@ -459,11 +432,8 @@ static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
+     case CC_OP_ICM:
+         r =  cc_calc_icm(src, dst);
+         break;
+-    case CC_OP_SLA_32:
+-        r =  cc_calc_sla_32(src, dst);
+-        break;
+-    case CC_OP_SLA_64:
+-        r =  cc_calc_sla_64(src, dst);
++    case CC_OP_SLA:
++        r =  cc_calc_sla(src, dst);
+         break;
+     case CC_OP_FLOGR:
+         r = cc_calc_flogr(dst);
+diff --git a/target/s390x/tcg/insn-data.def b/target/s390x/tcg/insn-data.def
+index c92284df5d..99f4f5e36e 100644
+--- a/target/s390x/tcg/insn-data.def
++++ b/target/s390x/tcg/insn-data.def
+@@ -747,8 +747,8 @@
+     C(0xb9e1, POPCNT,  RRE,   PC,  0, r2_o, r1, 0, popcnt, nz64)
+ 
+ /* ROTATE LEFT SINGLE LOGICAL */
+-    C(0xeb1d, RLL,     RSY_a, Z,   r3_o, sh32, new, r1_32, rll32, 0)
+-    C(0xeb1c, RLLG,    RSY_a, Z,   r3_o, sh64, r1, 0, rll64, 0)
++    C(0xeb1d, RLL,     RSY_a, Z,   r3_o, sh, new, r1_32, rll32, 0)
++    C(0xeb1c, RLLG,    RSY_a, Z,   r3_o, sh, r1, 0, rll64, 0)
+ 
+ /* ROTATE THEN INSERT SELECTED BITS */
+     C(0xec55, RISBG,   RIE_f, GIE, 0, r2, r1, 0, risbg, s64)
+@@ -784,29 +784,29 @@
+     C(0x0400, SPM,     RR_a,  Z,   r1, 0, 0, 0, spm, 0)
+ 
+ /* SHIFT LEFT SINGLE */
+-    D(0x8b00, SLA,     RS_a,  Z,   r1, sh32, new, r1_32, sla, 0, 31)
+-    D(0xebdd, SLAK,    RSY_a, DO,  r3, sh32, new, r1_32, sla, 0, 31)
+-    D(0xeb0b, SLAG,    RSY_a, Z,   r3, sh64, r1, 0, sla, 0, 63)
++    D(0x8b00, SLA,     RS_a,  Z,   r1, sh, new, r1_32, sla, 0, 31)
++    D(0xebdd, SLAK,    RSY_a, DO,  r3, sh, new, r1_32, sla, 0, 31)
++    D(0xeb0b, SLAG,    RSY_a, Z,   r3, sh, r1, 0, sla, 0, 63)
+ /* SHIFT LEFT SINGLE LOGICAL */
+-    C(0x8900, SLL,     RS_a,  Z,   r1_o, sh32, new, r1_32, sll, 0)
+-    C(0xebdf, SLLK,    RSY_a, DO,  r3_o, sh32, new, r1_32, sll, 0)
+-    C(0xeb0d, SLLG,    RSY_a, Z,   r3_o, sh64, r1, 0, sll, 0)
++    C(0x8900, SLL,     RS_a,  Z,   r1_o, sh, new, r1_32, sll, 0)
++    C(0xebdf, SLLK,    RSY_a, DO,  r3_o, sh, new, r1_32, sll, 0)
++    C(0xeb0d, SLLG,    RSY_a, Z,   r3_o, sh, r1, 0, sll, 0)
+ /* SHIFT RIGHT SINGLE */
+-    C(0x8a00, SRA,     RS_a,  Z,   r1_32s, sh32, new, r1_32, sra, s32)
+-    C(0xebdc, SRAK,    RSY_a, DO,  r3_32s, sh32, new, r1_32, sra, s32)
+-    C(0xeb0a, SRAG,    RSY_a, Z,   r3_o, sh64, r1, 0, sra, s64)
++    C(0x8a00, SRA,     RS_a,  Z,   r1_32s, sh, new, r1_32, sra, s32)
++    C(0xebdc, SRAK,    RSY_a, DO,  r3_32s, sh, new, r1_32, sra, s32)
++    C(0xeb0a, SRAG,    RSY_a, Z,   r3_o, sh, r1, 0, sra, s64)
+ /* SHIFT RIGHT SINGLE LOGICAL */
+-    C(0x8800, SRL,     RS_a,  Z,   r1_32u, sh32, new, r1_32, srl, 0)
+-    C(0xebde, SRLK,    RSY_a, DO,  r3_32u, sh32, new, r1_32, srl, 0)
+-    C(0xeb0c, SRLG,    RSY_a, Z,   r3_o, sh64, r1, 0, srl, 0)
++    C(0x8800, SRL,     RS_a,  Z,   r1_32u, sh, new, r1_32, srl, 0)
++    C(0xebde, SRLK,    RSY_a, DO,  r3_32u, sh, new, r1_32, srl, 0)
++    C(0xeb0c, SRLG,    RSY_a, Z,   r3_o, sh, r1, 0, srl, 0)
+ /* SHIFT LEFT DOUBLE */
+-    D(0x8f00, SLDA,    RS_a,  Z,   r1_D32, sh64, new, r1_D32, sla, 0, 63)
++    D(0x8f00, SLDA,    RS_a,  Z,   r1_D32, sh, new, r1_D32, sla, 0, 63)
+ /* SHIFT LEFT DOUBLE LOGICAL */
+-    C(0x8d00, SLDL,    RS_a,  Z,   r1_D32, sh64, new, r1_D32, sll, 0)
++    C(0x8d00, SLDL,    RS_a,  Z,   r1_D32, sh, new, r1_D32, sll, 0)
+ /* SHIFT RIGHT DOUBLE */
+-    C(0x8e00, SRDA,    RS_a,  Z,   r1_D32, sh64, new, r1_D32, sra, s64)
++    C(0x8e00, SRDA,    RS_a,  Z,   r1_D32, sh, new, r1_D32, sra, s64)
+ /* SHIFT RIGHT DOUBLE LOGICAL */
+-    C(0x8c00, SRDL,    RS_a,  Z,   r1_D32, sh64, new, r1_D32, srl, 0)
++    C(0x8c00, SRDL,    RS_a,  Z,   r1_D32, sh, new, r1_D32, srl, 0)
+ 
+ /* SQUARE ROOT */
+     F(0xb314, SQEBR,   RRE,   Z,   0, e2, new, e1, sqeb, 0, IF_BFP)
+diff --git a/target/s390x/tcg/translate.c b/target/s390x/tcg/translate.c
+index c5e59b68af..b14e6a04a7 100644
+--- a/target/s390x/tcg/translate.c
++++ b/target/s390x/tcg/translate.c
+@@ -636,8 +636,7 @@ static void gen_op_calc_cc(DisasContext *s)
+     case CC_OP_LTUGTU_64:
+     case CC_OP_TM_32:
+     case CC_OP_TM_64:
+-    case CC_OP_SLA_32:
+-    case CC_OP_SLA_64:
++    case CC_OP_SLA:
+     case CC_OP_SUBU:
+     case CC_OP_NZ_F128:
+     case CC_OP_VC:
+@@ -1178,19 +1177,6 @@ struct DisasInsn {
+ /* ====================================================================== */
+ /* Miscellaneous helpers, used by several operations.  */
+ 
+-static void help_l2_shift(DisasContext *s, DisasOps *o, int mask)
+-{
+-    int b2 = get_field(s, b2);
+-    int d2 = get_field(s, d2);
+-
+-    if (b2 == 0) {
+-        o->in2 = tcg_const_i64(d2 & mask);
+-    } else {
+-        o->in2 = get_address(s, 0, b2, d2);
+-        tcg_gen_andi_i64(o->in2, o->in2, mask);
+-    }
+-}
+-
+ static DisasJumpType help_goto_direct(DisasContext *s, uint64_t dest)
+ {
+     if (dest == s->pc_tmp) {
+@@ -4113,9 +4099,18 @@ static DisasJumpType op_soc(DisasContext *s, DisasOps *o)
+ 
+ static DisasJumpType op_sla(DisasContext *s, DisasOps *o)
+ {
++    TCGv_i64 t;
+     uint64_t sign = 1ull << s->insn->data;
+-    enum cc_op cco = s->insn->data == 31 ? CC_OP_SLA_32 : CC_OP_SLA_64;
+-    gen_op_update2_cc_i64(s, cco, o->in1, o->in2);
++    if (s->insn->data == 31) {
++        t = tcg_temp_new_i64();
++        tcg_gen_shli_i64(t, o->in1, 32);
++    } else {
++        t = o->in1;
++    }
++    gen_op_update2_cc_i64(s, CC_OP_SLA, t, o->in2);
++    if (s->insn->data == 31) {
++        tcg_temp_free_i64(t);
++    }
+     tcg_gen_shl_i64(o->out, o->in1, o->in2);
+     /* The arithmetic left shift is curious in that it does not affect
+        the sign bit.  Copy that over from the source unchanged.  */
+@@ -5924,17 +5919,19 @@ static void in2_ri2(DisasContext *s, DisasOps *o)
+ }
+ #define SPEC_in2_ri2 0
+ 
+-static void in2_sh32(DisasContext *s, DisasOps *o)
++static void in2_sh(DisasContext *s, DisasOps *o)
+ {
+-    help_l2_shift(s, o, 31);
+-}
+-#define SPEC_in2_sh32 0
++    int b2 = get_field(s, b2);
++    int d2 = get_field(s, d2);
+ 
+-static void in2_sh64(DisasContext *s, DisasOps *o)
+-{
+-    help_l2_shift(s, o, 63);
++    if (b2 == 0) {
++        o->in2 = tcg_const_i64(d2 & 0x3f);
++    } else {
++        o->in2 = get_address(s, 0, b2, d2);
++        tcg_gen_andi_i64(o->in2, o->in2, 0x3f);
++    }
+ }
+-#define SPEC_in2_sh64 0
++#define SPEC_in2_sh 0
+ 
+ static void in2_m2_8u(DisasContext *s, DisasOps *o)
+ {
+-- 
+2.37.3
+

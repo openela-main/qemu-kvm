@@ -1,0 +1,80 @@
+From d3602e5afa1e90c5e33625fc528db7f96195bada Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Mon, 7 Nov 2022 19:59:46 -0500
+Subject: [PATCH 42/42] ui/vnc-clipboard: fix integer underflow in
+ vnc_client_cut_text_ext
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 227: ui/vnc-clipboard: fix integer underflow in vnc_client_cut_text_ext
+RH-Bugzilla: 2129760
+RH-Acked-by: Mauro Matteo Cascella <None>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Commit: [1/1] ac19a6c0777e308061bcb6d1de5cc9beaa105a3a (jmaloy/qemu-kvm)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2129760
+CVE: CVE-2022-3165
+Upstream: Merged
+
+commit d307040b18bfcb1393b910f1bae753d5c12a4dc7
+Author: Mauro Matteo Cascella <mcascell@redhat.com>
+Date:   Sun Sep 25 22:45:11 2022 +0200
+
+    ui/vnc-clipboard: fix integer underflow in vnc_client_cut_text_ext
+
+    Extended ClientCutText messages start with a 4-byte header. If len < 4,
+    an integer underflow occurs in vnc_client_cut_text_ext. The result is
+    used to decompress data in a while loop in inflate_buffer, leading to
+    CPU consumption and denial of service. Prevent this by checking dlen in
+    protocol_client_msg.
+
+    Fixes: CVE-2022-3165
+    Fixes: 0bf41cab93e5 ("ui/vnc: clipboard support")
+    Reported-by: TangPeng <tangpeng@qianxin.com>
+    Signed-off-by: Mauro Matteo Cascella <mcascell@redhat.com>
+    Message-Id: <20220925204511.1103214-1-mcascell@redhat.com>
+    Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+
+(cherry picked from commit d307040b18bfcb1393b910f1bae753d5c12a4dc7)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ ui/vnc.c | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/ui/vnc.c b/ui/vnc.c
+index af02522e84..a14b6861be 100644
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -2442,8 +2442,8 @@ static int protocol_client_msg(VncState *vs, uint8_t *data, size_t len)
+         if (len == 1) {
+             return 8;
+         }
++        uint32_t dlen = abs(read_s32(data, 4));
+         if (len == 8) {
+-            uint32_t dlen = abs(read_s32(data, 4));
+             if (dlen > (1 << 20)) {
+                 error_report("vnc: client_cut_text msg payload has %u bytes"
+                              " which exceeds our limit of 1MB.", dlen);
+@@ -2456,8 +2456,13 @@ static int protocol_client_msg(VncState *vs, uint8_t *data, size_t len)
+         }
+ 
+         if (read_s32(data, 4) < 0) {
+-            vnc_client_cut_text_ext(vs, abs(read_s32(data, 4)),
+-                                    read_u32(data, 8), data + 12);
++            if (dlen < 4) {
++                error_report("vnc: malformed payload (header less than 4 bytes)"
++                             " in extended clipboard pseudo-encoding.");
++                vnc_client_error(vs);
++                break;
++            }
++            vnc_client_cut_text_ext(vs, dlen, read_u32(data, 8), data + 12);
+             break;
+         }
+         vnc_client_cut_text(vs, read_u32(data, 4), data + 8);
+-- 
+2.37.3
+

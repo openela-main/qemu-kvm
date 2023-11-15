@@ -1,0 +1,136 @@
+From 255722667a4fa4d522bb0b7e0825cbbe635abb8d Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:35:57 +0000
+Subject: [PATCH 15/42] dump: Introduce shdr_num to decrease complexity
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [15/41] b0215ea5d381ef7f6abfe3f3bafea51ce933da56
+
+Let's move from a boolean to a int variable which will later enable us
+to store the number of sections that are in the dump file.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220330123603.107120-4-frankja@linux.ibm.com>
+(cherry picked from commit 862a395858e5a302ed5921487777acdc95a3a31b)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c           | 24 ++++++++++++------------
+ include/sysemu/dump.h |  2 +-
+ 2 files changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 7236b167cc..972e28b089 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -145,12 +145,12 @@ static void write_elf64_header(DumpState *s, Error **errp)
+     elf_header.e_phoff = cpu_to_dump64(s, sizeof(Elf64_Ehdr));
+     elf_header.e_phentsize = cpu_to_dump16(s, sizeof(Elf64_Phdr));
+     elf_header.e_phnum = cpu_to_dump16(s, phnum);
+-    if (s->have_section) {
++    if (s->shdr_num) {
+         uint64_t shoff = sizeof(Elf64_Ehdr) + sizeof(Elf64_Phdr) * s->phdr_num;
+ 
+         elf_header.e_shoff = cpu_to_dump64(s, shoff);
+         elf_header.e_shentsize = cpu_to_dump16(s, sizeof(Elf64_Shdr));
+-        elf_header.e_shnum = cpu_to_dump16(s, 1);
++        elf_header.e_shnum = cpu_to_dump16(s, s->shdr_num);
+     }
+ 
+     ret = fd_write_vmcore(&elf_header, sizeof(elf_header), s);
+@@ -182,12 +182,12 @@ static void write_elf32_header(DumpState *s, Error **errp)
+     elf_header.e_phoff = cpu_to_dump32(s, sizeof(Elf32_Ehdr));
+     elf_header.e_phentsize = cpu_to_dump16(s, sizeof(Elf32_Phdr));
+     elf_header.e_phnum = cpu_to_dump16(s, phnum);
+-    if (s->have_section) {
++    if (s->shdr_num) {
+         uint32_t shoff = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr) * s->phdr_num;
+ 
+         elf_header.e_shoff = cpu_to_dump32(s, shoff);
+         elf_header.e_shentsize = cpu_to_dump16(s, sizeof(Elf32_Shdr));
+-        elf_header.e_shnum = cpu_to_dump16(s, 1);
++        elf_header.e_shnum = cpu_to_dump16(s, s->shdr_num);
+     }
+ 
+     ret = fd_write_vmcore(&elf_header, sizeof(elf_header), s);
+@@ -566,7 +566,7 @@ static void dump_begin(DumpState *s, Error **errp)
+         }
+ 
+         /* write section to vmcore */
+-        if (s->have_section) {
++        if (s->shdr_num) {
+             write_elf_section(s, 1, errp);
+             if (*errp) {
+                 return;
+@@ -592,7 +592,7 @@ static void dump_begin(DumpState *s, Error **errp)
+         }
+ 
+         /* write section to vmcore */
+-        if (s->have_section) {
++        if (s->shdr_num) {
+             write_elf_section(s, 0, errp);
+             if (*errp) {
+                 return;
+@@ -1811,11 +1811,11 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+      */
+     s->phdr_num = 1; /* PT_NOTE */
+     if (s->list.num < UINT16_MAX - 2) {
++        s->shdr_num = 0;
+         s->phdr_num += s->list.num;
+-        s->have_section = false;
+     } else {
+         /* sh_info of section 0 holds the real number of phdrs */
+-        s->have_section = true;
++        s->shdr_num = 1;
+ 
+         /* the type of shdr->sh_info is uint32_t, so we should avoid overflow */
+         if (s->list.num <= UINT32_MAX - 1) {
+@@ -1826,19 +1826,19 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+     }
+ 
+     if (s->dump_info.d_class == ELFCLASS64) {
+-        if (s->have_section) {
++        if (s->shdr_num) {
+             s->memory_offset = sizeof(Elf64_Ehdr) +
+                                sizeof(Elf64_Phdr) * s->phdr_num +
+-                               sizeof(Elf64_Shdr) + s->note_size;
++                               sizeof(Elf64_Shdr) * s->shdr_num + s->note_size;
+         } else {
+             s->memory_offset = sizeof(Elf64_Ehdr) +
+                                sizeof(Elf64_Phdr) * s->phdr_num + s->note_size;
+         }
+     } else {
+-        if (s->have_section) {
++        if (s->shdr_num) {
+             s->memory_offset = sizeof(Elf32_Ehdr) +
+                                sizeof(Elf32_Phdr) * s->phdr_num +
+-                               sizeof(Elf32_Shdr) + s->note_size;
++                               sizeof(Elf32_Shdr) * s->shdr_num + s->note_size;
+         } else {
+             s->memory_offset = sizeof(Elf32_Ehdr) +
+                                sizeof(Elf32_Phdr) * s->phdr_num + s->note_size;
+diff --git a/include/sysemu/dump.h b/include/sysemu/dump.h
+index b463fc9c02..19458bffbd 100644
+--- a/include/sysemu/dump.h
++++ b/include/sysemu/dump.h
+@@ -155,7 +155,7 @@ typedef struct DumpState {
+     ArchDumpInfo dump_info;
+     MemoryMappingList list;
+     uint32_t phdr_num;
+-    bool have_section;
++    uint32_t shdr_num;
+     bool resume;
+     bool detached;
+     ssize_t note_size;
+-- 
+2.37.3
+

@@ -1,0 +1,75 @@
+From b9866279996ee065cb524bf30bc70e22efbab303 Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Fri, 14 Jul 2023 10:59:38 +0200
+Subject: [PATCH 5/5] block: Fix pad_request's request restriction
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 291: block: Split padded I/O vectors exceeding IOV_MAX
+RH-Bugzilla: 2141964
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [5/5] f9188bd089d6c67185ea1accde20d491a2ed3193
+
+bdrv_pad_request() relies on requests' lengths not to exceed SIZE_MAX,
+which bdrv_check_qiov_request() does not guarantee.
+
+bdrv_check_request32() however will guarantee this, and both of
+bdrv_pad_request()'s callers (bdrv_co_preadv_part() and
+bdrv_co_pwritev_part()) already run it before calling
+bdrv_pad_request().  Therefore, bdrv_pad_request() can safely call
+bdrv_check_request32() without expecting error, too.
+
+In effect, this patch will not change guest-visible behavior.  It is a
+clean-up to tighten a condition to match what is guaranteed by our
+callers, and which exists purely to show clearly why the subsequent
+assertion (`assert(*bytes <= SIZE_MAX)`) is always true.
+
+Note there is a difference between the interfaces of
+bdrv_check_qiov_request() and bdrv_check_request32(): The former takes
+an errp, the latter does not, so we can no longer just pass
+&error_abort.  Instead, we need to check the returned value.  While we
+do expect success (because the callers have already run this function),
+an assert(ret == 0) is not much simpler than just to return an error if
+it occurs, so let us handle errors by returning them up the stack now.
+
+Reported-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-id: 20230714085938.202730-1-hreitz@redhat.com
+Fixes: 18743311b829cafc1737a5f20bc3248d5f91ee2a
+       ("block: Collapse padded I/O vecs exceeding IOV_MAX")
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/io.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/block/io.c b/block/io.c
+index 0fe8f0dd40..8ae57728a6 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -1893,7 +1893,11 @@ static int bdrv_pad_request(BlockDriverState *bs,
+     int sliced_niov;
+     size_t sliced_head, sliced_tail;
+ 
+-    bdrv_check_qiov_request(*offset, *bytes, *qiov, *qiov_offset, &error_abort);
++    /* Should have been checked by the caller already */
++    ret = bdrv_check_request32(*offset, *bytes, *qiov, *qiov_offset);
++    if (ret < 0) {
++        return ret;
++    }
+ 
+     if (!bdrv_init_padding(bs, *offset, *bytes, write, pad)) {
+         if (padded) {
+@@ -1906,7 +1910,7 @@ static int bdrv_pad_request(BlockDriverState *bs,
+                                   &sliced_head, &sliced_tail,
+                                   &sliced_niov);
+ 
+-    /* Guaranteed by bdrv_check_qiov_request() */
++    /* Guaranteed by bdrv_check_request32() */
+     assert(*bytes <= SIZE_MAX);
+     ret = bdrv_create_padded_qiov(bs, pad, sliced_iov, sliced_niov,
+                                   sliced_head, *bytes);
+-- 
+2.39.3
+

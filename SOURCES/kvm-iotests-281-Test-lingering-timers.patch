@@ -1,0 +1,174 @@
+From b56684f6c1bef4fb5bf87ac5a1106d3830c05ad0 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Fri, 4 Feb 2022 12:10:10 +0100
+Subject: [PATCH 4/6] iotests/281: Test lingering timers
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 117: block/nbd: Handle AioContext changes
+RH-Commit: [4/6] aaad466941637a34224dc037bbea37d128b5676b
+RH-Bugzilla: 2035185
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Prior to "block/nbd: Delete reconnect delay timer when done" and
+"block/nbd: Delete open timer when done", both of those timers would
+remain scheduled even after successfully (re-)connecting to the server,
+and they would not even be deleted when the BDS is deleted.
+
+This test constructs exactly this situation:
+(1) Configure an @open-timeout, so the open timer is armed, and
+(2) Configure a @reconnect-delay and trigger a reconnect situation
+    (which succeeds immediately), so the reconnect delay timer is armed.
+Then we immediately delete the BDS, and sleep for longer than the
+@open-timeout and @reconnect-delay.  Prior to said patches, this caused
+one (or both) of the timer CBs to access already-freed data.
+
+Accessing freed data may or may not crash, so this test can produce
+false successes, but I do not know how to show the problem in a better
+or more reliable way.  If you run this test on "block/nbd: Assert there
+are no timers when closed" and without the fix patches mentioned above,
+you should reliably see an assertion failure.
+(But all other tests that use the reconnect delay timer (264 and 277)
+will fail in that configuration, too; as will nbd-reconnect-on-open,
+which uses the open timer.)
+
+Remove this test from the quick group because of the two second sleep
+this patch introduces.
+
+(I decided to put this test case into 281, because the main bug this
+series addresses is in the interaction of the NBD block driver and I/O
+threads, which is precisely the scope of 281.  The test case for that
+other bug will also be put into the test class added here.
+
+Also, excuse the test class's name, I couldn't come up with anything
+better.  The "yield" part will make sense two patches from now.)
+
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+(cherry picked from commit eaf1e85d4ddefdbd197f393fa9c5acc7ba8133b0)
+
+Conflict:
+- @open-timeout was introduced after the 6.2 release, and has not been
+  backported.  Consequently, there is no open_timer, and we can (and
+  must) drop the respective parts of the test here.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ tests/qemu-iotests/281     | 73 ++++++++++++++++++++++++++++++++++++--
+ tests/qemu-iotests/281.out |  4 +--
+ 2 files changed, 73 insertions(+), 4 deletions(-)
+
+diff --git a/tests/qemu-iotests/281 b/tests/qemu-iotests/281
+index 956698083f..13c588be75 100755
+--- a/tests/qemu-iotests/281
++++ b/tests/qemu-iotests/281
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-# group: rw quick
++# group: rw
+ #
+ # Test cases for blockdev + IOThread interactions
+ #
+@@ -20,8 +20,9 @@
+ #
+ 
+ import os
++import time
+ import iotests
+-from iotests import qemu_img
++from iotests import qemu_img, QemuStorageDaemon
+ 
+ image_len = 64 * 1024 * 1024
+ 
+@@ -243,6 +244,74 @@ class TestBlockdevBackupAbort(iotests.QMPTestCase):
+         # Hangs on failure, we expect this error.
+         self.assert_qmp(result, 'error/class', 'GenericError')
+ 
++# Test for RHBZ#2033626
++class TestYieldingAndTimers(iotests.QMPTestCase):
++    sock = os.path.join(iotests.sock_dir, 'nbd.sock')
++    qsd = None
++
++    def setUp(self):
++        self.create_nbd_export()
++
++        # Simple VM with an NBD block device connected to the NBD export
++        # provided by the QSD
++        self.vm = iotests.VM()
++        self.vm.add_blockdev('nbd,node-name=nbd,server.type=unix,' +
++                             f'server.path={self.sock},export=exp,' +
++                             'reconnect-delay=1')
++
++        self.vm.launch()
++
++    def tearDown(self):
++        self.stop_nbd_export()
++        self.vm.shutdown()
++
++    def test_timers_with_blockdev_del(self):
++        # Stop and restart the NBD server, and do some I/O on the client to
++        # trigger a reconnect and start the reconnect delay timer
++        self.stop_nbd_export()
++        self.create_nbd_export()
++
++        result = self.vm.qmp('human-monitor-command',
++                             command_line='qemu-io nbd "write 0 512"')
++        self.assert_qmp(result, 'return', '')
++
++        # Reconnect is done, so the reconnect delay timer should be gone.
++        # (But there used to be a bug where it remained active, for which this
++        # is a regression test.)
++
++        # Delete the BDS to see whether the timer is gone.  If it is not,
++        # it will remain active, fire later, and then access freed data.
++        # (Or, with "block/nbd: Assert there are no timers when closed"
++        # applied, the assertion added in that patch will fail.)
++        result = self.vm.qmp('blockdev-del', node_name='nbd')
++        self.assert_qmp(result, 'return', {})
++
++        # Give the timer some time to fire (it has a timeout of 1 s).
++        # (Sleeping in an iotest may ring some alarm bells, but note that if
++        # the timing is off here, the test will just always pass.  If we kill
++        # the VM too early, then we just kill the timer before it can fire,
++        # thus not see the error, and so the test will pass.)
++        time.sleep(2)
++
++    def create_nbd_export(self):
++        assert self.qsd is None
++
++        # Simple NBD export of a null-co BDS
++        self.qsd = QemuStorageDaemon(
++            '--blockdev',
++            'null-co,node-name=null,read-zeroes=true',
++
++            '--nbd-server',
++            f'addr.type=unix,addr.path={self.sock}',
++
++            '--export',
++            'nbd,id=exp,node-name=null,name=exp,writable=true'
++        )
++
++    def stop_nbd_export(self):
++        self.qsd.stop()
++        self.qsd = None
++
+ if __name__ == '__main__':
+     iotests.main(supported_fmts=['qcow2'],
+                  supported_protocols=['file'])
+diff --git a/tests/qemu-iotests/281.out b/tests/qemu-iotests/281.out
+index 89968f35d7..914e3737bd 100644
+--- a/tests/qemu-iotests/281.out
++++ b/tests/qemu-iotests/281.out
+@@ -1,5 +1,5 @@
+-....
++.....
+ ----------------------------------------------------------------------
+-Ran 4 tests
++Ran 5 tests
+ 
+ OK
+-- 
+2.27.0
+

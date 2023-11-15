@@ -1,0 +1,71 @@
+From 9cfedd3a9880390ddda25a235b999430c3dd5e83 Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Wed, 24 May 2023 07:25:57 -0400
+Subject: [PATCH 13/15] target/i386: add support for FLUSH_L1D feature
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 281: target/i386: add support for FLUSH_L1D feature
+RH-Bugzilla: 2216203
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/2] 50c54ca7c734dc2b9303e724a6c5ac1127472271
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2216203
+
+commit 0e7e3bf1a552c178924867fa7c2f30ccc8a179e0
+Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date:   Wed Feb 1 08:57:58 2023 -0500
+
+    target/i386: add support for FLUSH_L1D feature
+
+    As reported by Intel's doc:
+    "L1D_FLUSH: Writeback and invalidate the L1 data cache"
+
+    If this cpu feature is present in host, allow QEMU to choose whether to
+    show it to the guest too.
+    One disadvantage of not exposing it is that the guest will report
+    a non existing vulnerability in
+    /sys/devices/system/cpu/vulnerabilities/mmio_stale_data
+    because the mitigation is present only when the cpu has
+            (FLUSH_L1D and MD_CLEAR) or FB_CLEAR
+    features enabled.
+
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Message-Id: <20230201135759.555607-2-eesposit@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ target/i386/cpu.c | 2 +-
+ target/i386/cpu.h | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 0543b846ff..47da059df6 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -857,7 +857,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             "tsx-ldtrk", NULL, NULL /* pconfig */, NULL,
+             NULL, NULL, "amx-bf16", "avx512-fp16",
+             "amx-tile", "amx-int8", "spec-ctrl", "stibp",
+-            NULL, "arch-capabilities", "core-capability", "ssbd",
++            "flush-l1d", "arch-capabilities", "core-capability", "ssbd",
+         },
+         .cpuid = {
+             .eax = 7,
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 5d2ddd81b9..7cb7cea8ab 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -864,6 +864,8 @@ uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
+ #define CPUID_7_0_EDX_SPEC_CTRL         (1U << 26)
+ /* Single Thread Indirect Branch Predictors */
+ #define CPUID_7_0_EDX_STIBP             (1U << 27)
++/* Flush L1D cache */
++#define CPUID_7_0_EDX_FLUSH_L1D         (1U << 28)
+ /* Arch Capabilities */
+ #define CPUID_7_0_EDX_ARCH_CAPABILITIES (1U << 29)
+ /* Core Capability */
+-- 
+2.37.3
+

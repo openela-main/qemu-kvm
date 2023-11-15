@@ -1,0 +1,56 @@
+From 30ae4c8951df25085e479e0e2e5b43d2175f996a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 21/22] target/s390x/tcg/mem_helper: Test the right bits in
+ psw_key_valid()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [20/21] 00a243a96953023387bab6f1925b734755c53e6e
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 5e275ca6fb32bcb4b56b29e6acfd3cf306c4a180
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Dec 5 15:20:43 2022 +0100
+
+    target/s390x/tcg/mem_helper: Test the right bits in psw_key_valid()
+
+    The PSW key mask is a 16 bit field, and the psw_key variable is
+    in the range from 0 to 15, so it does not make sense to use
+    "0x80 >> psw_key" for testing the bits here. We should use 0x8000
+    instead.
+
+    Message-Id: <20221205142043.95185-1-thuth@redhat.com>
+    Reviewed-by: Nina Schoetterl-Glausch <nsg@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/mem_helper.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/mem_helper.c b/target/s390x/tcg/mem_helper.c
+index 362a30d99e..bd27c75dfb 100644
+--- a/target/s390x/tcg/mem_helper.c
++++ b/target/s390x/tcg/mem_helper.c
+@@ -50,7 +50,7 @@ static inline bool psw_key_valid(CPUS390XState *env, uint8_t psw_key)
+ 
+     if (env->psw.mask & PSW_MASK_PSTATE) {
+         /* PSW key has range 0..15, it is valid if the bit is 1 in the PKM */
+-        return pkm & (0x80 >> psw_key);
++        return pkm & (0x8000 >> psw_key);
+     }
+     return true;
+ }
+-- 
+2.37.3
+

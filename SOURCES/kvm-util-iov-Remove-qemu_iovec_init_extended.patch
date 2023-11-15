@@ -1,0 +1,157 @@
+From cc31f7eb1c362dc308a163b7364c96ed098a793a Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Tue, 11 Apr 2023 19:34:17 +0200
+Subject: [PATCH 3/5] util/iov: Remove qemu_iovec_init_extended()
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 291: block: Split padded I/O vectors exceeding IOV_MAX
+RH-Bugzilla: 2141964
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/5] 19c8307ef1289f1991199d1d1f6ab6c89a4b59ce
+
+bdrv_pad_request() was the main user of qemu_iovec_init_extended().
+HEAD^ has removed that use, so we can remove qemu_iovec_init_extended()
+now.
+
+The only remaining user is qemu_iovec_init_slice(), which can easily
+inline the small part it really needs.
+
+Note that qemu_iovec_init_extended() offered a memcpy() optimization to
+initialize the new I/O vector.  qemu_iovec_concat_iov(), which is used
+to replace its functionality, does not, but calls qemu_iovec_add() for
+every single element.  If we decide this optimization was important, we
+will need to re-implement it in qemu_iovec_concat_iov(), which might
+also benefit its pre-existing users.
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-Id: <20230411173418.19549-4-hreitz@redhat.com>
+(cherry picked from commit cc63f6f6fa1aaa4b6405dd69432c693e9c8d18ca)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ include/qemu/iov.h |  5 ---
+ util/iov.c         | 79 +++++++---------------------------------------
+ 2 files changed, 11 insertions(+), 73 deletions(-)
+
+diff --git a/include/qemu/iov.h b/include/qemu/iov.h
+index 46fadfb27a..63a1c01965 100644
+--- a/include/qemu/iov.h
++++ b/include/qemu/iov.h
+@@ -222,11 +222,6 @@ static inline void *qemu_iovec_buf(QEMUIOVector *qiov)
+ 
+ void qemu_iovec_init(QEMUIOVector *qiov, int alloc_hint);
+ void qemu_iovec_init_external(QEMUIOVector *qiov, struct iovec *iov, int niov);
+-int qemu_iovec_init_extended(
+-        QEMUIOVector *qiov,
+-        void *head_buf, size_t head_len,
+-        QEMUIOVector *mid_qiov, size_t mid_offset, size_t mid_len,
+-        void *tail_buf, size_t tail_len);
+ void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
+                            size_t offset, size_t len);
+ struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
+diff --git a/util/iov.c b/util/iov.c
+index 3ccb530b16..af3ccc2546 100644
+--- a/util/iov.c
++++ b/util/iov.c
+@@ -411,70 +411,6 @@ int qemu_iovec_subvec_niov(QEMUIOVector *qiov, size_t offset, size_t len)
+     return niov;
+ }
+ 
+-/*
+- * Compile new iovec, combining @head_buf buffer, sub-qiov of @mid_qiov,
+- * and @tail_buf buffer into new qiov.
+- */
+-int qemu_iovec_init_extended(
+-        QEMUIOVector *qiov,
+-        void *head_buf, size_t head_len,
+-        QEMUIOVector *mid_qiov, size_t mid_offset, size_t mid_len,
+-        void *tail_buf, size_t tail_len)
+-{
+-    size_t mid_head, mid_tail;
+-    int total_niov, mid_niov = 0;
+-    struct iovec *p, *mid_iov = NULL;
+-
+-    assert(mid_qiov->niov <= IOV_MAX);
+-
+-    if (SIZE_MAX - head_len < mid_len ||
+-        SIZE_MAX - head_len - mid_len < tail_len)
+-    {
+-        return -EINVAL;
+-    }
+-
+-    if (mid_len) {
+-        mid_iov = qemu_iovec_slice(mid_qiov, mid_offset, mid_len,
+-                                   &mid_head, &mid_tail, &mid_niov);
+-    }
+-
+-    total_niov = !!head_len + mid_niov + !!tail_len;
+-    if (total_niov > IOV_MAX) {
+-        return -EINVAL;
+-    }
+-
+-    if (total_niov == 1) {
+-        qemu_iovec_init_buf(qiov, NULL, 0);
+-        p = &qiov->local_iov;
+-    } else {
+-        qiov->niov = qiov->nalloc = total_niov;
+-        qiov->size = head_len + mid_len + tail_len;
+-        p = qiov->iov = g_new(struct iovec, qiov->niov);
+-    }
+-
+-    if (head_len) {
+-        p->iov_base = head_buf;
+-        p->iov_len = head_len;
+-        p++;
+-    }
+-
+-    assert(!mid_niov == !mid_len);
+-    if (mid_niov) {
+-        memcpy(p, mid_iov, mid_niov * sizeof(*p));
+-        p[0].iov_base = (uint8_t *)p[0].iov_base + mid_head;
+-        p[0].iov_len -= mid_head;
+-        p[mid_niov - 1].iov_len -= mid_tail;
+-        p += mid_niov;
+-    }
+-
+-    if (tail_len) {
+-        p->iov_base = tail_buf;
+-        p->iov_len = tail_len;
+-    }
+-
+-    return 0;
+-}
+-
+ /*
+  * Check if the contents of subrange of qiov data is all zeroes.
+  */
+@@ -506,14 +442,21 @@ bool qemu_iovec_is_zero(QEMUIOVector *qiov, size_t offset, size_t bytes)
+ void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
+                            size_t offset, size_t len)
+ {
+-    int ret;
++    struct iovec *slice_iov;
++    int slice_niov;
++    size_t slice_head, slice_tail;
+ 
+     assert(source->size >= len);
+     assert(source->size - len >= offset);
+ 
+-    /* We shrink the request, so we can't overflow neither size_t nor MAX_IOV */
+-    ret = qemu_iovec_init_extended(qiov, NULL, 0, source, offset, len, NULL, 0);
+-    assert(ret == 0);
++    slice_iov = qemu_iovec_slice(source, offset, len,
++                                 &slice_head, &slice_tail, &slice_niov);
++    if (slice_niov == 1) {
++        qemu_iovec_init_buf(qiov, slice_iov[0].iov_base + slice_head, len);
++    } else {
++        qemu_iovec_init(qiov, slice_niov);
++        qemu_iovec_concat_iov(qiov, slice_iov, slice_niov, slice_head, len);
++    }
+ }
+ 
+ void qemu_iovec_destroy(QEMUIOVector *qiov)
+-- 
+2.39.3
+

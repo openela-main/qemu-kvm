@@ -1,0 +1,73 @@
+From 688c9f386635544dbc468171a32fbc84f0c9224e Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Mar 2022 16:23:47 +0100
+Subject: [PATCH 12/24] target/i386: kvm: do not access uninitialized variable
+ on older kernels
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [12/13] 776fac1e7d1aa16ec5f4d99ddad3039eab8212af
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+KVM support for AMX includes a new system attribute, KVM_X86_XCOMP_GUEST_SUPP.
+Commit 19db68ca68 ("x86: Grant AMX permission for guest", 2022-03-15) however
+did not fully consider the behavior on older kernels.  First, it warns
+too aggressively.  Second, it invokes the KVM_GET_DEVICE_ATTR ioctl
+unconditionally and then uses the "bitmask" variable, which remains
+uninitialized if the ioctl fails.  Third, kvm_ioctl returns -errno rather
+than -1 on errors.
+
+While at it, explain why the ioctl is needed and KVM_GET_SUPPORTED_CPUID
+is not enough.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 3ec5ad40081b14af28496198b4d08dbe13386790)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/kvm/kvm.c | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index b1128b0e07..bd439e56ad 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -409,6 +409,12 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
+         }
+     } else if (function == 0xd && index == 0 &&
+                (reg == R_EAX || reg == R_EDX)) {
++        /*
++         * The value returned by KVM_GET_SUPPORTED_CPUID does not include
++         * features that still have to be enabled with the arch_prctl
++         * system call.  QEMU needs the full value, which is retrieved
++         * with KVM_GET_DEVICE_ATTR.
++         */
+         struct kvm_device_attr attr = {
+             .group = 0,
+             .attr = KVM_X86_XCOMP_GUEST_SUPP,
+@@ -417,13 +423,16 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
+ 
+         bool sys_attr = kvm_check_extension(s, KVM_CAP_SYS_ATTRIBUTES);
+         if (!sys_attr) {
+-            warn_report("cannot get sys attribute capabilities %d", sys_attr);
++            return ret;
+         }
+ 
+         int rc = kvm_ioctl(s, KVM_GET_DEVICE_ATTR, &attr);
+-        if (rc == -1 && (errno == ENXIO || errno == EINVAL)) {
+-            warn_report("KVM_GET_DEVICE_ATTR(0, KVM_X86_XCOMP_GUEST_SUPP) "
+-                        "error: %d", rc);
++        if (rc < 0) {
++            if (rc != -ENXIO) {
++                warn_report("KVM_GET_DEVICE_ATTR(0, KVM_X86_XCOMP_GUEST_SUPP) "
++                            "error: %d", rc);
++            }
++            return ret;
+         }
+         ret = (reg == R_EAX) ? bitmask : bitmask >> 32;
+     } else if (function == 0x80000001 && reg == R_ECX) {
+-- 
+2.35.3
+

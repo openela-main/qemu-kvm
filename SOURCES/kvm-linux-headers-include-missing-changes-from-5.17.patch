@@ -1,0 +1,58 @@
+From aa6181d87e2b4ef1a70be002881908d2df5548a9 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Tue, 22 Feb 2022 17:58:11 +0100
+Subject: [PATCH 04/24] linux-headers: include missing changes from 5.17
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [4/13] 2ed7cbc07e63d85cda916ef44d1e82b1fba7fdf4
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 1ea5208febcc068449b63282d72bb719ab67a466)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ linux-headers/asm-x86/kvm.h | 3 +++
+ linux-headers/linux/kvm.h   | 4 ++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/linux-headers/asm-x86/kvm.h b/linux-headers/asm-x86/kvm.h
+index 2da3316bb5..bf6e96011d 100644
+--- a/linux-headers/asm-x86/kvm.h
++++ b/linux-headers/asm-x86/kvm.h
+@@ -452,6 +452,9 @@ struct kvm_sync_regs {
+ 
+ #define KVM_STATE_VMX_PREEMPTION_TIMER_DEADLINE	0x00000001
+ 
++/* attributes for system fd (group 0) */
++#define KVM_X86_XCOMP_GUEST_SUPP	0
++
+ struct kvm_vmx_nested_state_data {
+ 	__u8 vmcs12[KVM_STATE_NESTED_VMX_VMCS_SIZE];
+ 	__u8 shadow_vmcs12[KVM_STATE_NESTED_VMX_VMCS_SIZE];
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 00af3bc333..d232feaae9 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1133,6 +1133,7 @@ struct kvm_ppc_resize_hpt {
+ #define KVM_CAP_VM_MOVE_ENC_CONTEXT_FROM 206
+ #define KVM_CAP_VM_GPA_BITS 207
+ #define KVM_CAP_XSAVE2 208
++#define KVM_CAP_SYS_ATTRIBUTES 209
+ 
+ #ifdef KVM_CAP_IRQ_ROUTING
+ 
+@@ -2047,4 +2048,7 @@ struct kvm_stats_desc {
+ 
+ #define KVM_GET_STATS_FD  _IO(KVMIO,  0xce)
+ 
++/* Available with KVM_CAP_XSAVE2 */
++#define KVM_GET_XSAVE2		  _IOR(KVMIO,  0xcf, struct kvm_xsave)
++
+ #endif /* __LINUX_KVM_H */
+-- 
+2.35.3
+

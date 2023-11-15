@@ -1,0 +1,143 @@
+From 39cdd781c885b0695f8830a33420caa9e9b0bd50 Mon Sep 17 00:00:00 2001
+From: Si-Wei Liu <si-wei.liu@oracle.com>
+Date: Fri, 6 May 2022 19:28:13 -0700
+Subject: [PATCH 15/24] virtio-net: align ctrl_vq index for non-mq guest for
+ vhost_vdpa
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jason Wang <jasowang@redhat.com>
+RH-MergeRequest: 187: Multiqueue fixes for vhost-vDPA
+RH-Commit: [2/7] 2647cf59f3dd1e3d8af2d12c01e06ae26fbc1dc2
+RH-Bugzilla: 2069946
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+With MQ enabled vdpa device and non-MQ supporting guest e.g.
+booting vdpa with mq=on over OVMF of single vqp, below assert
+failure is seen:
+
+../hw/virtio/vhost-vdpa.c:560: vhost_vdpa_get_vq_index: Assertion `idx >= dev->vq_index && idx < dev->vq_index + dev->nvqs' failed.
+
+0  0x00007f8ce3ff3387 in raise () at /lib64/libc.so.6
+1  0x00007f8ce3ff4a78 in abort () at /lib64/libc.so.6
+2  0x00007f8ce3fec1a6 in __assert_fail_base () at /lib64/libc.so.6
+3  0x00007f8ce3fec252 in  () at /lib64/libc.so.6
+4  0x0000558f52d79421 in vhost_vdpa_get_vq_index (dev=<optimized out>, idx=<optimized out>) at ../hw/virtio/vhost-vdpa.c:563
+5  0x0000558f52d79421 in vhost_vdpa_get_vq_index (dev=<optimized out>, idx=<optimized out>) at ../hw/virtio/vhost-vdpa.c:558
+6  0x0000558f52d7329a in vhost_virtqueue_mask (hdev=0x558f55c01800, vdev=0x558f568f91f0, n=2, mask=<optimized out>) at ../hw/virtio/vhost.c:1557
+7  0x0000558f52c6b89a in virtio_pci_set_guest_notifier (d=d@entry=0x558f568f0f60, n=n@entry=2, assign=assign@entry=true, with_irqfd=with_irqfd@entry=false)
+   at ../hw/virtio/virtio-pci.c:974
+8  0x0000558f52c6c0d8 in virtio_pci_set_guest_notifiers (d=0x558f568f0f60, nvqs=3, assign=true) at ../hw/virtio/virtio-pci.c:1019
+9  0x0000558f52bf091d in vhost_net_start (dev=dev@entry=0x558f568f91f0, ncs=0x558f56937cd0, data_queue_pairs=data_queue_pairs@entry=1, cvq=cvq@entry=1)
+   at ../hw/net/vhost_net.c:361
+10 0x0000558f52d4e5e7 in virtio_net_set_status (status=<optimized out>, n=0x558f568f91f0) at ../hw/net/virtio-net.c:289
+11 0x0000558f52d4e5e7 in virtio_net_set_status (vdev=0x558f568f91f0, status=15 '\017') at ../hw/net/virtio-net.c:370
+12 0x0000558f52d6c4b2 in virtio_set_status (vdev=vdev@entry=0x558f568f91f0, val=val@entry=15 '\017') at ../hw/virtio/virtio.c:1945
+13 0x0000558f52c69eff in virtio_pci_common_write (opaque=0x558f568f0f60, addr=<optimized out>, val=<optimized out>, size=<optimized out>) at ../hw/virtio/virtio-pci.c:1292
+14 0x0000558f52d15d6e in memory_region_write_accessor (mr=0x558f568f19d0, addr=20, value=<optimized out>, size=1, shift=<optimized out>, mask=<optimized out>, attrs=...)
+   at ../softmmu/memory.c:492
+15 0x0000558f52d127de in access_with_adjusted_size (addr=addr@entry=20, value=value@entry=0x7f8cdbffe748, size=size@entry=1, access_size_min=<optimized out>, access_size_max=<optimized out>, access_fn=0x558f52d15cf0 <memory_region_write_accessor>, mr=0x558f568f19d0, attrs=...) at ../softmmu/memory.c:554
+16 0x0000558f52d157ef in memory_region_dispatch_write (mr=mr@entry=0x558f568f19d0, addr=20, data=<optimized out>, op=<optimized out>, attrs=attrs@entry=...)
+   at ../softmmu/memory.c:1504
+17 0x0000558f52d078e7 in flatview_write_continue (fv=fv@entry=0x7f8accbc3b90, addr=addr@entry=103079215124, attrs=..., ptr=ptr@entry=0x7f8ce6300028, len=len@entry=1, addr1=<optimized out>, l=<optimized out>, mr=0x558f568f19d0) at /home/opc/qemu-upstream/include/qemu/host-utils.h:165
+18 0x0000558f52d07b06 in flatview_write (fv=0x7f8accbc3b90, addr=103079215124, attrs=..., buf=0x7f8ce6300028, len=1) at ../softmmu/physmem.c:2822
+19 0x0000558f52d0b36b in address_space_write (as=<optimized out>, addr=<optimized out>, attrs=..., buf=buf@entry=0x7f8ce6300028, len=<optimized out>)
+   at ../softmmu/physmem.c:2914
+20 0x0000558f52d0b3da in address_space_rw (as=<optimized out>, addr=<optimized out>, attrs=...,
+   attrs@entry=..., buf=buf@entry=0x7f8ce6300028, len=<optimized out>, is_write=<optimized out>) at ../softmmu/physmem.c:2924
+21 0x0000558f52dced09 in kvm_cpu_exec (cpu=cpu@entry=0x558f55c2da60) at ../accel/kvm/kvm-all.c:2903
+22 0x0000558f52dcfabd in kvm_vcpu_thread_fn (arg=arg@entry=0x558f55c2da60) at ../accel/kvm/kvm-accel-ops.c:49
+23 0x0000558f52f9f04a in qemu_thread_start (args=<optimized out>) at ../util/qemu-thread-posix.c:556
+24 0x00007f8ce4392ea5 in start_thread () at /lib64/libpthread.so.0
+25 0x00007f8ce40bb9fd in clone () at /lib64/libc.so.6
+
+The cause for the assert failure is due to that the vhost_dev index
+for the ctrl vq was not aligned with actual one in use by the guest.
+Upon multiqueue feature negotiation in virtio_net_set_multiqueue(),
+if guest doesn't support multiqueue, the guest vq layout would shrink
+to a single queue pair, consisting of 3 vqs in total (rx, tx and ctrl).
+This results in ctrl_vq taking a different vhost_dev group index than
+the default. We can map vq to the correct vhost_dev group by checking
+if MQ is supported by guest and successfully negotiated. Since the
+MQ feature is only present along with CTRL_VQ, we ensure the index
+2 is only meant for the control vq while MQ is not supported by guest.
+
+Fixes: 22288fe ("virtio-net: vhost control virtqueue support")
+Suggested-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Si-Wei Liu <si-wei.liu@oracle.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <1651890498-24478-3-git-send-email-si-wei.liu@oracle.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 68b0a6395f36a8f48f56f46d05f30be2067598b0)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+---
+ hw/net/virtio-net.c | 33 +++++++++++++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index ec045c3f41..f118379bb4 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -14,6 +14,7 @@
+ #include "qemu/osdep.h"
+ #include "qemu/atomic.h"
+ #include "qemu/iov.h"
++#include "qemu/log.h"
+ #include "qemu/main-loop.h"
+ #include "qemu/module.h"
+ #include "hw/virtio/virtio.h"
+@@ -3163,8 +3164,22 @@ static NetClientInfo net_virtio_info = {
+ static bool virtio_net_guest_notifier_pending(VirtIODevice *vdev, int idx)
+ {
+     VirtIONet *n = VIRTIO_NET(vdev);
+-    NetClientState *nc = qemu_get_subqueue(n->nic, vq2q(idx));
++    NetClientState *nc;
+     assert(n->vhost_started);
++    if (!virtio_vdev_has_feature(vdev, VIRTIO_NET_F_MQ) && idx == 2) {
++        /* Must guard against invalid features and bogus queue index
++         * from being set by malicious guest, or penetrated through
++         * buggy migration stream.
++         */
++        if (!virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ)) {
++            qemu_log_mask(LOG_GUEST_ERROR,
++                          "%s: bogus vq index ignored\n", __func__);
++            return false;
++        }
++        nc = qemu_get_subqueue(n->nic, n->max_queue_pairs);
++    } else {
++        nc = qemu_get_subqueue(n->nic, vq2q(idx));
++    }
+     return vhost_net_virtqueue_pending(get_vhost_net(nc->peer), idx);
+ }
+ 
+@@ -3172,8 +3187,22 @@ static void virtio_net_guest_notifier_mask(VirtIODevice *vdev, int idx,
+                                            bool mask)
+ {
+     VirtIONet *n = VIRTIO_NET(vdev);
+-    NetClientState *nc = qemu_get_subqueue(n->nic, vq2q(idx));
++    NetClientState *nc;
+     assert(n->vhost_started);
++    if (!virtio_vdev_has_feature(vdev, VIRTIO_NET_F_MQ) && idx == 2) {
++        /* Must guard against invalid features and bogus queue index
++         * from being set by malicious guest, or penetrated through
++         * buggy migration stream.
++         */
++        if (!virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ)) {
++            qemu_log_mask(LOG_GUEST_ERROR,
++                          "%s: bogus vq index ignored\n", __func__);
++            return;
++        }
++        nc = qemu_get_subqueue(n->nic, n->max_queue_pairs);
++    } else {
++        nc = qemu_get_subqueue(n->nic, vq2q(idx));
++    }
+     vhost_net_virtqueue_mask(get_vhost_net(nc->peer),
+                              vdev, idx, mask);
+ }
+-- 
+2.35.3
+

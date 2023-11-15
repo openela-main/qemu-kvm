@@ -1,0 +1,52 @@
+From 65f90bfccf7500978879c15104a79de58173a06b Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 2 Sep 2022 13:27:36 -0400
+Subject: [PATCH 11/42] s390x/pci: reflect proper maxstbl for groups of
+ interpreted devices
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [11/41] 9ac2f5dedef3d743ef621525eef222a3e09d63b3
+
+The maximum supported store block length might be different depending
+on whether the instruction is interpretively executed (firmware-reported
+maximum) or handled via userspace intercept (host kernel API maximum).
+Choose the best available value during group creation.
+
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20220902172737.170349-8-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 9ee8f7e46a7d42ede69a4780200129bf1acb0d01)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-vfio.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index 338f436e87..2aefa508a0 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -213,7 +213,11 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
+         resgrp->msia = cap->msi_addr;
+         resgrp->mui = cap->mui;
+         resgrp->i = cap->noi;
+-        resgrp->maxstbl = cap->maxstbl;
++        if (pbdev->interp && hdr->version >= 2) {
++            resgrp->maxstbl = cap->imaxstbl;
++        } else {
++            resgrp->maxstbl = cap->maxstbl;
++        }
+         resgrp->version = cap->version;
+         resgrp->dtsm = ZPCI_DTSM;
+     }
+-- 
+2.37.3
+

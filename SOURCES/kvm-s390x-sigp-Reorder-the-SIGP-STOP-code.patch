@@ -1,0 +1,77 @@
+From 63ffa29eeb0062dd9145fa97e92d87a5374ae807 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 07/22] s390x: sigp: Reorder the SIGP STOP code
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [6/21] 0c957b3f4a2d6abb278375a7080055502fa8e34d
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 59b9b5186e44a90088a91ed7a7493b03027e4f1f
+Author: Eric Farman <farman@linux.ibm.com>
+Date:   Mon Dec 13 22:09:19 2021 +0100
+
+    s390x: sigp: Reorder the SIGP STOP code
+
+    Let's wait to mark the VCPU STOPPED until the possible
+    STORE STATUS operation is completed, so that we know the
+    CPU is fully stopped and done doing anything. (When we
+    also clear the possible sigp_order field for STOP orders.)
+
+    Suggested-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Eric Farman <farman@linux.ibm.com>
+    Message-Id: <20211213210919.856693-2-farman@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/sigp.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/target/s390x/sigp.c b/target/s390x/sigp.c
+index 51c727834c..9dd977349a 100644
+--- a/target/s390x/sigp.c
++++ b/target/s390x/sigp.c
+@@ -139,7 +139,7 @@ static void sigp_stop_and_store_status(CPUState *cs, run_on_cpu_data arg)
+     case S390_CPU_STATE_OPERATING:
+         cpu->env.sigp_order = SIGP_STOP_STORE_STATUS;
+         cpu_inject_stop(cpu);
+-        /* store will be performed in do_stop_interrup() */
++        /* store will be performed in do_stop_interrupt() */
+         break;
+     case S390_CPU_STATE_STOPPED:
+         /* already stopped, just store the status */
+@@ -479,13 +479,17 @@ void do_stop_interrupt(CPUS390XState *env)
+ {
+     S390CPU *cpu = env_archcpu(env);
+ 
+-    if (s390_cpu_set_state(S390_CPU_STATE_STOPPED, cpu) == 0) {
+-        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+-    }
++    /*
++     * Complete the STOP operation before exposing the CPU as
++     * STOPPED to the system.
++     */
+     if (cpu->env.sigp_order == SIGP_STOP_STORE_STATUS) {
+         s390_store_status(cpu, S390_STORE_STATUS_DEF_ADDR, true);
+     }
+     env->sigp_order = 0;
++    if (s390_cpu_set_state(S390_CPU_STATE_STOPPED, cpu) == 0) {
++        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
++    }
+     env->pending_int &= ~INTERRUPT_STOP;
+ }
+ 
+-- 
+2.37.3
+

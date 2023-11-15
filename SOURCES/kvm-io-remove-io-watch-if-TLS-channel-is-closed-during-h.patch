@@ -1,0 +1,101 @@
+From b96215922bdc4c408f4ba5ac89db17f3855b8620 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 15 Aug 2023 00:08:55 +0000
+Subject: [PATCH] io: remove io watch if TLS channel is closed during handshake
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 320: io: remove io watch if TLS channel is closed during handshake
+RH-Jira: RHEL-7339
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] c120fc5e97f76ab4729cef5e3e0e02055928849a (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+CVE: CVE-2023-3354
+Upstream: Merged
+
+commit 10be627d2b5ec2d6b3dce045144aa739eef678b4
+Author: Daniel P. Berrangé <berrange@redhat.com>
+Date:   Tue Jun 20 09:45:34 2023 +0100
+
+    io: remove io watch if TLS channel is closed during handshake
+
+    The TLS handshake make take some time to complete, during which time an
+    I/O watch might be registered with the main loop. If the owner of the
+    I/O channel invokes qio_channel_close() while the handshake is waiting
+    to continue the I/O watch must be removed. Failing to remove it will
+    later trigger the completion callback which the owner is not expecting
+    to receive. In the case of the VNC server, this results in a SEGV as
+    vnc_disconnect_start() tries to shutdown a client connection that is
+    already gone / NULL.
+
+    CVE-2023-3354
+    Reported-by: jiangyegen <jiangyegen@huawei.com>
+    Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ include/io/channel-tls.h |  1 +
+ io/channel-tls.c         | 18 ++++++++++++------
+ 2 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/include/io/channel-tls.h b/include/io/channel-tls.h
+index 5672479e9e..26c67f17e2 100644
+--- a/include/io/channel-tls.h
++++ b/include/io/channel-tls.h
+@@ -48,6 +48,7 @@ struct QIOChannelTLS {
+     QIOChannel *master;
+     QCryptoTLSSession *session;
+     QIOChannelShutdown shutdown;
++    guint hs_ioc_tag;
+ };
+ 
+ /**
+diff --git a/io/channel-tls.c b/io/channel-tls.c
+index c730cb8ec5..bd79e78837 100644
+--- a/io/channel-tls.c
++++ b/io/channel-tls.c
+@@ -195,12 +195,13 @@ static void qio_channel_tls_handshake_task(QIOChannelTLS *ioc,
+         }
+ 
+         trace_qio_channel_tls_handshake_pending(ioc, status);
+-        qio_channel_add_watch_full(ioc->master,
+-                                   condition,
+-                                   qio_channel_tls_handshake_io,
+-                                   data,
+-                                   NULL,
+-                                   context);
++        ioc->hs_ioc_tag =
++            qio_channel_add_watch_full(ioc->master,
++                                       condition,
++                                       qio_channel_tls_handshake_io,
++                                       data,
++                                       NULL,
++                                       context);
+     }
+ }
+ 
+@@ -215,6 +216,7 @@ static gboolean qio_channel_tls_handshake_io(QIOChannel *ioc,
+     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(
+         qio_task_get_source(task));
+ 
++    tioc->hs_ioc_tag = 0;
+     g_free(data);
+     qio_channel_tls_handshake_task(tioc, task, context);
+ 
+@@ -375,6 +377,10 @@ static int qio_channel_tls_close(QIOChannel *ioc,
+ {
+     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
+ 
++    if (tioc->hs_ioc_tag) {
++        g_clear_handle_id(&tioc->hs_ioc_tag, g_source_remove);
++    }
++
+     return qio_channel_close(tioc->master, errp);
+ }
+ 
+-- 
+2.39.3
+

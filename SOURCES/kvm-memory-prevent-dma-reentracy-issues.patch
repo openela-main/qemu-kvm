@@ -1,0 +1,151 @@
+From e0c811c2d13f995fe1b095f48637316be5978b0e Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 01/15] memory: prevent dma-reentracy issues
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/12] 8fced41b4b2105343e8f0250286b771bcb43c81f (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+CVE: CVE-2023-0330
+
+commit a2e1753b8054344f32cf94f31c6399a58794a380
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Thu Apr 27 17:10:06 2023 -0400
+
+    memory: prevent dma-reentracy issues
+
+    Add a flag to the DeviceState, when a device is engaged in PIO/MMIO/DMA.
+    This flag is set/checked prior to calling a device's MemoryRegion
+    handlers, and set when device code initiates DMA.  The purpose of this
+    flag is to prevent two types of DMA-based reentrancy issues:
+
+    1.) mmio -> dma -> mmio case
+    2.) bh -> dma write -> mmio case
+
+    These issues have led to problems such as stack-exhaustion and
+    use-after-frees.
+
+    Summary of the problem from Peter Maydell:
+    https://lore.kernel.org/qemu-devel/CAFEAcA_23vc7hE3iaM-JVA6W38LK4hJoWae5KcknhPRD5fPBZA@mail.gmail.com
+
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/62
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/540
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/541
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/556
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/557
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/827
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1282
+    Resolves: CVE-2023-0330
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Message-Id: <20230427211013.2994127-2-alxndr@bu.edu>
+    [thuth: Replace warn_report() with warn_report_once()]
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ include/exec/memory.h  |  5 +++++
+ include/hw/qdev-core.h |  7 +++++++
+ softmmu/memory.c       | 16 ++++++++++++++++
+ 3 files changed, 28 insertions(+)
+
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index 20f1b27377..e089f90f9b 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -734,6 +734,8 @@ struct MemoryRegion {
+     bool is_iommu;
+     RAMBlock *ram_block;
+     Object *owner;
++    /* owner as TYPE_DEVICE. Used for re-entrancy checks in MR access hotpath */
++    DeviceState *dev;
+ 
+     const MemoryRegionOps *ops;
+     void *opaque;
+@@ -757,6 +759,9 @@ struct MemoryRegion {
+     unsigned ioeventfd_nb;
+     MemoryRegionIoeventfd *ioeventfds;
+     RamDiscardManager *rdm; /* Only for RAM */
++
++    /* For devices designed to perform re-entrant IO into their own IO MRs */
++    bool disable_reentrancy_guard;
+ };
+ 
+ struct IOMMUMemoryRegion {
+diff --git a/include/hw/qdev-core.h b/include/hw/qdev-core.h
+index 20d3066595..14226f860d 100644
+--- a/include/hw/qdev-core.h
++++ b/include/hw/qdev-core.h
+@@ -162,6 +162,10 @@ struct NamedClockList {
+     QLIST_ENTRY(NamedClockList) node;
+ };
+ 
++typedef struct {
++    bool engaged_in_io;
++} MemReentrancyGuard;
++
+ /**
+  * DeviceState:
+  * @realized: Indicates whether the device has been fully constructed.
+@@ -193,6 +197,9 @@ struct DeviceState {
+     int instance_id_alias;
+     int alias_required_for_version;
+     ResettableState reset;
++
++    /* Is the device currently in mmio/pio/dma? Used to prevent re-entrancy */
++    MemReentrancyGuard mem_reentrancy_guard;
+ };
+ 
+ struct DeviceListener {
+diff --git a/softmmu/memory.c b/softmmu/memory.c
+index 7340e19ff5..102f0a4248 100644
+--- a/softmmu/memory.c
++++ b/softmmu/memory.c
+@@ -541,6 +541,18 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
+         access_size_max = 4;
+     }
+ 
++    /* Do not allow more than one simultaneous access to a device's IO Regions */
++    if (mr->dev && !mr->disable_reentrancy_guard &&
++        !mr->ram_device && !mr->ram && !mr->rom_device && !mr->readonly) {
++        if (mr->dev->mem_reentrancy_guard.engaged_in_io) {
++            warn_report_once("Blocked re-entrant IO on MemoryRegion: "
++                             "%s at addr: 0x%" HWADDR_PRIX,
++                             memory_region_name(mr), addr);
++            return MEMTX_ACCESS_ERROR;
++        }
++        mr->dev->mem_reentrancy_guard.engaged_in_io = true;
++    }
++
+     /* FIXME: support unaligned access? */
+     access_size = MAX(MIN(size, access_size_max), access_size_min);
+     access_mask = MAKE_64BIT_MASK(0, access_size * 8);
+@@ -555,6 +567,9 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
+                         access_mask, attrs);
+         }
+     }
++    if (mr->dev) {
++        mr->dev->mem_reentrancy_guard.engaged_in_io = false;
++    }
+     return r;
+ }
+ 
+@@ -1169,6 +1184,7 @@ static void memory_region_do_init(MemoryRegion *mr,
+     }
+     mr->name = g_strdup(name);
+     mr->owner = owner;
++    mr->dev = (DeviceState *) object_dynamic_cast(mr->owner, TYPE_DEVICE);
+     mr->ram_block = NULL;
+ 
+     if (name) {
+-- 
+2.37.3
+

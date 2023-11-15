@@ -1,0 +1,168 @@
+From 4d940934c304a71813dfa4598b20fafe9d2f5625 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 19/22] s390x/css: revert SCSW ctrl/flag bits on error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [18/21] e4d5797ab93ba4afd9978a1d3e1f9d05da301506
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit f53b033e4cd2e7706df3cca04f3bf3c5ffc6b08c
+Author: Peter Jin <pjin@linux.ibm.com>
+Date:   Thu Oct 27 23:23:41 2022 +0200
+
+    s390x/css: revert SCSW ctrl/flag bits on error
+
+    Revert the control and flag bits in the subchannel status word in case
+    the SSCH operation fails with non-zero CC (ditto for CSCH and HSCH).
+    According to POPS, the control and flag bits are only changed if SSCH,
+    CSCH, and HSCH return CC 0, and no other action should be taken otherwise.
+    In order to simulate that after the fact, the bits need to be reverted on
+    non-zero CC.
+
+    While the do_subchannel_work logic for virtual (virtio) devices will
+    return condition code 0, passthrough (vfio) devices may encounter
+    errors from either the host kernel or real hardware that need to be
+    accounted for after this point. This includes restoring the state of
+    the Subchannel Status Word to reflect the subchannel, as these bits
+    would not be set in the event of a non-zero condition code from the
+    affected instructions.
+
+    Experimentation has shown that a failure on a START SUBCHANNEL (SSCH)
+    to a passthrough device would leave the subchannel with the START
+    PENDING activity control bit set, thus blocking subsequent SSCH
+    operations in css_do_ssch() until some form of error recovery was
+    undertaken since no interrupt would be expected.
+
+    Signed-off-by: Peter Jin <pjin@linux.ibm.com>
+    Message-Id: <20221027212341.2904795-1-pjin@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    [thuth: Updated the commit description to Eric's suggestion]
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/css.c | 51 +++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 48 insertions(+), 3 deletions(-)
+
+diff --git a/hw/s390x/css.c b/hw/s390x/css.c
+index 7d9523f811..95d1b3a3ce 100644
+--- a/hw/s390x/css.c
++++ b/hw/s390x/css.c
+@@ -1522,21 +1522,37 @@ IOInstEnding css_do_xsch(SubchDev *sch)
+ IOInstEnding css_do_csch(SubchDev *sch)
+ {
+     SCHIB *schib = &sch->curr_status;
++    uint16_t old_scsw_ctrl;
++    IOInstEnding ccode;
+ 
+     if (~(schib->pmcw.flags) & (PMCW_FLAGS_MASK_DNV | PMCW_FLAGS_MASK_ENA)) {
+         return IOINST_CC_NOT_OPERATIONAL;
+     }
+ 
++    /*
++     * Save the current scsw.ctrl in case CSCH fails and we need
++     * to revert the scsw to the status quo ante.
++     */
++    old_scsw_ctrl = schib->scsw.ctrl;
++
+     /* Trigger the clear function. */
+     schib->scsw.ctrl &= ~(SCSW_CTRL_MASK_FCTL | SCSW_CTRL_MASK_ACTL);
+     schib->scsw.ctrl |= SCSW_FCTL_CLEAR_FUNC | SCSW_ACTL_CLEAR_PEND;
+ 
+-    return do_subchannel_work(sch);
++    ccode = do_subchannel_work(sch);
++
++    if (ccode != IOINST_CC_EXPECTED) {
++        schib->scsw.ctrl = old_scsw_ctrl;
++    }
++
++    return ccode;
+ }
+ 
+ IOInstEnding css_do_hsch(SubchDev *sch)
+ {
+     SCHIB *schib = &sch->curr_status;
++    uint16_t old_scsw_ctrl;
++    IOInstEnding ccode;
+ 
+     if (~(schib->pmcw.flags) & (PMCW_FLAGS_MASK_DNV | PMCW_FLAGS_MASK_ENA)) {
+         return IOINST_CC_NOT_OPERATIONAL;
+@@ -1553,6 +1569,12 @@ IOInstEnding css_do_hsch(SubchDev *sch)
+         return IOINST_CC_BUSY;
+     }
+ 
++    /*
++     * Save the current scsw.ctrl in case HSCH fails and we need
++     * to revert the scsw to the status quo ante.
++     */
++    old_scsw_ctrl = schib->scsw.ctrl;
++
+     /* Trigger the halt function. */
+     schib->scsw.ctrl |= SCSW_FCTL_HALT_FUNC;
+     schib->scsw.ctrl &= ~SCSW_FCTL_START_FUNC;
+@@ -1564,7 +1586,13 @@ IOInstEnding css_do_hsch(SubchDev *sch)
+     }
+     schib->scsw.ctrl |= SCSW_ACTL_HALT_PEND;
+ 
+-    return do_subchannel_work(sch);
++    ccode = do_subchannel_work(sch);
++
++    if (ccode != IOINST_CC_EXPECTED) {
++        schib->scsw.ctrl = old_scsw_ctrl;
++    }
++
++    return ccode;
+ }
+ 
+ static void css_update_chnmon(SubchDev *sch)
+@@ -1605,6 +1633,8 @@ static void css_update_chnmon(SubchDev *sch)
+ IOInstEnding css_do_ssch(SubchDev *sch, ORB *orb)
+ {
+     SCHIB *schib = &sch->curr_status;
++    uint16_t old_scsw_ctrl, old_scsw_flags;
++    IOInstEnding ccode;
+ 
+     if (~(schib->pmcw.flags) & (PMCW_FLAGS_MASK_DNV | PMCW_FLAGS_MASK_ENA)) {
+         return IOINST_CC_NOT_OPERATIONAL;
+@@ -1626,11 +1656,26 @@ IOInstEnding css_do_ssch(SubchDev *sch, ORB *orb)
+     }
+     sch->orb = *orb;
+     sch->channel_prog = orb->cpa;
++
++    /*
++     * Save the current scsw.ctrl and scsw.flags in case SSCH fails and we need
++     * to revert the scsw to the status quo ante.
++     */
++    old_scsw_ctrl = schib->scsw.ctrl;
++    old_scsw_flags = schib->scsw.flags;
++
+     /* Trigger the start function. */
+     schib->scsw.ctrl |= (SCSW_FCTL_START_FUNC | SCSW_ACTL_START_PEND);
+     schib->scsw.flags &= ~SCSW_FLAGS_MASK_PNO;
+ 
+-    return do_subchannel_work(sch);
++    ccode = do_subchannel_work(sch);
++
++    if (ccode != IOINST_CC_EXPECTED) {
++        schib->scsw.ctrl = old_scsw_ctrl;
++        schib->scsw.flags = old_scsw_flags;
++    }
++
++    return ccode;
+ }
+ 
+ static void copy_irb_to_guest(IRB *dest, const IRB *src, const PMCW *pmcw,
+-- 
+2.37.3
+

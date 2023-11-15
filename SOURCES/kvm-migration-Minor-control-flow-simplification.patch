@@ -1,0 +1,53 @@
+From e79d0506184e861350d2a3e62dd986aa03d30aa8 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Thu, 20 Apr 2023 09:35:51 -0500
+Subject: [PATCH 2/5] migration: Minor control flow simplification
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 273: migration: prevent source core dump if NFS dies mid-migration
+RH-Bugzilla: 2177957
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [2/3] f00b21b6ebd377af79af93ac18f103f8dc0309d6 (ebblake/qemu-kvm)
+
+No need to declare a temporary variable.
+
+Suggested-by: Juan Quintela <quintela@redhat.com>
+Fixes: 1df36e8c6289 ("migration: Handle block device inactivation failures better")
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 5d39f44d7ac5c63f53d4d0900ceba9521bc27e49)
+---
+ migration/migration.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 08e5e8f013..6ba8eb0fdf 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -3248,7 +3248,6 @@ static void migration_completion(MigrationState *s)
+         ret = global_state_store();
+ 
+         if (!ret) {
+-            bool inactivate = !migrate_colo_enabled();
+             ret = vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
+             trace_migration_completion_vm_stop(ret);
+             if (ret >= 0) {
+@@ -3256,10 +3255,10 @@ static void migration_completion(MigrationState *s)
+                                             MIGRATION_STATUS_DEVICE);
+             }
+             if (ret >= 0) {
+-                s->block_inactive = inactivate;
++                s->block_inactive = !migrate_colo_enabled();
+                 qemu_file_set_rate_limit(s->to_dst_file, INT64_MAX);
+                 ret = qemu_savevm_state_complete_precopy(s->to_dst_file, false,
+-                                                         inactivate);
++                                                         s->block_inactive);
+             }
+         }
+         qemu_mutex_unlock_iothread();
+-- 
+2.39.1
+

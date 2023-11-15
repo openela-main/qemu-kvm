@@ -1,0 +1,55 @@
+From 17c5524ada3f2ca9a9c645f540bedc5575302059 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Mon, 3 Apr 2023 19:40:47 -0500
+Subject: [PATCH 5/5] nbd/server: Request TCP_NODELAY
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 274: nbd: improve TLS performance of NBD server
+RH-Bugzilla: 2035712
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [2/2] 092145077756cda2a4f849c5911031b0fc4a2134 (ebblake/qemu-kvm)
+
+Nagle's algorithm adds latency in order to reduce network packet
+overhead on small packets.  But when we are already using corking to
+merge smaller packets into transactional requests, the extra delay
+from TCP defaults just gets in the way (see recent commit bd2cd4a4).
+
+For reference, qemu as an NBD client already requests TCP_NODELAY (see
+nbd_connect() in nbd/client-connection.c); as does libnbd as a client
+[1], and nbdkit as a server [2].  Furthermore, the NBD spec recommends
+the use of TCP_NODELAY [3].
+
+[1] https://gitlab.com/nbdkit/libnbd/-/blob/a48a1142/generator/states-connect.c#L39
+[2] https://gitlab.com/nbdkit/nbdkit/-/blob/45b72f5b/server/sockets.c#L430
+[3] https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md#protocol-phases
+
+CC: Florian Westphal <fw@strlen.de>
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Message-Id: <20230404004047.142086-1-eblake@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit f1426881a827a6d3f31b65616c4a8db1e9e7c45e)
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ nbd/server.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/nbd/server.c b/nbd/server.c
+index a5edc7f681..6db124cf53 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -2738,6 +2738,7 @@ void nbd_client_new(QIOChannelSocket *sioc,
+     }
+     client->tlsauthz = g_strdup(tlsauthz);
+     client->sioc = sioc;
++    qio_channel_set_delay(QIO_CHANNEL(sioc), false);
+     object_ref(OBJECT(client->sioc));
+     client->ioc = QIO_CHANNEL(sioc);
+     object_ref(OBJECT(client->ioc));
+-- 
+2.39.1
+

@@ -1,0 +1,82 @@
+From cbfaf86331c2b2e01a2083303b7554672bf991b7 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 20 Jun 2022 02:39:42 -0300
+Subject: [PATCH 24/37] QIOChannelSocket: Introduce assert and reduce ifdefs to
+ improve readability
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [24/26] b50e2e65307149f247155a7f7a032dc99e57718d
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+During implementation of MSG_ZEROCOPY feature, a lot of #ifdefs were
+introduced, particularly at qio_channel_socket_writev().
+
+Rewrite some of those changes so it's easier to read.
+
+Also, introduce an assert to help detect incorrect zero-copy usage is when
+it's disabled on build.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+  dgilbert: Fixed up thinko'd g_assert_unreachable->g_assert_not_reached
+(cherry picked from commit 803ca43e4c7fcf32f9f68c118301ccd0c83ece3f)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ io/channel-socket.c | 14 +++++++++-----
+ 1 file changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index 38a46ba213..7d37b39de7 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -579,11 +579,17 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+         memcpy(CMSG_DATA(cmsg), fds, fdsize);
+     }
+ 
+-#ifdef QEMU_MSG_ZEROCOPY
+     if (flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) {
++#ifdef QEMU_MSG_ZEROCOPY
+         sflags = MSG_ZEROCOPY;
+-    }
++#else
++        /*
++         * We expect QIOChannel class entry point to have
++         * blocked this code path already
++         */
++        g_assert_not_reached();
+ #endif
++    }
+ 
+  retry:
+     ret = sendmsg(sioc->fd, &msg, sflags);
+@@ -593,15 +599,13 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+             return QIO_CHANNEL_ERR_BLOCK;
+         case EINTR:
+             goto retry;
+-#ifdef QEMU_MSG_ZEROCOPY
+         case ENOBUFS:
+-            if (sflags & MSG_ZEROCOPY) {
++            if (flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) {
+                 error_setg_errno(errp, errno,
+                                  "Process can't lock enough memory for using MSG_ZEROCOPY");
+                 return -1;
+             }
+             break;
+-#endif
+         }
+ 
+         error_setg_errno(errp, errno,
+-- 
+2.35.3
+

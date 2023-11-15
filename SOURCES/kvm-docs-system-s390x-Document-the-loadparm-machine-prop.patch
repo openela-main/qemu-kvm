@@ -1,0 +1,70 @@
+From 407e23d7f0c9020404247afe7d4df98505222bbb Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 14 Nov 2022 14:25:02 +0100
+Subject: [PATCH 1/3] docs/system/s390x: Document the "loadparm" machine
+ property
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 233: s390x: Document the "loadparm" machine property
+RH-Bugzilla: 2128225
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/2] e9589ea32d2a8f82971476b644e1063fa14cf822
+
+The "loadparm" machine property is useful for selecting alternative
+kernels on the disk of the guest, but so far we do not tell the users
+yet how to use it. Add some documentation to fill this gap.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2128235
+Message-Id: <20221114132502.110213-1-thuth@redhat.com>
+Reviewed-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit be5df2edb5d69ff3107c5616aa035a9ba8d0422e)
+---
+ docs/system/s390x/bootdevices.rst | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/docs/system/s390x/bootdevices.rst b/docs/system/s390x/bootdevices.rst
+index 9e591cb9dc..d4bf3b9f0b 100644
+--- a/docs/system/s390x/bootdevices.rst
++++ b/docs/system/s390x/bootdevices.rst
+@@ -53,6 +53,32 @@ recommended to specify a CD-ROM device via ``-device scsi-cd`` (as mentioned
+ above) instead.
+ 
+ 
++Selecting kernels with the ``loadparm`` property
++------------------------------------------------
++
++The ``s390-ccw-virtio`` machine supports the so-called ``loadparm`` parameter
++which can be used to select the kernel on the disk of the guest that the
++s390-ccw bios should boot. When starting QEMU, it can be specified like this::
++
++ qemu-system-s390x -machine s390-ccw-virtio,loadparm=<string>
++
++The first way to use this parameter is to use the word ``PROMPT`` as the
++``<string>`` here. In that case the s390-ccw bios will show a list of
++installed kernels on the disk of the guest and ask the user to enter a number
++to chose which kernel should be booted -- similar to what can be achieved by
++specifying the ``-boot menu=on`` option when starting QEMU. Note that the menu
++list will only show the names of the installed kernels when using a DASD-like
++disk image with 4k byte sectors. On normal SCSI-style disks with 512-byte
++sectors, there is not enough space for the zipl loader on the disk to store
++the kernel names, so you only get a list without names here.
++
++The second way to use this parameter is to use a number in the range from 0
++to 31. The numbers that can be used here correspond to the numbers that are
++shown when using the ``PROMPT`` option, and the s390-ccw bios will then try
++to automatically boot the kernel that is associated with the given number.
++Note that ``0`` can be used to boot the default entry.
++
++
+ Booting from a network device
+ -----------------------------
+ 
+-- 
+2.37.3
+

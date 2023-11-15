@@ -1,0 +1,42 @@
+From adbbc64db535d84fc24b576888f834841f54e8d3 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 6 Sep 2023 16:29:23 -0400
+Subject: [PATCH 2/2] RHEL: Enable "x-not-migrate-acpi-index" for all pre-RHEL8
+ guests
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 317: acpi: fix acpi_index migration
+RH-Jira: RHEL-2186
+RH-Acked-by: Ani Sinha <None>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Commit: [2/2] 961eee71e6f563aadf4a93082cd384d765d3e73b
+
+The acpi index migration is simply broken before for all pre-RHEL8
+branches.  Don't migrate it for all of them.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ hw/core/machine.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 2724f6848a..6650a3d7b7 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -44,6 +44,10 @@ GlobalProperty hw_compat_rhel_8_6[] = {
+      * we need do disable it downstream on the latest hw_compat_rhel_8.
+      */
+     { "vhost-vsock-device", "seqpacket", "off" },
++    /*
++     * RHEL-2186: all rhel8 machines should not migrate acpi index.
++     */
++    { "PIIX4_PM", "x-not-migrate-acpi-index", "on"},
+ };
+ const size_t hw_compat_rhel_8_6_len = G_N_ELEMENTS(hw_compat_rhel_8_6);
+ 
+-- 
+2.37.3
+

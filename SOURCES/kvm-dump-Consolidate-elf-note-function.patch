@@ -1,0 +1,67 @@
+From 0547599cf507930f91943f22d5f917ebacf69484 Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:36:03 +0000
+Subject: [PATCH 21/42] dump: Consolidate elf note function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [21/41] 52298c098c116aea75ad15894731ff412c2c4e73
+
+Just like with the other write functions let's move the 32/64 bit elf
+handling to a function to improve readability.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220330123603.107120-10-frankja@linux.ibm.com>
+(cherry picked from commit c68124738bc29017e4254c898bc40be7be477af7)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 18 +++++++++++-------
+ 1 file changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 88abde355a..a451abc590 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -520,6 +520,15 @@ static void write_elf_loads(DumpState *s, Error **errp)
+     }
+ }
+ 
++static void write_elf_notes(DumpState *s, Error **errp)
++{
++    if (dump_is_64bit(s)) {
++        write_elf64_notes(fd_write_vmcore, s, errp);
++    } else {
++        write_elf32_notes(fd_write_vmcore, s, errp);
++    }
++}
++
+ /* write elf header, PT_NOTE and elf note to vmcore. */
+ static void dump_begin(DumpState *s, Error **errp)
+ {
+@@ -579,13 +588,8 @@ static void dump_begin(DumpState *s, Error **errp)
+         }
+     }
+ 
+-    if (dump_is_64bit(s)) {
+-        /* write notes to vmcore */
+-        write_elf64_notes(fd_write_vmcore, s, errp);
+-    } else {
+-        /* write notes to vmcore */
+-        write_elf32_notes(fd_write_vmcore, s, errp);
+-    }
++    /* write notes to vmcore */
++    write_elf_notes(s, errp);
+ }
+ 
+ static int get_next_block(DumpState *s, GuestPhysBlock *block)
+-- 
+2.37.3
+

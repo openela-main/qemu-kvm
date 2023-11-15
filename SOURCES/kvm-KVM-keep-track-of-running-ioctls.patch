@@ -1,0 +1,82 @@
+From 9bacf8c4104ff3cff2e0e2c2179ec4fda633167f Mon Sep 17 00:00:00 2001
+From: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date: Mon, 16 Jan 2023 07:51:08 -0500
+Subject: [PATCH 05/11] KVM: keep track of running ioctls
+
+RH-Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-MergeRequest: 247: accel: introduce accelerator blocker API
+RH-Bugzilla: 2161188
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/3] 357508389e2a0fd996206b406e9e235e50b5f0b6
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2161188
+
+commit a27dd2de68f37ba96fe164a42121daa5f0750afc
+Author: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+Date:   Fri Nov 11 10:47:57 2022 -0500
+
+    KVM: keep track of running ioctls
+
+    Using the new accel-blocker API, mark where ioctls are being called
+    in KVM. Next, we will implement the critical section that will take
+    care of performing memslots modifications atomically, therefore
+    preventing any new ioctl from running and allowing the running ones
+    to finish.
+
+    Signed-off-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+    Message-Id: <20221111154758.1372674-3-eesposit@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+---
+ accel/kvm/kvm-all.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 8f2a53438f..221aadfda7 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2337,6 +2337,7 @@ static int kvm_init(MachineState *ms)
+     assert(TARGET_PAGE_SIZE <= qemu_real_host_page_size);
+ 
+     s->sigmask_len = 8;
++    accel_blocker_init();
+ 
+ #ifdef KVM_CAP_SET_GUEST_DEBUG
+     QTAILQ_INIT(&s->kvm_sw_breakpoints);
+@@ -3018,7 +3019,9 @@ int kvm_vm_ioctl(KVMState *s, int type, ...)
+     va_end(ap);
+ 
+     trace_kvm_vm_ioctl(type, arg);
++    accel_ioctl_begin();
+     ret = ioctl(s->vmfd, type, arg);
++    accel_ioctl_end();
+     if (ret == -1) {
+         ret = -errno;
+     }
+@@ -3036,7 +3039,9 @@ int kvm_vcpu_ioctl(CPUState *cpu, int type, ...)
+     va_end(ap);
+ 
+     trace_kvm_vcpu_ioctl(cpu->cpu_index, type, arg);
++    accel_cpu_ioctl_begin(cpu);
+     ret = ioctl(cpu->kvm_fd, type, arg);
++    accel_cpu_ioctl_end(cpu);
+     if (ret == -1) {
+         ret = -errno;
+     }
+@@ -3054,7 +3059,9 @@ int kvm_device_ioctl(int fd, int type, ...)
+     va_end(ap);
+ 
+     trace_kvm_device_ioctl(fd, type, arg);
++    accel_ioctl_begin();
+     ret = ioctl(fd, type, arg);
++    accel_ioctl_end();
+     if (ret == -1) {
+         ret = -errno;
+     }
+-- 
+2.37.3
+

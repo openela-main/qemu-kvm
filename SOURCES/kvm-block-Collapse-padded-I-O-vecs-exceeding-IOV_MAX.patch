@@ -1,0 +1,359 @@
+From 1f7520baa6f0bf02ccba2ebfe7d1d5bf6520f95a Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Tue, 11 Apr 2023 19:34:16 +0200
+Subject: [PATCH 2/5] block: Collapse padded I/O vecs exceeding IOV_MAX
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 291: block: Split padded I/O vectors exceeding IOV_MAX
+RH-Bugzilla: 2141964
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/5] 1d86ce8398e4ab66e308a686f9855c963e52b0a9
+
+When processing vectored guest requests that are not aligned to the
+storage request alignment, we pad them by adding head and/or tail
+buffers for a read-modify-write cycle.
+
+The guest can submit I/O vectors up to IOV_MAX (1024) in length, but
+with this padding, the vector can exceed that limit.  As of
+4c002cef0e9abe7135d7916c51abce47f7fc1ee2 ("util/iov: make
+qemu_iovec_init_extended() honest"), we refuse to pad vectors beyond the
+limit, instead returning an error to the guest.
+
+To the guest, this appears as a random I/O error.  We should not return
+an I/O error to the guest when it issued a perfectly valid request.
+
+Before 4c002cef0e9abe7135d7916c51abce47f7fc1ee2, we just made the vector
+longer than IOV_MAX, which generally seems to work (because the guest
+assumes a smaller alignment than we really have, file-posix's
+raw_co_prw() will generally see bdrv_qiov_is_aligned() return false, and
+so emulate the request, so that the IOV_MAX does not matter).  However,
+that does not seem exactly great.
+
+I see two ways to fix this problem:
+1. We split such long requests into two requests.
+2. We join some elements of the vector into new buffers to make it
+   shorter.
+
+I am wary of (1), because it seems like it may have unintended side
+effects.
+
+(2) on the other hand seems relatively simple to implement, with
+hopefully few side effects, so this patch does that.
+
+To do this, the use of qemu_iovec_init_extended() in bdrv_pad_request()
+is effectively replaced by the new function bdrv_create_padded_qiov(),
+which not only wraps the request IOV with padding head/tail, but also
+ensures that the resulting vector will not have more than IOV_MAX
+elements.  Putting that functionality into qemu_iovec_init_extended() is
+infeasible because it requires allocating a bounce buffer; doing so
+would require many more parameters (buffer alignment, how to initialize
+the buffer, and out parameters like the buffer, its length, and the
+original elements), which is not reasonable.
+
+Conversely, it is not difficult to move qemu_iovec_init_extended()'s
+functionality into bdrv_create_padded_qiov() by using public
+qemu_iovec_* functions, so that is what this patch does.
+
+Because bdrv_pad_request() was the only "serious" user of
+qemu_iovec_init_extended(), the next patch will remove the latter
+function, so the functionality is not implemented twice.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2141964
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-Id: <20230411173418.19549-3-hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 18743311b829cafc1737a5f20bc3248d5f91ee2a)
+
+Conflicts:
+	block/io.c: Downstream bdrv_pad_request() has no @flags
+        parameter.
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/io.c | 166 ++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 151 insertions(+), 15 deletions(-)
+
+diff --git a/block/io.c b/block/io.c
+index c3e7301613..0fe8f0dd40 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -1624,6 +1624,14 @@ out:
+  * @merge_reads is true for small requests,
+  * if @buf_len == @head + bytes + @tail. In this case it is possible that both
+  * head and tail exist but @buf_len == align and @tail_buf == @buf.
++ *
++ * @write is true for write requests, false for read requests.
++ *
++ * If padding makes the vector too long (exceeding IOV_MAX), then we need to
++ * merge existing vector elements into a single one.  @collapse_bounce_buf acts
++ * as the bounce buffer in such cases.  @pre_collapse_qiov has the pre-collapse
++ * I/O vector elements so for read requests, the data can be copied back after
++ * the read is done.
+  */
+ typedef struct BdrvRequestPadding {
+     uint8_t *buf;
+@@ -1632,11 +1640,17 @@ typedef struct BdrvRequestPadding {
+     size_t head;
+     size_t tail;
+     bool merge_reads;
++    bool write;
+     QEMUIOVector local_qiov;
++
++    uint8_t *collapse_bounce_buf;
++    size_t collapse_len;
++    QEMUIOVector pre_collapse_qiov;
+ } BdrvRequestPadding;
+ 
+ static bool bdrv_init_padding(BlockDriverState *bs,
+                               int64_t offset, int64_t bytes,
++                              bool write,
+                               BdrvRequestPadding *pad)
+ {
+     int64_t align = bs->bl.request_alignment;
+@@ -1668,6 +1682,8 @@ static bool bdrv_init_padding(BlockDriverState *bs,
+         pad->tail_buf = pad->buf + pad->buf_len - align;
+     }
+ 
++    pad->write = write;
++
+     return true;
+ }
+ 
+@@ -1733,8 +1749,23 @@ zero_mem:
+     return 0;
+ }
+ 
+-static void bdrv_padding_destroy(BdrvRequestPadding *pad)
++/**
++ * Free *pad's associated buffers, and perform any necessary finalization steps.
++ */
++static void bdrv_padding_finalize(BdrvRequestPadding *pad)
+ {
++    if (pad->collapse_bounce_buf) {
++        if (!pad->write) {
++            /*
++             * If padding required elements in the vector to be collapsed into a
++             * bounce buffer, copy the bounce buffer content back
++             */
++            qemu_iovec_from_buf(&pad->pre_collapse_qiov, 0,
++                                pad->collapse_bounce_buf, pad->collapse_len);
++        }
++        qemu_vfree(pad->collapse_bounce_buf);
++        qemu_iovec_destroy(&pad->pre_collapse_qiov);
++    }
+     if (pad->buf) {
+         qemu_vfree(pad->buf);
+         qemu_iovec_destroy(&pad->local_qiov);
+@@ -1742,6 +1773,101 @@ static void bdrv_padding_destroy(BdrvRequestPadding *pad)
+     memset(pad, 0, sizeof(*pad));
+ }
+ 
++/*
++ * Create pad->local_qiov by wrapping @iov in the padding head and tail, while
++ * ensuring that the resulting vector will not exceed IOV_MAX elements.
++ *
++ * To ensure this, when necessary, the first two or three elements of @iov are
++ * merged into pad->collapse_bounce_buf and replaced by a reference to that
++ * bounce buffer in pad->local_qiov.
++ *
++ * After performing a read request, the data from the bounce buffer must be
++ * copied back into pad->pre_collapse_qiov (e.g. by bdrv_padding_finalize()).
++ */
++static int bdrv_create_padded_qiov(BlockDriverState *bs,
++                                   BdrvRequestPadding *pad,
++                                   struct iovec *iov, int niov,
++                                   size_t iov_offset, size_t bytes)
++{
++    int padded_niov, surplus_count, collapse_count;
++
++    /* Assert this invariant */
++    assert(niov <= IOV_MAX);
++
++    /*
++     * Cannot pad if resulting length would exceed SIZE_MAX.  Returning an error
++     * to the guest is not ideal, but there is little else we can do.  At least
++     * this will practically never happen on 64-bit systems.
++     */
++    if (SIZE_MAX - pad->head < bytes ||
++        SIZE_MAX - pad->head - bytes < pad->tail)
++    {
++        return -EINVAL;
++    }
++
++    /* Length of the resulting IOV if we just concatenated everything */
++    padded_niov = !!pad->head + niov + !!pad->tail;
++
++    qemu_iovec_init(&pad->local_qiov, MIN(padded_niov, IOV_MAX));
++
++    if (pad->head) {
++        qemu_iovec_add(&pad->local_qiov, pad->buf, pad->head);
++    }
++
++    /*
++     * If padded_niov > IOV_MAX, we cannot just concatenate everything.
++     * Instead, merge the first two or three elements of @iov to reduce the
++     * number of vector elements as necessary.
++     */
++    if (padded_niov > IOV_MAX) {
++        /*
++         * Only head and tail can have lead to the number of entries exceeding
++         * IOV_MAX, so we can exceed it by the head and tail at most.  We need
++         * to reduce the number of elements by `surplus_count`, so we merge that
++         * many elements plus one into one element.
++         */
++        surplus_count = padded_niov - IOV_MAX;
++        assert(surplus_count <= !!pad->head + !!pad->tail);
++        collapse_count = surplus_count + 1;
++
++        /*
++         * Move the elements to collapse into `pad->pre_collapse_qiov`, then
++         * advance `iov` (and associated variables) by those elements.
++         */
++        qemu_iovec_init(&pad->pre_collapse_qiov, collapse_count);
++        qemu_iovec_concat_iov(&pad->pre_collapse_qiov, iov,
++                              collapse_count, iov_offset, SIZE_MAX);
++        iov += collapse_count;
++        iov_offset = 0;
++        niov -= collapse_count;
++        bytes -= pad->pre_collapse_qiov.size;
++
++        /*
++         * Construct the bounce buffer to match the length of the to-collapse
++         * vector elements, and for write requests, initialize it with the data
++         * from those elements.  Then add it to `pad->local_qiov`.
++         */
++        pad->collapse_len = pad->pre_collapse_qiov.size;
++        pad->collapse_bounce_buf = qemu_blockalign(bs, pad->collapse_len);
++        if (pad->write) {
++            qemu_iovec_to_buf(&pad->pre_collapse_qiov, 0,
++                              pad->collapse_bounce_buf, pad->collapse_len);
++        }
++        qemu_iovec_add(&pad->local_qiov,
++                       pad->collapse_bounce_buf, pad->collapse_len);
++    }
++
++    qemu_iovec_concat_iov(&pad->local_qiov, iov, niov, iov_offset, bytes);
++
++    if (pad->tail) {
++        qemu_iovec_add(&pad->local_qiov,
++                       pad->buf + pad->buf_len - pad->tail, pad->tail);
++    }
++
++    assert(pad->local_qiov.niov == MIN(padded_niov, IOV_MAX));
++    return 0;
++}
++
+ /*
+  * bdrv_pad_request
+  *
+@@ -1749,6 +1875,8 @@ static void bdrv_padding_destroy(BdrvRequestPadding *pad)
+  * read of padding, bdrv_padding_rmw_read() should be called separately if
+  * needed.
+  *
++ * @write is true for write requests, false for read requests.
++ *
+  * Request parameters (@qiov, &qiov_offset, &offset, &bytes) are in-out:
+  *  - on function start they represent original request
+  *  - on failure or when padding is not needed they are unchanged
+@@ -1757,25 +1885,33 @@ static void bdrv_padding_destroy(BdrvRequestPadding *pad)
+ static int bdrv_pad_request(BlockDriverState *bs,
+                             QEMUIOVector **qiov, size_t *qiov_offset,
+                             int64_t *offset, int64_t *bytes,
++                            bool write,
+                             BdrvRequestPadding *pad, bool *padded)
+ {
+     int ret;
++    struct iovec *sliced_iov;
++    int sliced_niov;
++    size_t sliced_head, sliced_tail;
+ 
+     bdrv_check_qiov_request(*offset, *bytes, *qiov, *qiov_offset, &error_abort);
+ 
+-    if (!bdrv_init_padding(bs, *offset, *bytes, pad)) {
++    if (!bdrv_init_padding(bs, *offset, *bytes, write, pad)) {
+         if (padded) {
+             *padded = false;
+         }
+         return 0;
+     }
+ 
+-    ret = qemu_iovec_init_extended(&pad->local_qiov, pad->buf, pad->head,
+-                                   *qiov, *qiov_offset, *bytes,
+-                                   pad->buf + pad->buf_len - pad->tail,
+-                                   pad->tail);
++    sliced_iov = qemu_iovec_slice(*qiov, *qiov_offset, *bytes,
++                                  &sliced_head, &sliced_tail,
++                                  &sliced_niov);
++
++    /* Guaranteed by bdrv_check_qiov_request() */
++    assert(*bytes <= SIZE_MAX);
++    ret = bdrv_create_padded_qiov(bs, pad, sliced_iov, sliced_niov,
++                                  sliced_head, *bytes);
+     if (ret < 0) {
+-        bdrv_padding_destroy(pad);
++        bdrv_padding_finalize(pad);
+         return ret;
+     }
+     *bytes += pad->head + pad->tail;
+@@ -1836,8 +1972,8 @@ int coroutine_fn bdrv_co_preadv_part(BdrvChild *child,
+         flags |= BDRV_REQ_COPY_ON_READ;
+     }
+ 
+-    ret = bdrv_pad_request(bs, &qiov, &qiov_offset, &offset, &bytes, &pad,
+-                           NULL);
++    ret = bdrv_pad_request(bs, &qiov, &qiov_offset, &offset, &bytes, false,
++                           &pad, NULL);
+     if (ret < 0) {
+         goto fail;
+     }
+@@ -1847,7 +1983,7 @@ int coroutine_fn bdrv_co_preadv_part(BdrvChild *child,
+                               bs->bl.request_alignment,
+                               qiov, qiov_offset, flags);
+     tracked_request_end(&req);
+-    bdrv_padding_destroy(&pad);
++    bdrv_padding_finalize(&pad);
+ 
+ fail:
+     bdrv_dec_in_flight(bs);
+@@ -2167,7 +2303,7 @@ static int coroutine_fn bdrv_co_do_zero_pwritev(BdrvChild *child,
+     bool padding;
+     BdrvRequestPadding pad;
+ 
+-    padding = bdrv_init_padding(bs, offset, bytes, &pad);
++    padding = bdrv_init_padding(bs, offset, bytes, true, &pad);
+     if (padding) {
+         bdrv_make_request_serialising(req, align);
+ 
+@@ -2214,7 +2350,7 @@ static int coroutine_fn bdrv_co_do_zero_pwritev(BdrvChild *child,
+     }
+ 
+ out:
+-    bdrv_padding_destroy(&pad);
++    bdrv_padding_finalize(&pad);
+ 
+     return ret;
+ }
+@@ -2280,8 +2416,8 @@ int coroutine_fn bdrv_co_pwritev_part(BdrvChild *child,
+          * bdrv_co_do_zero_pwritev() does aligning by itself, so, we do
+          * alignment only if there is no ZERO flag.
+          */
+-        ret = bdrv_pad_request(bs, &qiov, &qiov_offset, &offset, &bytes, &pad,
+-                               &padded);
++        ret = bdrv_pad_request(bs, &qiov, &qiov_offset, &offset, &bytes, true,
++                               &pad, &padded);
+         if (ret < 0) {
+             return ret;
+         }
+@@ -2310,7 +2446,7 @@ int coroutine_fn bdrv_co_pwritev_part(BdrvChild *child,
+     ret = bdrv_aligned_pwritev(child, &req, offset, bytes, align,
+                                qiov, qiov_offset, flags);
+ 
+-    bdrv_padding_destroy(&pad);
++    bdrv_padding_finalize(&pad);
+ 
+ out:
+     tracked_request_end(&req);
+-- 
+2.39.3
+

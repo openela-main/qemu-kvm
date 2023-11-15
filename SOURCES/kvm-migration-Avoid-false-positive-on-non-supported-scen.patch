@@ -1,0 +1,93 @@
+From 097f72427f4f5da4fdcdbeee52aea0c1f67d54dc Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Tue, 19 Jul 2022 09:23:45 -0300
+Subject: [PATCH 6/9] migration: Avoid false-positive on non-supported
+ scenarios for zero-copy-send
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [6/8] f23195f3ab4f6eba0463f38e5971ccaccdac2cfd
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Migration with zero-copy-send currently has it's limitations, as it can't
+be used with TLS nor any kind of compression. In such scenarios, it should
+output errors during parameter / capability setting.
+
+But currently there are some ways of setting this not-supported scenarios
+without printing the error message:
+
+!) For 'compression' capability, it works by enabling it together with
+zero-copy-send. This happens because the validity test for zero-copy uses
+the helper unction migrate_use_compression(), which check for compression
+presence in s->enabled_capabilities[MIGRATION_CAPABILITY_COMPRESS].
+
+The point here is: the validity test happens before the capability gets
+enabled. If all of them get enabled together, this test will not return
+error.
+
+In order to fix that, replace migrate_use_compression() by directly testing
+the cap_list parameter migrate_caps_check().
+
+2) For features enabled by parameters such as TLS & 'multifd_compression',
+there was also a possibility of setting non-supported scenarios: setting
+zero-copy-send first, then setting the unsupported parameter.
+
+In order to fix that, also add a check for parameters conflicting with
+zero-copy-send on migrate_params_check().
+
+3) XBZRLE is also a compression capability, so it makes sense to also add
+it to the list of capabilities which are not supported with zero-copy-send.
+
+Fixes: 1abaec9a1b2c ("migration: Change zero_copy_send from migration parameter to migration capability")
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Message-Id: <20220719122345.253713-1-leobras@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 90eb69e4f1a16b388d0483543bf6bfc69a9966e4)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/migration.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 952a26c5c2..35b3197eff 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1260,7 +1260,9 @@ static bool migrate_caps_check(bool *cap_list,
+ #ifdef CONFIG_LINUX
+     if (cap_list[MIGRATION_CAPABILITY_ZERO_COPY_SEND] &&
+         (!cap_list[MIGRATION_CAPABILITY_MULTIFD] ||
+-         migrate_use_compression() ||
++         cap_list[MIGRATION_CAPABILITY_COMPRESS] ||
++         cap_list[MIGRATION_CAPABILITY_XBZRLE] ||
++         migrate_multifd_compression() ||
+          migrate_use_tls())) {
+         error_setg(errp,
+                    "Zero copy only available for non-compressed non-TLS multifd migration");
+@@ -1497,6 +1499,17 @@ static bool migrate_params_check(MigrationParameters *params, Error **errp)
+         error_prepend(errp, "Invalid mapping given for block-bitmap-mapping: ");
+         return false;
+     }
++
++#ifdef CONFIG_LINUX
++    if (migrate_use_zero_copy_send() &&
++        ((params->has_multifd_compression && params->multifd_compression) ||
++         (params->has_tls_creds && params->tls_creds && *params->tls_creds))) {
++        error_setg(errp,
++                   "Zero copy only available for non-compressed non-TLS multifd migration");
++        return false;
++    }
++#endif
++
+     return true;
+ }
+ 
+-- 
+2.31.1
+

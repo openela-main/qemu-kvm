@@ -1,0 +1,164 @@
+From 997516a14cb8811558f4db1710e728007a3b53fb Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Wed, 6 Apr 2022 14:58:12 -0400
+Subject: [PATCH 1/2] acpi: fix acpi_index migration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 317: acpi: fix acpi_index migration
+RH-Jira: RHEL-2186
+RH-Acked-by: Ani Sinha <None>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Commit: [1/2] e49dace989531e940dca1c6e9df5f75ebee411a2
+
+vmstate_acpi_pcihp_use_acpi_index() was expecting AcpiPciHpState
+as state but it actually received PIIX4PMState, because
+VMSTATE_PCI_HOTPLUG is a macro and not another struct.
+So it ended up accessing random pointer, which resulted
+in 'false' return value and acpi_index field wasn't ever
+sent.
+
+However in 7.0 that pointer de-references to value > 0, and
+destination QEMU starts to expect the field which isn't
+sent in migratioon stream from older QEMU (6.2 and older).
+As result migration fails with:
+  qemu-system-x86_64: Missing section footer for 0000:00:01.3/piix4_pm
+  qemu-system-x86_64: load of migration failed: Invalid argument
+
+In addition with QEMU-6.2, destination due to not expected
+state, also never expects the acpi_index field in migration
+stream.
+
+Q35 is not affected as it always sends/expects the field as
+long as acpi based PCI hotplug is enabled.
+
+Fix issue by introducing compat knob to never send/expect
+acpi_index in migration stream for 6.2 and older PC machine
+types and always send it for 7.0 and newer PC machine types.
+
+Diagnosed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Fixes: b32bd76 ("pci: introduce acpi-index property for PCI device")
+Resolves: https://gitlab.com/qemu-project/qemu/-/issues/932
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit a83c2844903c45aa7d32cdd17305f23ce2c56ab9)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ hw/acpi/acpi-pci-hotplug-stub.c |  4 ----
+ hw/acpi/pcihp.c                 |  6 ------
+ hw/acpi/piix4.c                 | 15 ++++++++++++++-
+ hw/core/machine.c               |  5 +++++
+ include/hw/acpi/pcihp.h         |  2 --
+ 5 files changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/hw/acpi/acpi-pci-hotplug-stub.c b/hw/acpi/acpi-pci-hotplug-stub.c
+index 734e4c5986..a43f6dafc9 100644
+--- a/hw/acpi/acpi-pci-hotplug-stub.c
++++ b/hw/acpi/acpi-pci-hotplug-stub.c
+@@ -41,7 +41,3 @@ void acpi_pcihp_reset(AcpiPciHpState *s, bool acpihp_root_off)
+     return;
+ }
+ 
+-bool vmstate_acpi_pcihp_use_acpi_index(void *opaque, int version_id)
+-{
+-    return false;
+-}
+diff --git a/hw/acpi/pcihp.c b/hw/acpi/pcihp.c
+index be0e846b34..ec861661c3 100644
+--- a/hw/acpi/pcihp.c
++++ b/hw/acpi/pcihp.c
+@@ -559,12 +559,6 @@ void acpi_pcihp_init(Object *owner, AcpiPciHpState *s, PCIBus *root_bus,
+                                    OBJ_PROP_FLAG_READ);
+ }
+ 
+-bool vmstate_acpi_pcihp_use_acpi_index(void *opaque, int version_id)
+-{
+-     AcpiPciHpState *s = opaque;
+-     return s->acpi_index;
+-}
+-
+ const VMStateDescription vmstate_acpi_pcihp_pci_status = {
+     .name = "acpi_pcihp_pci_status",
+     .version_id = 1,
+diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
+index 8d6011c0a3..033e75ce5b 100644
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -82,6 +82,7 @@ struct PIIX4PMState {
+     AcpiPciHpState acpi_pci_hotplug;
+     bool use_acpi_hotplug_bridge;
+     bool use_acpi_root_pci_hotplug;
++    bool not_migrate_acpi_index;
+ 
+     uint8_t disable_s3;
+     uint8_t disable_s4;
+@@ -269,6 +270,16 @@ static bool piix4_vmstate_need_smbus(void *opaque, int version_id)
+     return pm_smbus_vmstate_needed();
+ }
+ 
++/*
++ * This is a fudge to turn off the acpi_index field,
++ * whose test was always broken on piix4 with 6.2 and older machine types.
++ */
++static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
++{
++    PIIX4PMState *s = PIIX4_PM(opaque);
++    return s->use_acpi_hotplug_bridge && !s->not_migrate_acpi_index;
++}
++
+ /* qemu-kvm 1.2 uses version 3 but advertised as 2
+  * To support incoming qemu-kvm 1.2 migration, change version_id
+  * and minimum_version_id to 2 below (which breaks migration from
+@@ -299,7 +310,7 @@ static const VMStateDescription vmstate_acpi = {
+             struct AcpiPciHpPciStatus),
+         VMSTATE_PCI_HOTPLUG(acpi_pci_hotplug, PIIX4PMState,
+                             vmstate_test_use_acpi_hotplug_bridge,
+-                            vmstate_acpi_pcihp_use_acpi_index),
++                            vmstate_test_migrate_acpi_index),
+         VMSTATE_END_OF_LIST()
+     },
+     .subsections = (const VMStateDescription*[]) {
+@@ -654,6 +665,8 @@ static Property piix4_pm_properties[] = {
+     DEFINE_PROP_BOOL("memory-hotplug-support", PIIX4PMState,
+                      acpi_memory_hotplug.is_enabled, true),
+     DEFINE_PROP_BOOL("smm-compat", PIIX4PMState, smm_compat, false),
++    DEFINE_PROP_BOOL("x-not-migrate-acpi-index", PIIX4PMState,
++                      not_migrate_acpi_index, false),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 76fcabec7a..2724f6848a 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -331,6 +331,11 @@ GlobalProperty hw_compat_rhel_7_1[] = {
+ };
+ const size_t hw_compat_rhel_7_1_len = G_N_ELEMENTS(hw_compat_rhel_7_1);
+ 
++GlobalProperty hw_compat_6_2[] = {
++    { "PIIX4_PM", "x-not-migrate-acpi-index", "on"},
++};
++const size_t hw_compat_6_2_len = G_N_ELEMENTS(hw_compat_6_2);
++
+ GlobalProperty hw_compat_6_1[] = {
+     { "vhost-user-vsock-device", "seqpacket", "off" },
+     { "nvme-ns", "shared", "off" },
+diff --git a/include/hw/acpi/pcihp.h b/include/hw/acpi/pcihp.h
+index af1a169fc3..7e268c2c9c 100644
+--- a/include/hw/acpi/pcihp.h
++++ b/include/hw/acpi/pcihp.h
+@@ -73,8 +73,6 @@ void acpi_pcihp_reset(AcpiPciHpState *s, bool acpihp_root_off);
+ 
+ extern const VMStateDescription vmstate_acpi_pcihp_pci_status;
+ 
+-bool vmstate_acpi_pcihp_use_acpi_index(void *opaque, int version_id);
+-
+ #define VMSTATE_PCI_HOTPLUG(pcihp, state, test_pcihp, test_acpi_index) \
+         VMSTATE_UINT32_TEST(pcihp.hotplug_select, state, \
+                             test_pcihp), \
+-- 
+2.37.3
+

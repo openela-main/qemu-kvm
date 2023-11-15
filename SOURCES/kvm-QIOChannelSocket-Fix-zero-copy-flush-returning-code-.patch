@@ -1,0 +1,65 @@
+From 905cc8032fc63619efb3f0a8c9754b7190bcc43a Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 11 Jul 2022 18:11:11 -0300
+Subject: [PATCH 3/9] QIOChannelSocket: Fix zero-copy flush returning code 1
+ when nothing sent
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [3/8] 1ad707702fa26cd4d0fa1870c21f5f26ae93ff97
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+If flush is called when no buffer was sent with MSG_ZEROCOPY, it currently
+returns 1. This return code should be used only when Linux fails to use
+MSG_ZEROCOPY on a lot of sendmsg().
+
+Fix this by returning early from flush if no sendmsg(...,MSG_ZEROCOPY)
+was attempted.
+
+Fixes: 2bc58ffc2926 ("QIOChannelSocket: Implement io_writev zero copy flag & io_flush for CONFIG_LINUX")
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Message-Id: <20220711211112.18951-2-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 927f93e099c4f9184e60a1bc61624ac2d04d0223)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ io/channel-socket.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index df858da924..cf0d67c51b 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -717,12 +717,18 @@ static int qio_channel_socket_flush(QIOChannel *ioc,
+     struct cmsghdr *cm;
+     char control[CMSG_SPACE(sizeof(*serr))];
+     int received;
+-    int ret = 1;
++    int ret;
++
++    if (sioc->zero_copy_queued == sioc->zero_copy_sent) {
++        return 0;
++    }
+ 
+     msg.msg_control = control;
+     msg.msg_controllen = sizeof(control);
+     memset(control, 0, sizeof(control));
+ 
++    ret = 1;
++
+     while (sioc->zero_copy_sent < sioc->zero_copy_queued) {
+         received = recvmsg(sioc->fd, &msg, MSG_ERRQUEUE);
+         if (received < 0) {
+-- 
+2.31.1
+

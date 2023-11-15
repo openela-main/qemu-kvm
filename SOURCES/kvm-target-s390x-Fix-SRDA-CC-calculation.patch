@@ -1,0 +1,62 @@
+From 716e77e02fe25d40f09b8f2af1ff68238f7d7058 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 04/22] target/s390x: Fix SRDA CC calculation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [3/21] 95b2ba26003baa51f85f07e8860f875349c72b86
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 57556b28afde4b039bb12bfc274bd8df9022d946
+Author: Ilya Leoshkevich <iii@linux.ibm.com>
+Date:   Wed Jan 12 17:50:13 2022 +0100
+
+    target/s390x: Fix SRDA CC calculation
+
+    SRDA uses r1_D32 for binding the first operand and s64 for setting CC.
+    cout_s64() relies on o->out being the shift result, however,
+    wout_r1_D32() clobbers it.
+
+    Fix by using a temporary.
+
+    Fixes: a79ba3398a0a ("target-s390: Convert SHIFT DOUBLE")
+    Signed-off-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Message-Id: <20220112165016.226996-3-iii@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/translate.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/target/s390x/tcg/translate.c b/target/s390x/tcg/translate.c
+index dcc249a197..c5e59b68af 100644
+--- a/target/s390x/tcg/translate.c
++++ b/target/s390x/tcg/translate.c
+@@ -5420,9 +5420,11 @@ static void wout_r1_P32(DisasContext *s, DisasOps *o)
+ static void wout_r1_D32(DisasContext *s, DisasOps *o)
+ {
+     int r1 = get_field(s, r1);
++    TCGv_i64 t = tcg_temp_new_i64();
+     store_reg32_i64(r1 + 1, o->out);
+-    tcg_gen_shri_i64(o->out, o->out, 32);
+-    store_reg32_i64(r1, o->out);
++    tcg_gen_shri_i64(t, o->out, 32);
++    store_reg32_i64(r1, t);
++    tcg_temp_free_i64(t);
+ }
+ #define SPEC_wout_r1_D32 SPEC_r1_even
+ 
+-- 
+2.37.3
+

@@ -1,0 +1,171 @@
+From 10fc28b61a6fba1e6dc44fd544cf31c7f313c622 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Fri, 28 Oct 2022 17:48:00 +0100
+Subject: [PATCH 05/42] Update linux headers to v6.0-rc4
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [5/41] ca55f497d1bf1e72179330f8f613781bf999d898
+
+Based on upstream commit d525f73f9186a5bc641b8caf0b2c9bb94e5aa963
+("Update linux headers to v6.0-rc4"), but this is focusing only on the
+ZPCI and protected dump changes.
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ linux-headers/linux/kvm.h       | 87 +++++++++++++++++++++++++++++++++
+ linux-headers/linux/vfio_zdev.h |  7 +++
+ 2 files changed, 94 insertions(+)
+
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 0d05d02ee4..c65930288c 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1150,6 +1150,9 @@ struct kvm_ppc_resize_hpt {
+ #define KVM_CAP_DISABLE_QUIRKS2 213
+ /* #define KVM_CAP_VM_TSC_CONTROL 214 */
+ #define KVM_CAP_SYSTEM_EVENT_DATA 215
++#define KVM_CAP_S390_PROTECTED_DUMP 217
++#define KVM_CAP_S390_ZPCI_OP 221
++#define KVM_CAP_S390_CPU_TOPOLOGY 222
+ 
+ #ifdef KVM_CAP_IRQ_ROUTING
+ 
+@@ -1651,6 +1654,55 @@ struct kvm_s390_pv_unp {
+ 	__u64 tweak;
+ };
+ 
++enum pv_cmd_dmp_id {
++	KVM_PV_DUMP_INIT,
++	KVM_PV_DUMP_CONFIG_STOR_STATE,
++	KVM_PV_DUMP_COMPLETE,
++	KVM_PV_DUMP_CPU,
++};
++
++struct kvm_s390_pv_dmp {
++	__u64 subcmd;
++	__u64 buff_addr;
++	__u64 buff_len;
++	__u64 gaddr;		/* For dump storage state */
++	__u64 reserved[4];
++};
++
++enum pv_cmd_info_id {
++	KVM_PV_INFO_VM,
++	KVM_PV_INFO_DUMP,
++};
++
++struct kvm_s390_pv_info_dump {
++	__u64 dump_cpu_buffer_len;
++	__u64 dump_config_mem_buffer_per_1m;
++	__u64 dump_config_finalize_len;
++};
++
++struct kvm_s390_pv_info_vm {
++	__u64 inst_calls_list[4];
++	__u64 max_cpus;
++	__u64 max_guests;
++	__u64 max_guest_addr;
++	__u64 feature_indication;
++};
++
++struct kvm_s390_pv_info_header {
++	__u32 id;
++	__u32 len_max;
++	__u32 len_written;
++	__u32 reserved;
++};
++
++struct kvm_s390_pv_info {
++	struct kvm_s390_pv_info_header header;
++	union {
++		struct kvm_s390_pv_info_dump dump;
++		struct kvm_s390_pv_info_vm vm;
++	};
++};
++
+ enum pv_cmd_id {
+ 	KVM_PV_ENABLE,
+ 	KVM_PV_DISABLE,
+@@ -1659,6 +1711,8 @@ enum pv_cmd_id {
+ 	KVM_PV_VERIFY,
+ 	KVM_PV_PREP_RESET,
+ 	KVM_PV_UNSHARE_ALL,
++	KVM_PV_INFO,
++	KVM_PV_DUMP,
+ };
+ 
+ struct kvm_pv_cmd {
+@@ -2066,4 +2120,37 @@ struct kvm_stats_desc {
+ /* Available with KVM_CAP_XSAVE2 */
+ #define KVM_GET_XSAVE2		  _IOR(KVMIO,  0xcf, struct kvm_xsave)
+ 
++/* Available with KVM_CAP_S390_PROTECTED_DUMP */
++#define KVM_S390_PV_CPU_COMMAND	_IOWR(KVMIO, 0xd0, struct kvm_pv_cmd)
++
++/* Available with KVM_CAP_S390_ZPCI_OP */
++#define KVM_S390_ZPCI_OP         _IOW(KVMIO,  0xd1, struct kvm_s390_zpci_op)
++
++struct kvm_s390_zpci_op {
++	/* in */
++	__u32 fh;               /* target device */
++	__u8  op;               /* operation to perform */
++	__u8  pad[3];
++	union {
++		/* for KVM_S390_ZPCIOP_REG_AEN */
++		struct {
++			__u64 ibv;      /* Guest addr of interrupt bit vector */
++			__u64 sb;       /* Guest addr of summary bit */
++			__u32 flags;
++			__u32 noi;      /* Number of interrupts */
++			__u8 isc;       /* Guest interrupt subclass */
++			__u8 sbo;       /* Offset of guest summary bit vector */
++			__u16 pad;
++		} reg_aen;
++		__u64 reserved[8];
++	} u;
++};
++
++/* types for kvm_s390_zpci_op->op */
++#define KVM_S390_ZPCIOP_REG_AEN                0
++#define KVM_S390_ZPCIOP_DEREG_AEN      1
++
++/* flags for kvm_s390_zpci_op->u.reg_aen.flags */
++#define KVM_S390_ZPCIOP_REGAEN_HOST    (1 << 0)
++
+ #endif /* __LINUX_KVM_H */
+diff --git a/linux-headers/linux/vfio_zdev.h b/linux-headers/linux/vfio_zdev.h
+index b4309397b6..77f2aff1f2 100644
+--- a/linux-headers/linux/vfio_zdev.h
++++ b/linux-headers/linux/vfio_zdev.h
+@@ -29,6 +29,9 @@ struct vfio_device_info_cap_zpci_base {
+ 	__u16 fmb_length;	/* Measurement Block Length (in bytes) */
+ 	__u8 pft;		/* PCI Function Type */
+ 	__u8 gid;		/* PCI function group ID */
++	/* End of version 1 */
++	__u32 fh;		/* PCI function handle */
++	/* End of version 2 */
+ };
+ 
+ /**
+@@ -47,6 +50,10 @@ struct vfio_device_info_cap_zpci_group {
+ 	__u16 noi;		/* Maximum number of MSIs */
+ 	__u16 maxstbl;		/* Maximum Store Block Length */
+ 	__u8 version;		/* Supported PCI Version */
++	/* End of version 1 */
++	__u8 reserved;
++	__u16 imaxstbl;		/* Maximum Interpreted Store Block Length */
++	/* End of version 2 */
+ };
+ 
+ /**
+-- 
+2.37.3
+

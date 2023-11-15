@@ -1,0 +1,70 @@
+From a8eeab6936a2bd27b33b63aed7e2ef96034f7772 Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Wed, 30 Mar 2022 12:35:58 +0000
+Subject: [PATCH 16/42] dump: Remove the section if when calculating the memory
+ offset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [16/41] ff214d2c23b9cb16fd49d22d976829267df43133
+
+When s->shdr_num is 0 we'll add 0 bytes of section headers which is
+equivalent to not adding section headers but with the multiplication
+we can remove a if/else.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220330123603.107120-5-frankja@linux.ibm.com>
+(cherry picked from commit 344107e07bd81546474a54ab83800158ca953059)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 24 ++++++++----------------
+ 1 file changed, 8 insertions(+), 16 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 972e28b089..5cc2322325 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -1826,23 +1826,15 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+     }
+ 
+     if (s->dump_info.d_class == ELFCLASS64) {
+-        if (s->shdr_num) {
+-            s->memory_offset = sizeof(Elf64_Ehdr) +
+-                               sizeof(Elf64_Phdr) * s->phdr_num +
+-                               sizeof(Elf64_Shdr) * s->shdr_num + s->note_size;
+-        } else {
+-            s->memory_offset = sizeof(Elf64_Ehdr) +
+-                               sizeof(Elf64_Phdr) * s->phdr_num + s->note_size;
+-        }
++        s->memory_offset = sizeof(Elf64_Ehdr) +
++                           sizeof(Elf64_Phdr) * s->phdr_num +
++                           sizeof(Elf64_Shdr) * s->shdr_num +
++                           s->note_size;
+     } else {
+-        if (s->shdr_num) {
+-            s->memory_offset = sizeof(Elf32_Ehdr) +
+-                               sizeof(Elf32_Phdr) * s->phdr_num +
+-                               sizeof(Elf32_Shdr) * s->shdr_num + s->note_size;
+-        } else {
+-            s->memory_offset = sizeof(Elf32_Ehdr) +
+-                               sizeof(Elf32_Phdr) * s->phdr_num + s->note_size;
+-        }
++        s->memory_offset = sizeof(Elf32_Ehdr) +
++                           sizeof(Elf32_Phdr) * s->phdr_num +
++                           sizeof(Elf32_Shdr) * s->shdr_num +
++                           s->note_size;
+     }
+ 
+     return;
+-- 
+2.37.3
+

@@ -1,0 +1,49 @@
+From 99d33621440fd30e0da2974dafb0cd372334305a Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 9 Jun 2022 17:47:12 +0100
+Subject: [PATCH 2/2] linux-aio: explain why max batch is checked in
+ laio_io_unplug()
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 199: linux-aio: fix unbalanced plugged counter in laio_io_unplug()
+RH-Commit: [2/2] 8617870ed70e3a57269f06eeb242d0fab79a66fb
+RH-Bugzilla: 2105410
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+
+It may not be obvious why laio_io_unplug() checks max batch. I discussed
+this with Stefano and have added a comment summarizing the reason.
+
+Cc: Stefano Garzarella <sgarzare@redhat.com>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Stefano Garzarella <sgarzare@redhat.com>
+Message-id: 20220609164712.1539045-3-stefanha@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 99b969fbe105117f5af6060d3afef40ca39cc9c1)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ block/linux-aio.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/block/linux-aio.c b/block/linux-aio.c
+index 77f17ad596..85650c4222 100644
+--- a/block/linux-aio.c
++++ b/block/linux-aio.c
+@@ -362,6 +362,12 @@ void laio_io_unplug(BlockDriverState *bs, LinuxAioState *s,
+     assert(s->io_q.plugged);
+     s->io_q.plugged--;
+ 
++    /*
++     * Why max batch checking is performed here:
++     * Another BDS may have queued requests with a higher dev_max_batch and
++     * therefore in_queue could now exceed our dev_max_batch. Re-check the max
++     * batch so we can honor our device's dev_max_batch.
++     */
+     if (s->io_q.in_queue >= laio_max_batch(s, dev_max_batch) ||
+         (!s->io_q.plugged &&
+          !s->io_q.blocked && !QSIMPLEQ_EMPTY(&s->io_q.pending))) {
+-- 
+2.35.3
+

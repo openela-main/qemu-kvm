@@ -1,0 +1,55 @@
+From 7da1a3d21df30a3e20e0632e90e3ecff8b774b99 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 18/22] target/s390x: Fix emulation of the VISTR instruction
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [17/21] ca521ee65c0bd2b191d6fdddbfe38daf39bd7b07
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit f7d81a351d6122440f9190adba69da3f81b7b186
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Wed Oct 12 20:27:54 2022 +0200
+
+    target/s390x: Fix emulation of the VISTR instruction
+
+    The element size is encoded in the M3 field, not in the M4
+    field.
+
+    Fixes: be6324c6b734 ("s390x/tcg: Implement VECTOR ISOLATE STRING")
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1248
+    Message-Id: <20221012182755.1014853-3-thuth@redhat.com>
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/translate_vx.c.inc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/translate_vx.c.inc b/target/s390x/tcg/translate_vx.c.inc
+index 28bf5a23b6..6a125694ed 100644
+--- a/target/s390x/tcg/translate_vx.c.inc
++++ b/target/s390x/tcg/translate_vx.c.inc
+@@ -2413,7 +2413,7 @@ static DisasJumpType op_vfene(DisasContext *s, DisasOps *o)
+ 
+ static DisasJumpType op_vistr(DisasContext *s, DisasOps *o)
+ {
+-    const uint8_t es = get_field(s, m4);
++    const uint8_t es = get_field(s, m3);
+     const uint8_t m5 = get_field(s, m5);
+     static gen_helper_gvec_2 * const g[3] = {
+         gen_helper_gvec_vistr8,
+-- 
+2.37.3
+

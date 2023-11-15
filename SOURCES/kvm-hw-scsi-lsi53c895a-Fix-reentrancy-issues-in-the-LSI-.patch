@@ -1,0 +1,260 @@
+From 57a26ba1c4053cdc426653f921e66f7a8efd3ce7 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 22 May 2023 11:10:11 +0200
+Subject: [PATCH 12/15] hw/scsi/lsi53c895a: Fix reentrancy issues in the LSI
+ controller (CVE-2023-0330)
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [12/12] 28f5e04344109d8514869c50468bef481437201d (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit b987718bbb1d0eabf95499b976212dd5f0120d75
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon May 22 11:10:11 2023 +0200
+
+    hw/scsi/lsi53c895a: Fix reentrancy issues in the LSI controller (CVE-2023-0330)
+
+    We cannot use the generic reentrancy guard in the LSI code, so
+    we have to manually prevent endless reentrancy here. The problematic
+    lsi_execute_script() function has already a way to detect whether
+    too many instructions have been executed - we just have to slightly
+    change the logic here that it also takes into account if the function
+    has been called too often in a reentrant way.
+
+    The code in fuzz-lsi53c895a-test.c has been taken from an earlier
+    patch by Mauro Matteo Cascella.
+
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1563
+    Message-Id: <20230522091011.1082574-1-thuth@redhat.com>
+    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Reviewed-by: Alexander Bulekov <alxndr@bu.edu>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/scsi/lsi53c895a.c               |  23 +++--
+ tests/qtest/fuzz-lsi53c895a-test.c | 161 +++++++++++++++++++++++++++++
+ 2 files changed, 178 insertions(+), 6 deletions(-)
+ create mode 100644 tests/qtest/fuzz-lsi53c895a-test.c
+
+diff --git a/hw/scsi/lsi53c895a.c b/hw/scsi/lsi53c895a.c
+index 2b9cb2ac5d..b60786fd56 100644
+--- a/hw/scsi/lsi53c895a.c
++++ b/hw/scsi/lsi53c895a.c
+@@ -1133,15 +1133,24 @@ static void lsi_execute_script(LSIState *s)
+     uint32_t addr, addr_high;
+     int opcode;
+     int insn_processed = 0;
++    static int reentrancy_level;
++
++    reentrancy_level++;
+ 
+     s->istat1 |= LSI_ISTAT1_SRUN;
+ again:
+-    if (++insn_processed > LSI_MAX_INSN) {
+-        /* Some windows drivers make the device spin waiting for a memory
+-           location to change.  If we have been executed a lot of code then
+-           assume this is the case and force an unexpected device disconnect.
+-           This is apparently sufficient to beat the drivers into submission.
+-         */
++    /*
++     * Some windows drivers make the device spin waiting for a memory location
++     * to change. If we have executed more than LSI_MAX_INSN instructions then
++     * assume this is the case and force an unexpected device disconnect. This
++     * is apparently sufficient to beat the drivers into submission.
++     *
++     * Another issue (CVE-2023-0330) can occur if the script is programmed to
++     * trigger itself again and again. Avoid this problem by stopping after
++     * being called multiple times in a reentrant way (8 is an arbitrary value
++     * which should be enough for all valid use cases).
++     */
++    if (++insn_processed > LSI_MAX_INSN || reentrancy_level > 8) {
+         if (!(s->sien0 & LSI_SIST0_UDC)) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+                           "lsi_scsi: inf. loop with UDC masked");
+@@ -1595,6 +1604,8 @@ again:
+         }
+     }
+     trace_lsi_execute_script_stop();
++
++    reentrancy_level--;
+ }
+ 
+ static uint8_t lsi_reg_readb(LSIState *s, int offset)
+diff --git a/tests/qtest/fuzz-lsi53c895a-test.c b/tests/qtest/fuzz-lsi53c895a-test.c
+new file mode 100644
+index 0000000000..1b55928b9f
+--- /dev/null
++++ b/tests/qtest/fuzz-lsi53c895a-test.c
+@@ -0,0 +1,161 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * QTest fuzzer-generated testcase for LSI53C895A device
++ *
++ * Copyright (c) Red Hat
++ */
++
++#include "qemu/osdep.h"
++#include "libqtest.h"
++
++/*
++ * This used to trigger a DMA reentrancy issue
++ * leading to memory corruption bugs like stack
++ * overflow or use-after-free
++ * https://gitlab.com/qemu-project/qemu/-/issues/1563
++ */
++static void test_lsi_dma_reentrancy(void)
++{
++    QTestState *s;
++
++    s = qtest_init("-M q35 -m 512M -nodefaults "
++                   "-blockdev driver=null-co,node-name=null0 "
++                   "-device lsi53c810 -device scsi-cd,drive=null0");
++
++    qtest_outl(s, 0xcf8, 0x80000804); /* PCI Command Register */
++    qtest_outw(s, 0xcfc, 0x7);        /* Enables accesses */
++    qtest_outl(s, 0xcf8, 0x80000814); /* Memory Bar 1 */
++    qtest_outl(s, 0xcfc, 0xff100000); /* Set MMIO Address*/
++    qtest_outl(s, 0xcf8, 0x80000818); /* Memory Bar 2 */
++    qtest_outl(s, 0xcfc, 0xff000000); /* Set RAM Address*/
++    qtest_writel(s, 0xff000000, 0xc0000024);
++    qtest_writel(s, 0xff000114, 0x00000080);
++    qtest_writel(s, 0xff00012c, 0xff000000);
++    qtest_writel(s, 0xff000004, 0xff000114);
++    qtest_writel(s, 0xff000008, 0xff100014);
++    qtest_writel(s, 0xff10002f, 0x000000ff);
++
++    qtest_quit(s);
++}
++
++/*
++ * This used to trigger a UAF in lsi_do_msgout()
++ * https://gitlab.com/qemu-project/qemu/-/issues/972
++ */
++static void test_lsi_do_msgout_cancel_req(void)
++{
++    QTestState *s;
++
++    if (sizeof(void *) == 4) {
++        g_test_skip("memory size too big for 32-bit build");
++        return;
++    }
++
++    s = qtest_init("-M q35 -m 2G -nodefaults "
++                   "-device lsi53c895a,id=scsi "
++                   "-device scsi-hd,drive=disk0 "
++                   "-drive file=null-co://,id=disk0,if=none,format=raw");
++
++    qtest_outl(s, 0xcf8, 0x80000810);
++    qtest_outl(s, 0xcf8, 0xc000);
++    qtest_outl(s, 0xcf8, 0x80000810);
++    qtest_outw(s, 0xcfc, 0x7);
++    qtest_outl(s, 0xcf8, 0x80000810);
++    qtest_outl(s, 0xcfc, 0xc000);
++    qtest_outl(s, 0xcf8, 0x80000804);
++    qtest_outw(s, 0xcfc, 0x05);
++    qtest_writeb(s, 0x69736c10, 0x08);
++    qtest_writeb(s, 0x69736c13, 0x58);
++    qtest_writeb(s, 0x69736c1a, 0x01);
++    qtest_writeb(s, 0x69736c1b, 0x06);
++    qtest_writeb(s, 0x69736c22, 0x01);
++    qtest_writeb(s, 0x69736c23, 0x07);
++    qtest_writeb(s, 0x69736c2b, 0x02);
++    qtest_writeb(s, 0x69736c48, 0x08);
++    qtest_writeb(s, 0x69736c4b, 0x58);
++    qtest_writeb(s, 0x69736c52, 0x04);
++    qtest_writeb(s, 0x69736c53, 0x06);
++    qtest_writeb(s, 0x69736c5b, 0x02);
++    qtest_outl(s, 0xc02d, 0x697300);
++    qtest_writeb(s, 0x5a554662, 0x01);
++    qtest_writeb(s, 0x5a554663, 0x07);
++    qtest_writeb(s, 0x5a55466a, 0x10);
++    qtest_writeb(s, 0x5a55466b, 0x22);
++    qtest_writeb(s, 0x5a55466c, 0x5a);
++    qtest_writeb(s, 0x5a55466d, 0x5a);
++    qtest_writeb(s, 0x5a55466e, 0x34);
++    qtest_writeb(s, 0x5a55466f, 0x5a);
++    qtest_writeb(s, 0x5a345a5a, 0x77);
++    qtest_writeb(s, 0x5a345a5b, 0x55);
++    qtest_writeb(s, 0x5a345a5c, 0x51);
++    qtest_writeb(s, 0x5a345a5d, 0x27);
++    qtest_writeb(s, 0x27515577, 0x41);
++    qtest_outl(s, 0xc02d, 0x5a5500);
++    qtest_writeb(s, 0x364001d0, 0x08);
++    qtest_writeb(s, 0x364001d3, 0x58);
++    qtest_writeb(s, 0x364001da, 0x01);
++    qtest_writeb(s, 0x364001db, 0x26);
++    qtest_writeb(s, 0x364001dc, 0x0d);
++    qtest_writeb(s, 0x364001dd, 0xae);
++    qtest_writeb(s, 0x364001de, 0x41);
++    qtest_writeb(s, 0x364001df, 0x5a);
++    qtest_writeb(s, 0x5a41ae0d, 0xf8);
++    qtest_writeb(s, 0x5a41ae0e, 0x36);
++    qtest_writeb(s, 0x5a41ae0f, 0xd7);
++    qtest_writeb(s, 0x5a41ae10, 0x36);
++    qtest_writeb(s, 0x36d736f8, 0x0c);
++    qtest_writeb(s, 0x36d736f9, 0x80);
++    qtest_writeb(s, 0x36d736fa, 0x0d);
++    qtest_outl(s, 0xc02d, 0x364000);
++
++    qtest_quit(s);
++}
++
++/*
++ * This used to trigger the assert in lsi_do_dma()
++ * https://bugs.launchpad.net/qemu/+bug/697510
++ * https://bugs.launchpad.net/qemu/+bug/1905521
++ * https://bugs.launchpad.net/qemu/+bug/1908515
++ */
++static void test_lsi_do_dma_empty_queue(void)
++{
++    QTestState *s;
++
++    s = qtest_init("-M q35 -nographic -monitor none -serial none "
++                   "-drive if=none,id=drive0,"
++                            "file=null-co://,file.read-zeroes=on,format=raw "
++                   "-device lsi53c895a,id=scsi0 "
++                   "-device scsi-hd,drive=drive0,"
++                            "bus=scsi0.0,channel=0,scsi-id=0,lun=0");
++    qtest_outl(s, 0xcf8, 0x80001814);
++    qtest_outl(s, 0xcfc, 0xe1068000);
++    qtest_outl(s, 0xcf8, 0x80001818);
++    qtest_outl(s, 0xcf8, 0x80001804);
++    qtest_outw(s, 0xcfc, 0x7);
++    qtest_outl(s, 0xcf8, 0x80002010);
++
++    qtest_writeb(s, 0xe106802e, 0xff); /* Fill DSP bits 16-23 */
++    qtest_writeb(s, 0xe106802f, 0xff); /* Fill DSP bits 24-31: trigger SCRIPT */
++
++    qtest_quit(s);
++}
++
++int main(int argc, char **argv)
++{
++    g_test_init(&argc, &argv, NULL);
++
++    if (!qtest_has_device("lsi53c895a")) {
++        return 0;
++    }
++
++    qtest_add_func("fuzz/lsi53c895a/lsi_do_dma_empty_queue",
++                   test_lsi_do_dma_empty_queue);
++
++    qtest_add_func("fuzz/lsi53c895a/lsi_do_msgout_cancel_req",
++                   test_lsi_do_msgout_cancel_req);
++
++    qtest_add_func("fuzz/lsi53c895a/lsi_dma_reentrancy",
++                   test_lsi_dma_reentrancy);
++
++    return g_test_run();
++}
+-- 
+2.37.3
+

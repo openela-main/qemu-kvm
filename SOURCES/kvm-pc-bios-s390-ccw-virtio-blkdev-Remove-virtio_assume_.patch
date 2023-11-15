@@ -1,0 +1,101 @@
+From 5b3548c50e35729d724403b83e26579d31621367 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 8 Jul 2022 12:29:50 +0200
+Subject: [PATCH 32/37] pc-bios/s390-ccw/virtio-blkdev: Remove
+ virtio_assume_scsi()
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 198: pc-bios/s390-ccw: Fix boot from disks with 4k sectors that do not have the typical DASD geometry
+RH-Commit: [4/9] 5256c4e6f4d5c5aedf1bad3fee30dd3ad230a3dd
+RH-Bugzilla: 2098076
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2098076
+
+commit 5447de2619050a0a4dd480b97f88a9b58da360d1
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Jul 4 13:18:56 2022 +0200
+
+    pc-bios/s390-ccw/virtio-blkdev: Remove virtio_assume_scsi()
+
+    The virtio_assume_scsi() function is very questionable: First, it
+    is only called for virtio-blk, and not for virtio-scsi, so the naming
+    is already quite confusing. Second, it is called if we detected a
+    "invalid" IPL disk, trying to fix it by blindly setting a sector
+    size of 512. This of course won't work in most cases since disks
+    might have a different sector size for a reason.
+
+    Thus let's remove this strange function now. The calling code can
+    also be removed completely, since there is another spot in main.c
+    that does "IPL_assert(virtio_ipl_disk_is_valid(), ...)" to make
+    sure that we do not try to IPL from an invalid device.
+
+    Message-Id: <20220704111903.62400-6-thuth@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ pc-bios/s390-ccw/virtio-blkdev.c | 24 ------------------------
+ pc-bios/s390-ccw/virtio.h        |  1 -
+ 2 files changed, 25 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/virtio-blkdev.c b/pc-bios/s390-ccw/virtio-blkdev.c
+index 7e13155589..db1f7f44aa 100644
+--- a/pc-bios/s390-ccw/virtio-blkdev.c
++++ b/pc-bios/s390-ccw/virtio-blkdev.c
+@@ -112,23 +112,6 @@ VirtioGDN virtio_guessed_disk_nature(void)
+     return virtio_get_device()->guessed_disk_nature;
+ }
+ 
+-void virtio_assume_scsi(void)
+-{
+-    VDev *vdev = virtio_get_device();
+-
+-    switch (vdev->senseid.cu_model) {
+-    case VIRTIO_ID_BLOCK:
+-        vdev->guessed_disk_nature = VIRTIO_GDN_SCSI;
+-        vdev->config.blk.blk_size = VIRTIO_SCSI_BLOCK_SIZE;
+-        vdev->config.blk.physical_block_exp = 0;
+-        vdev->blk_factor = 1;
+-        break;
+-    case VIRTIO_ID_SCSI:
+-        vdev->scsi_block_size = VIRTIO_SCSI_BLOCK_SIZE;
+-        break;
+-    }
+-}
+-
+ void virtio_assume_iso9660(void)
+ {
+     VDev *vdev = virtio_get_device();
+@@ -247,13 +230,6 @@ int virtio_blk_setup_device(SubChannelId schid)
+     switch (vdev->senseid.cu_model) {
+     case VIRTIO_ID_BLOCK:
+         sclp_print("Using virtio-blk.\n");
+-        if (!virtio_ipl_disk_is_valid()) {
+-            /* make sure all getters but blocksize return 0 for
+-             * invalid IPL disk
+-             */
+-            memset(&vdev->config.blk, 0, sizeof(vdev->config.blk));
+-            virtio_assume_scsi();
+-        }
+         break;
+     case VIRTIO_ID_SCSI:
+         IPL_assert(vdev->config.scsi.sense_size == VIRTIO_SCSI_SENSE_SIZE,
+diff --git a/pc-bios/s390-ccw/virtio.h b/pc-bios/s390-ccw/virtio.h
+index 241730effe..600ba5052b 100644
+--- a/pc-bios/s390-ccw/virtio.h
++++ b/pc-bios/s390-ccw/virtio.h
+@@ -182,7 +182,6 @@ enum guessed_disk_nature_type {
+ typedef enum guessed_disk_nature_type VirtioGDN;
+ 
+ VirtioGDN virtio_guessed_disk_nature(void);
+-void virtio_assume_scsi(void);
+ void virtio_assume_eckd(void);
+ void virtio_assume_iso9660(void);
+ 
+-- 
+2.35.3
+

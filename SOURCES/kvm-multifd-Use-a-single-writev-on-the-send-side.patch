@@ -1,0 +1,80 @@
+From 4051de396e02ea2c1911c842426318bcd97f93c7 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 18 May 2022 02:52:24 -0300
+Subject: [PATCH 15/37] multifd: Use a single writev on the send side
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [15/26] c37063c813fc0ba695072117f272360e5c413803
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Until now, we wrote the packet header with write(), and the rest of the
+pages with writev().  Just increase the size of the iovec and do a
+single writev().
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit d48c3a044537689866fe44e65d24c7d39a68868a)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd.c | 20 ++++++++------------
+ 1 file changed, 8 insertions(+), 12 deletions(-)
+
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 1e1551d78b..d0f86542b1 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -643,7 +643,7 @@ static void *multifd_send_thread(void *opaque)
+             uint32_t used = p->pages->num;
+             uint64_t packet_num = p->packet_num;
+             uint32_t flags = p->flags;
+-            p->iovs_num = 0;
++            p->iovs_num = 1;
+ 
+             if (used) {
+                 ret = multifd_send_state->ops->send_prepare(p, &local_err);
+@@ -663,20 +663,15 @@ static void *multifd_send_thread(void *opaque)
+             trace_multifd_send(p->id, packet_num, used, flags,
+                                p->next_packet_size);
+ 
+-            ret = qio_channel_write_all(p->c, (void *)p->packet,
+-                                        p->packet_len, &local_err);
++            p->iov[0].iov_len = p->packet_len;
++            p->iov[0].iov_base = p->packet;
++
++            ret = qio_channel_writev_all(p->c, p->iov, p->iovs_num,
++                                         &local_err);
+             if (ret != 0) {
+                 break;
+             }
+ 
+-            if (used) {
+-                ret = qio_channel_writev_all(p->c, p->iov, p->iovs_num,
+-                                             &local_err);
+-                if (ret != 0) {
+-                    break;
+-                }
+-            }
+-
+             qemu_mutex_lock(&p->mutex);
+             p->pending_job--;
+             qemu_mutex_unlock(&p->mutex);
+@@ -913,7 +908,8 @@ int multifd_save_setup(Error **errp)
+         p->packet->version = cpu_to_be32(MULTIFD_VERSION);
+         p->name = g_strdup_printf("multifdsend_%d", i);
+         p->tls_hostname = g_strdup(s->hostname);
+-        p->iov = g_new0(struct iovec, page_count);
++        /* We need one extra place for the packet header */
++        p->iov = g_new0(struct iovec, page_count + 1);
+         socket_send_channel_create(multifd_new_send_channel_async, p);
+     }
+ 
+-- 
+2.35.3
+

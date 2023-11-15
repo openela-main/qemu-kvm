@@ -1,0 +1,178 @@
+From 90a276ed72deab84f3fdd4b57e9ccfc6514934fb Mon Sep 17 00:00:00 2001
+From: Zeng Guang <guang.zeng@intel.com>
+Date: Wed, 16 Feb 2022 22:04:33 -0800
+Subject: [PATCH 11/24] x86: Support XFD and AMX xsave data migration
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [11/13] 4ff6e5544ffdac4e6d2f568f7f63b937502ca6c5
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+XFD(eXtended Feature Disable) allows to enable a
+feature on xsave state while preventing specific
+user threads from using the feature.
+
+Support save and restore XFD MSRs if CPUID.D.1.EAX[4]
+enumerate to be valid. Likewise migrate the MSRs and
+related xsave state necessarily.
+
+Signed-off-by: Zeng Guang <guang.zeng@intel.com>
+Signed-off-by: Wei Wang <wei.w.wang@intel.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Message-Id: <20220217060434.52460-8-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit cdec2b753b487d9e8aab028231c35d87789ea083)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.h     |  9 +++++++++
+ target/i386/kvm/kvm.c | 18 +++++++++++++++++
+ target/i386/machine.c | 46 +++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 73 insertions(+)
+
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 14a3501b87..8ab2a4042a 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -505,6 +505,9 @@ typedef enum X86Seg {
+ 
+ #define MSR_VM_HSAVE_PA                 0xc0010117
+ 
++#define MSR_IA32_XFD                    0x000001c4
++#define MSR_IA32_XFD_ERR                0x000001c5
++
+ #define MSR_IA32_BNDCFGS                0x00000d90
+ #define MSR_IA32_XSS                    0x00000da0
+ #define MSR_IA32_UMWAIT_CONTROL         0xe1
+@@ -870,6 +873,8 @@ typedef uint64_t FeatureWordArray[FEATURE_WORDS];
+ #define CPUID_7_1_EAX_AVX_VNNI          (1U << 4)
+ /* AVX512 BFloat16 Instruction */
+ #define CPUID_7_1_EAX_AVX512_BF16       (1U << 5)
++/* XFD Extend Feature Disabled */
++#define CPUID_D_1_EAX_XFD               (1U << 4)
+ 
+ /* Packets which contain IP payload have LIP values */
+ #define CPUID_14_0_ECX_LIP              (1U << 31)
+@@ -1610,6 +1615,10 @@ typedef struct CPUX86State {
+     uint64_t msr_rtit_cr3_match;
+     uint64_t msr_rtit_addrs[MAX_RTIT_ADDRS];
+ 
++    /* Per-VCPU XFD MSRs */
++    uint64_t msr_xfd;
++    uint64_t msr_xfd_err;
++
+     /* exception/interrupt handling */
+     int error_code;
+     int exception_is_int;
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index d3d476df27..b1128b0e07 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -3219,6 +3219,13 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
+                               env->msr_ia32_sgxlepubkeyhash[3]);
+         }
+ 
++        if (env->features[FEAT_XSAVE] & CPUID_D_1_EAX_XFD) {
++            kvm_msr_entry_add(cpu, MSR_IA32_XFD,
++                              env->msr_xfd);
++            kvm_msr_entry_add(cpu, MSR_IA32_XFD_ERR,
++                              env->msr_xfd_err);
++        }
++
+         /* Note: MSR_IA32_FEATURE_CONTROL is written separately, see
+          *       kvm_put_msr_feature_control. */
+     }
+@@ -3571,6 +3578,11 @@ static int kvm_get_msrs(X86CPU *cpu)
+         kvm_msr_entry_add(cpu, MSR_IA32_SGXLEPUBKEYHASH3, 0);
+     }
+ 
++    if (env->features[FEAT_XSAVE] & CPUID_D_1_EAX_XFD) {
++        kvm_msr_entry_add(cpu, MSR_IA32_XFD, 0);
++        kvm_msr_entry_add(cpu, MSR_IA32_XFD_ERR, 0);
++    }
++
+     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_MSRS, cpu->kvm_msr_buf);
+     if (ret < 0) {
+         return ret;
+@@ -3870,6 +3882,12 @@ static int kvm_get_msrs(X86CPU *cpu)
+             env->msr_ia32_sgxlepubkeyhash[index - MSR_IA32_SGXLEPUBKEYHASH0] =
+                            msrs[i].data;
+             break;
++        case MSR_IA32_XFD:
++            env->msr_xfd = msrs[i].data;
++            break;
++        case MSR_IA32_XFD_ERR:
++            env->msr_xfd_err = msrs[i].data;
++            break;
+         }
+     }
+ 
+diff --git a/target/i386/machine.c b/target/i386/machine.c
+index 83c2b91529..3977e9d8f8 100644
+--- a/target/i386/machine.c
++++ b/target/i386/machine.c
+@@ -1455,6 +1455,48 @@ static const VMStateDescription vmstate_msr_intel_sgx = {
+     }
+ };
+ 
++static bool xfd_msrs_needed(void *opaque)
++{
++    X86CPU *cpu = opaque;
++    CPUX86State *env = &cpu->env;
++
++    return !!(env->features[FEAT_XSAVE] & CPUID_D_1_EAX_XFD);
++}
++
++static const VMStateDescription vmstate_msr_xfd = {
++    .name = "cpu/msr_xfd",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .needed = xfd_msrs_needed,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT64(env.msr_xfd, X86CPU),
++        VMSTATE_UINT64(env.msr_xfd_err, X86CPU),
++        VMSTATE_END_OF_LIST()
++    }
++};
++
++#ifdef TARGET_X86_64
++static bool amx_xtile_needed(void *opaque)
++{
++    X86CPU *cpu = opaque;
++    CPUX86State *env = &cpu->env;
++
++    return !!(env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_AMX_TILE);
++}
++
++static const VMStateDescription vmstate_amx_xtile = {
++    .name = "cpu/intel_amx_xtile",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .needed = amx_xtile_needed,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT8_ARRAY(env.xtilecfg, X86CPU, 64),
++        VMSTATE_UINT8_ARRAY(env.xtiledata, X86CPU, 8192),
++        VMSTATE_END_OF_LIST()
++    }
++};
++#endif
++
+ const VMStateDescription vmstate_x86_cpu = {
+     .name = "cpu",
+     .version_id = 12,
+@@ -1593,6 +1635,10 @@ const VMStateDescription vmstate_x86_cpu = {
+ #endif
+         &vmstate_msr_tsx_ctrl,
+         &vmstate_msr_intel_sgx,
++        &vmstate_msr_xfd,
++#ifdef TARGET_X86_64
++        &vmstate_amx_xtile,
++#endif
+         NULL
+     }
+ };
+-- 
+2.35.3
+

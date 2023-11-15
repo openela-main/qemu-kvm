@@ -1,0 +1,104 @@
+From 987ede93fa4e3d058acddc19874e467faa116ede Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Mon, 17 Oct 2022 08:38:14 +0000
+Subject: [PATCH 33/42] dump: Write ELF section headers right after ELF header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [33/41] e956040753533ac376e9763145192de1e216027d
+
+Let's start bundling the writes of the headers and of the data so we
+have a clear ordering between them. Since the ELF header uses offsets
+to the headers we can freely order them.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20221017083822.43118-3-frankja@linux.ibm.com>
+(cherry picked from commit cb415fd61e48d52f81dcf38956e3f913651cff1c)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 31 ++++++++++++++-----------------
+ 1 file changed, 14 insertions(+), 17 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 4142b4cc0c..d17537d4e9 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -584,6 +584,8 @@ static void dump_begin(DumpState *s, Error **errp)
+      *   --------------
+      *   |  elf header |
+      *   --------------
++     *   |  sctn_hdr   |
++     *   --------------
+      *   |  PT_NOTE    |
+      *   --------------
+      *   |  PT_LOAD    |
+@@ -592,8 +594,6 @@ static void dump_begin(DumpState *s, Error **errp)
+      *   --------------
+      *   |  PT_LOAD    |
+      *   --------------
+-     *   |  sec_hdr    |
+-     *   --------------
+      *   |  elf note   |
+      *   --------------
+      *   |  memory     |
+@@ -609,20 +609,20 @@ static void dump_begin(DumpState *s, Error **errp)
+         return;
+     }
+ 
+-    /* write PT_NOTE to vmcore */
+-    write_elf_phdr_note(s, errp);
++    /* write section headers to vmcore */
++    write_elf_section_headers(s, errp);
+     if (*errp) {
+         return;
+     }
+ 
+-    /* write all PT_LOADs to vmcore */
+-    write_elf_phdr_loads(s, errp);
++    /* write PT_NOTE to vmcore */
++    write_elf_phdr_note(s, errp);
+     if (*errp) {
+         return;
+     }
+ 
+-    /* write section headers to vmcore */
+-    write_elf_section_headers(s, errp);
++    /* write all PT_LOADs to vmcore */
++    write_elf_phdr_loads(s, errp);
+     if (*errp) {
+         return;
+     }
+@@ -1877,16 +1877,13 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+     }
+ 
+     if (dump_is_64bit(s)) {
+-        s->phdr_offset = sizeof(Elf64_Ehdr);
+-        s->shdr_offset = s->phdr_offset + sizeof(Elf64_Phdr) * s->phdr_num;
+-        s->note_offset = s->shdr_offset + sizeof(Elf64_Shdr) * s->shdr_num;
+-        s->memory_offset = s->note_offset + s->note_size;
++        s->shdr_offset = sizeof(Elf64_Ehdr);
++        s->phdr_offset = s->shdr_offset + sizeof(Elf64_Shdr) * s->shdr_num;
++        s->note_offset = s->phdr_offset + sizeof(Elf64_Phdr) * s->phdr_num;
+     } else {
+-
+-        s->phdr_offset = sizeof(Elf32_Ehdr);
+-        s->shdr_offset = s->phdr_offset + sizeof(Elf32_Phdr) * s->phdr_num;
+-        s->note_offset = s->shdr_offset + sizeof(Elf32_Shdr) * s->shdr_num;
+-        s->memory_offset = s->note_offset + s->note_size;
++        s->shdr_offset = sizeof(Elf32_Ehdr);
++        s->phdr_offset = s->shdr_offset + sizeof(Elf32_Shdr) * s->shdr_num;
++        s->note_offset = s->phdr_offset + sizeof(Elf32_Phdr) * s->phdr_num;
+     }
+ 
+     return;
+-- 
+2.37.3
+

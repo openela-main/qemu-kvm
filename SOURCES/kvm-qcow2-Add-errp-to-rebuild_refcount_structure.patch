@@ -1,0 +1,162 @@
+From 552e7c8ae2c6e281a72791aefa1729be86f96642 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Tue, 5 Apr 2022 15:46:52 +0200
+Subject: [PATCH 5/6] qcow2: Add errp to rebuild_refcount_structure()
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 171: qcow2: Improve refcount structure rebuilding
+RH-Commit: [3/4] 9dddd1d21383c4cbd528e5a0d42b0c2a7d87c8f6
+RH-Bugzilla: 1519071
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+
+Instead of fprint()-ing error messages in rebuild_refcount_structure()
+and its rebuild_refcounts_write_refblocks() helper, pass them through an
+Error object to qcow2_check_refcounts() (which will then print it).
+
+Suggested-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220405134652.19278-4-hreitz@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 0423f75351ab83b844a31349218b0eadd830e07a)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ block/qcow2-refcount.c | 33 +++++++++++++++++++--------------
+ 1 file changed, 19 insertions(+), 14 deletions(-)
+
+diff --git a/block/qcow2-refcount.c b/block/qcow2-refcount.c
+index 555d8ba5ac..09f8ef4927 100644
+--- a/block/qcow2-refcount.c
++++ b/block/qcow2-refcount.c
+@@ -2462,7 +2462,8 @@ static int64_t alloc_clusters_imrt(BlockDriverState *bs,
+ static int rebuild_refcounts_write_refblocks(
+         BlockDriverState *bs, void **refcount_table, int64_t *nb_clusters,
+         int64_t first_cluster, int64_t end_cluster,
+-        uint64_t **on_disk_reftable_ptr, uint32_t *on_disk_reftable_entries_ptr
++        uint64_t **on_disk_reftable_ptr, uint32_t *on_disk_reftable_entries_ptr,
++        Error **errp
+     )
+ {
+     BDRVQcow2State *s = bs->opaque;
+@@ -2513,8 +2514,8 @@ static int rebuild_refcounts_write_refblocks(
+                                                   nb_clusters,
+                                                   &first_free_cluster);
+             if (refblock_offset < 0) {
+-                fprintf(stderr, "ERROR allocating refblock: %s\n",
+-                        strerror(-refblock_offset));
++                error_setg_errno(errp, -refblock_offset,
++                                 "ERROR allocating refblock");
+                 return refblock_offset;
+             }
+ 
+@@ -2536,6 +2537,7 @@ static int rebuild_refcounts_write_refblocks(
+                                   on_disk_reftable_entries *
+                                   REFTABLE_ENTRY_SIZE);
+                 if (!on_disk_reftable) {
++                    error_setg(errp, "ERROR allocating reftable memory");
+                     return -ENOMEM;
+                 }
+ 
+@@ -2559,7 +2561,7 @@ static int rebuild_refcounts_write_refblocks(
+         ret = qcow2_pre_write_overlap_check(bs, 0, refblock_offset,
+                                             s->cluster_size, false);
+         if (ret < 0) {
+-            fprintf(stderr, "ERROR writing refblock: %s\n", strerror(-ret));
++            error_setg_errno(errp, -ret, "ERROR writing refblock");
+             return ret;
+         }
+ 
+@@ -2575,7 +2577,7 @@ static int rebuild_refcounts_write_refblocks(
+         ret = bdrv_pwrite(bs->file, refblock_offset, on_disk_refblock,
+                           s->cluster_size);
+         if (ret < 0) {
+-            fprintf(stderr, "ERROR writing refblock: %s\n", strerror(-ret));
++            error_setg_errno(errp, -ret, "ERROR writing refblock");
+             return ret;
+         }
+ 
+@@ -2598,7 +2600,8 @@ static int rebuild_refcounts_write_refblocks(
+ static int rebuild_refcount_structure(BlockDriverState *bs,
+                                       BdrvCheckResult *res,
+                                       void **refcount_table,
+-                                      int64_t *nb_clusters)
++                                      int64_t *nb_clusters,
++                                      Error **errp)
+ {
+     BDRVQcow2State *s = bs->opaque;
+     int64_t reftable_offset = -1;
+@@ -2649,7 +2652,7 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+         rebuild_refcounts_write_refblocks(bs, refcount_table, nb_clusters,
+                                           0, *nb_clusters,
+                                           &on_disk_reftable,
+-                                          &on_disk_reftable_entries);
++                                          &on_disk_reftable_entries, errp);
+     if (reftable_size_changed < 0) {
+         res->check_errors++;
+         ret = reftable_size_changed;
+@@ -2673,8 +2676,8 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+                                               refcount_table, nb_clusters,
+                                               &first_free_cluster);
+         if (reftable_offset < 0) {
+-            fprintf(stderr, "ERROR allocating reftable: %s\n",
+-                    strerror(-reftable_offset));
++            error_setg_errno(errp, -reftable_offset,
++                             "ERROR allocating reftable");
+             res->check_errors++;
+             ret = reftable_offset;
+             goto fail;
+@@ -2692,7 +2695,7 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+                                               reftable_start_cluster,
+                                               reftable_end_cluster,
+                                               &on_disk_reftable,
+-                                              &on_disk_reftable_entries);
++                                              &on_disk_reftable_entries, errp);
+         if (reftable_size_changed < 0) {
+             res->check_errors++;
+             ret = reftable_size_changed;
+@@ -2722,7 +2725,7 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+     ret = qcow2_pre_write_overlap_check(bs, 0, reftable_offset, reftable_length,
+                                         false);
+     if (ret < 0) {
+-        fprintf(stderr, "ERROR writing reftable: %s\n", strerror(-ret));
++        error_setg_errno(errp, -ret, "ERROR writing reftable");
+         goto fail;
+     }
+ 
+@@ -2730,7 +2733,7 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+     ret = bdrv_pwrite(bs->file, reftable_offset, on_disk_reftable,
+                       reftable_length);
+     if (ret < 0) {
+-        fprintf(stderr, "ERROR writing reftable: %s\n", strerror(-ret));
++        error_setg_errno(errp, -ret, "ERROR writing reftable");
+         goto fail;
+     }
+ 
+@@ -2743,7 +2746,7 @@ static int rebuild_refcount_structure(BlockDriverState *bs,
+                            &reftable_offset_and_clusters,
+                            sizeof(reftable_offset_and_clusters));
+     if (ret < 0) {
+-        fprintf(stderr, "ERROR setting reftable: %s\n", strerror(-ret));
++        error_setg_errno(errp, -ret, "ERROR setting reftable");
+         goto fail;
+     }
+ 
+@@ -2811,11 +2814,13 @@ int qcow2_check_refcounts(BlockDriverState *bs, BdrvCheckResult *res,
+     if (rebuild && (fix & BDRV_FIX_ERRORS)) {
+         BdrvCheckResult old_res = *res;
+         int fresh_leaks = 0;
++        Error *local_err = NULL;
+ 
+         fprintf(stderr, "Rebuilding refcount structure\n");
+         ret = rebuild_refcount_structure(bs, res, &refcount_table,
+-                                         &nb_clusters);
++                                         &nb_clusters, &local_err);
+         if (ret < 0) {
++            error_report_err(local_err);
+             goto fail;
+         }
+ 
+-- 
+2.27.0
+

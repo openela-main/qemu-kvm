@@ -1,0 +1,55 @@
+From c7b14d3af7c73a3bf0c00911b85f202840d9b414 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 7 Nov 2022 17:13:49 +0100
+Subject: [PATCH 12/42] s390x/s390-virtio-ccw: Switch off zPCI enhancements on
+ older machines
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [12/41] 61e32bab6d68ee9abd6a0751944af82e002b05b4
+
+zPCI enhancement features (interpretation and forward assist) were
+recently introduced to improve performance on PCI passthrough devices.
+To maintain the same behaviour on older Z machines, deactivate the
+features with the associated properties.
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Message-Id: <20221107161349.1032730-3-clg@kaod.org>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit d3d1a406127f7da482eafbdc871c120c2770bb91)
+[ clg: applied zPCI restrictions to rhel8.5.0 machine and below ]
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index bec270598b..bd80e72cf8 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1130,8 +1130,14 @@ static void ccw_machine_rhel850_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel850_class_options(MachineClass *mc)
+ {
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "off", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "off", },
++    };
++
+     ccw_machine_rhel860_class_options(mc);
+     compat_props_add(mc->compat_props, hw_compat_rhel_8_5, hw_compat_rhel_8_5_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
+     mc->smp_props.prefer_sockets = true;
+ }
+ DEFINE_CCW_MACHINE(rhel850, "rhel8.5.0", false);
+-- 
+2.37.3
+
