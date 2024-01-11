@@ -1,0 +1,62 @@
+From 8aecb49fdd771c5819fccc9e750b2e9cd4e94b58 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 25 Jul 2022 22:02:35 -0300
+Subject: [PATCH 7/9] migration: add remaining params->has_* = true in
+ migration_instance_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [7/8] fb622e5b88e14eb859d4903d9c088ba6ca63fc81
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Some of params->has_* = true are missing in migration_instance_init, this
+causes migrate_params_check() to skip some tests, allowing some
+unsupported scenarios.
+
+Fix this by adding all missing params->has_* = true in
+migration_instance_init().
+
+Fixes: 69ef1f36b0 ("migration: define 'tls-creds' and 'tls-hostname' migration parameters")
+Fixes: 1d58872a91 ("migration: do not wait for free thread")
+Fixes: d2f1d29b95 ("migration: add support for a "tls-authz" migration parameter")
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Message-Id: <20220726010235.342927-1-leobras@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit df67aa3e61e2c83459da7d815962d9706f1528fc)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/migration.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 35b3197eff..51e6726dac 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -4334,6 +4334,7 @@ static void migration_instance_init(Object *obj)
+     /* Set has_* up only for parameter checks */
+     params->has_compress_level = true;
+     params->has_compress_threads = true;
++    params->has_compress_wait_thread = true;
+     params->has_decompress_threads = true;
+     params->has_throttle_trigger_threshold = true;
+     params->has_cpu_throttle_initial = true;
+@@ -4354,6 +4355,9 @@ static void migration_instance_init(Object *obj)
+     params->has_announce_max = true;
+     params->has_announce_rounds = true;
+     params->has_announce_step = true;
++    params->has_tls_creds = true;
++    params->has_tls_hostname = true;
++    params->has_tls_authz = true;
+ 
+     qemu_sem_init(&ms->postcopy_pause_sem, 0);
+     qemu_sem_init(&ms->postcopy_pause_rp_sem, 0);
+-- 
+2.31.1
+

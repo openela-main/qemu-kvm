@@ -1,0 +1,214 @@
+From d0cd7be4d347ebe118eb8f3f2fc2eb3e3eb77e3a Mon Sep 17 00:00:00 2001
+From: Yang Zhong <yang.zhong@intel.com>
+Date: Thu, 20 Jan 2022 17:31:04 -0500
+Subject: [PATCH 5/7] qapi: Cleanup SGX related comments and restore
+ @section-size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paul Lai <None>
+RH-MergeRequest: 111: numa: Enable numa for SGX EPC sections
+RH-Commit: [5/5] 497dbeaebb7b8f99f5f8a7de58000dcab0d0c22d
+RH-Bugzilla: 1518984
+RH-Acked-by: Paolo Bonzini <None>
+RH-Acked-by: Bandan Das <None>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+The SGX NUMA patches were merged into Qemu 7.0 release, we need
+clarify detailed version history information and also change
+some related comments, which make SGX related comments clearer.
+
+The QMP command schema promises backwards compatibility as standard.
+We temporarily restore "@section-size", which can avoid incompatible
+API breakage. The "@section-size" will be deprecated in 7.2 version.
+
+Suggested-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <f4bug@amsat.org>
+Message-Id: <20220120223104.437161-1-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a66bd91f030827742778a9e0da19fe55716b4a60)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ docs/about/deprecated.rst | 13 +++++++++++++
+ hw/i386/sgx.c             | 11 +++++++++--
+ qapi/machine.json         |  4 ++--
+ qapi/misc-target.json     | 22 +++++++++++++++++-----
+ 4 files changed, 41 insertions(+), 9 deletions(-)
+
+diff --git a/docs/about/deprecated.rst b/docs/about/deprecated.rst
+index ff7488cb63..33925edf45 100644
+--- a/docs/about/deprecated.rst
++++ b/docs/about/deprecated.rst
+@@ -270,6 +270,19 @@ accepted incorrect commands will return an error. Users should make sure that
+ all arguments passed to ``device_add`` are consistent with the documented
+ property types.
+ 
++``query-sgx`` return value member ``section-size`` (since 7.0)
++''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
++
++Member ``section-size`` in return value elements with meta-type ``uint64`` is
++deprecated.  Use ``sections`` instead.
++
++
++``query-sgx-capabilities`` return value member ``section-size`` (since 7.0)
++'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
++
++Member ``section-size`` in return value elements with meta-type ``uint64`` is
++deprecated.  Use ``sections`` instead.
++
+ System accelerators
+ -------------------
+ 
+diff --git a/hw/i386/sgx.c b/hw/i386/sgx.c
+index 5de5dd0893..a2b318dd93 100644
+--- a/hw/i386/sgx.c
++++ b/hw/i386/sgx.c
+@@ -83,7 +83,7 @@ static uint64_t sgx_calc_section_metric(uint64_t low, uint64_t high)
+            ((high & MAKE_64BIT_MASK(0, 20)) << 32);
+ }
+ 
+-static SGXEPCSectionList *sgx_calc_host_epc_sections(void)
++static SGXEPCSectionList *sgx_calc_host_epc_sections(uint64_t *size)
+ {
+     SGXEPCSectionList *head = NULL, **tail = &head;
+     SGXEPCSection *section;
+@@ -106,6 +106,7 @@ static SGXEPCSectionList *sgx_calc_host_epc_sections(void)
+         section = g_new0(SGXEPCSection, 1);
+         section->node = j++;
+         section->size = sgx_calc_section_metric(ecx, edx);
++        *size += section->size;
+         QAPI_LIST_APPEND(tail, section);
+     }
+ 
+@@ -156,6 +157,7 @@ SGXInfo *qmp_query_sgx_capabilities(Error **errp)
+ {
+     SGXInfo *info = NULL;
+     uint32_t eax, ebx, ecx, edx;
++    uint64_t size = 0;
+ 
+     int fd = qemu_open_old("/dev/sgx_vepc", O_RDWR);
+     if (fd < 0) {
+@@ -173,7 +175,8 @@ SGXInfo *qmp_query_sgx_capabilities(Error **errp)
+     info->sgx1 = eax & (1U << 0) ? true : false;
+     info->sgx2 = eax & (1U << 1) ? true : false;
+ 
+-    info->sections = sgx_calc_host_epc_sections();
++    info->sections = sgx_calc_host_epc_sections(&size);
++    info->section_size = size;
+ 
+     close(fd);
+ 
+@@ -220,12 +223,14 @@ SGXInfo *qmp_query_sgx(Error **errp)
+         return NULL;
+     }
+ 
++    SGXEPCState *sgx_epc = &pcms->sgx_epc;
+     info = g_new0(SGXInfo, 1);
+ 
+     info->sgx = true;
+     info->sgx1 = true;
+     info->sgx2 = true;
+     info->flc = true;
++    info->section_size = sgx_epc->size;
+     info->sections = sgx_get_epc_sections_list();
+ 
+     return info;
+@@ -249,6 +254,8 @@ void hmp_info_sgx(Monitor *mon, const QDict *qdict)
+                    info->sgx2 ? "enabled" : "disabled");
+     monitor_printf(mon, "FLC support: %s\n",
+                    info->flc ? "enabled" : "disabled");
++    monitor_printf(mon, "size: %" PRIu64 "\n",
++                   info->section_size);
+ 
+     section_list = info->sections;
+     for (section = section_list; section; section = section->next) {
+diff --git a/qapi/machine.json b/qapi/machine.json
+index 16e771affc..a9f33d0f27 100644
+--- a/qapi/machine.json
++++ b/qapi/machine.json
+@@ -1207,7 +1207,7 @@
+ #
+ # @memdev: memory backend linked with device
+ #
+-# @node: the numa node
++# @node: the numa node (Since: 7.0)
+ #
+ # Since: 6.2
+ ##
+@@ -1288,7 +1288,7 @@
+ #
+ # @memdev: memory backend linked with device
+ #
+-# @node: the numa node
++# @node: the numa node (Since: 7.0)
+ #
+ # Since: 6.2
+ ##
+diff --git a/qapi/misc-target.json b/qapi/misc-target.json
+index 1022aa0184..4bc45d2474 100644
+--- a/qapi/misc-target.json
++++ b/qapi/misc-target.json
+@@ -344,9 +344,9 @@
+ #
+ # @node: the numa node
+ #
+-# @size: the size of epc section
++# @size: the size of EPC section
+ #
+-# Since: 6.2
++# Since: 7.0
+ ##
+ { 'struct': 'SGXEPCSection',
+   'data': { 'node': 'int',
+@@ -365,7 +365,13 @@
+ #
+ # @flc: true if FLC is supported
+ #
+-# @sections: The EPC sections info for guest
++# @section-size: The EPC section size for guest
++#                Redundant with @sections.  Just for backward compatibility.
++#
++# @sections: The EPC sections info for guest (Since: 7.0)
++#
++# Features:
++# @deprecated: Member @section-size is deprecated.  Use @sections instead.
+ #
+ # Since: 6.2
+ ##
+@@ -374,6 +380,8 @@
+             'sgx1': 'bool',
+             'sgx2': 'bool',
+             'flc': 'bool',
++            'section-size': { 'type': 'uint64',
++                    'features': [ 'deprecated' ] },
+             'sections': ['SGXEPCSection']},
+    'if': 'TARGET_I386' }
+ 
+@@ -390,7 +398,9 @@
+ #
+ # -> { "execute": "query-sgx" }
+ # <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
+-#                  "flc": true, "section-size" : 0 } }
++#                  "flc": true,  "section-size" : 96468992,
++#                  "sections": [{"node": 0, "size": 67108864},
++#                  {"node": 1, "size": 29360128}]} }
+ #
+ ##
+ { 'command': 'query-sgx', 'returns': 'SGXInfo', 'if': 'TARGET_I386' }
+@@ -408,7 +418,9 @@
+ #
+ # -> { "execute": "query-sgx-capabilities" }
+ # <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
+-#                  "flc": true, "section-size" : 0 } }
++#                  "flc": true, "section-size" : 96468992,
++#                  "section" : [{"node": 0, "size": 67108864},
++#                  {"node": 1, "size": 29360128}]} }
+ #
+ ##
+ { 'command': 'query-sgx-capabilities', 'returns': 'SGXInfo', 'if': 'TARGET_I386' }
+-- 
+2.27.0
+

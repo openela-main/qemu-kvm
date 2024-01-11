@@ -1,0 +1,52 @@
+From d5a85fcf996948d1154e88e9ee3b4e8c64ec2694 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Fri, 4 Feb 2022 12:10:08 +0100
+Subject: [PATCH 2/6] block/nbd: Assert there are no timers when closed
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 117: block/nbd: Handle AioContext changes
+RH-Commit: [2/6] 995795ae9844a7d2b28cb1e57fd7fe81482d0205
+RH-Bugzilla: 2035185
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Our two timers must not remain armed beyond nbd_clear_bdrvstate(), or
+they will access freed data when they fire.
+
+This patch is separate from the patches that actually fix the issue
+(HEAD^^ and HEAD^) so that you can run the associated regression iotest
+(281) on a configuration that reproducibly exposes the bug.
+
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+(cherry picked from commit 8a39c381e5e407d2fe5500324323f90a8540fa90)
+
+Conflict:
+- block/nbd.c: open_timer was introduced after the 6.2 release (for
+  nbd's @open-timeout parameter), and has not been backported, so drop
+  the assertion that it is NULL
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ block/nbd.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/block/nbd.c b/block/nbd.c
+index b8e5a9b4cc..aab20125d8 100644
+--- a/block/nbd.c
++++ b/block/nbd.c
+@@ -108,6 +108,9 @@ static void nbd_clear_bdrvstate(BlockDriverState *bs)
+ 
+     yank_unregister_instance(BLOCKDEV_YANK_INSTANCE(bs->node_name));
+ 
++    /* Must not leave timers behind that would access freed data */
++    assert(!s->reconnect_delay_timer);
++
+     object_unref(OBJECT(s->tlscreds));
+     qapi_free_SocketAddress(s->saddr);
+     s->saddr = NULL;
+-- 
+2.27.0
+

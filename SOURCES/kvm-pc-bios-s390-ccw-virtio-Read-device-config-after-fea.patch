@@ -1,0 +1,67 @@
+From a60940fb7ef026f3aa968e77389efa51ea648ddf Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 8 Jul 2022 12:29:50 +0200
+Subject: [PATCH 34/37] pc-bios/s390-ccw/virtio: Read device config after
+ feature negotiation
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 198: pc-bios/s390-ccw: Fix boot from disks with 4k sectors that do not have the typical DASD geometry
+RH-Commit: [6/9] 99ed8765d614207db19ded75d62c65171674d982
+RH-Bugzilla: 2098076
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2098076
+
+commit aa5c69ce99411c4886bcd051f288afc02b6d968d
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Jul 4 13:18:58 2022 +0200
+
+    pc-bios/s390-ccw/virtio: Read device config after feature negotiation
+
+    Feature negotiation should be done first, since some fields in the
+    config area can depend on the negotiated features and thus should
+    rather be read afterwards.
+
+    While we're at it, also adjust the error message here a little bit
+    (the code is nowadays used for non-block virtio devices, too).
+
+    Message-Id: <20220704111903.62400-8-thuth@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ pc-bios/s390-ccw/virtio.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/virtio.c b/pc-bios/s390-ccw/virtio.c
+index 4e85a2eb82..d8c2b52710 100644
+--- a/pc-bios/s390-ccw/virtio.c
++++ b/pc-bios/s390-ccw/virtio.c
+@@ -262,10 +262,6 @@ void virtio_setup_ccw(VDev *vdev)
+     rc = run_ccw(vdev, CCW_CMD_WRITE_STATUS, &status, sizeof(status), false);
+     IPL_assert(rc == 0, "Could not write DRIVER status to host");
+ 
+-    IPL_assert(
+-        run_ccw(vdev, CCW_CMD_READ_CONF, &vdev->config, cfg_size, false) == 0,
+-       "Could not get block device configuration");
+-
+     /* Feature negotiation */
+     for (i = 0; i < ARRAY_SIZE(vdev->guest_features); i++) {
+         feats.features = 0;
+@@ -278,6 +274,9 @@ void virtio_setup_ccw(VDev *vdev)
+         IPL_assert(rc == 0, "Could not set features bits");
+     }
+ 
++    rc = run_ccw(vdev, CCW_CMD_READ_CONF, &vdev->config, cfg_size, false);
++    IPL_assert(rc == 0, "Could not get virtio device configuration");
++
+     for (i = 0; i < vdev->nr_vqs; i++) {
+         VqInfo info = {
+             .queue = (unsigned long long) ring_area + (i * VIRTIO_RING_SIZE),
+-- 
+2.35.3
+

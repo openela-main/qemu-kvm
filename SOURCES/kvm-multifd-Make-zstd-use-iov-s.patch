@@ -1,0 +1,53 @@
+From bac5ce0b4d3552d6056045f201b4e50dd6204b31 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 18 May 2022 02:52:24 -0300
+Subject: [PATCH 13/37] multifd: Make zstd use iov's
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [13/26] 4d7036fb32efdf088d23737b9710e6ad1a4654aa
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 0a818b89eb8eaf79ae651405907d8110a0935cfd)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd-zstd.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/migration/multifd-zstd.c b/migration/multifd-zstd.c
+index 2185a83eac..4e60cdbc54 100644
+--- a/migration/multifd-zstd.c
++++ b/migration/multifd-zstd.c
+@@ -156,6 +156,9 @@ static int zstd_send_prepare(MultiFDSendParams *p, Error **errp)
+             return -1;
+         }
+     }
++    p->iov[p->iovs_num].iov_base = z->zbuff;
++    p->iov[p->iovs_num].iov_len = z->out.pos;
++    p->iovs_num++;
+     p->next_packet_size = z->out.pos;
+     p->flags |= MULTIFD_FLAG_ZSTD;
+ 
+@@ -175,10 +178,7 @@ static int zstd_send_prepare(MultiFDSendParams *p, Error **errp)
+  */
+ static int zstd_send_write(MultiFDSendParams *p, uint32_t used, Error **errp)
+ {
+-    struct zstd_data *z = p->data;
+-
+-    return qio_channel_write_all(p->c, (void *)z->zbuff, p->next_packet_size,
+-                                 errp);
++    return qio_channel_writev_all(p->c, p->iov, p->iovs_num, errp);
+ }
+ 
+ /**
+-- 
+2.35.3
+

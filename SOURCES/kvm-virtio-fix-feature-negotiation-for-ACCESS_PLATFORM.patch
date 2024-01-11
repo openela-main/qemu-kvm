@@ -1,0 +1,102 @@
+From 56e2aef97e750ffdc572dcecbfc31314728d37a9 Mon Sep 17 00:00:00 2001
+From: Halil Pasic <pasic@linux.ibm.com>
+Date: Mon, 7 Mar 2022 12:29:39 +0100
+Subject: [PATCH 2/2] virtio: fix feature negotiation for ACCESS_PLATFORM
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-MergeRequest: 224: virtiofs on s390 secure execution
+RH-Bugzilla: 2116302
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Cédric Le Goater <None>
+RH-Commit: [2/2] 264d3bdbbde985f16ed6f5a1786547c25fb8cc04
+
+Unlike most virtio features ACCESS_PLATFORM is considered mandatory by
+QEMU, i.e. the driver must accept it if offered by the device. The
+virtio specification says that the driver SHOULD accept the
+ACCESS_PLATFORM feature if offered, and that the device MAY fail to
+operate if ACCESS_PLATFORM was offered but not negotiated.
+
+While a SHOULD ain't exactly a MUST, we are certainly allowed to fail
+the device when the driver fences ACCESS_PLATFORM. With commit
+2943b53f68 ("virtio: force VIRTIO_F_IOMMU_PLATFORM") we already made the
+decision to do so whenever the get_dma_as() callback is implemented (by
+the bus), which in practice means for the entirety of virtio-pci.
+
+That means, if the device needs to translate I/O addresses, then
+ACCESS_PLATFORM is mandatory. The aforementioned commit tells us in the
+commit message that this is for security reasons. More precisely if we
+were to allow a less then trusted driver (e.g. an user-space driver, or
+a nested guest) to make the device bypass the IOMMU by not negotiating
+ACCESS_PLATFORM, then the guest kernel would have no ability to
+control/police (by programming the IOMMU) what pieces of guest memory
+the driver may manipulate using the device. Which would break security
+assumptions within the guest.
+
+If ACCESS_PLATFORM is offered not because we want the device to utilize
+an IOMMU and do address translation, but because the device does not
+have access to the entire guest RAM, and needs the driver to grant
+access to the bits it needs access to (e.g. confidential guest support),
+we still require the guest to have the corresponding logic and to accept
+ACCESS_PLATFORM. If the driver does not accept ACCESS_PLATFORM, then
+things are bound to go wrong, and we may see failures much less graceful
+than failing the device because the driver didn't negotiate
+ACCESS_PLATFORM.
+
+So let us make ACCESS_PLATFORM mandatory for the driver regardless
+of whether the get_dma_as() callback is implemented or not.
+
+Signed-off-by: Halil Pasic <pasic@linux.ibm.com>
+Fixes: 2943b53f68 ("virtio: force VIRTIO_F_IOMMU_PLATFORM")
+
+Message-Id: <20220307112939.2780117-1-pasic@linux.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+(cherry picked from commit 06134e2bc35dc21543d4cbcf31f858c03d383442)
+---
+ hw/virtio/virtio-bus.c | 22 ++++++++++++++--------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/hw/virtio/virtio-bus.c b/hw/virtio/virtio-bus.c
+index 0f69d1c742..d7ec023adf 100644
+--- a/hw/virtio/virtio-bus.c
++++ b/hw/virtio/virtio-bus.c
+@@ -78,17 +78,23 @@ void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp)
+         return;
+     }
+ 
+-    vdev_has_iommu = virtio_host_has_feature(vdev, VIRTIO_F_IOMMU_PLATFORM);
+-    if (klass->get_dma_as != NULL && has_iommu) {
++    vdev->dma_as = &address_space_memory;
++    if (has_iommu) {
++        vdev_has_iommu = virtio_host_has_feature(vdev, VIRTIO_F_IOMMU_PLATFORM);
++        /*
++         * Present IOMMU_PLATFORM to the driver iff iommu_plattform=on and
++         * device operational. If the driver does not accept IOMMU_PLATFORM
++         * we fail the device.
++         */
+         virtio_add_feature(&vdev->host_features, VIRTIO_F_IOMMU_PLATFORM);
+-        vdev->dma_as = klass->get_dma_as(qbus->parent);
+-        if (!vdev_has_iommu && vdev->dma_as != &address_space_memory) {
+-            error_setg(errp,
++        if (klass->get_dma_as) {
++            vdev->dma_as = klass->get_dma_as(qbus->parent);
++            if (!vdev_has_iommu && vdev->dma_as != &address_space_memory) {
++                error_setg(errp,
+                        "iommu_platform=true is not supported by the device");
+-            return;
++                return;
++            }
+         }
+-    } else {
+-        vdev->dma_as = &address_space_memory;
+     }
+ }
+ 
+-- 
+2.37.3
+

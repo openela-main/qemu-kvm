@@ -1,0 +1,88 @@
+From 6eae12166341c236da023e5117b64b842ae72083 Mon Sep 17 00:00:00 2001
+From: Jing Liu <jing2.liu@intel.com>
+Date: Wed, 16 Feb 2022 22:04:27 -0800
+Subject: [PATCH 05/24] x86: Fix the 64-byte boundary enumeration for extended
+ state
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [5/13] 64fc93e3b0ad0fc56da9d71b33d9eefd3cbba1d7
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+The extended state subleaves (EAX=0Dh, ECX=n, n>1).ECX[1]
+indicate whether the extended state component locates
+on the next 64-byte boundary following the preceding state
+component when the compacted format of an XSAVE area is
+used.
+
+Right now, they are all zero because no supported component
+needed the bit to be set, but the upcoming AMX feature will
+use it.  Fix the subleaves value according to KVM's supported
+cpuid.
+
+Signed-off-by: Jing Liu <jing2.liu@intel.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Message-Id: <20220217060434.52460-2-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 131266b7565bd437127bd231563572696bb27235)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.c         | 1 +
+ target/i386/cpu.h         | 6 ++++++
+ target/i386/kvm/kvm-cpu.c | 1 +
+ 3 files changed, 8 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index dd6935b1dd..f44fad3a2a 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5495,6 +5495,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+                 const ExtSaveArea *esa = &x86_ext_save_areas[count];
+                 *eax = esa->size;
+                 *ebx = esa->offset;
++                *ecx = esa->ecx & ESA_FEATURE_ALIGN64_MASK;
+             }
+         }
+         break;
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index c6a6c871f1..5d9702a991 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -548,6 +548,11 @@ typedef enum X86Seg {
+ #define XSTATE_Hi16_ZMM_MASK            (1ULL << XSTATE_Hi16_ZMM_BIT)
+ #define XSTATE_PKRU_MASK                (1ULL << XSTATE_PKRU_BIT)
+ 
++#define ESA_FEATURE_ALIGN64_BIT         1
++
++#define ESA_FEATURE_ALIGN64_MASK        (1U << ESA_FEATURE_ALIGN64_BIT)
++
++
+ /* CPUID feature words */
+ typedef enum FeatureWord {
+     FEAT_1_EDX,         /* CPUID[1].EDX */
+@@ -1354,6 +1359,7 @@ QEMU_BUILD_BUG_ON(sizeof(XSavePKRU) != 0x8);
+ typedef struct ExtSaveArea {
+     uint32_t feature, bits;
+     uint32_t offset, size;
++    uint32_t ecx;
+ } ExtSaveArea;
+ 
+ #define XSAVE_STATE_AREA_COUNT (XSTATE_PKRU_BIT + 1)
+diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
+index 7b004065ae..86ef7b2712 100644
+--- a/target/i386/kvm/kvm-cpu.c
++++ b/target/i386/kvm/kvm-cpu.c
+@@ -104,6 +104,7 @@ static void kvm_cpu_xsave_init(void)
+             if (sz != 0) {
+                 assert(esa->size == sz);
+                 esa->offset = kvm_arch_get_supported_cpuid(s, 0xd, i, R_EBX);
++                esa->ecx = kvm_arch_get_supported_cpuid(s, 0xd, i, R_ECX);
+             }
+         }
+     }
+-- 
+2.35.3
+

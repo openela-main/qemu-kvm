@@ -1,0 +1,43 @@
+From 3fceb3b60a60c5008eecf99e45e269b757042b5a Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Mon, 17 Oct 2022 08:38:20 +0000
+Subject: [PATCH 39/42] include/elf.h: add s390x note types
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [39/41] ebf0873744905abbe9cfc423a56c6d1b4f2ae936
+
+Adding two s390x note types
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Message-Id: <20221017083822.43118-9-frankja@linux.ibm.com>
+(cherry picked from commit 5433669c7a1884cc0394c360148965edf7519884)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/elf.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/elf.h b/include/elf.h
+index 811bf4a1cb..4edab8e5a2 100644
+--- a/include/elf.h
++++ b/include/elf.h
+@@ -1647,6 +1647,8 @@ typedef struct elf64_shdr {
+ #define NT_TASKSTRUCT	4
+ #define NT_AUXV		6
+ #define NT_PRXFPREG     0x46e62b7f      /* copied from gdb5.1/include/elf/common.h */
++#define NT_S390_PV_CPU_DATA	0x30e	/* s390 protvirt cpu dump data */
++#define NT_S390_RI_CB	0x30d		/* s390 runtime instrumentation */
+ #define NT_S390_GS_CB   0x30b           /* s390 guarded storage registers */
+ #define NT_S390_VXRS_HIGH 0x30a         /* s390 vector registers 16-31 */
+ #define NT_S390_VXRS_LOW  0x309         /* s390 vector registers 0-15 (lower half) */
+-- 
+2.37.3
+

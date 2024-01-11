@@ -1,0 +1,70 @@
+From 648193b48d8aeaded90fd657e3610d8040f505fc Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 12 Jan 2023 20:14:53 +0100
+Subject: [PATCH 3/4] qemu-img bitmap: Report errors while closing the image
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 251: qemu-img: Fix exit code for errors closing the image
+RH-Bugzilla: 2147617
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [3/4] 8e13e09564718a0badd03af84f036246a46a0eba
+
+blk_unref() can't report any errors that happen while closing the image.
+For example, if qcow2 hits an -ENOSPC error while writing out dirty
+bitmaps when it's closed, it prints error messages to stderr, but
+'qemu-img bitmap' won't see any error return value and will therefore
+look successful with exit code 0.
+
+In order to fix this, manually inactivate the image first before calling
+blk_unref(). This already performs the operations that would be most
+likely to fail while closing the image, but it can still return errors.
+
+Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1330
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20230112191454.169353-4-kwolf@redhat.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit c5e477110dcb8ef4642dce399777c3dee68fa96c)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ qemu-img.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/qemu-img.c b/qemu-img.c
+index 18833f7d69..7d035c0c7f 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -4622,6 +4622,7 @@ static int img_bitmap(int argc, char **argv)
+     QSIMPLEQ_HEAD(, ImgBitmapAction) actions;
+     ImgBitmapAction *act, *act_next;
+     const char *op;
++    int inactivate_ret;
+ 
+     QSIMPLEQ_INIT(&actions);
+ 
+@@ -4806,6 +4807,16 @@ static int img_bitmap(int argc, char **argv)
+     ret = 0;
+ 
+  out:
++    /*
++     * Manually inactivate the images first because this way we can know whether
++     * an error occurred. blk_unref() doesn't tell us about failures.
++     */
++    inactivate_ret = bdrv_inactivate_all();
++    if (inactivate_ret < 0) {
++        error_report("Error while closing the image: %s", strerror(-inactivate_ret));
++        ret = 1;
++    }
++
+     blk_unref(src);
+     blk_unref(blk);
+     qemu_opts_del(opts);
+-- 
+2.37.3
+

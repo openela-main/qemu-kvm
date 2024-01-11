@@ -1,0 +1,109 @@
+From ea5299b5dde7d0b6b2f93cb646e6a24c9f105466 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Wed, 23 Mar 2022 12:33:25 +0100
+Subject: [PATCH 13/24] KVM: x86: workaround invalid CPUID[0xD,9] info on some
+ AMD processors
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [13/13] 38f147c911258e84e01336271ebd23a1c24371fc
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Some AMD processors expose the PKRU extended save state even if they do not have
+the related PKU feature in CPUID.  Worse, when they do they report a size of
+64, whereas the expected size of the PKRU extended save state is 8, therefore
+the esa->size == eax assertion does not hold.
+
+The state is already ignored by KVM_GET_SUPPORTED_CPUID because it
+was not enabled in the host XCR0.  However, QEMU kvm_cpu_xsave_init()
+runs before QEMU invokes arch_prctl() to enable dynamically-enabled
+save states such as XTILEDATA, and KVM_GET_SUPPORTED_CPUID hides save
+states that have yet to be enabled.  Therefore, kvm_cpu_xsave_init()
+needs to consult the host CPUID instead of KVM_GET_SUPPORTED_CPUID,
+and dies with an assertion failure.
+
+When setting up the ExtSaveArea array to match the host, ignore features that
+KVM does not report as supported.  This will cause QEMU to skip the incorrect
+CPUID leaf instead of tripping the assertion.
+
+Closes: https://gitlab.com/qemu-project/qemu/-/issues/916
+Reported-by: Daniel P. Berrangé <berrange@redhat.com>
+Analyzed-by: Yang Zhong <yang.zhong@intel.com>
+Reported-by: Peter Krempa <pkrempa@redhat.com>
+Tested-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 58f7db26f21c690cf9a669c314cfd7371506084a)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.c         |  4 ++--
+ target/i386/cpu.h         |  2 ++
+ target/i386/kvm/kvm-cpu.c | 19 ++++++++++++-------
+ 3 files changed, 16 insertions(+), 9 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 09e08f7f38..0543b846ff 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -4980,8 +4980,8 @@ CpuDefinitionInfoList *qmp_query_cpu_definitions(Error **errp)
+     return cpu_list;
+ }
+ 
+-static uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
+-                                                   bool migratable_only)
++uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
++                                            bool migratable_only)
+ {
+     FeatureWordInfo *wi = &feature_word_info[w];
+     uint64_t r = 0;
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 8ab2a4042a..006b735fe4 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -604,6 +604,8 @@ typedef enum FeatureWord {
+ } FeatureWord;
+ 
+ typedef uint64_t FeatureWordArray[FEATURE_WORDS];
++uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
++                                            bool migratable_only);
+ 
+ /* cpuid_features bits */
+ #define CPUID_FP87 (1U << 0)
+diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
+index bdc967c484..74c1396a93 100644
+--- a/target/i386/kvm/kvm-cpu.c
++++ b/target/i386/kvm/kvm-cpu.c
+@@ -99,13 +99,18 @@ static void kvm_cpu_xsave_init(void)
+     for (i = XSTATE_SSE_BIT + 1; i < XSAVE_STATE_AREA_COUNT; i++) {
+         ExtSaveArea *esa = &x86_ext_save_areas[i];
+ 
+-        if (esa->size) {
+-            host_cpuid(0xd, i, &eax, &ebx, &ecx, &edx);
+-            if (eax != 0) {
+-                assert(esa->size == eax);
+-                esa->offset = ebx;
+-                esa->ecx = ecx;
+-            }
++        if (!esa->size) {
++            continue;
++        }
++        if ((x86_cpu_get_supported_feature_word(esa->feature, false) & esa->bits)
++            != esa->bits) {
++            continue;
++        }
++        host_cpuid(0xd, i, &eax, &ebx, &ecx, &edx);
++        if (eax != 0) {
++            assert(esa->size == eax);
++            esa->offset = ebx;
++            esa->ecx = ecx;
+         }
+     }
+ }
+-- 
+2.35.3
+

@@ -1,0 +1,124 @@
+From f09f2f12133073d6ccab3b2bd95717d435adc442 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 8 Jul 2022 12:29:50 +0200
+Subject: [PATCH 31/37] pc-bios/s390-ccw/virtio-blkdev: Simplify/fix
+ virtio_ipl_disk_is_valid()
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 198: pc-bios/s390-ccw: Fix boot from disks with 4k sectors that do not have the typical DASD geometry
+RH-Commit: [3/9] ca0b836a417ce5bbd26e489551f573d6b2fc9e94
+RH-Bugzilla: 2098076
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2098076
+
+commit bbf615f7b707f009ef8e757d170902ad33b90644
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Jul 4 13:18:55 2022 +0200
+
+    pc-bios/s390-ccw/virtio-blkdev: Simplify/fix virtio_ipl_disk_is_valid()
+
+    The s390-ccw bios fails to boot if the boot disk is a virtio-blk
+    disk with a sector size of 4096. For example:
+
+     dasdfmt -b 4096 -d cdl -y -p -M quick /dev/dasdX
+     fdasd -a /dev/dasdX
+     install a guest onto /dev/dasdX1 using virtio-blk
+     qemu-system-s390x -nographic -hda /dev/dasdX1
+
+    The bios then bails out with:
+
+     ! Cannot read block 0 !
+
+    Looking at virtio_ipl_disk_is_valid() and especially the function
+    virtio_disk_is_scsi(), it does not really make sense that we expect
+    only such a limited disk geometry (like a block size of 512) for
+    our boot disks. Let's relax the check and allow everything that
+    remotely looks like a sane disk.
+
+    Message-Id: <20220704111903.62400-5-thuth@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ pc-bios/s390-ccw/virtio-blkdev.c | 41 ++++++--------------------------
+ pc-bios/s390-ccw/virtio.h        |  2 --
+ 2 files changed, 7 insertions(+), 36 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/virtio-blkdev.c b/pc-bios/s390-ccw/virtio-blkdev.c
+index 6483307630..7e13155589 100644
+--- a/pc-bios/s390-ccw/virtio-blkdev.c
++++ b/pc-bios/s390-ccw/virtio-blkdev.c
+@@ -166,46 +166,19 @@ void virtio_assume_eckd(void)
+         virtio_eckd_sectors_for_block_size(vdev->config.blk.blk_size);
+ }
+ 
+-bool virtio_disk_is_scsi(void)
+-{
+-    VDev *vdev = virtio_get_device();
+-
+-    if (vdev->guessed_disk_nature == VIRTIO_GDN_SCSI) {
+-        return true;
+-    }
+-    switch (vdev->senseid.cu_model) {
+-    case VIRTIO_ID_BLOCK:
+-        return (vdev->config.blk.geometry.heads == 255)
+-            && (vdev->config.blk.geometry.sectors == 63)
+-            && (virtio_get_block_size()  == VIRTIO_SCSI_BLOCK_SIZE);
+-    case VIRTIO_ID_SCSI:
+-        return true;
+-    }
+-    return false;
+-}
+-
+-bool virtio_disk_is_eckd(void)
++bool virtio_ipl_disk_is_valid(void)
+ {
++    int blksize = virtio_get_block_size();
+     VDev *vdev = virtio_get_device();
+-    const int block_size = virtio_get_block_size();
+ 
+-    if (vdev->guessed_disk_nature == VIRTIO_GDN_DASD) {
++    if (vdev->guessed_disk_nature == VIRTIO_GDN_SCSI ||
++        vdev->guessed_disk_nature == VIRTIO_GDN_DASD) {
+         return true;
+     }
+-    switch (vdev->senseid.cu_model) {
+-    case VIRTIO_ID_BLOCK:
+-        return (vdev->config.blk.geometry.heads == 15)
+-            && (vdev->config.blk.geometry.sectors ==
+-                virtio_eckd_sectors_for_block_size(block_size));
+-    case VIRTIO_ID_SCSI:
+-        return false;
+-    }
+-    return false;
+-}
+ 
+-bool virtio_ipl_disk_is_valid(void)
+-{
+-    return virtio_disk_is_scsi() || virtio_disk_is_eckd();
++    return (vdev->senseid.cu_model == VIRTIO_ID_BLOCK ||
++            vdev->senseid.cu_model == VIRTIO_ID_SCSI) &&
++           blksize >= 512 && blksize <= 4096;
+ }
+ 
+ int virtio_get_block_size(void)
+diff --git a/pc-bios/s390-ccw/virtio.h b/pc-bios/s390-ccw/virtio.h
+index 9e410bde6f..241730effe 100644
+--- a/pc-bios/s390-ccw/virtio.h
++++ b/pc-bios/s390-ccw/virtio.h
+@@ -186,8 +186,6 @@ void virtio_assume_scsi(void);
+ void virtio_assume_eckd(void);
+ void virtio_assume_iso9660(void);
+ 
+-extern bool virtio_disk_is_scsi(void);
+-extern bool virtio_disk_is_eckd(void);
+ extern bool virtio_ipl_disk_is_valid(void);
+ extern int virtio_get_block_size(void);
+ extern uint8_t virtio_get_heads(void);
+-- 
+2.35.3
+

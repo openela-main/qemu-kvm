@@ -1,0 +1,60 @@
+From 5bd57d8ac3a4e75337eae81a3623b4dc2b417e2f Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 2 Sep 2022 13:27:33 -0400
+Subject: [PATCH 08/42] s390x/pci: don't fence interpreted devices without
+ MSI-X
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [8/41] 52bad4368e9494c43133338b386dc0cc159aeedc
+
+Lack of MSI-X support is not an issue for interpreted passthrough
+devices, so let's let these in.  This will allow, for example, ISM
+devices to be passed through -- but only when interpretation is
+available and being used.
+
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20220902172737.170349-5-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 15d0e7942d3b31ff71d8e0e8cec3a8203214f19b)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-bus.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-bus.c b/hw/s390x/s390-pci-bus.c
+index 18bfae0465..07c7c155e3 100644
+--- a/hw/s390x/s390-pci-bus.c
++++ b/hw/s390x/s390-pci-bus.c
+@@ -881,6 +881,10 @@ static int s390_pci_msix_init(S390PCIBusDevice *pbdev)
+ 
+ static void s390_pci_msix_free(S390PCIBusDevice *pbdev)
+ {
++    if (pbdev->msix.entries == 0) {
++        return;
++    }
++
+     memory_region_del_subregion(&pbdev->iommu->mr, &pbdev->msix_notify_mr);
+     object_unparent(OBJECT(&pbdev->msix_notify_mr));
+ }
+@@ -1093,7 +1097,7 @@ static void s390_pcihost_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+             pbdev->interp = false;
+         }
+ 
+-        if (s390_pci_msix_init(pbdev)) {
++        if (s390_pci_msix_init(pbdev) && !pbdev->interp) {
+             error_setg(errp, "MSI-X support is mandatory "
+                        "in the S390 architecture");
+             return;
+-- 
+2.37.3
+

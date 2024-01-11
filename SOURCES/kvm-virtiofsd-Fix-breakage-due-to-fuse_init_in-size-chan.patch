@@ -1,0 +1,63 @@
+From 1da951c4c3b4e403a6c1668a54e6264381c0003d Mon Sep 17 00:00:00 2001
+From: Vivek Goyal <vgoyal@redhat.com>
+Date: Tue, 8 Feb 2022 15:48:04 -0500
+Subject: [PATCH 1/3] virtiofsd: Fix breakage due to fuse_init_in size change
+
+RH-Author: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-MergeRequest: 193: virtiofsd: Fix breakage due to fuse_init_in size change
+RH-Commit: [1/1] 5809db034f9361fb462181d71e7cdde1324f8e54
+RH-Bugzilla: 2097209
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Vivek Goyal <None>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Kernel version 5.17 has increased the size of "struct fuse_init_in" struct.
+Previously this struct was 16 bytes and now it has been extended to
+64 bytes in size.
+
+Once qemu headers are updated to latest, it will expect to receive 64 byte
+size struct (for protocol version major 7 and minor > 6). But if guest is
+booting older kernel (older than 5.17), then it still sends older
+fuse_init_in of size 16 bytes. And do_init() fails. It is expecting
+64 byte struct. And this results in mount of virtiofs failing.
+
+Fix this by parsing 16 bytes only for now. Separate patches will be
+posted which will parse rest of the bytes and enable new functionality.
+Right now we don't support any of the new functionality, so we don't
+lose anything by not parsing bytes beyond 16.
+
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Vivek Goyal <vgoyal@redhat.com>
+Message-Id: <20220208204813.682906-2-vgoyal@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit a086d54c6ffa38f7e71f182b63a25315304a3392)
+---
+ tools/virtiofsd/fuse_lowlevel.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tools/virtiofsd/fuse_lowlevel.c b/tools/virtiofsd/fuse_lowlevel.c
+index e4679c73ab..5d431a7038 100644
+--- a/tools/virtiofsd/fuse_lowlevel.c
++++ b/tools/virtiofsd/fuse_lowlevel.c
+@@ -1880,6 +1880,8 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
+                     struct fuse_mbuf_iter *iter)
+ {
+     size_t compat_size = offsetof(struct fuse_init_in, max_readahead);
++    size_t compat2_size = offsetof(struct fuse_init_in, flags) +
++                              sizeof(uint32_t);
+     struct fuse_init_in *arg;
+     struct fuse_init_out outarg;
+     struct fuse_session *se = req->se;
+@@ -1897,7 +1899,7 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
+ 
+     /* ...and now consume the new fields. */
+     if (arg->major == 7 && arg->minor >= 6) {
+-        if (!fuse_mbuf_iter_advance(iter, sizeof(*arg) - compat_size)) {
++        if (!fuse_mbuf_iter_advance(iter, compat2_size - compat_size)) {
+             fuse_reply_err(req, EINVAL);
+             return;
+         }
+-- 
+2.35.3
+

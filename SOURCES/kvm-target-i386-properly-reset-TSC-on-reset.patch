@@ -1,0 +1,83 @@
+From 416de21d11540a927cceb533bf54ce28ffa15ad6 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Thu, 24 Mar 2022 09:21:41 +0100
+Subject: [PATCH 2/3] target/i386: properly reset TSC on reset
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 172: target/i386: properly reset TSC on reset
+RH-Commit: [1/1] 7008bc5d02ad0a2d8b78259459d22d8f0986c989
+RH-Bugzilla: 2070417
+RH-Acked-by: Marcelo Tosatti <None>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+
+Some versions of Windows hang on reboot if their TSC value is greater
+than 2^54.  The calibration of the Hyper-V reference time overflows
+and fails; as a result the processors' clock sources are out of sync.
+
+The issue is that the TSC _should_ be reset to 0 on CPU reset and
+QEMU tries to do that.  However, KVM special cases writing 0 to the
+TSC and thinks that QEMU is trying to hot-plug a CPU, which is
+correct the first time through but not later.  Thwart this valiant
+effort and reset the TSC to 1 instead, but only if the CPU has been
+run once.
+
+For this to work, env->tsc has to be moved to the part of CPUArchState
+that is not zeroed at the beginning of x86_cpu_reset.
+
+Reported-by: Vadim Rozenfeld <vrozenfe@redhat.com>
+Supersedes: <20220324082346.72180-1-pbonzini@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 5286c3662294119dc2dd1e9296757337211451f6)
+---
+ target/i386/cpu.c | 13 +++++++++++++
+ target/i386/cpu.h |  2 +-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 6e25d13339..dd6935b1dd 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5871,6 +5871,19 @@ static void x86_cpu_reset(DeviceState *dev)
+     env->xstate_bv = 0;
+ 
+     env->pat = 0x0007040600070406ULL;
++
++    if (kvm_enabled()) {
++        /*
++         * KVM handles TSC = 0 specially and thinks we are hot-plugging
++         * a new CPU, use 1 instead to force a reset.
++         */
++        if (env->tsc != 0) {
++            env->tsc = 1;
++        }
++    } else {
++        env->tsc = 0;
++    }
++
+     env->msr_ia32_misc_enable = MSR_IA32_MISC_ENABLE_DEFAULT;
+     if (env->features[FEAT_1_ECX] & CPUID_EXT_MONITOR) {
+         env->msr_ia32_misc_enable |= MSR_IA32_MISC_ENABLE_MWAIT;
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 04f2b790c9..c6a6c871f1 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -1510,7 +1510,6 @@ typedef struct CPUX86State {
+     target_ulong kernelgsbase;
+ #endif
+ 
+-    uint64_t tsc;
+     uint64_t tsc_adjust;
+     uint64_t tsc_deadline;
+     uint64_t tsc_aux;
+@@ -1660,6 +1659,7 @@ typedef struct CPUX86State {
+     int64_t tsc_khz;
+     int64_t user_tsc_khz; /* for sanity check only */
+     uint64_t apic_bus_freq;
++    uint64_t tsc;
+ #if defined(CONFIG_KVM) || defined(CONFIG_HVF)
+     void *xsave_buf;
+     uint32_t xsave_buf_len;
+-- 
+2.35.1
+

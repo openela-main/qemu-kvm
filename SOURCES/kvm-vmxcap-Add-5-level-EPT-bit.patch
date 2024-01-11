@@ -1,0 +1,48 @@
+From f0f87dcea3fe14b20b8599cda9b1151ca2490d0c Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 30 Mar 2022 14:52:34 -0400
+Subject: [PATCH 07/18] vmxcap: Add 5-level EPT bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 139: vmxcap: Add 5-level EPT bit
+RH-Commit: [1/2] 4c098f551f1ed8e2a5582f466afda35b28d97055 (jmaloy/qemu-kvm)
+RH-Bugzilla: 2065207
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2065207
+UPSTREAM: Merged
+
+commit d312378e59658473aa91aa15c67ec6200d92e5ff
+Author: Vitaly Kuznetsov <vkuznets@redhat.com>
+Date:   Mon Feb 21 15:53:16 2022 +0100
+
+    vmxcap: Add 5-level EPT bit
+
+    5-level EPT is present in Icelake Server CPUs and is supported by QEMU
+    ('vmx-page-walk-5').
+
+    Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+    Message-Id: <20220221145316.576138-2-vkuznets@redhat.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+(cherry picked from commit d312378e59658473aa91aa15c67ec6200d92e5ff)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ scripts/kvm/vmxcap | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/kvm/vmxcap b/scripts/kvm/vmxcap
+index 6fe66d5f57..f140040104 100755
+--- a/scripts/kvm/vmxcap
++++ b/scripts/kvm/vmxcap
+@@ -249,6 +249,7 @@ controls = [
+         bits = {
+             0: 'Execute-only EPT translations',
+             6: 'Page-walk length 4',
++            7: 'Page-walk length 5',
+             8: 'Paging-structure memory type UC',
+             14: 'Paging-structure memory type WB',
+             16: '2MB EPT pages',
+-- 
+2.27.0
+

@@ -1,0 +1,81 @@
+From edead46187b1e55ad5e238332780aef19f1bc214 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 9 Nov 2022 18:41:18 -0500
+Subject: [PATCH 1/2] hw/acpi: Add ospm_status hook implementation for acpi-ged
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 228: qemu-kvm: backport some aarch64 fixes
+RH-Bugzilla: 2132609
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [1/2] 99730b1a27666ca745dc28d90751c938d43f1682 (jmaloy/qemu-kvm)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2132609
+Upstream: Merged
+
+commit d4424bebceaa8ffbc23060ce45e52a9bb817e3c9
+Author: Keqian Zhu <zhukeqian1@huawei.com>
+Date:   Tue Aug 16 17:49:57 2022 +0800
+
+    hw/acpi: Add ospm_status hook implementation for acpi-ged
+
+    Setup an ARM virtual machine of machine virt and execute qmp "query-acpi-ospm-status"
+    causes segmentation fault with following dumpstack:
+     #1  0x0000aaaaab64235c in qmp_query_acpi_ospm_status (errp=errp@entry=0xfffffffff030) at ../monitor/qmp-cmds.c:312
+     #2  0x0000aaaaabfc4e20 in qmp_marshal_query_acpi_ospm_status (args=<optimized out>, ret=0xffffea4ffe90, errp=0xffffea4ffe88) at qapi/qapi-commands-acpi.c:63
+     #3  0x0000aaaaabff8ba0 in do_qmp_dispatch_bh (opaque=0xffffea4ffe98) at ../qapi/qmp-dispatch.c:128
+     #4  0x0000aaaaac02e594 in aio_bh_call (bh=0xffffe0004d80) at ../util/async.c:150
+     #5  aio_bh_poll (ctx=ctx@entry=0xaaaaad0f6040) at ../util/async.c:178
+     #6  0x0000aaaaac00bd40 in aio_dispatch (ctx=ctx@entry=0xaaaaad0f6040) at ../util/aio-posix.c:421
+     #7  0x0000aaaaac02e010 in aio_ctx_dispatch (source=0xaaaaad0f6040, callback=<optimized out>, user_data=<optimized out>) at ../util/async.c:320
+     #8  0x0000fffff76f6884 in g_main_context_dispatch () at /usr/lib64/libglib-2.0.so.0
+     #9  0x0000aaaaac0452d4 in glib_pollfds_poll () at ../util/main-loop.c:297
+     #10 os_host_main_loop_wait (timeout=0) at ../util/main-loop.c:320
+     #11 main_loop_wait (nonblocking=nonblocking@entry=0) at ../util/main-loop.c:596
+     #12 0x0000aaaaab5c9e50 in qemu_main_loop () at ../softmmu/runstate.c:734
+     #13 0x0000aaaaab185370 in qemu_main (argc=argc@entry=47, argv=argv@entry=0xfffffffff518, envp=envp@entry=0x0) at ../softmmu/main.c:38
+     #14 0x0000aaaaab16f99c in main (argc=47, argv=0xfffffffff518) at ../softmmu/main.c:47
+
+    Fixes: ebb62075021a ("hw/acpi: Add ACPI Generic Event Device Support")
+    Signed-off-by: Keqian Zhu <zhukeqian1@huawei.com>
+    Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+    Message-id: 20220816094957.31700-1-zhukeqian1@huawei.com
+    Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+
+(cherry picked from commit d4424bebceaa8ffbc23060ce45e52a9bb817e3c9)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/acpi/generic_event_device.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/hw/acpi/generic_event_device.c b/hw/acpi/generic_event_device.c
+index e28457a7d1..a3d31631fe 100644
+--- a/hw/acpi/generic_event_device.c
++++ b/hw/acpi/generic_event_device.c
+@@ -267,6 +267,13 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
+     }
+ }
+ 
++static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
++{
++    AcpiGedState *s = ACPI_GED(adev);
++
++    acpi_memory_ospm_status(&s->memhp_state, list);
++}
++
+ static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
+ {
+     AcpiGedState *s = ACPI_GED(adev);
+@@ -409,6 +416,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
+     hc->unplug_request = acpi_ged_unplug_request_cb;
+     hc->unplug = acpi_ged_unplug_cb;
+ 
++    adevc->ospm_status = acpi_ged_ospm_status;
+     adevc->send_event = acpi_ged_send_event;
+ }
+ 
+-- 
+2.37.3
+

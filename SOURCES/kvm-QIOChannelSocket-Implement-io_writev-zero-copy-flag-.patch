@@ -1,0 +1,249 @@
+From 5fd7af93a06adaddbae719aabbaf912159f4fb28 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Wed, 18 May 2022 02:52:25 -0300
+Subject: [PATCH 18/37] QIOChannelSocket: Implement io_writev zero copy flag &
+ io_flush for CONFIG_LINUX
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [18/26] 6f65c8c879a5df57213b541d58285b65178f8547
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+For CONFIG_LINUX, implement the new zero copy flag and the optional callback
+io_flush on QIOChannelSocket, but enables it only when MSG_ZEROCOPY
+feature is available in the host kernel, which is checked on
+qio_channel_socket_connect_sync()
+
+qio_channel_socket_flush() was implemented by counting how many times
+sendmsg(...,MSG_ZEROCOPY) was successfully called, and then reading the
+socket's error queue, in order to find how many of them finished sending.
+Flush will loop until those counters are the same, or until some error occurs.
+
+Notes on using writev() with QIO_CHANNEL_WRITE_FLAG_ZERO_COPY:
+1: Buffer
+- As MSG_ZEROCOPY tells the kernel to use the same user buffer to avoid copying,
+some caution is necessary to avoid overwriting any buffer before it's sent.
+If something like this happen, a newer version of the buffer may be sent instead.
+- If this is a problem, it's recommended to call qio_channel_flush() before freeing
+or re-using the buffer.
+
+2: Locked memory
+- When using MSG_ZERCOCOPY, the buffer memory will be locked after queued, and
+unlocked after it's sent.
+- Depending on the size of each buffer, and how often it's sent, it may require
+a larger amount of locked memory than usually available to non-root user.
+- If the required amount of locked memory is not available, writev_zero_copy
+will return an error, which can abort an operation like migration,
+- Because of this, when an user code wants to add zero copy as a feature, it
+requires a mechanism to disable it, so it can still be accessible to less
+privileged users.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Message-Id: <20220513062836.965425-4-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 2bc58ffc2926a4efdd03edfb5909861fefc68c3d)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ include/io/channel-socket.h |   2 +
+ io/channel-socket.c         | 116 ++++++++++++++++++++++++++++++++++--
+ 2 files changed, 114 insertions(+), 4 deletions(-)
+
+diff --git a/include/io/channel-socket.h b/include/io/channel-socket.h
+index e747e63514..513c428fe4 100644
+--- a/include/io/channel-socket.h
++++ b/include/io/channel-socket.h
+@@ -47,6 +47,8 @@ struct QIOChannelSocket {
+     socklen_t localAddrLen;
+     struct sockaddr_storage remoteAddr;
+     socklen_t remoteAddrLen;
++    ssize_t zero_copy_queued;
++    ssize_t zero_copy_sent;
+ };
+ 
+ 
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index bfbd64787e..38a46ba213 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -26,6 +26,14 @@
+ #include "io/channel-watch.h"
+ #include "trace.h"
+ #include "qapi/clone-visitor.h"
++#ifdef CONFIG_LINUX
++#include <linux/errqueue.h>
++#include <sys/socket.h>
++
++#if (defined(MSG_ZEROCOPY) && defined(SO_ZEROCOPY))
++#define QEMU_MSG_ZEROCOPY
++#endif
++#endif
+ 
+ #define SOCKET_MAX_FDS 16
+ 
+@@ -55,6 +63,8 @@ qio_channel_socket_new(void)
+ 
+     sioc = QIO_CHANNEL_SOCKET(object_new(TYPE_QIO_CHANNEL_SOCKET));
+     sioc->fd = -1;
++    sioc->zero_copy_queued = 0;
++    sioc->zero_copy_sent = 0;
+ 
+     ioc = QIO_CHANNEL(sioc);
+     qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
+@@ -154,6 +164,16 @@ int qio_channel_socket_connect_sync(QIOChannelSocket *ioc,
+         return -1;
+     }
+ 
++#ifdef QEMU_MSG_ZEROCOPY
++    int ret, v = 1;
++    ret = setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &v, sizeof(v));
++    if (ret == 0) {
++        /* Zero copy available on host */
++        qio_channel_set_feature(QIO_CHANNEL(ioc),
++                                QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY);
++    }
++#endif
++
+     return 0;
+ }
+ 
+@@ -534,6 +554,7 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+     char control[CMSG_SPACE(sizeof(int) * SOCKET_MAX_FDS)];
+     size_t fdsize = sizeof(int) * nfds;
+     struct cmsghdr *cmsg;
++    int sflags = 0;
+ 
+     memset(control, 0, CMSG_SPACE(sizeof(int) * SOCKET_MAX_FDS));
+ 
+@@ -558,15 +579,31 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+         memcpy(CMSG_DATA(cmsg), fds, fdsize);
+     }
+ 
++#ifdef QEMU_MSG_ZEROCOPY
++    if (flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) {
++        sflags = MSG_ZEROCOPY;
++    }
++#endif
++
+  retry:
+-    ret = sendmsg(sioc->fd, &msg, 0);
++    ret = sendmsg(sioc->fd, &msg, sflags);
+     if (ret <= 0) {
+-        if (errno == EAGAIN) {
++        switch (errno) {
++        case EAGAIN:
+             return QIO_CHANNEL_ERR_BLOCK;
+-        }
+-        if (errno == EINTR) {
++        case EINTR:
+             goto retry;
++#ifdef QEMU_MSG_ZEROCOPY
++        case ENOBUFS:
++            if (sflags & MSG_ZEROCOPY) {
++                error_setg_errno(errp, errno,
++                                 "Process can't lock enough memory for using MSG_ZEROCOPY");
++                return -1;
++            }
++            break;
++#endif
+         }
++
+         error_setg_errno(errp, errno,
+                          "Unable to write to socket");
+         return -1;
+@@ -660,6 +697,74 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+ }
+ #endif /* WIN32 */
+ 
++
++#ifdef QEMU_MSG_ZEROCOPY
++static int qio_channel_socket_flush(QIOChannel *ioc,
++                                    Error **errp)
++{
++    QIOChannelSocket *sioc = QIO_CHANNEL_SOCKET(ioc);
++    struct msghdr msg = {};
++    struct sock_extended_err *serr;
++    struct cmsghdr *cm;
++    char control[CMSG_SPACE(sizeof(*serr))];
++    int received;
++    int ret = 1;
++
++    msg.msg_control = control;
++    msg.msg_controllen = sizeof(control);
++    memset(control, 0, sizeof(control));
++
++    while (sioc->zero_copy_sent < sioc->zero_copy_queued) {
++        received = recvmsg(sioc->fd, &msg, MSG_ERRQUEUE);
++        if (received < 0) {
++            switch (errno) {
++            case EAGAIN:
++                /* Nothing on errqueue, wait until something is available */
++                qio_channel_wait(ioc, G_IO_ERR);
++                continue;
++            case EINTR:
++                continue;
++            default:
++                error_setg_errno(errp, errno,
++                                 "Unable to read errqueue");
++                return -1;
++            }
++        }
++
++        cm = CMSG_FIRSTHDR(&msg);
++        if (cm->cmsg_level != SOL_IP &&
++            cm->cmsg_type != IP_RECVERR) {
++            error_setg_errno(errp, EPROTOTYPE,
++                             "Wrong cmsg in errqueue");
++            return -1;
++        }
++
++        serr = (void *) CMSG_DATA(cm);
++        if (serr->ee_errno != SO_EE_ORIGIN_NONE) {
++            error_setg_errno(errp, serr->ee_errno,
++                             "Error on socket");
++            return -1;
++        }
++        if (serr->ee_origin != SO_EE_ORIGIN_ZEROCOPY) {
++            error_setg_errno(errp, serr->ee_origin,
++                             "Error not from zero copy");
++            return -1;
++        }
++
++        /* No errors, count successfully finished sendmsg()*/
++        sioc->zero_copy_sent += serr->ee_data - serr->ee_info + 1;
++
++        /* If any sendmsg() succeeded using zero copy, return 0 at the end */
++        if (serr->ee_code != SO_EE_CODE_ZEROCOPY_COPIED) {
++            ret = 0;
++        }
++    }
++
++    return ret;
++}
++
++#endif /* QEMU_MSG_ZEROCOPY */
++
+ static int
+ qio_channel_socket_set_blocking(QIOChannel *ioc,
+                                 bool enabled,
+@@ -789,6 +894,9 @@ static void qio_channel_socket_class_init(ObjectClass *klass,
+     ioc_klass->io_set_delay = qio_channel_socket_set_delay;
+     ioc_klass->io_create_watch = qio_channel_socket_create_watch;
+     ioc_klass->io_set_aio_fd_handler = qio_channel_socket_set_aio_fd_handler;
++#ifdef QEMU_MSG_ZEROCOPY
++    ioc_klass->io_flush = qio_channel_socket_flush;
++#endif
+ }
+ 
+ static const TypeInfo qio_channel_socket_info = {
+-- 
+2.35.3
+

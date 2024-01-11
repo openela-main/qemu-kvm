@@ -1,0 +1,82 @@
+From 3b567f762cbd8d4ffaf717b0baba9cf9fe9614c2 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 18 May 2022 02:52:23 -0300
+Subject: [PATCH 03/37] multifd: Add missing documentation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [3/26] 924fca4305ebd8669955d456fc1c515f509e6026
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 18ede636bc29fd8bda628fe3e5c593f8c1b734f4)
+(fixed typo in commit message)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/multifd-zlib.c | 2 ++
+ migration/multifd-zstd.c | 2 ++
+ migration/multifd.c      | 1 +
+ 3 files changed, 5 insertions(+)
+
+diff --git a/migration/multifd-zlib.c b/migration/multifd-zlib.c
+index ab4ba75d75..f403d2f031 100644
+--- a/migration/multifd-zlib.c
++++ b/migration/multifd-zlib.c
+@@ -74,6 +74,7 @@ static int zlib_send_setup(MultiFDSendParams *p, Error **errp)
+  * Close the channel and return memory.
+  *
+  * @p: Params for the channel that we are using
++ * @errp: pointer to an error
+  */
+ static void zlib_send_cleanup(MultiFDSendParams *p, Error **errp)
+ {
+@@ -96,6 +97,7 @@ static void zlib_send_cleanup(MultiFDSendParams *p, Error **errp)
+  *
+  * @p: Params for the channel that we are using
+  * @used: number of pages used
++ * @errp: pointer to an error
+  */
+ static int zlib_send_prepare(MultiFDSendParams *p, uint32_t used, Error **errp)
+ {
+diff --git a/migration/multifd-zstd.c b/migration/multifd-zstd.c
+index 693bddf8c9..8d657f8860 100644
+--- a/migration/multifd-zstd.c
++++ b/migration/multifd-zstd.c
+@@ -86,6 +86,7 @@ static int zstd_send_setup(MultiFDSendParams *p, Error **errp)
+  * Close the channel and return memory.
+  *
+  * @p: Params for the channel that we are using
++ * @errp: pointer to an error
+  */
+ static void zstd_send_cleanup(MultiFDSendParams *p, Error **errp)
+ {
+@@ -109,6 +110,7 @@ static void zstd_send_cleanup(MultiFDSendParams *p, Error **errp)
+  *
+  * @p: Params for the channel that we are using
+  * @used: number of pages used
++ * @errp: pointer to an error
+  */
+ static int zstd_send_prepare(MultiFDSendParams *p, uint32_t used, Error **errp)
+ {
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 8ea86d81dc..cdeffdc4c5 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -66,6 +66,7 @@ static int nocomp_send_setup(MultiFDSendParams *p, Error **errp)
+  * For no compression this function does nothing.
+  *
+  * @p: Params for the channel that we are using
++ * @errp: pointer to an error
+  */
+ static void nocomp_send_cleanup(MultiFDSendParams *p, Error **errp)
+ {
+-- 
+2.35.3
+

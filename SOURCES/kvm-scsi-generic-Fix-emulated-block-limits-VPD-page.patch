@@ -1,0 +1,97 @@
+From a9a4dfdd6312e192e9134d46edfac4c1b1bfa63d Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Mon, 22 Aug 2022 14:53:20 +0200
+Subject: [PATCH] scsi-generic: Fix emulated block limits VPD page
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 212: scsi-generic: Fix emulated block limits VPD page
+RH-Commit: [1/1] d3ba6b2e03039043716ddc6b7d4a424d92249081
+RH-Bugzilla: 2120279
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Reitz <hreitz@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Commits 01ef8185b80 amd 24b36e9813e updated the way that the maximum
+transfer length is calculated for patching block limits VPD page in an
+INQUIRY response.
+
+The same updates also need to be made for the case where the host device
+does not support the block limits VPD page at all and we emulate the
+whole page.
+
+Without this fix, on host block devices a maximum transfer length of
+(INT_MAX - sector_size) bytes is advertised to the guest, resulting in
+I/O errors when a request that exceeds the host limits is made by the
+guest. (Prior to commit 24b36e9813e, this code path would use the
+max_transfer value from the host instead of INT_MAX, but still miss the
+fix from 01ef8185b80 where max_transfer is also capped to max_iov
+host pages, so it would be less wrong, but still wrong.)
+
+Cc: qemu-stable@nongnu.org
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2096251
+Fixes: 01ef8185b809af9d287e1a03a3f9d8ea8231118a
+Fixes: 24b36e9813ec15da7db62e3b3621730710c5f020
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20220822125320.48257-1-kwolf@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 51e15194b0a091e5c40aab2eb234a1d36c5c58ee)
+
+Resolved conflict: qemu_real_host_page_size() is a getter function in
+current upstream, but still just a public global variable downstream.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-generic.c | 21 ++++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 0306ccc7b1..3742899839 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -147,6 +147,18 @@ static int execute_command(BlockBackend *blk,
+     return 0;
+ }
+ 
++static uint64_t calculate_max_transfer(SCSIDevice *s)
++{
++    uint64_t max_transfer = blk_get_max_hw_transfer(s->conf.blk);
++    uint32_t max_iov = blk_get_max_hw_iov(s->conf.blk);
++
++    assert(max_transfer);
++    max_transfer = MIN_NON_ZERO(max_transfer,
++                                max_iov * qemu_real_host_page_size);
++
++    return max_transfer / s->blocksize;
++}
++
+ static int scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s, int len)
+ {
+     uint8_t page, page_idx;
+@@ -179,12 +191,7 @@ static int scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s, int len)
+         (r->req.cmd.buf[1] & 0x01)) {
+         page = r->req.cmd.buf[2];
+         if (page == 0xb0) {
+-            uint64_t max_transfer = blk_get_max_hw_transfer(s->conf.blk);
+-            uint32_t max_iov = blk_get_max_hw_iov(s->conf.blk);
+-
+-            assert(max_transfer);
+-            max_transfer = MIN_NON_ZERO(max_transfer, max_iov * qemu_real_host_page_size)
+-                / s->blocksize;
++            uint64_t max_transfer = calculate_max_transfer(s);
+             stl_be_p(&r->buf[8], max_transfer);
+             /* Also take care of the opt xfer len. */
+             stl_be_p(&r->buf[12],
+@@ -230,7 +237,7 @@ static int scsi_generic_emulate_block_limits(SCSIGenericReq *r, SCSIDevice *s)
+     uint8_t buf[64];
+ 
+     SCSIBlockLimits bl = {
+-        .max_io_sectors = blk_get_max_transfer(s->conf.blk) / s->blocksize
++        .max_io_sectors = calculate_max_transfer(s),
+     };
+ 
+     memset(r->buf, 0, r->buflen);
+-- 
+2.35.3
+

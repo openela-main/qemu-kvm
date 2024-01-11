@@ -1,0 +1,76 @@
+From 57c79ed20cb73aa9aa4dd7487379b85ea3f936f6 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Wed, 9 Nov 2022 17:54:49 +0100
+Subject: [PATCH 02/11] block/mirror: Drop mirror_wait_for_any_operation()
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 246: block/mirror: Make active mirror progress even under full load
+RH-Bugzilla: 2125119
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [2/3] dec37883bcc491441ae08d9592d1ec26a47765c0
+
+mirror_wait_for_free_in_flight_slot() is the only remaining user of
+mirror_wait_for_any_operation(), so inline the latter into the former.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221109165452.67927-3-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit eb994912993077f178ccb43b20e422ecf9ae4ac7)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/mirror.c | 21 ++++++++-------------
+ 1 file changed, 8 insertions(+), 13 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index 282f428cb7..6b02555ad7 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -304,19 +304,21 @@ static int mirror_cow_align(MirrorBlockJob *s, int64_t *offset,
+ }
+ 
+ static inline void coroutine_fn
+-mirror_wait_for_any_operation(MirrorBlockJob *s, bool active)
++mirror_wait_for_free_in_flight_slot(MirrorBlockJob *s)
+ {
+     MirrorOp *op;
+ 
+     QTAILQ_FOREACH(op, &s->ops_in_flight, next) {
+-        /* Do not wait on pseudo ops, because it may in turn wait on
++        /*
++         * Do not wait on pseudo ops, because it may in turn wait on
+          * some other operation to start, which may in fact be the
+          * caller of this function.  Since there is only one pseudo op
+          * at any given time, we will always find some real operation
+-         * to wait on. */
+-        if (!op->is_pseudo_op && op->is_in_flight &&
+-            op->is_active_write == active)
+-        {
++         * to wait on.
++         * Also, do not wait on active operations, because they do not
++         * use up in-flight slots.
++         */
++        if (!op->is_pseudo_op && op->is_in_flight && !op->is_active_write) {
+             qemu_co_queue_wait(&op->waiting_requests, NULL);
+             return;
+         }
+@@ -324,13 +326,6 @@ mirror_wait_for_any_operation(MirrorBlockJob *s, bool active)
+     abort();
+ }
+ 
+-static inline void coroutine_fn
+-mirror_wait_for_free_in_flight_slot(MirrorBlockJob *s)
+-{
+-    /* Only non-active operations use up in-flight slots */
+-    mirror_wait_for_any_operation(s, false);
+-}
+-
+ /* Perform a mirror copy operation.
+  *
+  * *op->bytes_handled is set to the number of bytes copied after and
+-- 
+2.37.3
+

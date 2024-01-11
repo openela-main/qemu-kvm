@@ -1,0 +1,48 @@
+From e118a451dc1ed68f1371a5d8e042120542be6d31 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Thu, 11 Nov 2021 12:06:00 +0100
+Subject: [PATCH 01/24] virtio-gpu: do not byteswap padding
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [1/13] 12714f53820b7632e7fc0a8a3bf8eb4a64f41750
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+In Linux 5.16, the padding of struct virtio_gpu_ctrl_hdr has become a
+single-byte field followed by a uint8_t[3] array of padding bytes,
+and virtio_gpu_ctrl_hdr_bswap does not compile anymore.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+Message-Id: <20211111110604.207376-2-pbonzini@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a4663f1a5506626175fc64c86e52135587c36872)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ include/hw/virtio/virtio-gpu-bswap.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/include/hw/virtio/virtio-gpu-bswap.h b/include/hw/virtio/virtio-gpu-bswap.h
+index e2bee8f595..5faac0d8d5 100644
+--- a/include/hw/virtio/virtio-gpu-bswap.h
++++ b/include/hw/virtio/virtio-gpu-bswap.h
+@@ -24,7 +24,6 @@ virtio_gpu_ctrl_hdr_bswap(struct virtio_gpu_ctrl_hdr *hdr)
+     le32_to_cpus(&hdr->flags);
+     le64_to_cpus(&hdr->fence_id);
+     le32_to_cpus(&hdr->ctx_id);
+-    le32_to_cpus(&hdr->padding);
+ }
+ 
+ static inline void
+-- 
+2.35.3
+

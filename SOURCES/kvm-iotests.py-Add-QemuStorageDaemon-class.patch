@@ -1,0 +1,92 @@
+From 34ffcd1a463bd3c1d36ed2f33dd6335b35b38460 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Fri, 4 Feb 2022 12:10:09 +0100
+Subject: [PATCH 3/6] iotests.py: Add QemuStorageDaemon class
+
+RH-Author: Hanna Reitz <hreitz@redhat.com>
+RH-MergeRequest: 117: block/nbd: Handle AioContext changes
+RH-Commit: [3/6] 754fe76bc5e8be57f4b78f176531014c4a12b044
+RH-Bugzilla: 2035185
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+This is a rather simple class that allows creating a QSD instance
+running in the background and stopping it when no longer needed.
+
+The __del__ handler is a safety net for when something goes so wrong in
+a test that e.g. the tearDown() method is not called (e.g. setUp()
+launches the QSD, but then launching a VM fails).  We do not want the
+QSD to continue running after the test has failed, so __del__() will
+take care to kill it.
+
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
+(cherry picked from commit 091dc7b2b5553a529bff9a7bf9ad3bc85bc5bdcd)
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+---
+ tests/qemu-iotests/iotests.py | 40 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index 83bfedb902..a51b5ce8cd 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -72,6 +72,8 @@
+ qemu_prog = os.environ.get('QEMU_PROG', 'qemu')
+ qemu_opts = os.environ.get('QEMU_OPTIONS', '').strip().split(' ')
+ 
++qsd_prog = os.environ.get('QSD_PROG', 'qemu-storage-daemon')
++
+ gdb_qemu_env = os.environ.get('GDB_OPTIONS')
+ qemu_gdb = []
+ if gdb_qemu_env:
+@@ -312,6 +314,44 @@ def cmd(self, cmd):
+         return self._read_output()
+ 
+ 
++class QemuStorageDaemon:
++    def __init__(self, *args: str, instance_id: str = 'a'):
++        assert '--pidfile' not in args
++        self.pidfile = os.path.join(test_dir, f'qsd-{instance_id}-pid')
++        all_args = [qsd_prog] + list(args) + ['--pidfile', self.pidfile]
++
++        # Cannot use with here, we want the subprocess to stay around
++        # pylint: disable=consider-using-with
++        self._p = subprocess.Popen(all_args)
++        while not os.path.exists(self.pidfile):
++            if self._p.poll() is not None:
++                cmd = ' '.join(all_args)
++                raise RuntimeError(
++                    'qemu-storage-daemon terminated with exit code ' +
++                    f'{self._p.returncode}: {cmd}')
++
++            time.sleep(0.01)
++
++        with open(self.pidfile, encoding='utf-8') as f:
++            self._pid = int(f.read().strip())
++
++        assert self._pid == self._p.pid
++
++    def stop(self, kill_signal=15):
++        self._p.send_signal(kill_signal)
++        self._p.wait()
++        self._p = None
++
++        try:
++            os.remove(self.pidfile)
++        except OSError:
++            pass
++
++    def __del__(self):
++        if self._p is not None:
++            self.stop(kill_signal=9)
++
++
+ def qemu_nbd(*args):
+     '''Run qemu-nbd in daemon mode and return the parent's exit code'''
+     return subprocess.call(qemu_nbd_args + ['--fork'] + list(args))
+-- 
+2.27.0
+

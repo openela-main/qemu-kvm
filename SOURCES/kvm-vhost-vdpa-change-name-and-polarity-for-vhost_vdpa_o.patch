@@ -1,0 +1,126 @@
+From c8cb46fa93a3ccad6f3e183045b270f28eed7b12 Mon Sep 17 00:00:00 2001
+From: Si-Wei Liu <si-wei.liu@oracle.com>
+Date: Fri, 6 May 2022 19:28:17 -0700
+Subject: [PATCH 19/24] vhost-vdpa: change name and polarity for
+ vhost_vdpa_one_time_request()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jason Wang <jasowang@redhat.com>
+RH-MergeRequest: 187: Multiqueue fixes for vhost-vDPA
+RH-Commit: [6/7] 727ab0bb813f073e8cd2f7e68a9acda60c2cb33d
+RH-Bugzilla: 2069946
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+The name vhost_vdpa_one_time_request() was confusing. No
+matter whatever it returns, its typical occurrence had
+always been at requests that only need to be applied once.
+And the name didn't suggest what it actually checks for.
+Change it to vhost_vdpa_first_dev() with polarity flipped
+for better readibility of code. That way it is able to
+reflect what the check is really about.
+
+This call is applicable to request which performs operation
+only once, before queues are set up, and usually at the beginning
+of the caller function. Document the requirement for it in place.
+
+Conflicts: hw/virtio/vhost-vdpa.c since we don't have shadow virtqueue
+suport.
+
+Signed-off-by: Si-Wei Liu <si-wei.liu@oracle.com>
+Message-Id: <1651890498-24478-7-git-send-email-si-wei.liu@oracle.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Stefano Garzarella <sgarzare@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit d71b0609fc04217e28d17009f04d74b08be6f466)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+---
+ hw/virtio/vhost-vdpa.c | 23 +++++++++++++++--------
+ 1 file changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index a9be24776a..38bbcb3c18 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -319,11 +319,18 @@ static void vhost_vdpa_get_iova_range(struct vhost_vdpa *v)
+                                     v->iova_range.last);
+ }
+ 
+-static bool vhost_vdpa_one_time_request(struct vhost_dev *dev)
++/*
++ * The use of this function is for requests that only need to be
++ * applied once. Typically such request occurs at the beginning
++ * of operation, and before setting up queues. It should not be
++ * used for request that performs operation until all queues are
++ * set, which would need to check dev->vq_index_end instead.
++ */
++static bool vhost_vdpa_first_dev(struct vhost_dev *dev)
+ {
+     struct vhost_vdpa *v = dev->opaque;
+ 
+-    return v->index != 0;
++    return v->index == 0;
+ }
+ 
+ static int vhost_vdpa_init(struct vhost_dev *dev, void *opaque, Error **errp)
+@@ -351,7 +358,7 @@ static int vhost_vdpa_init(struct vhost_dev *dev, void *opaque, Error **errp)
+ 
+     vhost_vdpa_get_iova_range(v);
+ 
+-    if (vhost_vdpa_one_time_request(dev)) {
++    if (!vhost_vdpa_first_dev(dev)) {
+         return 0;
+     }
+ 
+@@ -468,7 +475,7 @@ static int vhost_vdpa_memslots_limit(struct vhost_dev *dev)
+ static int vhost_vdpa_set_mem_table(struct vhost_dev *dev,
+                                     struct vhost_memory *mem)
+ {
+-    if (vhost_vdpa_one_time_request(dev)) {
++    if (!vhost_vdpa_first_dev(dev)) {
+         return 0;
+     }
+ 
+@@ -496,7 +503,7 @@ static int vhost_vdpa_set_features(struct vhost_dev *dev,
+ {
+     int ret;
+ 
+-    if (vhost_vdpa_one_time_request(dev)) {
++    if (!vhost_vdpa_first_dev(dev)) {
+         return 0;
+     }
+ 
+@@ -525,7 +532,7 @@ static int vhost_vdpa_set_backend_cap(struct vhost_dev *dev)
+ 
+     features &= f;
+ 
+-    if (!vhost_vdpa_one_time_request(dev)) {
++    if (vhost_vdpa_first_dev(dev)) {
+         r = vhost_vdpa_call(dev, VHOST_SET_BACKEND_FEATURES, &features);
+         if (r) {
+             return -EFAULT;
+@@ -670,7 +677,7 @@ static int vhost_vdpa_dev_start(struct vhost_dev *dev, bool started)
+ static int vhost_vdpa_set_log_base(struct vhost_dev *dev, uint64_t base,
+                                      struct vhost_log *log)
+ {
+-    if (vhost_vdpa_one_time_request(dev)) {
++    if (!vhost_vdpa_first_dev(dev)) {
+         return 0;
+     }
+ 
+@@ -739,7 +746,7 @@ static int vhost_vdpa_get_features(struct vhost_dev *dev,
+ 
+ static int vhost_vdpa_set_owner(struct vhost_dev *dev)
+ {
+-    if (vhost_vdpa_one_time_request(dev)) {
++    if (!vhost_vdpa_first_dev(dev)) {
+         return 0;
+     }
+ 
+-- 
+2.35.3
+

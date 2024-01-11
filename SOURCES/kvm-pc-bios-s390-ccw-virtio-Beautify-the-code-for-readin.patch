@@ -1,0 +1,56 @@
+From 8b05a4aa32e5ae6cdbc16a5350f6df35d2d79efc Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 8 Jul 2022 12:29:50 +0200
+Subject: [PATCH 35/37] pc-bios/s390-ccw/virtio: Beautify the code for reading
+ virtqueue configuration
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 198: pc-bios/s390-ccw: Fix boot from disks with 4k sectors that do not have the typical DASD geometry
+RH-Commit: [7/9] 52fb7fee7d7c46397f32e35bd5f92f82616dfb5c
+RH-Bugzilla: 2098076
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2098076
+
+commit 070824885741f5d2a66626d3c4ecb2773c8e0552
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Mon Jul 4 13:18:59 2022 +0200
+
+    pc-bios/s390-ccw/virtio: Beautify the code for reading virtqueue configuration
+
+    It looks nicer if we separate the run_ccw() from the IPL_assert()
+    statement, and the error message should talk about "virtio device"
+    instead of "block device", since this code is nowadays used for
+    non-block (i.e. network) devices, too.
+
+    Message-Id: <20220704111903.62400-9-thuth@redhat.com>
+    Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ pc-bios/s390-ccw/virtio.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/virtio.c b/pc-bios/s390-ccw/virtio.c
+index d8c2b52710..f37510f312 100644
+--- a/pc-bios/s390-ccw/virtio.c
++++ b/pc-bios/s390-ccw/virtio.c
+@@ -289,9 +289,8 @@ void virtio_setup_ccw(VDev *vdev)
+             .num = 0,
+         };
+ 
+-        IPL_assert(
+-            run_ccw(vdev, CCW_CMD_READ_VQ_CONF, &config, sizeof(config), false) == 0,
+-            "Could not get block device VQ configuration");
++        rc = run_ccw(vdev, CCW_CMD_READ_VQ_CONF, &config, sizeof(config), false);
++        IPL_assert(rc == 0, "Could not get virtio device VQ configuration");
+         info.num = config.num;
+         vring_init(&vdev->vrings[i], &info);
+         vdev->vrings[i].schid = vdev->schid;
+-- 
+2.35.3
+

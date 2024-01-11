@@ -1,0 +1,130 @@
+From 4e1bfbe3a0a113fe3cf39336a9d7da4e8c2a21ea Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Mon, 5 Dec 2022 15:32:55 -0500
+Subject: [PATCH 4/5] hw/display/qxl: Avoid buffer overrun in qxl_phys2virt
+ (CVE-2022-4144)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 240: hw/display/qxl: Have qxl_log_command Return early if no log_cmd handler
+RH-Bugzilla: 2148545
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [4/5] afe53f8d9b31c6fd8211fe172173151f3255e67c (jmaloy/jons-qemu-kvm)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=2148545
+CVE: CVE-2022-4144
+Upstream: Merged
+
+commit 6dbbf055148c6f1b7d8a3251a65bd6f3d1e1f622
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Mon Nov 28 21:27:40 2022 +0100
+
+    hw/display/qxl: Avoid buffer overrun in qxl_phys2virt (CVE-2022-4144)
+
+    Have qxl_get_check_slot_offset() return false if the requested
+    buffer size does not fit within the slot memory region.
+
+    Similarly qxl_phys2virt() now returns NULL in such case, and
+    qxl_dirty_one_surface() aborts.
+
+    This avoids buffer overrun in the host pointer returned by
+    memory_region_get_ram_ptr().
+
+    Fixes: CVE-2022-4144 (out-of-bounds read)
+    Reported-by: Wenxu Yin (@awxylitol)
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1336
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+    Message-Id: <20221128202741.4945-5-philmd@linaro.org>
+
+(cherry picked from commit 6dbbf055148c6f1b7d8a3251a65bd6f3d1e1f622)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/display/qxl.c | 27 +++++++++++++++++++++++----
+ hw/display/qxl.h |  2 +-
+ 2 files changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/hw/display/qxl.c b/hw/display/qxl.c
+index aa9065183e..2a4b2d4158 100644
+--- a/hw/display/qxl.c
++++ b/hw/display/qxl.c
+@@ -1412,11 +1412,13 @@ static void qxl_reset_surfaces(PCIQXLDevice *d)
+ 
+ /* can be also called from spice server thread context */
+ static bool qxl_get_check_slot_offset(PCIQXLDevice *qxl, QXLPHYSICAL pqxl,
+-                                      uint32_t *s, uint64_t *o)
++                                      uint32_t *s, uint64_t *o,
++                                      size_t size_requested)
+ {
+     uint64_t phys   = le64_to_cpu(pqxl);
+     uint32_t slot   = (phys >> (64 -  8)) & 0xff;
+     uint64_t offset = phys & 0xffffffffffff;
++    uint64_t size_available;
+ 
+     if (slot >= NUM_MEMSLOTS) {
+         qxl_set_guest_bug(qxl, "slot too large %d >= %d", slot,
+@@ -1440,6 +1442,23 @@ static bool qxl_get_check_slot_offset(PCIQXLDevice *qxl, QXLPHYSICAL pqxl,
+                           slot, offset, qxl->guest_slots[slot].size);
+         return false;
+     }
++    size_available = memory_region_size(qxl->guest_slots[slot].mr);
++    if (qxl->guest_slots[slot].offset + offset >= size_available) {
++        qxl_set_guest_bug(qxl,
++                          "slot %d offset %"PRIu64" > region size %"PRIu64"\n",
++                          slot, qxl->guest_slots[slot].offset + offset,
++                          size_available);
++        return false;
++    }
++    size_available -= qxl->guest_slots[slot].offset + offset;
++    if (size_requested > size_available) {
++        qxl_set_guest_bug(qxl,
++                          "slot %d offset %"PRIu64" size %zu: "
++                          "overrun by %"PRIu64" bytes\n",
++                          slot, offset, size_requested,
++                          size_requested - size_available);
++        return false;
++    }
+ 
+     *s = slot;
+     *o = offset;
+@@ -1459,7 +1478,7 @@ void *qxl_phys2virt(PCIQXLDevice *qxl, QXLPHYSICAL pqxl, int group_id,
+         offset = le64_to_cpu(pqxl) & 0xffffffffffff;
+         return (void *)(intptr_t)offset;
+     case MEMSLOT_GROUP_GUEST:
+-        if (!qxl_get_check_slot_offset(qxl, pqxl, &slot, &offset)) {
++        if (!qxl_get_check_slot_offset(qxl, pqxl, &slot, &offset, size)) {
+             return NULL;
+         }
+         ptr = memory_region_get_ram_ptr(qxl->guest_slots[slot].mr);
+@@ -1925,9 +1944,9 @@ static void qxl_dirty_one_surface(PCIQXLDevice *qxl, QXLPHYSICAL pqxl,
+     uint32_t slot;
+     bool rc;
+ 
+-    rc = qxl_get_check_slot_offset(qxl, pqxl, &slot, &offset);
+-    assert(rc == true);
+     size = (uint64_t)height * abs(stride);
++    rc = qxl_get_check_slot_offset(qxl, pqxl, &slot, &offset, size);
++    assert(rc == true);
+     trace_qxl_surfaces_dirty(qxl->id, offset, size);
+     qxl_set_dirty(qxl->guest_slots[slot].mr,
+                   qxl->guest_slots[slot].offset + offset,
+diff --git a/hw/display/qxl.h b/hw/display/qxl.h
+index c784315daa..89ca832cf9 100644
+--- a/hw/display/qxl.h
++++ b/hw/display/qxl.h
+@@ -157,7 +157,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(PCIQXLDevice, PCI_QXL)
+  *
+  * Returns a host pointer to a buffer placed at offset @phys within the
+  * active slot @group_id of the PCI VGA RAM memory region associated with
+- * the @qxl device. If the slot is inactive, or the offset is out
++ * the @qxl device. If the slot is inactive, or the offset + size are out
+  * of the memory region, returns NULL.
+  *
+  * Use with care; by the time this function returns, the returned pointer is
+-- 
+2.37.3
+

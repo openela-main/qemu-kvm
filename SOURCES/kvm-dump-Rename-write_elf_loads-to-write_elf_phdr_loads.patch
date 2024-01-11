@@ -1,0 +1,57 @@
+From 04d4947a22fe3192384ff486d0a979d799ded98e Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Thu, 11 Aug 2022 12:10:55 +0000
+Subject: [PATCH 23/42] dump: Rename write_elf_loads to write_elf_phdr_loads
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [23/41] 18e3ef70b97c525b7c43cf12143204bdb1060e4f
+
+Let's make it a bit clearer that we write the program headers of the
+PT_LOAD type.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Janis Schoetterl-Glausch <scgl@linux.ibm.com>
+Reviewed-by: Steffen Eiden <seiden@ibm.linux.com>
+Message-Id: <20220811121111.9878-3-frankja@linux.ibm.com>
+(cherry picked from commit afae6056ea79e2d89fd90867de3a01732eae724f)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index a451abc590..fa787f379f 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -491,7 +491,7 @@ static void get_offset_range(hwaddr phys_addr,
+     }
+ }
+ 
+-static void write_elf_loads(DumpState *s, Error **errp)
++static void write_elf_phdr_loads(DumpState *s, Error **errp)
+ {
+     ERRP_GUARD();
+     hwaddr offset, filesz;
+@@ -574,8 +574,8 @@ static void dump_begin(DumpState *s, Error **errp)
+         return;
+     }
+ 
+-    /* write all PT_LOAD to vmcore */
+-    write_elf_loads(s, errp);
++    /* write all PT_LOADs to vmcore */
++    write_elf_phdr_loads(s, errp);
+     if (*errp) {
+         return;
+     }
+-- 
+2.37.3
+

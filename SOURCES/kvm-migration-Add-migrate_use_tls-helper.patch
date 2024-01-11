@@ -1,0 +1,106 @@
+From a7c6bc008fe006f005d5c15d3f883572ad5defc5 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Wed, 18 May 2022 02:52:25 -0300
+Subject: [PATCH 20/37] migration: Add migrate_use_tls() helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [20/26] 02afc2e60f1abbf6db45d83e54a18b66dad52426
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+A lot of places check parameters.tls_creds in order to evaluate if TLS is
+in use, and sometimes call migrate_get_current() just for that test.
+
+Add new helper function migrate_use_tls() in order to simplify testing
+for TLS usage.
+
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Message-Id: <20220513062836.965425-6-leobras@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit d2fafb6a6814a8998607d0baf691265032996a0f)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/channel.c   | 3 +--
+ migration/migration.c | 9 +++++++++
+ migration/migration.h | 1 +
+ migration/multifd.c   | 5 +----
+ 4 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/migration/channel.c b/migration/channel.c
+index c4fc000a1a..086b5c0d8b 100644
+--- a/migration/channel.c
++++ b/migration/channel.c
+@@ -38,8 +38,7 @@ void migration_channel_process_incoming(QIOChannel *ioc)
+     trace_migration_set_incoming_channel(
+         ioc, object_get_typename(OBJECT(ioc)));
+ 
+-    if (s->parameters.tls_creds &&
+-        *s->parameters.tls_creds &&
++    if (migrate_use_tls() &&
+         !object_dynamic_cast(OBJECT(ioc),
+                              TYPE_QIO_CHANNEL_TLS)) {
+         migration_tls_channel_process_incoming(s, ioc, &local_err);
+diff --git a/migration/migration.c b/migration/migration.c
+index b0fc3f68bd..8e28f2ee41 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2568,6 +2568,15 @@ bool migrate_use_zero_copy_send(void)
+ }
+ #endif
+ 
++int migrate_use_tls(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.tls_creds && *s->parameters.tls_creds;
++}
++
+ int migrate_use_xbzrle(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 908098939f..9396b7e90a 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -344,6 +344,7 @@ bool migrate_use_zero_copy_send(void);
+ #else
+ #define migrate_use_zero_copy_send() (false)
+ #endif
++int migrate_use_tls(void);
+ int migrate_use_xbzrle(void);
+ uint64_t migrate_xbzrle_cache_size(void);
+ bool migrate_colo_enabled(void);
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 3725226400..e53811f04a 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -789,14 +789,11 @@ static bool multifd_channel_connect(MultiFDSendParams *p,
+                                     QIOChannel *ioc,
+                                     Error *error)
+ {
+-    MigrationState *s = migrate_get_current();
+-
+     trace_multifd_set_outgoing_channel(
+         ioc, object_get_typename(OBJECT(ioc)), p->tls_hostname, error);
+ 
+     if (!error) {
+-        if (s->parameters.tls_creds &&
+-            *s->parameters.tls_creds &&
++        if (migrate_use_tls() &&
+             !object_dynamic_cast(OBJECT(ioc),
+                                  TYPE_QIO_CHANNEL_TLS)) {
+             multifd_tls_channel_connect(p, ioc, &error);
+-- 
+2.35.3
+

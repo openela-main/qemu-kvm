@@ -1,0 +1,58 @@
+From f3125f6379cbc070e9acaf58d0ec37972992744b Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Wed, 6 Apr 2022 10:56:26 +0200
+Subject: [PATCH 4/5] s390x/css: fix PMCW invalid mask
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 145: s390x/css: fix PMCW invalid mask
+RH-Commit: [1/1] fbf192f651aa668af56ca5c77455595fcdb19508
+RH-Bugzilla: 2071070
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+
+Bugzilla: http://bugzilla.redhat.com/2071070
+
+commit 2df59b73e0864f021f6179f32f7ed364f6d4f38d
+Author: Nico Boehr <nrb@linux.ibm.com>
+Date:   Thu Dec 16 14:16:57 2021 +0100
+
+    s390x/css: fix PMCW invalid mask
+
+    Previously, we required bits 5, 6 and 7 to be zero (0x07 == 0b111). But,
+    as per the principles of operation, bit 5 is ignored in MSCH and bits 0,
+    1, 6 and 7 need to be zero.
+
+    As both PMCW_FLAGS_MASK_INVALID and ioinst_schib_valid() are only used
+    by ioinst_handle_msch(), adjust the mask accordingly.
+
+    Fixes: db1c8f53bfb1 ("s390: Channel I/O basic definitions.")
+    Signed-off-by: Nico Boehr <nrb@linux.ibm.com>
+    Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+    Reviewed-by: Halil Pasic <pasic@linux.ibm.com>
+    Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+    Message-Id: <20211216131657.1057978-1-nrb@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ include/hw/s390x/ioinst.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/hw/s390x/ioinst.h b/include/hw/s390x/ioinst.h
+index 3771fff9d4..ea8d0f2444 100644
+--- a/include/hw/s390x/ioinst.h
++++ b/include/hw/s390x/ioinst.h
+@@ -107,7 +107,7 @@ QEMU_BUILD_BUG_MSG(sizeof(PMCW) != 28, "size of PMCW is wrong");
+ #define PMCW_FLAGS_MASK_MP 0x0004
+ #define PMCW_FLAGS_MASK_TF 0x0002
+ #define PMCW_FLAGS_MASK_DNV 0x0001
+-#define PMCW_FLAGS_MASK_INVALID 0x0700
++#define PMCW_FLAGS_MASK_INVALID 0xc300
+ 
+ #define PMCW_CHARS_MASK_ST 0x00e00000
+ #define PMCW_CHARS_MASK_MBFC 0x00000004
+-- 
+2.27.0
+

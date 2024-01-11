@@ -1,0 +1,112 @@
+From 3ba6092159b6e3b25505af2a49c0f6ac99043db9 Mon Sep 17 00:00:00 2001
+From: Jing Liu <jing2.liu@intel.com>
+Date: Wed, 16 Feb 2022 22:04:28 -0800
+Subject: [PATCH 06/24] x86: Add AMX XTILECFG and XTILEDATA components
+
+RH-Author: Paul Lai <plai@redhat.com>
+RH-MergeRequest: 176: Enable KVM AMX support
+RH-Commit: [6/13] 95229f87b4494631d57232f374a174f7bc95843a
+RH-Bugzilla: 1916415
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+The AMX TILECFG register and the TMMx tile data registers are
+saved/restored via XSAVE, respectively in state component 17
+(64 bytes) and state component 18 (8192 bytes).
+
+Add AMX feature bits to x86_ext_save_areas array to set
+up AMX components. Add structs that define the layout of
+AMX XSAVE areas and use QEMU_BUILD_BUG_ON to validate the
+structs sizes.
+
+Signed-off-by: Jing Liu <jing2.liu@intel.com>
+Signed-off-by: Yang Zhong <yang.zhong@intel.com>
+Message-Id: <20220217060434.52460-3-yang.zhong@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 1f16764f7d4515bfd5e4ae0aae814fa280a7d0c8)
+Signed-off-by: Paul Lai <plai@redhat.com>
+---
+ target/i386/cpu.c |  8 ++++++++
+ target/i386/cpu.h | 18 +++++++++++++++++-
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index f44fad3a2a..0453c27c9d 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1401,6 +1401,14 @@ ExtSaveArea x86_ext_save_areas[XSAVE_STATE_AREA_COUNT] = {
+     [XSTATE_PKRU_BIT] =
+           { .feature = FEAT_7_0_ECX, .bits = CPUID_7_0_ECX_PKU,
+             .size = sizeof(XSavePKRU) },
++    [XSTATE_XTILE_CFG_BIT] = {
++        .feature = FEAT_7_0_EDX, .bits = CPUID_7_0_EDX_AMX_TILE,
++        .size = sizeof(XSaveXTILECFG),
++    },
++    [XSTATE_XTILE_DATA_BIT] = {
++        .feature = FEAT_7_0_EDX, .bits = CPUID_7_0_EDX_AMX_TILE,
++        .size = sizeof(XSaveXTILEDATA)
++    },
+ };
+ 
+ static uint32_t xsave_area_size(uint64_t mask)
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 5d9702a991..e1dd8b9555 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -537,6 +537,8 @@ typedef enum X86Seg {
+ #define XSTATE_ZMM_Hi256_BIT            6
+ #define XSTATE_Hi16_ZMM_BIT             7
+ #define XSTATE_PKRU_BIT                 9
++#define XSTATE_XTILE_CFG_BIT            17
++#define XSTATE_XTILE_DATA_BIT           18
+ 
+ #define XSTATE_FP_MASK                  (1ULL << XSTATE_FP_BIT)
+ #define XSTATE_SSE_MASK                 (1ULL << XSTATE_SSE_BIT)
+@@ -845,6 +847,8 @@ typedef uint64_t FeatureWordArray[FEATURE_WORDS];
+ #define CPUID_7_0_EDX_TSX_LDTRK         (1U << 16)
+ /* AVX512_FP16 instruction */
+ #define CPUID_7_0_EDX_AVX512_FP16       (1U << 23)
++/* AMX tile (two-dimensional register) */
++#define CPUID_7_0_EDX_AMX_TILE          (1U << 24)
+ /* Speculation Control */
+ #define CPUID_7_0_EDX_SPEC_CTRL         (1U << 26)
+ /* Single Thread Indirect Branch Predictors */
+@@ -1348,6 +1352,16 @@ typedef struct XSavePKRU {
+     uint32_t padding;
+ } XSavePKRU;
+ 
++/* Ext. save area 17: AMX XTILECFG state */
++typedef struct XSaveXTILECFG {
++    uint8_t xtilecfg[64];
++} XSaveXTILECFG;
++
++/* Ext. save area 18: AMX XTILEDATA state */
++typedef struct XSaveXTILEDATA {
++    uint8_t xtiledata[8][1024];
++} XSaveXTILEDATA;
++
+ QEMU_BUILD_BUG_ON(sizeof(XSaveAVX) != 0x100);
+ QEMU_BUILD_BUG_ON(sizeof(XSaveBNDREG) != 0x40);
+ QEMU_BUILD_BUG_ON(sizeof(XSaveBNDCSR) != 0x40);
+@@ -1355,6 +1369,8 @@ QEMU_BUILD_BUG_ON(sizeof(XSaveOpmask) != 0x40);
+ QEMU_BUILD_BUG_ON(sizeof(XSaveZMM_Hi256) != 0x200);
+ QEMU_BUILD_BUG_ON(sizeof(XSaveHi16_ZMM) != 0x400);
+ QEMU_BUILD_BUG_ON(sizeof(XSavePKRU) != 0x8);
++QEMU_BUILD_BUG_ON(sizeof(XSaveXTILECFG) != 0x40);
++QEMU_BUILD_BUG_ON(sizeof(XSaveXTILEDATA) != 0x2000);
+ 
+ typedef struct ExtSaveArea {
+     uint32_t feature, bits;
+@@ -1362,7 +1378,7 @@ typedef struct ExtSaveArea {
+     uint32_t ecx;
+ } ExtSaveArea;
+ 
+-#define XSAVE_STATE_AREA_COUNT (XSTATE_PKRU_BIT + 1)
++#define XSAVE_STATE_AREA_COUNT (XSTATE_XTILE_DATA_BIT + 1)
+ 
+ extern ExtSaveArea x86_ext_save_areas[XSAVE_STATE_AREA_COUNT];
+ 
+-- 
+2.35.3
+

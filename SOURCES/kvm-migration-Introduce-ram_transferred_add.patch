@@ -1,0 +1,122 @@
+From 030b54f5a2b2c8976370c962e9847af4746ac2c2 Mon Sep 17 00:00:00 2001
+From: David Edmondson <david.edmondson@oracle.com>
+Date: Tue, 21 Dec 2021 09:34:40 +0000
+Subject: [PATCH 1/9] migration: Introduce ram_transferred_add()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 201: Zero-copy-send fixes + improvements
+RH-Commit: [1/8] a6545760b0de13d533f6164be0545a6720bb42c7
+RH-Bugzilla: 2110203
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Replace direct manipulation of ram_counters.transferred with a
+function.
+
+Signed-off-by: David Edmondson <david.edmondson@oracle.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 4c2d0f6dca24f3396ab0718ad3f9f53cc53004df)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ migration/ram.c | 23 ++++++++++++++---------
+ 1 file changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/migration/ram.c b/migration/ram.c
+index 3e208efca7..3e82c4ff46 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -391,6 +391,11 @@ uint64_t ram_bytes_remaining(void)
+ 
+ MigrationStats ram_counters;
+ 
++static void ram_transferred_add(uint64_t bytes)
++{
++    ram_counters.transferred += bytes;
++}
++
+ /* used by the search for pages to send */
+ struct PageSearchStatus {
+     /* Current block being searched */
+@@ -772,7 +777,7 @@ static int save_xbzrle_page(RAMState *rs, uint8_t **current_data,
+      * RAM_SAVE_FLAG_CONTINUE.
+      */
+     xbzrle_counters.bytes += bytes_xbzrle - 8;
+-    ram_counters.transferred += bytes_xbzrle;
++    ram_transferred_add(bytes_xbzrle);
+ 
+     return 1;
+ }
+@@ -1203,7 +1208,7 @@ static int save_zero_page(RAMState *rs, RAMBlock *block, ram_addr_t offset)
+ 
+     if (len) {
+         ram_counters.duplicate++;
+-        ram_counters.transferred += len;
++        ram_transferred_add(len);
+         return 1;
+     }
+     return -1;
+@@ -1239,7 +1244,7 @@ static bool control_save_page(RAMState *rs, RAMBlock *block, ram_addr_t offset,
+     }
+ 
+     if (bytes_xmit) {
+-        ram_counters.transferred += bytes_xmit;
++        ram_transferred_add(bytes_xmit);
+         *pages = 1;
+     }
+ 
+@@ -1270,8 +1275,8 @@ static bool control_save_page(RAMState *rs, RAMBlock *block, ram_addr_t offset,
+ static int save_normal_page(RAMState *rs, RAMBlock *block, ram_addr_t offset,
+                             uint8_t *buf, bool async)
+ {
+-    ram_counters.transferred += save_page_header(rs, rs->f, block,
+-                                                 offset | RAM_SAVE_FLAG_PAGE);
++    ram_transferred_add(save_page_header(rs, rs->f, block,
++                                         offset | RAM_SAVE_FLAG_PAGE));
+     if (async) {
+         qemu_put_buffer_async(rs->f, buf, TARGET_PAGE_SIZE,
+                               migrate_release_ram() &
+@@ -1279,7 +1284,7 @@ static int save_normal_page(RAMState *rs, RAMBlock *block, ram_addr_t offset,
+     } else {
+         qemu_put_buffer(rs->f, buf, TARGET_PAGE_SIZE);
+     }
+-    ram_counters.transferred += TARGET_PAGE_SIZE;
++    ram_transferred_add(TARGET_PAGE_SIZE);
+     ram_counters.normal++;
+     return 1;
+ }
+@@ -1378,7 +1383,7 @@ exit:
+ static void
+ update_compress_thread_counts(const CompressParam *param, int bytes_xmit)
+ {
+-    ram_counters.transferred += bytes_xmit;
++    ram_transferred_add(bytes_xmit);
+ 
+     if (param->zero_page) {
+         ram_counters.duplicate++;
+@@ -2303,7 +2308,7 @@ void acct_update_position(QEMUFile *f, size_t size, bool zero)
+         ram_counters.duplicate += pages;
+     } else {
+         ram_counters.normal += pages;
+-        ram_counters.transferred += size;
++        ram_transferred_add(size);
+         qemu_update_position(f, size);
+     }
+ }
+@@ -3147,7 +3152,7 @@ out:
+ 
+         qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+         qemu_fflush(f);
+-        ram_counters.transferred += 8;
++        ram_transferred_add(8);
+ 
+         ret = qemu_file_get_error(f);
+     }
+-- 
+2.31.1
+

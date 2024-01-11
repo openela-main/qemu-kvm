@@ -1,0 +1,71 @@
+From 60da56e3685969493ae483c3cc2c66af13d00baf Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Wed, 10 Aug 2022 14:57:18 +0200
+Subject: [PATCH 1/3] backends/hostmem: Fix support of memory-backend-memfd in
+ qemu_maxrampagesize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <None>
+RH-MergeRequest: 221: backends/hostmem: Fix support of memory-backend-memfd in qemu_maxrampagesize()
+RH-Bugzilla: 2117149
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/1] b5a1047750af32c0a261b8385ea0e819eb16681a
+
+It is currently not possible yet to use "memory-backend-memfd" on s390x
+with hugepages enabled. This problem is caused by qemu_maxrampagesize()
+not taking memory-backend-memfd objects into account yet, so the code
+in s390_memory_init() fails to enable the huge page support there via
+s390_set_max_pagesize(). Fix it by generalizing the code, so that it
+looks at qemu_ram_pagesize(memdev->mr.ram_block) instead of re-trying
+to get the information from the filesystem.
+
+Suggested-by: David Hildenbrand <david@redhat.com>
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2116496
+Message-Id: <20220810125720.3849835-2-thuth@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Reviewed-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 8be934b70e923104da883b990dee18f02552d40e)
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2117149
+[clg: Resolved conflict on qemu_real_host_page_size() ]
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ backends/hostmem.c | 14 ++------------
+ 1 file changed, 2 insertions(+), 12 deletions(-)
+
+diff --git a/backends/hostmem.c b/backends/hostmem.c
+index 4c05862ed5..0c4654ea85 100644
+--- a/backends/hostmem.c
++++ b/backends/hostmem.c
+@@ -305,22 +305,12 @@ bool host_memory_backend_is_mapped(HostMemoryBackend *backend)
+     return backend->is_mapped;
+ }
+ 
+-#ifdef __linux__
+ size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+ {
+-    Object *obj = OBJECT(memdev);
+-    char *path = object_property_get_str(obj, "mem-path", NULL);
+-    size_t pagesize = qemu_mempath_getpagesize(path);
+-
+-    g_free(path);
++    size_t pagesize = qemu_ram_pagesize(memdev->mr.ram_block);
++    g_assert(pagesize >= qemu_real_host_page_size);
+     return pagesize;
+ }
+-#else
+-size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+-{
+-    return qemu_real_host_page_size;
+-}
+-#endif
+ 
+ static void
+ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
+-- 
+2.35.3
+

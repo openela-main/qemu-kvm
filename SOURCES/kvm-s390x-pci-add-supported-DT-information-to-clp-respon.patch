@@ -1,0 +1,99 @@
+From de6319fe0ce09297beae5ff4636c03217abe6f26 Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Fri, 3 Dec 2021 09:27:06 -0500
+Subject: [PATCH 04/42] s390x/pci: add supported DT information to clp response
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [4/41] 275668f6d38fbc1dfa2f1aa8f58b2c319de2657d
+
+The DTSM is a mask that specifies which I/O Address Translation designation
+types are supported.  Today QEMU only supports DT=1.
+
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Reviewed-by: Pierre Morel <pmorel@linux.ibm.com>
+Message-Id: <20211203142706.427279-5-mjrosato@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit ac6aa30ac47b2abaf142f76de46374da2a98f6e7)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-bus.c         | 1 +
+ hw/s390x/s390-pci-inst.c        | 1 +
+ hw/s390x/s390-pci-vfio.c        | 1 +
+ include/hw/s390x/s390-pci-bus.h | 1 +
+ include/hw/s390x/s390-pci-clp.h | 3 ++-
+ 5 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-bus.c b/hw/s390x/s390-pci-bus.c
+index 1b51a72838..01b58ebc70 100644
+--- a/hw/s390x/s390-pci-bus.c
++++ b/hw/s390x/s390-pci-bus.c
+@@ -782,6 +782,7 @@ static void s390_pci_init_default_group(void)
+     resgrp->i = 128;
+     resgrp->maxstbl = 128;
+     resgrp->version = 0;
++    resgrp->dtsm = ZPCI_DTSM;
+ }
+ 
+ static void set_pbdev_info(S390PCIBusDevice *pbdev)
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index 07bab85ce5..6d400d4147 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -329,6 +329,7 @@ int clp_service_call(S390CPU *cpu, uint8_t r2, uintptr_t ra)
+         stw_p(&resgrp->i, group->zpci_group.i);
+         stw_p(&resgrp->maxstbl, group->zpci_group.maxstbl);
+         resgrp->version = group->zpci_group.version;
++        resgrp->dtsm = group->zpci_group.dtsm;
+         stw_p(&resgrp->hdr.rsp, CLP_RC_OK);
+         break;
+     }
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index 2a153fa8c9..6f80a47e29 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -160,6 +160,7 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
+         resgrp->i = cap->noi;
+         resgrp->maxstbl = cap->maxstbl;
+         resgrp->version = cap->version;
++        resgrp->dtsm = ZPCI_DTSM;
+     }
+ }
+ 
+diff --git a/include/hw/s390x/s390-pci-bus.h b/include/hw/s390x/s390-pci-bus.h
+index 2727e7bdef..da3cde2bb4 100644
+--- a/include/hw/s390x/s390-pci-bus.h
++++ b/include/hw/s390x/s390-pci-bus.h
+@@ -37,6 +37,7 @@
+ #define ZPCI_MAX_UID 0xffff
+ #define UID_UNDEFINED 0
+ #define UID_CHECKING_ENABLED 0x01
++#define ZPCI_DTSM 0x40
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(S390pciState, S390_PCI_HOST_BRIDGE)
+ OBJECT_DECLARE_SIMPLE_TYPE(S390PCIBus, S390_PCI_BUS)
+diff --git a/include/hw/s390x/s390-pci-clp.h b/include/hw/s390x/s390-pci-clp.h
+index 96b8e3f133..cc8c8662b8 100644
+--- a/include/hw/s390x/s390-pci-clp.h
++++ b/include/hw/s390x/s390-pci-clp.h
+@@ -163,7 +163,8 @@ typedef struct ClpRspQueryPciGrp {
+     uint8_t fr;
+     uint16_t maxstbl;
+     uint16_t mui;
+-    uint64_t reserved3;
++    uint8_t dtsm;
++    uint8_t reserved3[7];
+     uint64_t dasm; /* dma address space mask */
+     uint64_t msia; /* MSI address */
+     uint64_t reserved4;
+-- 
+2.37.3
+

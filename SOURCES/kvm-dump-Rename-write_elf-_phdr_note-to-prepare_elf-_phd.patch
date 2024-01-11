@@ -1,0 +1,69 @@
+From 18fef7f02801d51207d67b8f8ec5f0d828889c78 Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Thu, 11 Aug 2022 12:11:01 +0000
+Subject: [PATCH 29/42] dump: Rename write_elf*_phdr_note to
+ prepare_elf*_phdr_note
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 226: s390: Enhanced Interpretation for PCI Functions and Secure Execution guest dump
+RH-Bugzilla: 1664378 2043909
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [29/41] 876cea6f6e51be8df2763f56d0daef99d11fdd49
+
+The functions in question do not actually write to the file descriptor
+they set up a buffer which is later written to the fd.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Reviewed-by: Janis Schoetterl-Glausch <scgl@linux.ibm.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-Id: <20220811121111.9878-9-frankja@linux.ibm.com>
+(cherry picked from commit 2341a94d3a0a8a93a5a977e642da1807b8edaab8)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ dump/dump.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 8d5226f861..c2c1341ad7 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -261,7 +261,7 @@ static void write_elf32_load(DumpState *s, MemoryMapping *memory_mapping,
+     }
+ }
+ 
+-static void write_elf64_phdr_note(DumpState *s, Elf64_Phdr *phdr)
++static void prepare_elf64_phdr_note(DumpState *s, Elf64_Phdr *phdr)
+ {
+     memset(phdr, 0, sizeof(*phdr));
+     phdr->p_type = cpu_to_dump32(s, PT_NOTE);
+@@ -317,7 +317,7 @@ static void write_elf64_notes(WriteCoreDumpFunction f, DumpState *s,
+     write_guest_note(f, s, errp);
+ }
+ 
+-static void write_elf32_phdr_note(DumpState *s, Elf32_Phdr *phdr)
++static void prepare_elf32_phdr_note(DumpState *s, Elf32_Phdr *phdr)
+ {
+     memset(phdr, 0, sizeof(*phdr));
+     phdr->p_type = cpu_to_dump32(s, PT_NOTE);
+@@ -365,11 +365,11 @@ static void write_elf_phdr_note(DumpState *s, Error **errp)
+     int ret;
+ 
+     if (dump_is_64bit(s)) {
+-        write_elf64_phdr_note(s, &phdr64);
++        prepare_elf64_phdr_note(s, &phdr64);
+         size = sizeof(phdr64);
+         phdr = &phdr64;
+     } else {
+-        write_elf32_phdr_note(s, &phdr32);
++        prepare_elf32_phdr_note(s, &phdr32);
+         size = sizeof(phdr32);
+         phdr = &phdr32;
+     }
+-- 
+2.37.3
+

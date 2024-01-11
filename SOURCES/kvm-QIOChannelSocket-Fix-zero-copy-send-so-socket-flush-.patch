@@ -1,0 +1,58 @@
+From c1fd32d93ae42fcf3c1a25f4d56e669f251087d8 Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Mon, 20 Jun 2022 02:39:43 -0300
+Subject: [PATCH 25/37] QIOChannelSocket: Fix zero-copy send so socket flush
+ works
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 191: MSG_ZEROCOPY + Multifd @ rhel8.7
+RH-Commit: [25/26] 3ede94f3269e21c3ace073ed1a6f24696315bcbb
+RH-Bugzilla: 2072049
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Somewhere between v6 and v7 the of the zero-copy-send patchset a crucial
+part of the flushing mechanism got missing: incrementing zero_copy_queued.
+
+Without that, the flushing interface becomes a no-op, and there is no
+guarantee the buffer is really sent.
+
+This can go as bad as causing a corruption in RAM during migration.
+
+Fixes: 2bc58ffc2926 ("QIOChannelSocket: Implement io_writev zero copy flag & io_flush for CONFIG_LINUX")
+Reported-by: 徐闯 <xuchuangxclwt@bytedance.com>
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 4f5a09714c983a3471fd12e3c7f3196e95c650c1)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ io/channel-socket.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/io/channel-socket.c b/io/channel-socket.c
+index 7d37b39de7..df858da924 100644
+--- a/io/channel-socket.c
++++ b/io/channel-socket.c
+@@ -612,6 +612,11 @@ static ssize_t qio_channel_socket_writev(QIOChannel *ioc,
+                          "Unable to write to socket");
+         return -1;
+     }
++
++    if (flags & QIO_CHANNEL_WRITE_FLAG_ZERO_COPY) {
++        sioc->zero_copy_queued++;
++    }
++
+     return ret;
+ }
+ #else /* WIN32 */
+-- 
+2.35.3
+

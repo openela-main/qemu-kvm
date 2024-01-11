@@ -1,0 +1,47 @@
+From 4e6482073df85db5982aa03ab0355e632b7157fc Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 30 Mar 2022 14:52:34 -0400
+Subject: [PATCH 10/18] tests: acpi: whitelist expected blobs before changing
+ them
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 141: acpi: fix QEMU crash when started with SLIC table
+RH-Commit: [2/10] c664ecad30ca9c13025a63bb31ae7b80fd63e4df (jmaloy/qemu-kvm)
+RH-Bugzilla: 2062611
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2062611
+Upstream: Merged
+
+commit e71f6ab9d93a7d01e833647e7010c1079c4cef30
+Author: Igor Mammedov <imammedo@redhat.com>
+Date:   Mon Dec 27 14:31:18 2021 -0500
+
+    tests: acpi: whitelist expected blobs before changing them
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Message-Id: <20211227193120.1084176-3-imammedo@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit e71f6ab9d93a7d01e833647e7010c1079c4cef30)
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ tests/data/acpi/q35/FACP.slic               | Bin 0 -> 244 bytes
+ tests/data/acpi/q35/SLIC.slic               |   0
+ tests/qtest/bios-tables-test-allowed-diff.h |   2 ++
+ 3 files changed, 2 insertions(+)
+ create mode 100644 tests/data/acpi/q35/FACP.slic
+ create mode 100644 tests/data/acpi/q35/SLIC.slic
+
+diff --git a/tests/qtest/bios-tables-test-allowed-diff.h b/tests/qtest/bios-tables-test-allowed-diff.h
+index dfb8523c8b..49dbf8fa3e 100644
+--- a/tests/qtest/bios-tables-test-allowed-diff.h
++++ b/tests/qtest/bios-tables-test-allowed-diff.h
+@@ -1 +1,3 @@
+ /* List of comma-separated changed AML files to ignore */
++"tests/data/acpi/q35/FACP.slic",
++"tests/data/acpi/q35/SLIC.slic",
+-- 
+2.27.0
+
