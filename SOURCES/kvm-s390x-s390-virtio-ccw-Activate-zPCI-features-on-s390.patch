@@ -1,0 +1,70 @@
+From 51fcf352a97f2e99a6a3fb8ae663b45436304120 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 10 Jan 2023 14:25:34 +0100
+Subject: [PATCH 11/31] s390x/s390-virtio-ccw: Activate zPCI features on
+ s390-ccw-virtio-rhel8.6.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 133: s390x/s390-virtio-ccw: Activate zPCI features on s390-ccw-virtio-rhel8.6.0
+RH-Bugzilla: 2159408
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] 1ed82e56fe74a283a1726c4893dc3387e645072c (clegoate/qemu-kvm-c9s)
+
+commit c7b14d3af7 ("s390x/s390-virtio-ccw: Switch off zPCI enhancements
+on older machines") activated zPCI enhancement features (interpretation
+and forward assist) silently on the s390-ccw-virtio-rhel8.6.0 machine
+for RHEL8.8. It didn't seem to be a problem since migration is not
+possible but it broke LEAPP upgrade to RHEL9 when the machine is
+defined with a passthrough device. Activate the zPCI features also on
+RHEL9.2 for the machines to be alike in both latest RHEL distros.
+
+Upstream Status: RHEL-only
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2159408
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index aa142a1a4e..4cdd59c394 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1234,8 +1234,14 @@ static void ccw_machine_rhel860_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel860_class_options(MachineClass *mc)
+ {
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "on", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "on", },
++    };
++
+     ccw_machine_rhel900_class_options(mc);
+     compat_props_add(mc->compat_props, hw_compat_rhel_8_6, hw_compat_rhel_8_6_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
+ 
+     /* All RHEL machines for prior major releases are deprecated */
+     mc->deprecation_reason = rhel_old_machine_deprecation;
+@@ -1259,8 +1265,14 @@ static void ccw_machine_rhel850_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel850_class_options(MachineClass *mc)
+ {
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "off", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "off", },
++    };
++
+     ccw_machine_rhel860_class_options(mc);
+     compat_props_add(mc->compat_props, hw_compat_rhel_8_5, hw_compat_rhel_8_5_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
+     mc->smp_props.prefer_sockets = true;
+ }
+ DEFINE_CCW_MACHINE(rhel850, "rhel8.5.0", false);
+-- 
+2.31.1
+

@@ -1,0 +1,90 @@
+From 244e92fea388d2be9fe81a5c5912d92b8f599caa Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 23 Mar 2023 10:48:59 -0400
+Subject: [PATCH 1/2] aio-posix: fix race between epoll upgrade and
+ aio_set_fd_handler()
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 292: aio-posix: fix race between epoll upgrade and aio_set_fd_handler()
+RH-Bugzilla: 2211923
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Commit: [1/1] 182471bac79fa2b2ae8a34087eb6c4ab1af786e1
+
+If another thread calls aio_set_fd_handler() while the IOThread event
+loop is upgrading from ppoll(2) to epoll(7) then we might miss new
+AioHandlers. The epollfd will not monitor the new AioHandler's fd,
+resulting in hangs.
+
+Take the AioHandler list lock while upgrading to epoll. This prevents
+AioHandlers from changing while epoll is being set up. If we cannot lock
+because we're in a nested event loop, then don't upgrade to epoll (it
+will happen next time we're not in a nested call).
+
+The downside to taking the lock is that the aio_set_fd_handler() thread
+has to wait until the epoll upgrade is finished, which involves many
+epoll_ctl(2) system calls. However, this scenario is rare and I couldn't
+think of another solution that is still simple.
+
+Reported-by: Qing Wang <qinwang@redhat.com>
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2090998
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Fam Zheng <fam@euphon.net>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-Id: <20230323144859.1338495-1-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e62da98527fa35fe5f532cded01a33edf9fbe7b2)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ util/fdmon-epoll.c | 25 ++++++++++++++++++-------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/util/fdmon-epoll.c b/util/fdmon-epoll.c
+index e11a8a022e..1683aa1105 100644
+--- a/util/fdmon-epoll.c
++++ b/util/fdmon-epoll.c
+@@ -127,6 +127,8 @@ static bool fdmon_epoll_try_enable(AioContext *ctx)
+ 
+ bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
+ {
++    bool ok;
++
+     if (ctx->epollfd < 0) {
+         return false;
+     }
+@@ -136,14 +138,23 @@ bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
+         return false;
+     }
+ 
+-    if (npfd >= EPOLL_ENABLE_THRESHOLD) {
+-        if (fdmon_epoll_try_enable(ctx)) {
+-            return true;
+-        } else {
+-            fdmon_epoll_disable(ctx);
+-        }
++    if (npfd < EPOLL_ENABLE_THRESHOLD) {
++        return false;
++    }
++
++    /* The list must not change while we add fds to epoll */
++    if (!qemu_lockcnt_dec_if_lock(&ctx->list_lock)) {
++        return false;
++    }
++
++    ok = fdmon_epoll_try_enable(ctx);
++
++    qemu_lockcnt_inc_and_unlock(&ctx->list_lock);
++
++    if (!ok) {
++        fdmon_epoll_disable(ctx);
+     }
+-    return false;
++    return ok;
+ }
+ 
+ void fdmon_epoll_setup(AioContext *ctx)
+-- 
+2.39.3
+

@@ -1,0 +1,155 @@
+From 0044e3848b02ef6edba5961d1f4b6297d137d207 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:26:59 +0200
+Subject: [PATCH 12/20] block/qapi: Introduce BlockGraphInfo
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [7/12] de47bac372cd552b812c774a2f35f95923af74ff (hreitz/qemu-kvm-c-9-s)
+
+Introduce a new QAPI type BlockGraphInfo and an associated
+bdrv_query_block_graph_info() function that recursively gathers
+BlockNodeInfo objects through a block graph.
+
+A follow-up patch is going to make "qemu-img info" use this to print
+information about all nodes that are (usually implicitly) opened for a
+given image file.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-8-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 6cab33997b91eb86e82a6a2ae58a24f835249d4a)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/qapi.c         | 48 ++++++++++++++++++++++++++++++++++++++++++++
+ include/block/qapi.h |  3 +++
+ qapi/block-core.json | 35 ++++++++++++++++++++++++++++++++
+ 3 files changed, 86 insertions(+)
+
+diff --git a/block/qapi.c b/block/qapi.c
+index 5d0a8d2ce3..f208c21ccf 100644
+--- a/block/qapi.c
++++ b/block/qapi.c
+@@ -411,6 +411,54 @@ fail:
+     qapi_free_ImageInfo(info);
+ }
+ 
++/**
++ * bdrv_query_block_graph_info:
++ * @bs: root node to start from
++ * @p_info: location to store image information
++ * @errp: location to store error information
++ *
++ * Store image information about the graph starting from @bs in @p_info.
++ *
++ * @p_info will be set only on success. On error, store error in @errp.
++ */
++void bdrv_query_block_graph_info(BlockDriverState *bs,
++                                 BlockGraphInfo **p_info,
++                                 Error **errp)
++{
++    BlockGraphInfo *info;
++    BlockChildInfoList **children_list_tail;
++    BdrvChild *c;
++    ERRP_GUARD();
++
++    info = g_new0(BlockGraphInfo, 1);
++    bdrv_do_query_node_info(bs, qapi_BlockGraphInfo_base(info), errp);
++    if (*errp) {
++        goto fail;
++    }
++
++    children_list_tail = &info->children;
++
++    QLIST_FOREACH(c, &bs->children, next) {
++        BlockChildInfo *c_info;
++
++        c_info = g_new0(BlockChildInfo, 1);
++        QAPI_LIST_APPEND(children_list_tail, c_info);
++
++        c_info->name = g_strdup(c->name);
++        bdrv_query_block_graph_info(c->bs, &c_info->info, errp);
++        if (*errp) {
++            goto fail;
++        }
++    }
++
++    *p_info = info;
++    return;
++
++fail:
++    assert(*errp != NULL);
++    qapi_free_BlockGraphInfo(info);
++}
++
+ /* @p_info will be set only on success. */
+ static void bdrv_query_info(BlockBackend *blk, BlockInfo **p_info,
+                             Error **errp)
+diff --git a/include/block/qapi.h b/include/block/qapi.h
+index 2174bf8fa2..196436020e 100644
+--- a/include/block/qapi.h
++++ b/include/block/qapi.h
+@@ -43,6 +43,9 @@ void bdrv_query_image_info(BlockDriverState *bs,
+                            bool flat,
+                            bool skip_implicit_filters,
+                            Error **errp);
++void bdrv_query_block_graph_info(BlockDriverState *bs,
++                                 BlockGraphInfo **p_info,
++                                 Error **errp);
+ 
+ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn);
+ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
+diff --git a/qapi/block-core.json b/qapi/block-core.json
+index 4cf2deeb6c..d703e0fb16 100644
+--- a/qapi/block-core.json
++++ b/qapi/block-core.json
+@@ -307,6 +307,41 @@
+       '*backing-image': 'ImageInfo'
+   } }
+ 
++##
++# @BlockChildInfo:
++#
++# Information about all nodes in the block graph starting at some node,
++# annotated with information about that node in relation to its parent.
++#
++# @name: Child name of the root node in the BlockGraphInfo struct, in its role
++#        as the child of some undescribed parent node
++#
++# @info: Block graph information starting at this node
++#
++# Since: 8.0
++##
++{ 'struct': 'BlockChildInfo',
++  'data': {
++      'name': 'str',
++      'info': 'BlockGraphInfo'
++  } }
++
++##
++# @BlockGraphInfo:
++#
++# Information about all nodes in a block (sub)graph in the form of BlockNodeInfo
++# data.
++# The base BlockNodeInfo struct contains the information for the (sub)graph's
++# root node.
++#
++# @children: Array of links to this node's child nodes' information
++#
++# Since: 8.0
++##
++{ 'struct': 'BlockGraphInfo',
++  'base': 'BlockNodeInfo',
++  'data': { 'children': ['BlockChildInfo'] } }
++
+ ##
+ # @ImageCheck:
+ #
+-- 
+2.31.1
+

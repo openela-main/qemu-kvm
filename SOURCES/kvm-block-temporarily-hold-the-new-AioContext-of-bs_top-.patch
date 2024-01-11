@@ -1,0 +1,99 @@
+From b952c8f1da6f8597736c0e040565830139369359 Mon Sep 17 00:00:00 2001
+From: Stefano Garzarella <sgarzare@redhat.com>
+Date: Tue, 14 Feb 2023 18:16:21 +0100
+Subject: [PATCH] block: temporarily hold the new AioContext of bs_top in
+ bdrv_append()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 153: block: temporarily hold the new AioContext of bs_top in bdrv_append()
+RH-Bugzilla: 2168209
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/1] 5b190426d996e8c9f7a781bd97aee8d25756dbd3 (sgarzarella/qemu-kvm-c-9-s)
+
+bdrv_append() is called with bs_top AioContext held, but
+bdrv_attach_child_noperm() could change the AioContext of bs_top.
+
+bdrv_replace_node_noperm() calls bdrv_drained_begin() starting from
+commit 2398747128 ("block: Don't poll in bdrv_replace_child_noperm()").
+bdrv_drained_begin() can call BDRV_POLL_WHILE that assumes the new lock
+is taken, so let's temporarily hold the new AioContext to prevent QEMU
+from failing in BDRV_POLL_WHILE when it tries to release the wrong
+AioContext.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2168209
+Reported-by: Aihua Liang <aliang@redhat.com>
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+Message-Id: <20230214171621.11574-1-sgarzare@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 60d90bf43c169b9d1dbcb17ed794b7b02c6862b1)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/block.c b/block.c
+index 0d78711416..9e1dcb9e47 100644
+--- a/block.c
++++ b/block.c
+@@ -5275,6 +5275,8 @@ int bdrv_drop_filter(BlockDriverState *bs, Error **errp)
+  * child.
+  *
+  * This function does not create any image files.
++ *
++ * The caller must hold the AioContext lock for @bs_top.
+  */
+ int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
+                 Error **errp)
+@@ -5282,11 +5284,14 @@ int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
+     int ret;
+     BdrvChild *child;
+     Transaction *tran = tran_new();
++    AioContext *old_context, *new_context = NULL;
+ 
+     GLOBAL_STATE_CODE();
+ 
+     assert(!bs_new->backing);
+ 
++    old_context = bdrv_get_aio_context(bs_top);
++
+     child = bdrv_attach_child_noperm(bs_new, bs_top, "backing",
+                                      &child_of_bds, bdrv_backing_role(bs_new),
+                                      tran, errp);
+@@ -5295,6 +5300,19 @@ int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
+         goto out;
+     }
+ 
++    /*
++     * bdrv_attach_child_noperm could change the AioContext of bs_top.
++     * bdrv_replace_node_noperm calls bdrv_drained_begin, so let's temporarily
++     * hold the new AioContext, since bdrv_drained_begin calls BDRV_POLL_WHILE
++     * that assumes the new lock is taken.
++     */
++    new_context = bdrv_get_aio_context(bs_top);
++
++    if (old_context != new_context) {
++        aio_context_release(old_context);
++        aio_context_acquire(new_context);
++    }
++
+     ret = bdrv_replace_node_noperm(bs_top, bs_new, true, tran, errp);
+     if (ret < 0) {
+         goto out;
+@@ -5306,6 +5324,11 @@ out:
+ 
+     bdrv_refresh_limits(bs_top, NULL, NULL);
+ 
++    if (new_context && old_context != new_context) {
++        aio_context_release(new_context);
++        aio_context_acquire(old_context);
++    }
++
+     return ret;
+ }
+ 
+-- 
+2.31.1
+

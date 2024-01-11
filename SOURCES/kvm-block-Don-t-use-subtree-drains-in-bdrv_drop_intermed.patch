@@ -1,0 +1,54 @@
+From 6af6de77dace29aa8548b3649dc9c6163740ac86 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:03 +0100
+Subject: [PATCH 21/31] block: Don't use subtree drains in
+ bdrv_drop_intermediate()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [9/16] 3c06fa826f262558f57d38b0155500c2e8e23a53 (sgarzarella/qemu-kvm-c-9-s)
+
+Instead of using a subtree drain from the top node (which also drains
+child nodes of base that we're not even interested in), use a normal
+drain for base, which automatically drains all of the parents, too.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20221118174110.55183-9-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 631086deefc32690ee56efed1c5b891dec31ae37)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/block.c b/block.c
+index cb5e96b1cf..b3449a312e 100644
+--- a/block.c
++++ b/block.c
+@@ -5586,7 +5586,7 @@ int bdrv_drop_intermediate(BlockDriverState *top, BlockDriverState *base,
+     GLOBAL_STATE_CODE();
+ 
+     bdrv_ref(top);
+-    bdrv_subtree_drained_begin(top);
++    bdrv_drained_begin(base);
+ 
+     if (!top->drv || !base->drv) {
+         goto exit;
+@@ -5659,7 +5659,7 @@ int bdrv_drop_intermediate(BlockDriverState *top, BlockDriverState *base,
+ 
+     ret = 0;
+ exit:
+-    bdrv_subtree_drained_end(top);
++    bdrv_drained_end(base);
+     bdrv_unref(top);
+     return ret;
+ }
+-- 
+2.31.1
+

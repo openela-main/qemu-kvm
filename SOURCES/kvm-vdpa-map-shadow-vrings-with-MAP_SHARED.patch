@@ -1,0 +1,131 @@
+From 965f27235276e3b16ebf630436eb1d7e792a3d2a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 2 Jun 2023 16:38:54 +0200
+Subject: [PATCH 3/4] vdpa: map shadow vrings with MAP_SHARED
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 298: Fix qemu core dump with "x-svq=on" when hot-plugging a NIC
+RH-Jira: RHEL-1060
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/3] 673ba501d6e76bae9272847acebaf5f01689f9cf
+
+JIRA: https://issues.redhat.com/browse/RHEL-1060
+
+The vdpa devices that use va addresses neeeds these maps shared.
+Otherwise, vhost_vdpa checks will refuse to accept the maps.
+
+The mmap call will always return a page aligned address, so removing the
+qemu_memalign call.  Keeping the ROUND_UP for the size as we still need
+to DMA-map them in full.
+
+Not applying fixes tag as it never worked with va devices.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20230602143854.1879091-4-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit babf8b87127ae809b31b3c0a117dcbc91aaf9aba)
+
+Conflicts
+
+    because of missing commits:
+
+    5d410557dea4 ("vhost: fix possible wrap in SVQ descriptor ring")
+    5c1ebd4c432e ("vdpa: block migration if device has unsupported features")
+
+    and already backported commit$
+
+    a0d7215e339b ("vhost-vdpa: do not cleanup the vdpa/vhost-net structures if peer nic is present")
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/virtio/vhost-shadow-virtqueue.c | 18 +++++++++---------
+ net/vhost-vdpa.c                   | 16 ++++++++--------
+ 2 files changed, 17 insertions(+), 17 deletions(-)
+
+diff --git a/hw/virtio/vhost-shadow-virtqueue.c b/hw/virtio/vhost-shadow-virtqueue.c
+index 4307296358..9f09d435be 100644
+--- a/hw/virtio/vhost-shadow-virtqueue.c
++++ b/hw/virtio/vhost-shadow-virtqueue.c
+@@ -647,7 +647,7 @@ void vhost_svq_set_svq_kick_fd(VhostShadowVirtqueue *svq, int svq_kick_fd)
+ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+                      VirtQueue *vq, VhostIOVATree *iova_tree)
+ {
+-    size_t desc_size, driver_size, device_size;
++    size_t desc_size;
+ 
+     event_notifier_set_handler(&svq->hdev_call, vhost_svq_handle_call);
+     svq->next_guest_avail_elem = NULL;
+@@ -659,14 +659,14 @@ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+     svq->iova_tree = iova_tree;
+ 
+     svq->vring.num = virtio_queue_get_num(vdev, virtio_get_queue_index(vq));
+-    driver_size = vhost_svq_driver_area_size(svq);
+-    device_size = vhost_svq_device_area_size(svq);
+-    svq->vring.desc = qemu_memalign(qemu_real_host_page_size(), driver_size);
++    svq->vring.desc = mmap(NULL, vhost_svq_driver_area_size(svq),
++                           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
++                           -1, 0);
+     desc_size = sizeof(vring_desc_t) * svq->vring.num;
+     svq->vring.avail = (void *)((char *)svq->vring.desc + desc_size);
+-    memset(svq->vring.desc, 0, driver_size);
+-    svq->vring.used = qemu_memalign(qemu_real_host_page_size(), device_size);
+-    memset(svq->vring.used, 0, device_size);
++    svq->vring.used = mmap(NULL, vhost_svq_device_area_size(svq),
++                           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
++                           -1, 0);
+     svq->desc_state = g_new0(SVQDescState, svq->vring.num);
+     svq->desc_next = g_new0(uint16_t, svq->vring.num);
+     for (unsigned i = 0; i < svq->vring.num - 1; i++) {
+@@ -705,8 +705,8 @@ void vhost_svq_stop(VhostShadowVirtqueue *svq)
+     svq->vq = NULL;
+     g_free(svq->desc_next);
+     g_free(svq->desc_state);
+-    qemu_vfree(svq->vring.desc);
+-    qemu_vfree(svq->vring.used);
++    munmap(svq->vring.desc, vhost_svq_driver_area_size(svq));
++    munmap(svq->vring.used, vhost_svq_device_area_size(svq));
+     event_notifier_set_handler(&svq->hdev_call, NULL);
+ }
+ 
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index d282c90a3d..8bfa95b801 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -203,8 +203,8 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
+     if (nc->peer && nc->peer->info->type == NET_CLIENT_DRIVER_NIC) {
+         return;
+     }
+-    qemu_vfree(s->cvq_cmd_out_buffer);
+-    qemu_vfree(s->status);
++    munmap(s->cvq_cmd_out_buffer, vhost_vdpa_net_cvq_cmd_page_len());
++    munmap(s->status, vhost_vdpa_net_cvq_cmd_page_len());
+     if (s->vhost_net) {
+         vhost_net_cleanup(s->vhost_net);
+         g_free(s->vhost_net);
+@@ -761,12 +761,12 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+     s->vhost_vdpa.iova_range = iova_range;
+     s->vhost_vdpa.shadow_data = svq;
+     if (!is_datapath) {
+-        s->cvq_cmd_out_buffer = qemu_memalign(qemu_real_host_page_size(),
+-                                            vhost_vdpa_net_cvq_cmd_page_len());
+-        memset(s->cvq_cmd_out_buffer, 0, vhost_vdpa_net_cvq_cmd_page_len());
+-        s->status = qemu_memalign(qemu_real_host_page_size(),
+-                                  vhost_vdpa_net_cvq_cmd_page_len());
+-        memset(s->status, 0, vhost_vdpa_net_cvq_cmd_page_len());
++        s->cvq_cmd_out_buffer = mmap(NULL, vhost_vdpa_net_cvq_cmd_page_len(),
++                                     PROT_READ | PROT_WRITE,
++                                     MAP_SHARED | MAP_ANONYMOUS, -1, 0);
++        s->status = mmap(NULL, vhost_vdpa_net_cvq_cmd_page_len(),
++                         PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
++                         -1, 0);
+ 
+         s->vhost_vdpa.shadow_vq_ops = &vhost_vdpa_net_svq_ops;
+         s->vhost_vdpa.shadow_vq_ops_opaque = s;
+-- 
+2.39.3
+

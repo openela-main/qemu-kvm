@@ -1,0 +1,179 @@
+From 30e86a7c4fbcdc95b74bcb2a15745cb221783091 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 7/8] hw/arm/virt: Add properties to disable high memory
+ regions
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/8] 16f8762393b447a590b31c9e4d8d3c58c6bc9fa8
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+
+The 3 high memory regions are usually enabled by default, but they may
+be not used. For example, VIRT_HIGH_GIC_REDIST2 isn't needed by GICv2.
+This leads to waste in the PA space.
+
+Add properties ("highmem-redists", "highmem-ecam", "highmem-mmio") to
+allow users selectively disable them if needed. After that, the high
+memory region for GICv3 or GICv4 redistributor can be disabled by user,
+the number of maximal supported CPUs needs to be calculated based on
+'vms->highmem_redists'. The follow-up error message is also improved
+to indicate if the high memory region for GICv3 and GICv4 has been
+enabled or not.
+
+Suggested-by: Marc Zyngier <maz@kernel.org>
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Marc Zyngier <maz@kernel.org>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20221029224307.138822-8-gshan@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 6a48c64eec355ab1aff694eb4522d07a8e461368)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Conflicts:
+	hw/arm/virt.c
+	Comment out the handlers of the property 'highmem-redists',
+	'highmem-ecam' and 'highmem-mmio' since they aren't exposed.
+---
+ docs/system/arm/virt.rst | 13 +++++++
+ hw/arm/virt.c            | 75 ++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 86 insertions(+), 2 deletions(-)
+
+diff --git a/docs/system/arm/virt.rst b/docs/system/arm/virt.rst
+index 4454706392..188a4f211f 100644
+--- a/docs/system/arm/virt.rst
++++ b/docs/system/arm/virt.rst
+@@ -98,6 +98,19 @@ compact-highmem
+   Set ``on``/``off`` to enable/disable the compact layout for high memory regions.
+   The default is ``on`` for machine types later than ``virt-7.2``.
+ 
++highmem-redists
++  Set ``on``/``off`` to enable/disable the high memory region for GICv3 or
++  GICv4 redistributor. The default is ``on``. Setting this to ``off`` will
++  limit the maximum number of CPUs when GICv3 or GICv4 is used.
++
++highmem-ecam
++  Set ``on``/``off`` to enable/disable the high memory region for PCI ECAM.
++  The default is ``on`` for machine types later than ``virt-3.0``.
++
++highmem-mmio
++  Set ``on``/``off`` to enable/disable the high memory region for PCI MMIO.
++  The default is ``on``.
++
+ gic-version
+   Specify the version of the Generic Interrupt Controller (GIC) to provide.
+   Valid values are:
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 6087511ae9..304fa0d6e7 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -2142,14 +2142,20 @@ static void machvirt_init(MachineState *machine)
+     if (vms->gic_version == VIRT_GIC_VERSION_2) {
+         virt_max_cpus = GIC_NCPU;
+     } else {
+-        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST) +
+-            virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
++        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST);
++        if (vms->highmem_redists) {
++            virt_max_cpus += virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
++        }
+     }
+ 
+     if (max_cpus > virt_max_cpus) {
+         error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
+                      "supported by machine 'mach-virt' (%d)",
+                      max_cpus, virt_max_cpus);
++        if (vms->gic_version != VIRT_GIC_VERSION_2 && !vms->highmem_redists) {
++            error_printf("Try 'highmem-redists=on' for more CPUs\n");
++        }
++
+         exit(1);
+     }
+ 
+@@ -2420,6 +2426,49 @@ static void virt_set_compact_highmem(Object *obj, bool value, Error **errp)
+ 
+     vms->highmem_compact = value;
+ }
++
++static bool virt_get_highmem_redists(Object *obj, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    return vms->highmem_redists;
++}
++
++static void virt_set_highmem_redists(Object *obj, bool value, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    vms->highmem_redists = value;
++}
++
++static bool virt_get_highmem_ecam(Object *obj, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    return vms->highmem_ecam;
++}
++
++static void virt_set_highmem_ecam(Object *obj, bool value, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    vms->highmem_ecam = value;
++}
++
++static bool virt_get_highmem_mmio(Object *obj, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    return vms->highmem_mmio;
++}
++
++static void virt_set_highmem_mmio(Object *obj, bool value, Error **errp)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    vms->highmem_mmio = value;
++}
++
+ #endif /* disabled for RHEL */
+ 
+ static bool virt_get_its(Object *obj, Error **errp)
+@@ -3052,6 +3101,28 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+                                           "Set on/off to enable/disable compact "
+                                           "layout for high memory regions");
+ 
++    object_class_property_add_bool(oc, "highmem-redists",
++                                   virt_get_highmem_redists,
++                                   virt_set_highmem_redists);
++    object_class_property_set_description(oc, "highmem-redists",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for GICv3 or GICv4 "
++                                          "redistributor");
++
++    object_class_property_add_bool(oc, "highmem-ecam",
++                                   virt_get_highmem_ecam,
++                                   virt_set_highmem_ecam);
++    object_class_property_set_description(oc, "highmem-ecam",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for PCI ECAM");
++
++    object_class_property_add_bool(oc, "highmem-mmio",
++                                   virt_get_highmem_mmio,
++                                   virt_set_highmem_mmio);
++    object_class_property_set_description(oc, "highmem-mmio",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for PCI MMIO");
++
+     object_class_property_add_str(oc, "gic-version", virt_get_gic_version,
+                                   virt_set_gic_version);
+     object_class_property_set_description(oc, "gic-version",
+-- 
+2.31.1
+

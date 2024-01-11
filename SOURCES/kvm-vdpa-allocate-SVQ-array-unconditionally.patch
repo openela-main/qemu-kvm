@@ -1,0 +1,50 @@
+From 72f296870805750df8dfe5eaad77dd7d435a8f41 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:40 +0100
+Subject: [PATCH 08/14] vdpa: allocate SVQ array unconditionally
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [8/13] 08cd86d0859f82d768794e29241cfeff25df667c (eperezmartin/qemu-kvm)
+
+SVQ may run or not in a device depending on runtime conditions (for
+example, if the device can move CVQ to its own group or not).
+
+Allocate the SVQ array unconditionally at startup, since its hard to
+move this allocation elsewhere.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-9-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 273e0003f0005cc17292dedae01e5edb0064b69c)
+---
+ hw/virtio/vhost-vdpa.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index 84218ce078..dd2768634b 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -532,10 +532,6 @@ static void vhost_vdpa_svq_cleanup(struct vhost_dev *dev)
+     struct vhost_vdpa *v = dev->opaque;
+     size_t idx;
+ 
+-    if (!v->shadow_vqs) {
+-        return;
+-    }
+-
+     for (idx = 0; idx < v->shadow_vqs->len; ++idx) {
+         vhost_svq_stop(g_ptr_array_index(v->shadow_vqs, idx));
+     }
+-- 
+2.31.1
+

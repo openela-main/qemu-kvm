@@ -1,0 +1,83 @@
+From d110c11b5658df93533698fdb428455f5e770866 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Tue, 18 Apr 2023 11:04:49 +0200
+Subject: [PATCH] acpi: pcihp: allow repeating hot-unplug requests
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 280: acpi: pcihp: allow repeating hot-unplug requests
+RH-Bugzilla: 2203745
+RH-Acked-by: Ani Sinha <None>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Julia Suvorova <None>
+RH-Commit: [1/1] e884ac48ebd43c3ebdbc65b01ce5ad75f4cb9284
+
+with Q35 using ACPI PCI hotplug by default, user's request to unplug
+device is ignored when it's issued before guest OS has been booted.
+And any additional attempt to request device hot-unplug afterwards
+results in following error:
+
+  "Device XYZ is already in the process of unplug"
+
+arguably it can be considered as a regression introduced by [2],
+before which it was possible to issue unplug request multiple
+times.
+
+Accept new uplug requests after timeout (1ms). This brings ACPI PCI
+hotplug on par with native PCIe unplug behavior [1] and allows user
+to repeat unplug requests at propper times.
+Set expire timeout to arbitrary 1msec so user won't be able to
+flood guest with SCI interrupts by calling device_del in tight loop.
+
+PS:
+ACPI spec doesn't mandate what OSPM can do with GPEx.status
+bits set before it's booted => it's impl. depended.
+Status bits may be retained (I tested with one Windows version)
+or cleared (Linux since 2.6 kernel times) during guest's ACPI
+subsystem initialization.
+Clearing status bits (though not wrong per se) hides the unplug
+event from guest, and it's upto user to repeat device_del later
+when guest is able to handle unplug requests.
+
+1) 18416c62e3 ("pcie: expire pending delete")
+2)
+Fixes: cce8944cc9ef ("qdev-monitor: Forbid repeated device_del")
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+CC: mst@redhat.com
+CC: anisinha@redhat.com
+CC: jusual@redhat.com
+CC: kraxel@redhat.com
+Message-Id: <20230418090449.2155757-1-imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Ani Sinha <anisinha@redhat.com>
+(cherry picked from commit 0f689cf5ada4d5df5ab95c7f7aa9fc221afa855d)
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/acpi/pcihp.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/hw/acpi/pcihp.c b/hw/acpi/pcihp.c
+index 84d75e6b84..a2a3738b46 100644
+--- a/hw/acpi/pcihp.c
++++ b/hw/acpi/pcihp.c
+@@ -429,6 +429,16 @@ void acpi_pcihp_device_unplug_request_cb(HotplugHandler *hotplug_dev,
+      * acpi_pcihp_eject_slot() when the operation is completed.
+      */
+     pdev->qdev.pending_deleted_event = true;
++    /* if unplug was requested before OSPM is initialized,
++     * linux kernel will clear GPE0.sts[] bits during boot, which effectively
++     * hides unplug event. And than followup qmp_device_del() calls remain
++     * blocked by above flag permanently.
++     * Unblock qmp_device_del() by setting expire limit, so user can
++     * repeat unplug request later when OSPM has been booted.
++     */
++    pdev->qdev.pending_deleted_expires_ms =
++        qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL); /* 1 msec */
++
+     s->acpi_pcihp_pci_status[bsel].down |= (1U << slot);
+     acpi_send_event(DEVICE(hotplug_dev), ACPI_PCI_HOTPLUG_STATUS);
+ }
+-- 
+2.39.1
+

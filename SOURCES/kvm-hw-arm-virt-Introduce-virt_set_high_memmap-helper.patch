@@ -1,0 +1,130 @@
+From 5dff87c5ea60054709021025c9513ec259433ce2 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 1/8] hw/arm/virt: Introduce virt_set_high_memmap() helper
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/8] 5f6ba5af7a2c21d8473c58e088ee99b11336c673
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+
+This introduces virt_set_high_memmap() helper. The logic of high
+memory region address assignment is moved to the helper. The intention
+is to make the subsequent optimization for high memory region address
+assignment easier.
+
+No functional change intended.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Marc Zyngier <maz@kernel.org>
+Tested-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Message-id: 20221029224307.138822-2-gshan@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 4af6b6edece5ef273d29972d53547f823d2bc1c0)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c | 74 ++++++++++++++++++++++++++++-----------------------
+ 1 file changed, 41 insertions(+), 33 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index bf18838b87..bea5f54720 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1736,6 +1736,46 @@ static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
+     return arm_cpu_mp_affinity(idx, clustersz);
+ }
+ 
++static void virt_set_high_memmap(VirtMachineState *vms,
++                                 hwaddr base, int pa_bits)
++{
++    int i;
++
++    for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
++        hwaddr size = extended_memmap[i].size;
++        bool fits;
++
++        base = ROUND_UP(base, size);
++        vms->memmap[i].base = base;
++        vms->memmap[i].size = size;
++
++        /*
++         * Check each device to see if they fit in the PA space,
++         * moving highest_gpa as we go.
++         *
++         * For each device that doesn't fit, disable it.
++         */
++        fits = (base + size) <= BIT_ULL(pa_bits);
++        if (fits) {
++            vms->highest_gpa = base + size - 1;
++        }
++
++        switch (i) {
++        case VIRT_HIGH_GIC_REDIST2:
++            vms->highmem_redists &= fits;
++            break;
++        case VIRT_HIGH_PCIE_ECAM:
++            vms->highmem_ecam &= fits;
++            break;
++        case VIRT_HIGH_PCIE_MMIO:
++            vms->highmem_mmio &= fits;
++            break;
++        }
++
++        base += size;
++    }
++}
++
+ static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
+ {
+     MachineState *ms = MACHINE(vms);
+@@ -1791,39 +1831,7 @@ static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
+     /* We know for sure that at least the memory fits in the PA space */
+     vms->highest_gpa = memtop - 1;
+ 
+-    for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
+-        hwaddr size = extended_memmap[i].size;
+-        bool fits;
+-
+-        base = ROUND_UP(base, size);
+-        vms->memmap[i].base = base;
+-        vms->memmap[i].size = size;
+-
+-        /*
+-         * Check each device to see if they fit in the PA space,
+-         * moving highest_gpa as we go.
+-         *
+-         * For each device that doesn't fit, disable it.
+-         */
+-        fits = (base + size) <= BIT_ULL(pa_bits);
+-        if (fits) {
+-            vms->highest_gpa = base + size - 1;
+-        }
+-
+-        switch (i) {
+-        case VIRT_HIGH_GIC_REDIST2:
+-            vms->highmem_redists &= fits;
+-            break;
+-        case VIRT_HIGH_PCIE_ECAM:
+-            vms->highmem_ecam &= fits;
+-            break;
+-        case VIRT_HIGH_PCIE_MMIO:
+-            vms->highmem_mmio &= fits;
+-            break;
+-        }
+-
+-        base += size;
+-    }
++    virt_set_high_memmap(vms, base, pa_bits);
+ 
+     if (device_memory_size > 0) {
+         ms->device_memory = g_malloc0(sizeof(*ms->device_memory));
+-- 
+2.31.1
+

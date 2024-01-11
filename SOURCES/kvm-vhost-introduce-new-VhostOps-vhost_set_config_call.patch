@@ -1,0 +1,56 @@
+From d135303da1187d9f214e520a977fe7c47e5ce1f0 Mon Sep 17 00:00:00 2001
+From: Cindy Lu <lulu@redhat.com>
+Date: Thu, 22 Dec 2022 15:04:45 +0800
+Subject: [PATCH 04/31] vhost: introduce new VhostOps vhost_set_config_call
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cindy Lu <lulu@redhat.com>
+RH-MergeRequest: 132: vhost-vdpa: support config interrupt in vhost-vdpa
+RH-Bugzilla: 1905805
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/10] c2492838d9c1415e42d2507f2956d640a30325f2 (lulu6/qemu-kvm3)
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1905805
+This patch introduces new VhostOps vhost_set_config_call.
+This function allows the qemu to set the config
+event fd to kernel driver.
+
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+Message-Id: <20221222070451.936503-5-lulu@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 9b30cdf9bbf9524a4f4f8a6eb551eb13cbbd3893)
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+---
+ include/hw/virtio/vhost-backend.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/include/hw/virtio/vhost-backend.h b/include/hw/virtio/vhost-backend.h
+index eab46d7f0b..c5ab49051e 100644
+--- a/include/hw/virtio/vhost-backend.h
++++ b/include/hw/virtio/vhost-backend.h
+@@ -128,6 +128,8 @@ typedef int (*vhost_get_device_id_op)(struct vhost_dev *dev, uint32_t *dev_id);
+ 
+ typedef bool (*vhost_force_iommu_op)(struct vhost_dev *dev);
+ 
++typedef int (*vhost_set_config_call_op)(struct vhost_dev *dev,
++                                       int fd);
+ typedef struct VhostOps {
+     VhostBackendType backend_type;
+     vhost_backend_init vhost_backend_init;
+@@ -174,6 +176,7 @@ typedef struct VhostOps {
+     vhost_vq_get_addr_op  vhost_vq_get_addr;
+     vhost_get_device_id_op vhost_get_device_id;
+     vhost_force_iommu_op vhost_force_iommu;
++    vhost_set_config_call_op vhost_set_config_call;
+ } VhostOps;
+ 
+ int vhost_backend_update_device_iotlb(struct vhost_dev *dev,
+-- 
+2.31.1
+

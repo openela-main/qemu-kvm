@@ -1,0 +1,140 @@
+From d8caed018afb0f60f449e971398d2a8d6c2992e7 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:26:55 +0200
+Subject: [PATCH 08/20] block/vmdk: Change extent info type
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [3/12] efe50a2797c679ce6bb5faa423047461a34e6792 (hreitz/qemu-kvm-c-9-s)
+
+VMDK's implementation of .bdrv_get_specific_info() returns information
+about its extent files, ostensibly in the form of ImageInfo objects.
+However, it does not get this information through
+bdrv_query_image_info(), but fills only a select few fields with custom
+information that does not always match the fields' purposes.
+
+For example, @format, which is supposed to be a block driver name, is
+filled with the extent type, e.g. SPARSE or FLAT.
+
+In ImageInfo, @compressed shows whether the data that can be seen in the
+image is stored in compressed form or not.  For example, a compressed
+qcow2 image will store compressed data in its data file, but when
+accessing the qcow2 node, you will see normal data.  This is not how
+VMDK uses the @compressed field for its extent files: Instead, it
+signifies whether accessing the extent file will yield compressed data
+(which the VMDK driver then (de-)compresses).
+
+Create a new structure to represent the extent information.  This allows
+us to clarify the fields' meanings, and it clearly shows that these are
+not complete ImageInfo objects.  (That is, if a user wants an extent
+file's ImageInfo object, they will need to query it separately, and will
+not get it from ImageInfoSpecificVmdk.extents.)
+
+Note that this removes the last use of ['ImageInfo'] (i.e. an array of
+ImageInfo objects), so the QAPI generator will no longer generate
+ImageInfoList by default.  However, we use it in qemu-img.c, so we need
+to create a dummy object to force the generate to create that type,
+similarly to DummyForceArrays in machine.json (introduced in commit
+9f08c8ec73878122ad4b061ed334f0437afaaa32 ("qapi: Lazy creation of array
+types")).
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-4-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 456e75171a85c19a5bfa202eefcbdc4ef1692f05)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/vmdk.c         |  8 ++++----
+ qapi/block-core.json | 38 +++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 41 insertions(+), 5 deletions(-)
+
+diff --git a/block/vmdk.c b/block/vmdk.c
+index 26376352b9..4435b9880b 100644
+--- a/block/vmdk.c
++++ b/block/vmdk.c
+@@ -2901,12 +2901,12 @@ static int vmdk_has_zero_init(BlockDriverState *bs)
+     return 1;
+ }
+ 
+-static ImageInfo *vmdk_get_extent_info(VmdkExtent *extent)
++static VmdkExtentInfo *vmdk_get_extent_info(VmdkExtent *extent)
+ {
+-    ImageInfo *info = g_new0(ImageInfo, 1);
++    VmdkExtentInfo *info = g_new0(VmdkExtentInfo, 1);
+ 
+     bdrv_refresh_filename(extent->file->bs);
+-    *info = (ImageInfo){
++    *info = (VmdkExtentInfo){
+         .filename         = g_strdup(extent->file->bs->filename),
+         .format           = g_strdup(extent->type),
+         .virtual_size     = extent->sectors * BDRV_SECTOR_SIZE,
+@@ -2985,7 +2985,7 @@ static ImageInfoSpecific *vmdk_get_specific_info(BlockDriverState *bs,
+     int i;
+     BDRVVmdkState *s = bs->opaque;
+     ImageInfoSpecific *spec_info = g_new0(ImageInfoSpecific, 1);
+-    ImageInfoList **tail;
++    VmdkExtentInfoList **tail;
+ 
+     *spec_info = (ImageInfoSpecific){
+         .type = IMAGE_INFO_SPECIFIC_KIND_VMDK,
+diff --git a/qapi/block-core.json b/qapi/block-core.json
+index f5d822cbd6..4b9365167f 100644
+--- a/qapi/block-core.json
++++ b/qapi/block-core.json
+@@ -124,7 +124,33 @@
+       'create-type': 'str',
+       'cid': 'int',
+       'parent-cid': 'int',
+-      'extents': ['ImageInfo']
++      'extents': ['VmdkExtentInfo']
++  } }
++
++##
++# @VmdkExtentInfo:
++#
++# Information about a VMDK extent file
++#
++# @filename: Name of the extent file
++#
++# @format: Extent type (e.g. FLAT or SPARSE)
++#
++# @virtual-size: Number of bytes covered by this extent
++#
++# @cluster-size: Cluster size in bytes (for non-flat extents)
++#
++# @compressed: Whether this extent contains compressed data
++#
++# Since: 8.0
++##
++{ 'struct': 'VmdkExtentInfo',
++  'data': {
++      'filename': 'str',
++      'format': 'str',
++      'virtual-size': 'int',
++      '*cluster-size': 'int',
++      '*compressed': 'bool'
+   } }
+ 
+ ##
+@@ -5754,3 +5780,13 @@
+   'data': { 'device': 'str', '*id': 'str', '*name': 'str'},
+   'returns': 'SnapshotInfo',
+   'allow-preconfig': true }
++
++##
++# @DummyBlockCoreForceArrays:
++#
++# Not used by QMP; hack to let us use ImageInfoList internally
++#
++# Since: 8.0
++##
++{ 'struct': 'DummyBlockCoreForceArrays',
++  'data': { 'unused-image-info': ['ImageInfo'] } }
+-- 
+2.31.1
+

@@ -1,0 +1,46 @@
+From b3d728b53abaae0c9884dfb5e9c216b1088196e3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Wed, 21 Dec 2022 12:50:13 +0100
+Subject: [PATCH 2/9] virtio_net: copy VIRTIO_NET_S_ANNOUNCE if device model
+ has it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 137: vDPA net SVQ guest announce support
+RH-Bugzilla: 2141088
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [2/4] fb04186829eb93bab3c9ececf90fa5b035ffa2ec (eperezmartin/qemu-kvm)
+
+Status part of the emulated feature. It will follow device model, so we
+must copy it as long as NIC device model has it set.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20221221115015.1400889-3-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit 4f93aafc8f9d731c6588f5dc5594c6a1dd1fbe66)
+---
+ hw/net/virtio-net.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 5935e55653..948bcf33cf 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -183,6 +183,8 @@ static void virtio_net_get_config(VirtIODevice *vdev, uint8_t *config)
+             memcpy(netcfg.mac, n->mac, ETH_ALEN);
+         }
+ 
++        netcfg.status |= virtio_tswap16(vdev,
++                                        n->status & VIRTIO_NET_S_ANNOUNCE);
+         memcpy(config, &netcfg, n->config_size);
+     }
+ }
+-- 
+2.31.1
+

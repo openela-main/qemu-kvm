@@ -1,0 +1,122 @@
+From 6584478deca49d0ea20add588e4fdb51cdc26f1d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:36 +0100
+Subject: [PATCH 04/14] vhost: move iova_tree set to vhost_svq_start
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/13] 200d8e9b58e258a6e301430debc73ef7d962b732 (eperezmartin/qemu-kvm)
+
+Since we don't know if we will use SVQ at qemu initialization, let's
+allocate iova_tree only if needed. To do so, accept it at SVQ start, not
+at initialization.
+
+This will avoid to create it if the device does not support SVQ.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-5-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 5fde952bbdd521c10fc018ee04f922a7dca5f663)
+---
+ hw/virtio/vhost-shadow-virtqueue.c | 9 ++++-----
+ hw/virtio/vhost-shadow-virtqueue.h | 5 ++---
+ hw/virtio/vhost-vdpa.c             | 5 ++---
+ 3 files changed, 8 insertions(+), 11 deletions(-)
+
+diff --git a/hw/virtio/vhost-shadow-virtqueue.c b/hw/virtio/vhost-shadow-virtqueue.c
+index 3b05bab44d..4307296358 100644
+--- a/hw/virtio/vhost-shadow-virtqueue.c
++++ b/hw/virtio/vhost-shadow-virtqueue.c
+@@ -642,9 +642,10 @@ void vhost_svq_set_svq_kick_fd(VhostShadowVirtqueue *svq, int svq_kick_fd)
+  * @svq: Shadow Virtqueue
+  * @vdev: VirtIO device
+  * @vq: Virtqueue to shadow
++ * @iova_tree: Tree to perform descriptors translations
+  */
+ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+-                     VirtQueue *vq)
++                     VirtQueue *vq, VhostIOVATree *iova_tree)
+ {
+     size_t desc_size, driver_size, device_size;
+ 
+@@ -655,6 +656,7 @@ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+     svq->last_used_idx = 0;
+     svq->vdev = vdev;
+     svq->vq = vq;
++    svq->iova_tree = iova_tree;
+ 
+     svq->vring.num = virtio_queue_get_num(vdev, virtio_get_queue_index(vq));
+     driver_size = vhost_svq_driver_area_size(svq);
+@@ -712,18 +714,15 @@ void vhost_svq_stop(VhostShadowVirtqueue *svq)
+  * Creates vhost shadow virtqueue, and instructs the vhost device to use the
+  * shadow methods and file descriptors.
+  *
+- * @iova_tree: Tree to perform descriptors translations
+  * @ops: SVQ owner callbacks
+  * @ops_opaque: ops opaque pointer
+  */
+-VhostShadowVirtqueue *vhost_svq_new(VhostIOVATree *iova_tree,
+-                                    const VhostShadowVirtqueueOps *ops,
++VhostShadowVirtqueue *vhost_svq_new(const VhostShadowVirtqueueOps *ops,
+                                     void *ops_opaque)
+ {
+     VhostShadowVirtqueue *svq = g_new0(VhostShadowVirtqueue, 1);
+ 
+     event_notifier_init_fd(&svq->svq_kick, VHOST_FILE_UNBIND);
+-    svq->iova_tree = iova_tree;
+     svq->ops = ops;
+     svq->ops_opaque = ops_opaque;
+     return svq;
+diff --git a/hw/virtio/vhost-shadow-virtqueue.h b/hw/virtio/vhost-shadow-virtqueue.h
+index d04c34a589..926a4897b1 100644
+--- a/hw/virtio/vhost-shadow-virtqueue.h
++++ b/hw/virtio/vhost-shadow-virtqueue.h
+@@ -126,11 +126,10 @@ size_t vhost_svq_driver_area_size(const VhostShadowVirtqueue *svq);
+ size_t vhost_svq_device_area_size(const VhostShadowVirtqueue *svq);
+ 
+ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+-                     VirtQueue *vq);
++                     VirtQueue *vq, VhostIOVATree *iova_tree);
+ void vhost_svq_stop(VhostShadowVirtqueue *svq);
+ 
+-VhostShadowVirtqueue *vhost_svq_new(VhostIOVATree *iova_tree,
+-                                    const VhostShadowVirtqueueOps *ops,
++VhostShadowVirtqueue *vhost_svq_new(const VhostShadowVirtqueueOps *ops,
+                                     void *ops_opaque);
+ 
+ void vhost_svq_free(gpointer vq);
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index 530d2ca362..e65603022f 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -430,8 +430,7 @@ static int vhost_vdpa_init_svq(struct vhost_dev *hdev, struct vhost_vdpa *v,
+     for (unsigned n = 0; n < hdev->nvqs; ++n) {
+         VhostShadowVirtqueue *svq;
+ 
+-        svq = vhost_svq_new(v->iova_tree, v->shadow_vq_ops,
+-                            v->shadow_vq_ops_opaque);
++        svq = vhost_svq_new(v->shadow_vq_ops, v->shadow_vq_ops_opaque);
+         g_ptr_array_add(shadow_vqs, svq);
+     }
+ 
+@@ -1070,7 +1069,7 @@ static bool vhost_vdpa_svqs_start(struct vhost_dev *dev)
+             goto err;
+         }
+ 
+-        vhost_svq_start(svq, dev->vdev, vq);
++        vhost_svq_start(svq, dev->vdev, vq, v->iova_tree);
+         ok = vhost_vdpa_svq_map_rings(dev, svq, &addr, &err);
+         if (unlikely(!ok)) {
+             goto err_map;
+-- 
+2.31.1
+

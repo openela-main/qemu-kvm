@@ -1,0 +1,197 @@
+From b1970c733dc46b2a8f648997a7e1c5d12900ff54 Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:27:04 +0200
+Subject: [PATCH 17/20] qemu-img: Change info key names for protocol nodes
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [12/12] 67c260aaa05466410503fecee6210bf9d47e8c7c (hreitz/qemu-kvm-c-9-s)
+
+Currently, when querying a qcow2 image, qemu-img info reports something
+like this:
+
+image: test.qcow2
+file format: qcow2
+virtual size: 64 MiB (67108864 bytes)
+disk size: 196 KiB
+cluster_size: 65536
+Format specific information:
+    compat: 1.1
+    compression type: zlib
+    lazy refcounts: false
+    refcount bits: 16
+    corrupt: false
+    extended l2: false
+Child node '/file':
+    image: test.qcow2
+    file format: file
+    virtual size: 192 KiB (197120 bytes)
+    disk size: 196 KiB
+    Format specific information:
+        extent size hint: 1048576
+
+Notably, the way the keys are named is specific for image files: The
+filename is shown under "image", the BDS driver under "file format", and
+the BDS length under "virtual size".  This does not make much sense for
+nodes that are not actually supposed to be guest images, like the /file
+child node shown above.
+
+Give bdrv_node_info_dump() a @protocol parameter that gives a hint that
+the respective node is probably just used for data storage and does not
+necessarily present the data for a VM guest disk.  This renames the keys
+so that with this patch, the output becomes:
+
+image: test.qcow2
+[...]
+Child node '/file':
+    filename: test.qcow2
+    protocol type: file
+    file length: 192 KiB (197120 bytes)
+    disk size: 196 KiB
+    Format specific information:
+        extent size hint: 1048576
+
+(Perhaps we should also rename "Format specific information", but I
+could not come up with anything better that will not become problematic
+if we guess wrong with the protocol "heuristic".)
+
+This change affects iotest 302, which has protocol node information in
+its reference output.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-13-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit d570177b50c389f379f93183155a27d44856ab46)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/monitor/block-hmp-cmds.c |  2 +-
+ block/qapi.c                   | 39 ++++++++++++++++++++++++++++------
+ include/block/qapi.h           |  2 +-
+ qemu-img.c                     |  3 ++-
+ tests/qemu-iotests/302.out     |  6 +++---
+ 5 files changed, 39 insertions(+), 13 deletions(-)
+
+diff --git a/block/monitor/block-hmp-cmds.c b/block/monitor/block-hmp-cmds.c
+index 72824d4e2e..4d83339a5d 100644
+--- a/block/monitor/block-hmp-cmds.c
++++ b/block/monitor/block-hmp-cmds.c
+@@ -734,7 +734,7 @@ static void print_block_info(Monitor *mon, BlockInfo *info,
+         monitor_printf(mon, "\nImages:\n");
+         image_info = inserted->image;
+         while (1) {
+-            bdrv_node_info_dump(qapi_ImageInfo_base(image_info), 0);
++            bdrv_node_info_dump(qapi_ImageInfo_base(image_info), 0, false);
+             if (image_info->has_backing_image) {
+                 image_info = image_info->backing_image;
+             } else {
+diff --git a/block/qapi.c b/block/qapi.c
+index 3e35603f0c..56f398c500 100644
+--- a/block/qapi.c
++++ b/block/qapi.c
+@@ -934,24 +934,49 @@ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
+     visit_free(v);
+ }
+ 
+-void bdrv_node_info_dump(BlockNodeInfo *info, int indentation)
++/**
++ * Print the given @info object in human-readable form.  Every field is indented
++ * using the given @indentation (four spaces per indentation level).
++ *
++ * When using this to print a whole block graph, @protocol can be set to true to
++ * signify that the given information is associated with a protocol node, i.e.
++ * just data storage for an image, such that the data it presents is not really
++ * a full VM disk.  If so, several fields change name: For example, "virtual
++ * size" is printed as "file length".
++ * (Consider a qcow2 image, which is represented by a qcow2 node and a file
++ * node.  Printing a "virtual size" for the file node does not make sense,
++ * because without the qcow2 node, it is not really a guest disk, so it does not
++ * have a "virtual size".  Therefore, we call it "file length" instead.)
++ *
++ * @protocol is ignored when @indentation is 0, because we take that to mean
++ * that the associated node is the root node in the queried block graph, and
++ * thus is always to be interpreted as a standalone guest disk.
++ */
++void bdrv_node_info_dump(BlockNodeInfo *info, int indentation, bool protocol)
+ {
+     char *size_buf, *dsize_buf;
+     g_autofree char *ind_s = g_strdup_printf("%*s", indentation * 4, "");
+ 
++    if (indentation == 0) {
++        /* Top level, consider this a normal image */
++        protocol = false;
++    }
++
+     if (!info->has_actual_size) {
+         dsize_buf = g_strdup("unavailable");
+     } else {
+         dsize_buf = size_to_str(info->actual_size);
+     }
+     size_buf = size_to_str(info->virtual_size);
+-    qemu_printf("%simage: %s\n"
+-                "%sfile format: %s\n"
+-                "%svirtual size: %s (%" PRId64 " bytes)\n"
++    qemu_printf("%s%s: %s\n"
++                "%s%s: %s\n"
++                "%s%s: %s (%" PRId64 " bytes)\n"
+                 "%sdisk size: %s\n",
+-                ind_s, info->filename,
+-                ind_s, info->format,
+-                ind_s, size_buf, info->virtual_size,
++                ind_s, protocol ? "filename" : "image", info->filename,
++                ind_s, protocol ? "protocol type" : "file format",
++                info->format,
++                ind_s, protocol ? "file length" : "virtual size",
++                size_buf, info->virtual_size,
+                 ind_s, dsize_buf);
+     g_free(size_buf);
+     g_free(dsize_buf);
+diff --git a/include/block/qapi.h b/include/block/qapi.h
+index 38855f2ae9..26113da21a 100644
+--- a/include/block/qapi.h
++++ b/include/block/qapi.h
+@@ -51,5 +51,5 @@ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn);
+ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
+                                    const char *prefix,
+                                    int indentation);
+-void bdrv_node_info_dump(BlockNodeInfo *info, int indentation);
++void bdrv_node_info_dump(BlockNodeInfo *info, int indentation, bool protocol);
+ #endif
+diff --git a/qemu-img.c b/qemu-img.c
+index e281011245..2943625c67 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -2853,7 +2853,8 @@ static void dump_human_image_info(BlockGraphInfo *info, int indentation,
+ {
+     BlockChildInfoList *children_list;
+ 
+-    bdrv_node_info_dump(qapi_BlockGraphInfo_base(info), indentation);
++    bdrv_node_info_dump(qapi_BlockGraphInfo_base(info), indentation,
++                        info->children == NULL);
+ 
+     for (children_list = info->children; children_list;
+          children_list = children_list->next)
+diff --git a/tests/qemu-iotests/302.out b/tests/qemu-iotests/302.out
+index edfa1c4f05..7b5014cdd8 100644
+--- a/tests/qemu-iotests/302.out
++++ b/tests/qemu-iotests/302.out
+@@ -5,9 +5,9 @@ file format: raw
+ virtual size: 448 KiB (458752 bytes)
+ disk size: unavailable
+ Child node '/file':
+-    image: nbd+unix:///exp?socket=SOCK_DIR/PID-nbd-sock
+-    file format: nbd
+-    virtual size: 448 KiB (458752 bytes)
++    filename: nbd+unix:///exp?socket=SOCK_DIR/PID-nbd-sock
++    protocol type: nbd
++    file length: 448 KiB (458752 bytes)
+     disk size: unavailable
+ 
+ === Converted image info ===
+-- 
+2.31.1
+

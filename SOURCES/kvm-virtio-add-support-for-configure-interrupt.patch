@@ -1,0 +1,115 @@
+From e04c76339580effae41617b690b58a6605e0f40b Mon Sep 17 00:00:00 2001
+From: Cindy Lu <lulu@redhat.com>
+Date: Thu, 22 Dec 2022 15:04:47 +0800
+Subject: [PATCH 06/31] virtio: add support for configure interrupt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cindy Lu <lulu@redhat.com>
+RH-MergeRequest: 132: vhost-vdpa: support config interrupt in vhost-vdpa
+RH-Bugzilla: 1905805
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/10] 7048eb488b732578686d451684babaf17b582b05 (lulu6/qemu-kvm3)
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1905805
+Add the functions to support the configure interrupt in virtio
+The function virtio_config_guest_notifier_read will notify the
+guest if there is an configure interrupt.
+The function virtio_config_set_guest_notifier_fd_handler is
+to set the fd hander for the notifier
+
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+Message-Id: <20221222070451.936503-7-lulu@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 7d847d0c9b93b91160f40d69a65c904d76f1edd8)
+Signed-off-by: Cindy Lu <lulu@redhat.com>
+---
+ hw/virtio/virtio.c         | 29 +++++++++++++++++++++++++++++
+ include/hw/virtio/virtio.h |  4 ++++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index eb6347ab5d..34e9c5d141 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -4012,7 +4012,14 @@ static void virtio_queue_guest_notifier_read(EventNotifier *n)
+         virtio_irq(vq);
+     }
+ }
++static void virtio_config_guest_notifier_read(EventNotifier *n)
++{
++    VirtIODevice *vdev = container_of(n, VirtIODevice, config_notifier);
+ 
++    if (event_notifier_test_and_clear(n)) {
++        virtio_notify_config(vdev);
++    }
++}
+ void virtio_queue_set_guest_notifier_fd_handler(VirtQueue *vq, bool assign,
+                                                 bool with_irqfd)
+ {
+@@ -4029,6 +4036,23 @@ void virtio_queue_set_guest_notifier_fd_handler(VirtQueue *vq, bool assign,
+     }
+ }
+ 
++void virtio_config_set_guest_notifier_fd_handler(VirtIODevice *vdev,
++                                                 bool assign, bool with_irqfd)
++{
++    EventNotifier *n;
++    n = &vdev->config_notifier;
++    if (assign && !with_irqfd) {
++        event_notifier_set_handler(n, virtio_config_guest_notifier_read);
++    } else {
++        event_notifier_set_handler(n, NULL);
++    }
++    if (!assign) {
++        /* Test and clear notifier before closing it,*/
++        /* in case poll callback didn't have time to run. */
++        virtio_config_guest_notifier_read(n);
++    }
++}
++
+ EventNotifier *virtio_queue_get_guest_notifier(VirtQueue *vq)
+ {
+     return &vq->guest_notifier;
+@@ -4109,6 +4133,11 @@ EventNotifier *virtio_queue_get_host_notifier(VirtQueue *vq)
+     return &vq->host_notifier;
+ }
+ 
++EventNotifier *virtio_config_get_guest_notifier(VirtIODevice *vdev)
++{
++    return &vdev->config_notifier;
++}
++
+ void virtio_queue_set_host_notifier_enabled(VirtQueue *vq, bool enabled)
+ {
+     vq->host_notifier_enabled = enabled;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 1f4a41b958..9c3a4642f2 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -138,6 +138,7 @@ struct VirtIODevice
+     AddressSpace *dma_as;
+     QLIST_HEAD(, VirtQueue) *vector_queues;
+     QTAILQ_ENTRY(VirtIODevice) next;
++    EventNotifier config_notifier;
+ };
+ 
+ struct VirtioDeviceClass {
+@@ -360,6 +361,9 @@ void virtio_queue_aio_attach_host_notifier_no_poll(VirtQueue *vq, AioContext *ct
+ void virtio_queue_aio_detach_host_notifier(VirtQueue *vq, AioContext *ctx);
+ VirtQueue *virtio_vector_first_queue(VirtIODevice *vdev, uint16_t vector);
+ VirtQueue *virtio_vector_next_queue(VirtQueue *vq);
++EventNotifier *virtio_config_get_guest_notifier(VirtIODevice *vdev);
++void virtio_config_set_guest_notifier_fd_handler(VirtIODevice *vdev,
++                                                 bool assign, bool with_irqfd);
+ 
+ static inline void virtio_add_feature(uint64_t *features, unsigned int fbit)
+ {
+-- 
+2.31.1
+

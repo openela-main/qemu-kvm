@@ -1,0 +1,132 @@
+From 074c89b05dae971c7118cb769fd34e22135c8f4c Mon Sep 17 00:00:00 2001
+From: Hanna Reitz <hreitz@redhat.com>
+Date: Mon, 20 Jun 2022 18:26:53 +0200
+Subject: [PATCH 06/20] block: Improve empty format-specific info dump
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 145: Show protocol-level information in qemu-img info
+RH-Bugzilla: 1860292
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [1/12] be551e83f426e620e673302198b51368bfd324ce (hreitz/qemu-kvm-c-9-s)
+
+When a block driver supports obtaining format-specific information, but
+that object only contains optional fields, it is possible that none of
+them are present, so that dump_qobject() (called by
+bdrv_image_info_specific_dump()) will not print anything.
+
+The callers of bdrv_image_info_specific_dump() put a header above this
+information ("Format specific information:\n"), which will look strange
+when there is nothing below.  Modify bdrv_image_info_specific_dump() to
+print this header instead of its callers, and only if there is indeed
+something to be printed.
+
+Signed-off-by: Hanna Reitz <hreitz@redhat.com>
+Message-Id: <20220620162704.80987-2-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 3716470b24f0f63090d59bcf28ad8fe6fb7835bd)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/qapi.c         | 41 +++++++++++++++++++++++++++++++++++++----
+ include/block/qapi.h |  3 ++-
+ qemu-io-cmds.c       |  4 ++--
+ 3 files changed, 41 insertions(+), 7 deletions(-)
+
+diff --git a/block/qapi.c b/block/qapi.c
+index cf557e3aea..51202b470a 100644
+--- a/block/qapi.c
++++ b/block/qapi.c
+@@ -777,7 +777,35 @@ static void dump_qdict(int indentation, QDict *dict)
+     }
+ }
+ 
+-void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec)
++/*
++ * Return whether dumping the given QObject with dump_qobject() would
++ * yield an empty dump, i.e. not print anything.
++ */
++static bool qobject_is_empty_dump(const QObject *obj)
++{
++    switch (qobject_type(obj)) {
++    case QTYPE_QNUM:
++    case QTYPE_QSTRING:
++    case QTYPE_QBOOL:
++        return false;
++
++    case QTYPE_QDICT:
++        return qdict_size(qobject_to(QDict, obj)) == 0;
++
++    case QTYPE_QLIST:
++        return qlist_empty(qobject_to(QList, obj));
++
++    default:
++        abort();
++    }
++}
++
++/**
++ * Dumps the given ImageInfoSpecific object in a human-readable form,
++ * prepending an optional prefix if the dump is not empty.
++ */
++void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
++                                   const char *prefix)
+ {
+     QObject *obj, *data;
+     Visitor *v = qobject_output_visitor_new(&obj);
+@@ -785,7 +813,12 @@ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec)
+     visit_type_ImageInfoSpecific(v, NULL, &info_spec, &error_abort);
+     visit_complete(v, &obj);
+     data = qdict_get(qobject_to(QDict, obj), "data");
+-    dump_qobject(1, data);
++    if (!qobject_is_empty_dump(data)) {
++        if (prefix) {
++            qemu_printf("%s", prefix);
++        }
++        dump_qobject(1, data);
++    }
+     qobject_unref(obj);
+     visit_free(v);
+ }
+@@ -866,7 +899,7 @@ void bdrv_image_info_dump(ImageInfo *info)
+     }
+ 
+     if (info->has_format_specific) {
+-        qemu_printf("Format specific information:\n");
+-        bdrv_image_info_specific_dump(info->format_specific);
++        bdrv_image_info_specific_dump(info->format_specific,
++                                      "Format specific information:\n");
+     }
+ }
+diff --git a/include/block/qapi.h b/include/block/qapi.h
+index 22c7807c89..c09859ea78 100644
+--- a/include/block/qapi.h
++++ b/include/block/qapi.h
+@@ -40,6 +40,7 @@ void bdrv_query_image_info(BlockDriverState *bs,
+                            Error **errp);
+ 
+ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn);
+-void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec);
++void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
++                                   const char *prefix);
+ void bdrv_image_info_dump(ImageInfo *info);
+ #endif
+diff --git a/qemu-io-cmds.c b/qemu-io-cmds.c
+index 952dc940f1..f4a374528e 100644
+--- a/qemu-io-cmds.c
++++ b/qemu-io-cmds.c
+@@ -1825,8 +1825,8 @@ static int info_f(BlockBackend *blk, int argc, char **argv)
+         return -EIO;
+     }
+     if (spec_info) {
+-        printf("Format specific information:\n");
+-        bdrv_image_info_specific_dump(spec_info);
++        bdrv_image_info_specific_dump(spec_info,
++                                      "Format specific information:\n");
+         qapi_free_ImageInfoSpecific(spec_info);
+     }
+ 
+-- 
+2.31.1
+

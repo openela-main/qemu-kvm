@@ -1,0 +1,53 @@
+From 35ffe28a91a2ef08dd181d1a22695050ccbb6995 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 9 Jan 2023 16:04:43 +0000
+Subject: [PATCH 1/2] virtio-rng-pci: fix migration compat for vectors
+
+RH-Author: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-MergeRequest: 131: virtio-rng-pci: fix migration compat for vectors
+RH-Bugzilla: 2155749
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Commit: [1/1] 1a866491dd191b073d71ae1aa5f4d76ee885de6d (dagrh/c-9-s-qemu-kvm)
+
+Fixup the migration compatibility for existing machine types
+so that they do not enable msi-x.
+
+Symptom:
+
+(qemu) qemu: get_pci_config_device: Bad config data: i=0x34 read: 84 device: 98 cmask: ff wmask: 0 w1cmask:0
+qemu: Failed to load PCIDevice:config
+qemu: Failed to load virtio-rng:virtio
+qemu: error while loading state for instance 0x0 of device '0000:00:03.0/virtio-rng'
+qemu: load of migration failed: Invalid argument
+
+Note: This fix will break migration from 7.2->7.2-fixed with this patch
+
+bz: https://bugzilla.redhat.com/show_bug.cgi?id=2155749
+Fixes: 9ea02e8f1 ("virtio-rng-pci: Allow setting nvectors, so we can use MSI-X")
+
+This downstream fix is the equivalent of an upstream fix I've posted to
+the 7.2 machine type compatibility.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+---
+ hw/core/machine.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 3d851d34da..7adbac6f87 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -56,6 +56,8 @@ GlobalProperty hw_compat_rhel_9_1[] = {
+   { "nvme-ns", "eui64-default", "on"},
+   /* hw_compat_rhel_9_1 from hw_compat_7_1 */
+   { "virtio-device", "queue_reset", "false" },
++  /* hw_compat_rhel_9_1 bz 2155749 */
++  { "virtio-rng-pci", "vectors", "0" },
+ };
+ const size_t hw_compat_rhel_9_1_len = G_N_ELEMENTS(hw_compat_rhel_9_1);
+ 
+-- 
+2.31.1
+

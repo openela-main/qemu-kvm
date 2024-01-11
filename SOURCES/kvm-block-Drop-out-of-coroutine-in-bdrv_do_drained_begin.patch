@@ -1,0 +1,96 @@
+From 9a789d104a4a69031ad95d7fad6380ab21e82503 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:08 +0100
+Subject: [PATCH 26/31] block: Drop out of coroutine in
+ bdrv_do_drained_begin_quiesce()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [14/16] c9266663b822f703e55b6a07de98ceb56e69e924 (sgarzarella/qemu-kvm-c-9-s)
+
+The next patch adds a parent drain to bdrv_attach_child_common(), which
+shouldn't be, but is currently called from coroutines in some cases (e.g.
+.bdrv_co_create implementations generally open new nodes). Therefore,
+the assertion that we're not in a coroutine doesn't hold true any more.
+
+We could just remove the assertion because there is nothing in the
+function that should be in conflict with running in a coroutine, but
+just to be on the safe side, we can reverse the caller relationship
+between bdrv_do_drained_begin() and bdrv_do_drained_begin_quiesce() so
+that the latter also just drops out of coroutine context and we can
+still be certain in the future that any drain code doesn't run in
+coroutines.
+
+As a nice side effect, the structure of bdrv_do_drained_begin() is now
+symmetrical with bdrv_do_drained_end().
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-14-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 05c272ff0cf1b16cc3606f746182dd99b774f553)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block/io.c | 25 ++++++++++++-------------
+ 1 file changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/block/io.c b/block/io.c
+index 2e9503df6a..5e9150d92c 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -346,10 +346,15 @@ static void coroutine_fn bdrv_co_yield_to_drain(BlockDriverState *bs,
+     }
+ }
+ 
+-void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent)
++static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
++                                  bool poll)
+ {
+     IO_OR_GS_CODE();
+-    assert(!qemu_in_coroutine());
++
++    if (qemu_in_coroutine()) {
++        bdrv_co_yield_to_drain(bs, true, parent, poll);
++        return;
++    }
+ 
+     /* Stop things in parent-to-child order */
+     if (qatomic_fetch_inc(&bs->quiesce_counter) == 0) {
+@@ -359,17 +364,6 @@ void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent)
+             bs->drv->bdrv_drain_begin(bs);
+         }
+     }
+-}
+-
+-static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+-                                  bool poll)
+-{
+-    if (qemu_in_coroutine()) {
+-        bdrv_co_yield_to_drain(bs, true, parent, poll);
+-        return;
+-    }
+-
+-    bdrv_do_drained_begin_quiesce(bs, parent);
+ 
+     /*
+      * Wait for drained requests to finish.
+@@ -385,6 +379,11 @@ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+     }
+ }
+ 
++void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent)
++{
++    bdrv_do_drained_begin(bs, parent, false);
++}
++
+ void bdrv_drained_begin(BlockDriverState *bs)
+ {
+     IO_OR_GS_CODE();
+-- 
+2.31.1
+

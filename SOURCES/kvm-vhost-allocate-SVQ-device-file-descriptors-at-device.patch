@@ -1,0 +1,171 @@
+From bffccbd59a2e2c641810cd7362c7b5ecf5989ed8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:35 +0100
+Subject: [PATCH 03/14] vhost: allocate SVQ device file descriptors at device
+ start
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/13] bab2d43f0fc0d13a4917e706244b37e1a431b082 (eperezmartin/qemu-kvm)
+
+The next patches will start control SVQ if possible. However, we don't
+know if that will be possible at qemu boot anymore.
+
+Delay device file descriptors until we know it at device start. This
+will avoid to create them if the device does not support SVQ.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-4-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 3cfb4d069cd2977b707fb519c455d7d416e1f4b0)
+---
+ hw/virtio/vhost-shadow-virtqueue.c | 31 ++------------------------
+ hw/virtio/vhost-vdpa.c             | 35 ++++++++++++++++++++++++------
+ 2 files changed, 30 insertions(+), 36 deletions(-)
+
+diff --git a/hw/virtio/vhost-shadow-virtqueue.c b/hw/virtio/vhost-shadow-virtqueue.c
+index 264ddc166d..3b05bab44d 100644
+--- a/hw/virtio/vhost-shadow-virtqueue.c
++++ b/hw/virtio/vhost-shadow-virtqueue.c
+@@ -715,43 +715,18 @@ void vhost_svq_stop(VhostShadowVirtqueue *svq)
+  * @iova_tree: Tree to perform descriptors translations
+  * @ops: SVQ owner callbacks
+  * @ops_opaque: ops opaque pointer
+- *
+- * Returns the new virtqueue or NULL.
+- *
+- * In case of error, reason is reported through error_report.
+  */
+ VhostShadowVirtqueue *vhost_svq_new(VhostIOVATree *iova_tree,
+                                     const VhostShadowVirtqueueOps *ops,
+                                     void *ops_opaque)
+ {
+-    g_autofree VhostShadowVirtqueue *svq = g_new0(VhostShadowVirtqueue, 1);
+-    int r;
+-
+-    r = event_notifier_init(&svq->hdev_kick, 0);
+-    if (r != 0) {
+-        error_report("Couldn't create kick event notifier: %s (%d)",
+-                     g_strerror(errno), errno);
+-        goto err_init_hdev_kick;
+-    }
+-
+-    r = event_notifier_init(&svq->hdev_call, 0);
+-    if (r != 0) {
+-        error_report("Couldn't create call event notifier: %s (%d)",
+-                     g_strerror(errno), errno);
+-        goto err_init_hdev_call;
+-    }
++    VhostShadowVirtqueue *svq = g_new0(VhostShadowVirtqueue, 1);
+ 
+     event_notifier_init_fd(&svq->svq_kick, VHOST_FILE_UNBIND);
+     svq->iova_tree = iova_tree;
+     svq->ops = ops;
+     svq->ops_opaque = ops_opaque;
+-    return g_steal_pointer(&svq);
+-
+-err_init_hdev_call:
+-    event_notifier_cleanup(&svq->hdev_kick);
+-
+-err_init_hdev_kick:
+-    return NULL;
++    return svq;
+ }
+ 
+ /**
+@@ -763,7 +738,5 @@ void vhost_svq_free(gpointer pvq)
+ {
+     VhostShadowVirtqueue *vq = pvq;
+     vhost_svq_stop(vq);
+-    event_notifier_cleanup(&vq->hdev_kick);
+-    event_notifier_cleanup(&vq->hdev_call);
+     g_free(vq);
+ }
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index 44e6a9b7b3..530d2ca362 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -428,15 +428,11 @@ static int vhost_vdpa_init_svq(struct vhost_dev *hdev, struct vhost_vdpa *v,
+ 
+     shadow_vqs = g_ptr_array_new_full(hdev->nvqs, vhost_svq_free);
+     for (unsigned n = 0; n < hdev->nvqs; ++n) {
+-        g_autoptr(VhostShadowVirtqueue) svq;
++        VhostShadowVirtqueue *svq;
+ 
+         svq = vhost_svq_new(v->iova_tree, v->shadow_vq_ops,
+                             v->shadow_vq_ops_opaque);
+-        if (unlikely(!svq)) {
+-            error_setg(errp, "Cannot create svq %u", n);
+-            return -1;
+-        }
+-        g_ptr_array_add(shadow_vqs, g_steal_pointer(&svq));
++        g_ptr_array_add(shadow_vqs, svq);
+     }
+ 
+     v->shadow_vqs = g_steal_pointer(&shadow_vqs);
+@@ -871,11 +867,23 @@ static int vhost_vdpa_svq_set_fds(struct vhost_dev *dev,
+     const EventNotifier *event_notifier = &svq->hdev_kick;
+     int r;
+ 
++    r = event_notifier_init(&svq->hdev_kick, 0);
++    if (r != 0) {
++        error_setg_errno(errp, -r, "Couldn't create kick event notifier");
++        goto err_init_hdev_kick;
++    }
++
++    r = event_notifier_init(&svq->hdev_call, 0);
++    if (r != 0) {
++        error_setg_errno(errp, -r, "Couldn't create call event notifier");
++        goto err_init_hdev_call;
++    }
++
+     file.fd = event_notifier_get_fd(event_notifier);
+     r = vhost_vdpa_set_vring_dev_kick(dev, &file);
+     if (unlikely(r != 0)) {
+         error_setg_errno(errp, -r, "Can't set device kick fd");
+-        return r;
++        goto err_init_set_dev_fd;
+     }
+ 
+     event_notifier = &svq->hdev_call;
+@@ -883,8 +891,18 @@ static int vhost_vdpa_svq_set_fds(struct vhost_dev *dev,
+     r = vhost_vdpa_set_vring_dev_call(dev, &file);
+     if (unlikely(r != 0)) {
+         error_setg_errno(errp, -r, "Can't set device call fd");
++        goto err_init_set_dev_fd;
+     }
+ 
++    return 0;
++
++err_init_set_dev_fd:
++    event_notifier_set_handler(&svq->hdev_call, NULL);
++
++err_init_hdev_call:
++    event_notifier_cleanup(&svq->hdev_kick);
++
++err_init_hdev_kick:
+     return r;
+ }
+ 
+@@ -1096,6 +1114,9 @@ static void vhost_vdpa_svqs_stop(struct vhost_dev *dev)
+     for (unsigned i = 0; i < v->shadow_vqs->len; ++i) {
+         VhostShadowVirtqueue *svq = g_ptr_array_index(v->shadow_vqs, i);
+         vhost_vdpa_svq_unmap_rings(dev, svq);
++
++        event_notifier_cleanup(&svq->hdev_kick);
++        event_notifier_cleanup(&svq->hdev_call);
+     }
+ }
+ 
+-- 
+2.31.1
+

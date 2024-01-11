@@ -1,0 +1,51 @@
+From 969ea1ff46b52c5fe6d87f2eeb1625871a2dfb2a Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 8/8] hw/arm/virt: Enable compat high memory region address
+ assignment for 9.2.0 machine
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [8/8] beda1791c0c35dce5c669efd47685302b8468032
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+Upstream: RHEL only
+
+The compact high memory region address assignment is enabled for 9.2.0,
+but it's kept as disabled for 9.0.0, to keep the backwards compatibility
+on 9.0.0. Note that these newly added properties ('compact-highmem',
+'highmem-redists', 'highmem-ecam', and 'highmem-mmio') in the upstream
+aren't exposed for the downstream.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 304fa0d6e7..e41c0b462c 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3581,6 +3581,7 @@ static void rhel_virt_instance_init(Object *obj)
+ 
+     /* High memory is enabled by default */
+     vms->highmem = true;
++    vms->highmem_compact = !vmc->no_highmem_compact;
+     vms->gic_version = VIRT_GIC_VERSION_NOSEL;
+ 
+     vms->highmem_ecam = !vmc->no_highmem_ecam;
+@@ -3659,5 +3660,7 @@ static void rhel900_virt_options(MachineClass *mc)
+ 
+     /* Disable FEAT_LPA2 since old kernels (<= v5.12) don't boot with that feature */
+     vmc->no_tcg_lpa2 = true;
++    /* Compact layout for high memory regions was introduced with 9.2.0 */
++    vmc->no_highmem_compact = true;
+ }
+ DEFINE_RHEL_MACHINE(9, 0, 0)
+-- 
+2.31.1
+

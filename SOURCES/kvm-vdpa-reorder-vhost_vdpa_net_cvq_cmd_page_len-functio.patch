@@ -1,0 +1,84 @@
+From af109b3c7e8d7cb3b6c7c842a92ddf5de2270a3c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 2 Jun 2023 16:38:53 +0200
+Subject: [PATCH 2/4] vdpa: reorder vhost_vdpa_net_cvq_cmd_page_len function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 298: Fix qemu core dump with "x-svq=on" when hot-plugging a NIC
+RH-Jira: RHEL-1060
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/3] df45d2faa25186a246c18f24909ced67f94cf33f
+
+JIRA: https://issues.redhat.com/browse/RHEL-1060
+
+We need to call it from resource cleanup context, as munmap needs the
+size of the mappings.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-Id: <20230602143854.1879091-3-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 915bf6ccd7a5c9b6cbea7a72f153597d1b98834f)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ net/vhost-vdpa.c | 32 ++++++++++++++++----------------
+ 1 file changed, 16 insertions(+), 16 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index a914348e2a..d282c90a3d 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -110,6 +110,22 @@ VHostNetState *vhost_vdpa_get_vhost_net(NetClientState *nc)
+     return s->vhost_net;
+ }
+ 
++static size_t vhost_vdpa_net_cvq_cmd_len(void)
++{
++    /*
++     * MAC_TABLE_SET is the ctrl command that produces the longer out buffer.
++     * In buffer is always 1 byte, so it should fit here
++     */
++    return sizeof(struct virtio_net_ctrl_hdr) +
++           2 * sizeof(struct virtio_net_ctrl_mac) +
++           MAC_TABLE_ENTRIES * ETH_ALEN;
++}
++
++static size_t vhost_vdpa_net_cvq_cmd_page_len(void)
++{
++    return ROUND_UP(vhost_vdpa_net_cvq_cmd_len(), qemu_real_host_page_size());
++}
++
+ static bool vhost_vdpa_net_valid_svq_features(uint64_t features, Error **errp)
+ {
+     uint64_t invalid_dev_features =
+@@ -362,22 +378,6 @@ static void vhost_vdpa_cvq_unmap_buf(struct vhost_vdpa *v, void *addr)
+     vhost_iova_tree_remove(tree, *map);
+ }
+ 
+-static size_t vhost_vdpa_net_cvq_cmd_len(void)
+-{
+-    /*
+-     * MAC_TABLE_SET is the ctrl command that produces the longer out buffer.
+-     * In buffer is always 1 byte, so it should fit here
+-     */
+-    return sizeof(struct virtio_net_ctrl_hdr) +
+-           2 * sizeof(struct virtio_net_ctrl_mac) +
+-           MAC_TABLE_ENTRIES * ETH_ALEN;
+-}
+-
+-static size_t vhost_vdpa_net_cvq_cmd_page_len(void)
+-{
+-    return ROUND_UP(vhost_vdpa_net_cvq_cmd_len(), qemu_real_host_page_size());
+-}
+-
+ /** Map CVQ buffer. */
+ static int vhost_vdpa_cvq_map_buf(struct vhost_vdpa *v, void *buf, size_t size,
+                                   bool write)
+-- 
+2.39.3
+

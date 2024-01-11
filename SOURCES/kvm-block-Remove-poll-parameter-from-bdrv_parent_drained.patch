@@ -1,0 +1,106 @@
+From 60b66881fb972e1cdff1cd7b4c865e5e21c141b0 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:10 +0100
+Subject: [PATCH 28/31] block: Remove poll parameter from
+ bdrv_parent_drained_begin_single()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [16/16] fd526cc9e5bebeb256cfa56d23ec596f26caa37a (sgarzarella/qemu-kvm-c-9-s)
+
+All callers of bdrv_parent_drained_begin_single() pass poll=false now,
+so we don't need the parameter any more.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-16-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 606ed756c1d69cba4822be8923248d2fd714f069)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c                  | 4 ++--
+ block/io.c               | 8 ++------
+ include/block/block-io.h | 5 ++---
+ 3 files changed, 6 insertions(+), 11 deletions(-)
+
+diff --git a/block.c b/block.c
+index 65588d313a..0d78711416 100644
+--- a/block.c
++++ b/block.c
+@@ -2417,7 +2417,7 @@ static void bdrv_replace_child_abort(void *opaque)
+          * new_bs drained when calling bdrv_replace_child_tran() is not a
+          * requirement any more.
+          */
+-        bdrv_parent_drained_begin_single(s->child, false);
++        bdrv_parent_drained_begin_single(s->child);
+         assert(!bdrv_parent_drained_poll_single(s->child));
+     }
+     assert(s->child->quiesced_parent);
+@@ -3059,7 +3059,7 @@ static BdrvChild *bdrv_attach_child_common(BlockDriverState *child_bs,
+      * a problem, we already did this), but it will still poll until the parent
+      * is fully quiesced, so it will not be negatively affected either.
+      */
+-    bdrv_parent_drained_begin_single(new_child, false);
++    bdrv_parent_drained_begin_single(new_child);
+     bdrv_replace_child_noperm(new_child, child_bs);
+ 
+     BdrvAttachChildCommonState *s = g_new(BdrvAttachChildCommonState, 1);
+diff --git a/block/io.c b/block/io.c
+index ae64830eac..38e57d1f67 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -53,7 +53,7 @@ static void bdrv_parent_drained_begin(BlockDriverState *bs, BdrvChild *ignore)
+         if (c == ignore) {
+             continue;
+         }
+-        bdrv_parent_drained_begin_single(c, false);
++        bdrv_parent_drained_begin_single(c);
+     }
+ }
+ 
+@@ -105,9 +105,8 @@ static bool bdrv_parent_drained_poll(BlockDriverState *bs, BdrvChild *ignore,
+     return busy;
+ }
+ 
+-void bdrv_parent_drained_begin_single(BdrvChild *c, bool poll)
++void bdrv_parent_drained_begin_single(BdrvChild *c)
+ {
+-    AioContext *ctx = bdrv_child_get_parent_aio_context(c);
+     IO_OR_GS_CODE();
+ 
+     assert(!c->quiesced_parent);
+@@ -116,9 +115,6 @@ void bdrv_parent_drained_begin_single(BdrvChild *c, bool poll)
+     if (c->klass->drained_begin) {
+         c->klass->drained_begin(c);
+     }
+-    if (poll) {
+-        AIO_WAIT_WHILE(ctx, bdrv_parent_drained_poll_single(c));
+-    }
+ }
+ 
+ static void bdrv_merge_limits(BlockLimits *dst, const BlockLimits *src)
+diff --git a/include/block/block-io.h b/include/block/block-io.h
+index 65e6d2569b..92aaa7c1e9 100644
+--- a/include/block/block-io.h
++++ b/include/block/block-io.h
+@@ -287,10 +287,9 @@ bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
+ /**
+  * bdrv_parent_drained_begin_single:
+  *
+- * Begin a quiesced section for the parent of @c. If @poll is true, wait for
+- * any pending activity to cease.
++ * Begin a quiesced section for the parent of @c.
+  */
+-void bdrv_parent_drained_begin_single(BdrvChild *c, bool poll);
++void bdrv_parent_drained_begin_single(BdrvChild *c);
+ 
+ /**
+  * bdrv_parent_drained_poll_single:
+-- 
+2.31.1
+

@@ -1,0 +1,67 @@
+From 2f5369f0effaa23be746f9b5d9f6a0bfc346fb7d Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 12 Jan 2023 20:14:52 +0100
+Subject: [PATCH 02/20] qemu-img commit: Report errors while closing the image
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 143: qemu-img: Fix exit code for errors closing the image
+RH-Bugzilla: 2150180
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [2/4] faedd43355463b1210a3f21ecd430f478bd06f5a (kmwolf/centos-qemu-kvm)
+
+blk_unref() can't report any errors that happen while closing the image.
+For example, if qcow2 hits an -ENOSPC error while writing out dirty
+bitmaps when it's closed, it prints error messages to stderr, but
+'qemu-img commit' won't see any error return value and will therefore
+look successful with exit code 0.
+
+In order to fix this, manually inactivate the image first before calling
+blk_unref(). This already performs the operations that would be most
+likely to fail while closing the image, but it can still return errors.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20230112191454.169353-3-kwolf@redhat.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 44efba2d713aca076c411594d0c1a2b99155eeb3)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ qemu-img.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/qemu-img.c b/qemu-img.c
+index a9b3a8103c..3cbdda9f76 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -449,6 +449,11 @@ static BlockBackend *img_open(bool image_opts,
+         blk = img_open_file(filename, NULL, fmt, flags, writethrough, quiet,
+                             force_share);
+     }
++
++    if (blk) {
++        blk_set_force_allow_inactivate(blk);
++    }
++
+     return blk;
+ }
+ 
+@@ -1119,6 +1124,14 @@ unref_backing:
+ done:
+     qemu_progress_end();
+ 
++    /*
++     * Manually inactivate the image first because this way we can know whether
++     * an error occurred. blk_unref() doesn't tell us about failures.
++     */
++    ret = bdrv_inactivate_all();
++    if (ret < 0 && !local_err) {
++        error_setg_errno(&local_err, -ret, "Error while closing the image");
++    }
+     blk_unref(blk);
+ 
+     if (local_err) {
+-- 
+2.31.1
+

@@ -1,0 +1,76 @@
+From 0f3a28e1e128754184c4af6a578f27e16c6a61d5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:37 +0100
+Subject: [PATCH 05/14] vdpa: add vhost_vdpa_net_valid_svq_features
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/13] 0b27e04f178ec73cb800f4fb05c17a92576142e4 (eperezmartin/qemu-kvm)
+
+It will be reused at vdpa device start so let's extract in its own
+function.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-6-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 36e4647247f200b6fa4d2f656133f567036e8a85)
+---
+ net/vhost-vdpa.c | 26 +++++++++++++++++---------
+ 1 file changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index b06540ac89..16a5ebe2dd 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -106,6 +106,22 @@ VHostNetState *vhost_vdpa_get_vhost_net(NetClientState *nc)
+     return s->vhost_net;
+ }
+ 
++static bool vhost_vdpa_net_valid_svq_features(uint64_t features, Error **errp)
++{
++    uint64_t invalid_dev_features =
++        features & ~vdpa_svq_device_features &
++        /* Transport are all accepted at this point */
++        ~MAKE_64BIT_MASK(VIRTIO_TRANSPORT_F_START,
++                         VIRTIO_TRANSPORT_F_END - VIRTIO_TRANSPORT_F_START);
++
++    if (invalid_dev_features) {
++        error_setg(errp, "vdpa svq does not work with features 0x%" PRIx64,
++                   invalid_dev_features);
++    }
++
++    return !invalid_dev_features;
++}
++
+ static int vhost_vdpa_net_check_device_id(struct vhost_net *net)
+ {
+     uint32_t device_id;
+@@ -684,15 +700,7 @@ int net_init_vhost_vdpa(const Netdev *netdev, const char *name,
+     if (opts->x_svq) {
+         struct vhost_vdpa_iova_range iova_range;
+ 
+-        uint64_t invalid_dev_features =
+-            features & ~vdpa_svq_device_features &
+-            /* Transport are all accepted at this point */
+-            ~MAKE_64BIT_MASK(VIRTIO_TRANSPORT_F_START,
+-                             VIRTIO_TRANSPORT_F_END - VIRTIO_TRANSPORT_F_START);
+-
+-        if (invalid_dev_features) {
+-            error_setg(errp, "vdpa svq does not work with features 0x%" PRIx64,
+-                       invalid_dev_features);
++        if (!vhost_vdpa_net_valid_svq_features(features, errp)) {
+             goto err_svq;
+         }
+ 
+-- 
+2.31.1
+

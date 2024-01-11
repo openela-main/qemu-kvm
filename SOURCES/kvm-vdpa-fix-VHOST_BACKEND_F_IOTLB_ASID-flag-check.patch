@@ -1,0 +1,48 @@
+From 46e80a9350a02fdb5689638df96bc7389e953cf8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Tue, 17 Jan 2023 11:53:08 +0100
+Subject: [PATCH 13/14] vdpa: fix VHOST_BACKEND_F_IOTLB_ASID flag check
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [13/13] b7fb4b8e9ea26b6664a9179ed0a88376acf5115f (eperezmartin/qemu-kvm)
+
+VHOST_BACKEND_F_IOTLB_ASID is the feature bit, not the bitmask. Since
+the device under test also provided VHOST_BACKEND_F_IOTLB_MSG_V2 and
+VHOST_BACKEND_F_IOTLB_BATCH, this went unnoticed.
+
+Fixes: c1a1008685 ("vdpa: always start CVQ in SVQ mode if possible")
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+
+Upstream status: git@github.com:jasowang/qemu.git
+(cherry picked from commit 2bd492bca521ee8594f1d5db8dc9aac126fc4f85)
+---
+ net/vhost-vdpa.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 07d33dae26..7d9c4ea09d 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -384,7 +384,7 @@ static int vhost_vdpa_net_cvq_start(NetClientState *nc)
+             g_strerror(errno), errno);
+         return -1;
+     }
+-    if (!(backend_features & VHOST_BACKEND_F_IOTLB_ASID) ||
++    if (!(backend_features & BIT_ULL(VHOST_BACKEND_F_IOTLB_ASID)) ||
+         !vhost_vdpa_net_valid_svq_features(v->dev->features, NULL)) {
+         return 0;
+     }
+-- 
+2.31.1
+

@@ -1,0 +1,74 @@
+From 3f55d12df35552ae948587a62d6f9015664adc13 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Wed, 21 Dec 2022 12:50:12 +0100
+Subject: [PATCH 1/9] virtio_net: Modify virtio_net_get_config to early return
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 137: vDPA net SVQ guest announce support
+RH-Bugzilla: 2141088
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [1/4] 4f5e79afd54e157f32e6fff56ae33e2b71492525 (eperezmartin/qemu-kvm)
+
+Next patches introduce more code on vhost-vdpa branch, with already have
+too much indentation.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221221115015.1400889-2-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit ebc141a62508dc91901373c1a19fe7e2cf560dfb)
+---
+ hw/net/virtio-net.c | 28 +++++++++++++++-------------
+ 1 file changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index ec974f7a76..5935e55653 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -168,20 +168,22 @@ static void virtio_net_get_config(VirtIODevice *vdev, uint8_t *config)
+     if (nc->peer && nc->peer->info->type == NET_CLIENT_DRIVER_VHOST_VDPA) {
+         ret = vhost_net_get_config(get_vhost_net(nc->peer), (uint8_t *)&netcfg,
+                                    n->config_size);
+-        if (ret != -1) {
+-            /*
+-             * Some NIC/kernel combinations present 0 as the mac address.  As
+-             * that is not a legal address, try to proceed with the
+-             * address from the QEMU command line in the hope that the
+-             * address has been configured correctly elsewhere - just not
+-             * reported by the device.
+-             */
+-            if (memcmp(&netcfg.mac, &zero, sizeof(zero)) == 0) {
+-                info_report("Zero hardware mac address detected. Ignoring.");
+-                memcpy(netcfg.mac, n->mac, ETH_ALEN);
+-            }
+-            memcpy(config, &netcfg, n->config_size);
++        if (ret == -1) {
++            return;
+         }
++
++        /*
++         * Some NIC/kernel combinations present 0 as the mac address.  As that
++         * is not a legal address, try to proceed with the address from the
++         * QEMU command line in the hope that the address has been configured
++         * correctly elsewhere - just not reported by the device.
++         */
++        if (memcmp(&netcfg.mac, &zero, sizeof(zero)) == 0) {
++            info_report("Zero hardware mac address detected. Ignoring.");
++            memcpy(netcfg.mac, n->mac, ETH_ALEN);
++        }
++
++        memcpy(config, &netcfg, n->config_size);
+     }
+ }
+ 
+-- 
+2.31.1
+

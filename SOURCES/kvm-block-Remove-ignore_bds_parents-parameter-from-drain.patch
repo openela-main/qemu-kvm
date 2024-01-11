@@ -1,0 +1,274 @@
+From 0dc7990533cef41e58579ee96315aca1fdc44ea1 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:07 +0100
+Subject: [PATCH 25/31] block: Remove ignore_bds_parents parameter from
+ drain_begin/end.
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [13/16] 1ed88d975a9569bffeb33ad847874417780ce408 (sgarzarella/qemu-kvm-c-9-s)
+
+ignore_bds_parents is now ignored during drain_begin and drain_end, so
+we can just remove it there. It is still a valid optimisation for
+drain_all in bdrv_drained_poll(), so leave it around there.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-13-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit a82a3bd135078d14f1bb4b5e50f51e77d3748270)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c                  |  2 +-
+ block/io.c               | 58 +++++++++++++++-------------------------
+ include/block/block-io.h |  3 +--
+ 3 files changed, 24 insertions(+), 39 deletions(-)
+
+diff --git a/block.c b/block.c
+index 5a583e260d..af31a94863 100644
+--- a/block.c
++++ b/block.c
+@@ -1226,7 +1226,7 @@ static char *bdrv_child_get_parent_desc(BdrvChild *c)
+ static void bdrv_child_cb_drained_begin(BdrvChild *child)
+ {
+     BlockDriverState *bs = child->opaque;
+-    bdrv_do_drained_begin_quiesce(bs, NULL, false);
++    bdrv_do_drained_begin_quiesce(bs, NULL);
+ }
+ 
+ static bool bdrv_child_cb_drained_poll(BdrvChild *child)
+diff --git a/block/io.c b/block/io.c
+index 87d6f22ec4..2e9503df6a 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -45,13 +45,12 @@ static void bdrv_parent_cb_resize(BlockDriverState *bs);
+ static int coroutine_fn bdrv_co_do_pwrite_zeroes(BlockDriverState *bs,
+     int64_t offset, int64_t bytes, BdrvRequestFlags flags);
+ 
+-static void bdrv_parent_drained_begin(BlockDriverState *bs, BdrvChild *ignore,
+-                                      bool ignore_bds_parents)
++static void bdrv_parent_drained_begin(BlockDriverState *bs, BdrvChild *ignore)
+ {
+     BdrvChild *c, *next;
+ 
+     QLIST_FOREACH_SAFE(c, &bs->parents, next_parent, next) {
+-        if (c == ignore || (ignore_bds_parents && c->klass->parent_is_bds)) {
++        if (c == ignore) {
+             continue;
+         }
+         bdrv_parent_drained_begin_single(c, false);
+@@ -70,13 +69,12 @@ void bdrv_parent_drained_end_single(BdrvChild *c)
+     }
+ }
+ 
+-static void bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore,
+-                                    bool ignore_bds_parents)
++static void bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore)
+ {
+     BdrvChild *c;
+ 
+     QLIST_FOREACH(c, &bs->parents, next_parent) {
+-        if (c == ignore || (ignore_bds_parents && c->klass->parent_is_bds)) {
++        if (c == ignore) {
+             continue;
+         }
+         bdrv_parent_drained_end_single(c);
+@@ -242,7 +240,6 @@ typedef struct {
+     bool begin;
+     bool poll;
+     BdrvChild *parent;
+-    bool ignore_bds_parents;
+ } BdrvCoDrainData;
+ 
+ /* Returns true if BDRV_POLL_WHILE() should go into a blocking aio_poll() */
+@@ -269,9 +266,8 @@ static bool bdrv_drain_poll_top_level(BlockDriverState *bs,
+ }
+ 
+ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+-                                  bool ignore_bds_parents, bool poll);
+-static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent,
+-                                bool ignore_bds_parents);
++                                  bool poll);
++static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent);
+ 
+ static void bdrv_co_drain_bh_cb(void *opaque)
+ {
+@@ -284,11 +280,10 @@ static void bdrv_co_drain_bh_cb(void *opaque)
+         aio_context_acquire(ctx);
+         bdrv_dec_in_flight(bs);
+         if (data->begin) {
+-            bdrv_do_drained_begin(bs, data->parent, data->ignore_bds_parents,
+-                                  data->poll);
++            bdrv_do_drained_begin(bs, data->parent, data->poll);
+         } else {
+             assert(!data->poll);
+-            bdrv_do_drained_end(bs, data->parent, data->ignore_bds_parents);
++            bdrv_do_drained_end(bs, data->parent);
+         }
+         aio_context_release(ctx);
+     } else {
+@@ -303,7 +298,6 @@ static void bdrv_co_drain_bh_cb(void *opaque)
+ static void coroutine_fn bdrv_co_yield_to_drain(BlockDriverState *bs,
+                                                 bool begin,
+                                                 BdrvChild *parent,
+-                                                bool ignore_bds_parents,
+                                                 bool poll)
+ {
+     BdrvCoDrainData data;
+@@ -321,7 +315,6 @@ static void coroutine_fn bdrv_co_yield_to_drain(BlockDriverState *bs,
+         .done = false,
+         .begin = begin,
+         .parent = parent,
+-        .ignore_bds_parents = ignore_bds_parents,
+         .poll = poll,
+     };
+ 
+@@ -353,8 +346,7 @@ static void coroutine_fn bdrv_co_yield_to_drain(BlockDriverState *bs,
+     }
+ }
+ 
+-void bdrv_do_drained_begin_quiesce(BlockDriverState *bs,
+-                                   BdrvChild *parent, bool ignore_bds_parents)
++void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent)
+ {
+     IO_OR_GS_CODE();
+     assert(!qemu_in_coroutine());
+@@ -362,9 +354,7 @@ void bdrv_do_drained_begin_quiesce(BlockDriverState *bs,
+     /* Stop things in parent-to-child order */
+     if (qatomic_fetch_inc(&bs->quiesce_counter) == 0) {
+         aio_disable_external(bdrv_get_aio_context(bs));
+-
+-        /* TODO Remove ignore_bds_parents, we don't consider it any more */
+-        bdrv_parent_drained_begin(bs, parent, false);
++        bdrv_parent_drained_begin(bs, parent);
+         if (bs->drv && bs->drv->bdrv_drain_begin) {
+             bs->drv->bdrv_drain_begin(bs);
+         }
+@@ -372,14 +362,14 @@ void bdrv_do_drained_begin_quiesce(BlockDriverState *bs,
+ }
+ 
+ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+-                                  bool ignore_bds_parents, bool poll)
++                                  bool poll)
+ {
+     if (qemu_in_coroutine()) {
+-        bdrv_co_yield_to_drain(bs, true, parent, ignore_bds_parents, poll);
++        bdrv_co_yield_to_drain(bs, true, parent, poll);
+         return;
+     }
+ 
+-    bdrv_do_drained_begin_quiesce(bs, parent, ignore_bds_parents);
++    bdrv_do_drained_begin_quiesce(bs, parent);
+ 
+     /*
+      * Wait for drained requests to finish.
+@@ -391,7 +381,6 @@ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+      * nodes.
+      */
+     if (poll) {
+-        assert(!ignore_bds_parents);
+         BDRV_POLL_WHILE(bs, bdrv_drain_poll_top_level(bs, parent));
+     }
+ }
+@@ -399,20 +388,19 @@ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
+ void bdrv_drained_begin(BlockDriverState *bs)
+ {
+     IO_OR_GS_CODE();
+-    bdrv_do_drained_begin(bs, NULL, false, true);
++    bdrv_do_drained_begin(bs, NULL, true);
+ }
+ 
+ /**
+  * This function does not poll, nor must any of its recursively called
+  * functions.
+  */
+-static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent,
+-                                bool ignore_bds_parents)
++static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent)
+ {
+     int old_quiesce_counter;
+ 
+     if (qemu_in_coroutine()) {
+-        bdrv_co_yield_to_drain(bs, false, parent, ignore_bds_parents, false);
++        bdrv_co_yield_to_drain(bs, false, parent, false);
+         return;
+     }
+     assert(bs->quiesce_counter > 0);
+@@ -423,9 +411,7 @@ static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent,
+         if (bs->drv && bs->drv->bdrv_drain_end) {
+             bs->drv->bdrv_drain_end(bs);
+         }
+-        /* TODO Remove ignore_bds_parents, we don't consider it any more */
+-        bdrv_parent_drained_end(bs, parent, false);
+-
++        bdrv_parent_drained_end(bs, parent);
+         aio_enable_external(bdrv_get_aio_context(bs));
+     }
+ }
+@@ -433,7 +419,7 @@ static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent,
+ void bdrv_drained_end(BlockDriverState *bs)
+ {
+     IO_OR_GS_CODE();
+-    bdrv_do_drained_end(bs, NULL, false);
++    bdrv_do_drained_end(bs, NULL);
+ }
+ 
+ void bdrv_drain(BlockDriverState *bs)
+@@ -491,7 +477,7 @@ void bdrv_drain_all_begin(void)
+     GLOBAL_STATE_CODE();
+ 
+     if (qemu_in_coroutine()) {
+-        bdrv_co_yield_to_drain(NULL, true, NULL, true, true);
++        bdrv_co_yield_to_drain(NULL, true, NULL, true);
+         return;
+     }
+ 
+@@ -516,7 +502,7 @@ void bdrv_drain_all_begin(void)
+         AioContext *aio_context = bdrv_get_aio_context(bs);
+ 
+         aio_context_acquire(aio_context);
+-        bdrv_do_drained_begin(bs, NULL, true, false);
++        bdrv_do_drained_begin(bs, NULL, false);
+         aio_context_release(aio_context);
+     }
+ 
+@@ -536,7 +522,7 @@ void bdrv_drain_all_end_quiesce(BlockDriverState *bs)
+     g_assert(!bs->refcnt);
+ 
+     while (bs->quiesce_counter) {
+-        bdrv_do_drained_end(bs, NULL, true);
++        bdrv_do_drained_end(bs, NULL);
+     }
+ }
+ 
+@@ -558,7 +544,7 @@ void bdrv_drain_all_end(void)
+         AioContext *aio_context = bdrv_get_aio_context(bs);
+ 
+         aio_context_acquire(aio_context);
+-        bdrv_do_drained_end(bs, NULL, true);
++        bdrv_do_drained_end(bs, NULL);
+         aio_context_release(aio_context);
+     }
+ 
+diff --git a/include/block/block-io.h b/include/block/block-io.h
+index 9c36a16a1f..8f5e75756a 100644
+--- a/include/block/block-io.h
++++ b/include/block/block-io.h
+@@ -329,8 +329,7 @@ void bdrv_drained_begin(BlockDriverState *bs);
+  * Quiesces a BDS like bdrv_drained_begin(), but does not wait for already
+  * running requests to complete.
+  */
+-void bdrv_do_drained_begin_quiesce(BlockDriverState *bs,
+-                                   BdrvChild *parent, bool ignore_bds_parents);
++void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent);
+ 
+ /**
+  * bdrv_drained_end:
+-- 
+2.31.1
+

@@ -1,0 +1,95 @@
+From a2ddd68c8365ec602db6b2a9cf83bb441ca701cc Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Wed, 21 Dec 2022 08:48:45 +0800
+Subject: [PATCH 4/8] hw/arm/virt: Introduce virt_get_high_memmap_enabled()
+ helper
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 126: hw/arm/virt: Optimize high memory region address assignment
+RH-Bugzilla: 2113840
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/8] 65524de2fc106600bbaff641caa8c4f2f8027114
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2113840
+
+This introduces virt_get_high_memmap_enabled() helper, which returns
+the pointer to vms->highmem_{redists, ecam, mmio}. The pointer will
+be used in the subsequent patches.
+
+No functional change intended.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+Reviewed-by: Marc Zyngier <maz@kernel.org>
+Tested-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Message-id: 20221029224307.138822-5-gshan@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit a5cb1350b19a5c2a58ab4edddf609ed429c13085)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c | 32 +++++++++++++++++++-------------
+ 1 file changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index ddcf7ee2f8..6e3b9fc060 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1736,14 +1736,31 @@ static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
+     return arm_cpu_mp_affinity(idx, clustersz);
+ }
+ 
++static inline bool *virt_get_high_memmap_enabled(VirtMachineState *vms,
++                                                 int index)
++{
++    bool *enabled_array[] = {
++        &vms->highmem_redists,
++        &vms->highmem_ecam,
++        &vms->highmem_mmio,
++    };
++
++    assert(ARRAY_SIZE(extended_memmap) - VIRT_LOWMEMMAP_LAST ==
++           ARRAY_SIZE(enabled_array));
++    assert(index - VIRT_LOWMEMMAP_LAST < ARRAY_SIZE(enabled_array));
++
++    return enabled_array[index - VIRT_LOWMEMMAP_LAST];
++}
++
+ static void virt_set_high_memmap(VirtMachineState *vms,
+                                  hwaddr base, int pa_bits)
+ {
+     hwaddr region_base, region_size;
+-    bool fits;
++    bool *region_enabled, fits;
+     int i;
+ 
+     for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
++        region_enabled = virt_get_high_memmap_enabled(vms, i);
+         region_base = ROUND_UP(base, extended_memmap[i].size);
+         region_size = extended_memmap[i].size;
+ 
+@@ -1761,18 +1778,7 @@ static void virt_set_high_memmap(VirtMachineState *vms,
+             vms->highest_gpa = region_base + region_size - 1;
+         }
+ 
+-        switch (i) {
+-        case VIRT_HIGH_GIC_REDIST2:
+-            vms->highmem_redists &= fits;
+-            break;
+-        case VIRT_HIGH_PCIE_ECAM:
+-            vms->highmem_ecam &= fits;
+-            break;
+-        case VIRT_HIGH_PCIE_MMIO:
+-            vms->highmem_mmio &= fits;
+-            break;
+-        }
+-
++        *region_enabled &= fits;
+         base = region_base + region_size;
+     }
+ }
+-- 
+2.31.1
+

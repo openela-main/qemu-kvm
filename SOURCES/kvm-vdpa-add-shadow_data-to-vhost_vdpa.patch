@@ -1,0 +1,94 @@
+From 6282a83619f274ca45a52d61577c10a05a0714dc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:43 +0100
+Subject: [PATCH 11/14] vdpa: add shadow_data to vhost_vdpa
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [11/13] 9d317add1318b555ba06e19e4c67849069e047b9 (eperezmartin/qemu-kvm)
+
+The memory listener that thells the device how to convert GPA to qemu's
+va is registered against CVQ vhost_vdpa. memory listener translations
+are always ASID 0, CVQ ones are ASID 1 if supported.
+
+Let's tell the listener if it needs to register them on iova tree or
+not.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-12-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 6188d78a19894ac8f2bf9484d48a5235a529d3b7)
+---
+ hw/virtio/vhost-vdpa.c         | 6 +++---
+ include/hw/virtio/vhost-vdpa.h | 2 ++
+ net/vhost-vdpa.c               | 1 +
+ 3 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/hw/virtio/vhost-vdpa.c b/hw/virtio/vhost-vdpa.c
+index 0ecf2bbaa0..dc3498e995 100644
+--- a/hw/virtio/vhost-vdpa.c
++++ b/hw/virtio/vhost-vdpa.c
+@@ -224,7 +224,7 @@ static void vhost_vdpa_listener_region_add(MemoryListener *listener,
+                                          vaddr, section->readonly);
+ 
+     llsize = int128_sub(llend, int128_make64(iova));
+-    if (v->shadow_vqs_enabled) {
++    if (v->shadow_data) {
+         int r;
+ 
+         mem_region.translated_addr = (hwaddr)(uintptr_t)vaddr,
+@@ -251,7 +251,7 @@ static void vhost_vdpa_listener_region_add(MemoryListener *listener,
+     return;
+ 
+ fail_map:
+-    if (v->shadow_vqs_enabled) {
++    if (v->shadow_data) {
+         vhost_iova_tree_remove(v->iova_tree, mem_region);
+     }
+ 
+@@ -296,7 +296,7 @@ static void vhost_vdpa_listener_region_del(MemoryListener *listener,
+ 
+     llsize = int128_sub(llend, int128_make64(iova));
+ 
+-    if (v->shadow_vqs_enabled) {
++    if (v->shadow_data) {
+         const DMAMap *result;
+         const void *vaddr = memory_region_get_ram_ptr(section->mr) +
+             section->offset_within_region +
+diff --git a/include/hw/virtio/vhost-vdpa.h b/include/hw/virtio/vhost-vdpa.h
+index e57dfa1fd1..45b969a311 100644
+--- a/include/hw/virtio/vhost-vdpa.h
++++ b/include/hw/virtio/vhost-vdpa.h
+@@ -40,6 +40,8 @@ typedef struct vhost_vdpa {
+     struct vhost_vdpa_iova_range iova_range;
+     uint64_t acked_features;
+     bool shadow_vqs_enabled;
++    /* Vdpa must send shadow addresses as IOTLB key for data queues, not GPA */
++    bool shadow_data;
+     /* IOVA mapping used by the Shadow Virtqueue */
+     VhostIOVATree *iova_tree;
+     GPtrArray *shadow_vqs;
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 1757f1d028..eea7a0df12 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -581,6 +581,7 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+     s->always_svq = svq;
+     s->vhost_vdpa.shadow_vqs_enabled = svq;
+     s->vhost_vdpa.iova_range = iova_range;
++    s->vhost_vdpa.shadow_data = svq;
+     s->vhost_vdpa.iova_tree = iova_tree;
+     if (!is_datapath) {
+         s->cvq_cmd_out_buffer = qemu_memalign(qemu_real_host_page_size(),
+-- 
+2.31.1
+

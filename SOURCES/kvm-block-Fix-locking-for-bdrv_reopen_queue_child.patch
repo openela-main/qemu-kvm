@@ -1,0 +1,67 @@
+From e790b4c20a5124239fe93e91fbc87745e5f2cea6 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 18 Nov 2022 18:41:01 +0100
+Subject: [PATCH 19/31] block: Fix locking for bdrv_reopen_queue_child()
+
+RH-Author: Stefano Garzarella <sgarzare@redhat.com>
+RH-MergeRequest: 135: block: Simplify drain to prevent QEMU from crashing during snapshot
+RH-Bugzilla: 2155112
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [7/16] 46bb54506c4400b9a1bf66b6bd7987ff67260003 (sgarzarella/qemu-kvm-c-9-s)
+
+Callers don't agree whether bdrv_reopen_queue_child() should be called
+with the AioContext lock held or not. Standardise on holding the lock
+(as done by QMP blockdev-reopen and the replication block driver) and
+fix bdrv_reopen() to do the same.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20221118174110.55183-7-kwolf@redhat.com>
+Reviewed-by: Hanna Reitz <hreitz@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 2e117866d7c96cc17e84cd2946fee1bf3292d814)
+Signed-off-by: Stefano Garzarella <sgarzare@redhat.com>
+---
+ block.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/block.c b/block.c
+index 7999fd08c5..46df410b07 100644
+--- a/block.c
++++ b/block.c
+@@ -4151,6 +4151,8 @@ static bool bdrv_recurse_has_child(BlockDriverState *bs,
+  * bs_queue, or the existing bs_queue being used.
+  *
+  * bs must be drained between bdrv_reopen_queue() and bdrv_reopen_multiple().
++ *
++ * To be called with bs->aio_context locked.
+  */
+ static BlockReopenQueue *bdrv_reopen_queue_child(BlockReopenQueue *bs_queue,
+                                                  BlockDriverState *bs,
+@@ -4309,6 +4311,7 @@ static BlockReopenQueue *bdrv_reopen_queue_child(BlockReopenQueue *bs_queue,
+     return bs_queue;
+ }
+ 
++/* To be called with bs->aio_context locked */
+ BlockReopenQueue *bdrv_reopen_queue(BlockReopenQueue *bs_queue,
+                                     BlockDriverState *bs,
+                                     QDict *options, bool keep_old_opts)
+@@ -4473,11 +4476,11 @@ int bdrv_reopen(BlockDriverState *bs, QDict *opts, bool keep_old_opts,
+     GLOBAL_STATE_CODE();
+ 
+     bdrv_subtree_drained_begin(bs);
++    queue = bdrv_reopen_queue(NULL, bs, opts, keep_old_opts);
++
+     if (ctx != qemu_get_aio_context()) {
+         aio_context_release(ctx);
+     }
+-
+-    queue = bdrv_reopen_queue(NULL, bs, opts, keep_old_opts);
+     ret = bdrv_reopen_multiple(queue, errp);
+ 
+     if (ctx != qemu_get_aio_context()) {
+-- 
+2.31.1
+

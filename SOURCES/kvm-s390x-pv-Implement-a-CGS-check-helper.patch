@@ -1,0 +1,109 @@
+From 9452246e59a5f16f44fdf9a7d514b947faf1d5fc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 16 Jan 2023 18:46:05 +0100
+Subject: [PATCH 5/9] s390x/pv: Implement a CGS check helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 139: s390x/pv: Implement a CGS check helper
+RH-Bugzilla: 2122523
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [1/1] 8551ce772b10de653b4e1c8be60aae60ec98b421 (clegoate/qemu-kvm-c9s)
+
+When a protected VM is started with the maximum number of CPUs (248),
+the service call providing information on the CPUs requires more
+buffer space than allocated and QEMU disgracefully aborts :
+
+    LOADPARM=[........]
+    Using virtio-blk.
+    Using SCSI scheme.
+    ...................................................................................
+    qemu-system-s390x: KVM_S390_MEM_OP failed: Argument list too long
+
+When protected virtualization is initialized, compute the maximum
+number of vCPUs supported by the machine and return useful information
+to the user before the machine starts in case of error.
+
+Suggested-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Message-Id: <20230116174607.2459498-2-clg@kaod.org>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 75d7150c636569f6687f7e70a33be893be43eb5f)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/pv.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/hw/s390x/pv.c b/hw/s390x/pv.c
+index 8dfe92d8df..8a1c71436b 100644
+--- a/hw/s390x/pv.c
++++ b/hw/s390x/pv.c
+@@ -20,6 +20,7 @@
+ #include "exec/confidential-guest-support.h"
+ #include "hw/s390x/ipl.h"
+ #include "hw/s390x/pv.h"
++#include "hw/s390x/sclp.h"
+ #include "target/s390x/kvm/kvm_s390x.h"
+ 
+ static bool info_valid;
+@@ -249,6 +250,41 @@ struct S390PVGuestClass {
+     ConfidentialGuestSupportClass parent_class;
+ };
+ 
++/*
++ * If protected virtualization is enabled, the amount of data that the
++ * Read SCP Info Service Call can use is limited to one page. The
++ * available space also depends on the Extended-Length SCCB (ELS)
++ * feature which can take more buffer space to store feature
++ * information. This impacts the maximum number of CPUs supported in
++ * the machine.
++ */
++static uint32_t s390_pv_get_max_cpus(void)
++{
++    int offset_cpu = s390_has_feat(S390_FEAT_EXTENDED_LENGTH_SCCB) ?
++        offsetof(ReadInfo, entries) : SCLP_READ_SCP_INFO_FIXED_CPU_OFFSET;
++
++    return (TARGET_PAGE_SIZE - offset_cpu) / sizeof(CPUEntry);
++}
++
++static bool s390_pv_check_cpus(Error **errp)
++{
++    MachineState *ms = MACHINE(qdev_get_machine());
++    uint32_t pv_max_cpus = s390_pv_get_max_cpus();
++
++    if (ms->smp.max_cpus > pv_max_cpus) {
++        error_setg(errp, "Protected VMs support a maximum of %d CPUs",
++                   pv_max_cpus);
++        return false;
++    }
++
++    return true;
++}
++
++static bool s390_pv_guest_check(ConfidentialGuestSupport *cgs, Error **errp)
++{
++    return s390_pv_check_cpus(errp);
++}
++
+ int s390_pv_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+ {
+     if (!object_dynamic_cast(OBJECT(cgs), TYPE_S390_PV_GUEST)) {
+@@ -261,6 +297,10 @@ int s390_pv_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+         return -1;
+     }
+ 
++    if (!s390_pv_guest_check(cgs, errp)) {
++        return -1;
++    }
++
+     cgs->ready = true;
+ 
+     return 0;
+-- 
+2.31.1
+

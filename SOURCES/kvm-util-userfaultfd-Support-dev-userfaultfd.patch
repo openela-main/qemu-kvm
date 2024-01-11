@@ -1,0 +1,94 @@
+From a91da7741464dadeb306a741b4fb562e49ffea57 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Tue, 7 Feb 2023 15:57:11 -0500
+Subject: [PATCH 5/8] util/userfaultfd: Support /dev/userfaultfd
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 149: Support /dev/userfaultfd
+RH-Bugzilla: 2158704
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/3] 5f427d8c18c210ff8f66724c9e358a7120619e69 (peterx/qemu-kvm)
+
+Teach QEMU to use /dev/userfaultfd when it existed and fallback to the
+system call if either it's not there or doesn't have enough permission.
+
+Firstly, as long as the app has permission to access /dev/userfaultfd, it
+always have the ability to trap kernel faults which QEMU mostly wants.
+Meanwhile, in some context (e.g. containers) the userfaultfd syscall can be
+forbidden, so it can be the major way to use postcopy in a restricted
+environment with strict seccomp setup.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit c40c0463413b941c13fe5f99a90c02d7d6584828)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ util/trace-events  |  1 +
+ util/userfaultfd.c | 32 ++++++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/util/trace-events b/util/trace-events
+index c8f53d7d9f..16f78d8fe5 100644
+--- a/util/trace-events
++++ b/util/trace-events
+@@ -93,6 +93,7 @@ qemu_vfio_region_info(const char *desc, uint64_t region_ofs, uint64_t region_siz
+ qemu_vfio_pci_map_bar(int index, uint64_t region_ofs, uint64_t region_size, int ofs, void *host) "map region bar#%d addr 0x%"PRIx64" size 0x%"PRIx64" ofs 0x%x host %p"
+ 
+ #userfaultfd.c
++uffd_detect_open_mode(int mode) "%d"
+ uffd_query_features_nosys(int err) "errno: %i"
+ uffd_query_features_api_failed(int err) "errno: %i"
+ uffd_create_fd_nosys(int err) "errno: %i"
+diff --git a/util/userfaultfd.c b/util/userfaultfd.c
+index 4953b3137d..fdff4867e8 100644
+--- a/util/userfaultfd.c
++++ b/util/userfaultfd.c
+@@ -18,10 +18,42 @@
+ #include <poll.h>
+ #include <sys/syscall.h>
+ #include <sys/ioctl.h>
++#include <fcntl.h>
++
++typedef enum {
++    UFFD_UNINITIALIZED = 0,
++    UFFD_USE_DEV_PATH,
++    UFFD_USE_SYSCALL,
++} uffd_open_mode;
+ 
+ int uffd_open(int flags)
+ {
+ #if defined(__NR_userfaultfd)
++    static uffd_open_mode open_mode;
++    static int uffd_dev;
++
++    /* Detect how to generate uffd desc when run the 1st time */
++    if (open_mode == UFFD_UNINITIALIZED) {
++        /*
++         * Make /dev/userfaultfd the default approach because it has better
++         * permission controls, meanwhile allows kernel faults without any
++         * privilege requirement (e.g. SYS_CAP_PTRACE).
++         */
++        uffd_dev = open("/dev/userfaultfd", O_RDWR | O_CLOEXEC);
++        if (uffd_dev >= 0) {
++            open_mode = UFFD_USE_DEV_PATH;
++        } else {
++            /* Fallback to the system call */
++            open_mode = UFFD_USE_SYSCALL;
++        }
++        trace_uffd_detect_open_mode(open_mode);
++    }
++
++    if (open_mode == UFFD_USE_DEV_PATH) {
++        assert(uffd_dev >= 0);
++        return ioctl(uffd_dev, USERFAULTFD_IOC_NEW, flags);
++    }
++
+     return syscall(__NR_userfaultfd, flags);
+ #else
+     return -EINVAL;
+-- 
+2.31.1
+

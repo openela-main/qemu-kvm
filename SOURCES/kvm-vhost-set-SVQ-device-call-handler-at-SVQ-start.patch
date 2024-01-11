@@ -1,0 +1,73 @@
+From 2906f8df3c5e915a3dc05a705b87990211f114b5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 15 Dec 2022 12:31:34 +0100
+Subject: [PATCH 02/14] vhost: set SVQ device call handler at SVQ start
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 136: vDPA ASID support in Qemu
+RH-Bugzilla: 2104412
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/13] ad90a6cc5c71b70d705904433d5a986e8fedb924 (eperezmartin/qemu-kvm)
+
+By the end of this series CVQ is shadowed as long as the features
+support it.
+
+Since we don't know at the beginning of qemu running if this is
+supported, move the event notifier handler setting to the start of the
+SVQ, instead of the start of qemu run. This will avoid to create them if
+the device does not support SVQ.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Message-Id: <20221215113144.322011-3-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 20e7412bfd63c68f1798fbdb799aedb7e05fee88)
+---
+ hw/virtio/vhost-shadow-virtqueue.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/vhost-shadow-virtqueue.c b/hw/virtio/vhost-shadow-virtqueue.c
+index 5bd14cad96..264ddc166d 100644
+--- a/hw/virtio/vhost-shadow-virtqueue.c
++++ b/hw/virtio/vhost-shadow-virtqueue.c
+@@ -648,6 +648,7 @@ void vhost_svq_start(VhostShadowVirtqueue *svq, VirtIODevice *vdev,
+ {
+     size_t desc_size, driver_size, device_size;
+ 
++    event_notifier_set_handler(&svq->hdev_call, vhost_svq_handle_call);
+     svq->next_guest_avail_elem = NULL;
+     svq->shadow_avail_idx = 0;
+     svq->shadow_used_idx = 0;
+@@ -704,6 +705,7 @@ void vhost_svq_stop(VhostShadowVirtqueue *svq)
+     g_free(svq->desc_state);
+     qemu_vfree(svq->vring.desc);
+     qemu_vfree(svq->vring.used);
++    event_notifier_set_handler(&svq->hdev_call, NULL);
+ }
+ 
+ /**
+@@ -740,7 +742,6 @@ VhostShadowVirtqueue *vhost_svq_new(VhostIOVATree *iova_tree,
+     }
+ 
+     event_notifier_init_fd(&svq->svq_kick, VHOST_FILE_UNBIND);
+-    event_notifier_set_handler(&svq->hdev_call, vhost_svq_handle_call);
+     svq->iova_tree = iova_tree;
+     svq->ops = ops;
+     svq->ops_opaque = ops_opaque;
+@@ -763,7 +764,6 @@ void vhost_svq_free(gpointer pvq)
+     VhostShadowVirtqueue *vq = pvq;
+     vhost_svq_stop(vq);
+     event_notifier_cleanup(&vq->hdev_kick);
+-    event_notifier_set_handler(&vq->hdev_call, NULL);
+     event_notifier_cleanup(&vq->hdev_call);
+     g_free(vq);
+ }
+-- 
+2.31.1
+

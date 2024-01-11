@@ -1,0 +1,59 @@
+From b71724e94c94acd6e09fed2b47be2901799c2353 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Wed, 21 Dec 2022 12:50:14 +0100
+Subject: [PATCH 3/9] vdpa: handle VIRTIO_NET_CTRL_ANNOUNCE in
+ vhost_vdpa_net_handle_ctrl_avail
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 137: vDPA net SVQ guest announce support
+RH-Bugzilla: 2141088
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [3/4] c4ef5b62a5d41911565b8960a88bb48d746ff6c7 (eperezmartin/qemu-kvm)
+
+Since this capability is emulated by qemu shadowed CVQ cannot forward it
+to the device. Process all that command within qemu.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20221221115015.1400889-4-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit 3f9a3eeb7ca6acd899e2205a9118928b4cd94e47)
+---
+ net/vhost-vdpa.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 2b4b85d8f8..52ef9cb3a2 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -489,9 +489,18 @@ static int vhost_vdpa_net_handle_ctrl_avail(VhostShadowVirtqueue *svq,
+     out.iov_len = iov_to_buf(elem->out_sg, elem->out_num, 0,
+                              s->cvq_cmd_out_buffer,
+                              vhost_vdpa_net_cvq_cmd_len());
+-    dev_written = vhost_vdpa_net_cvq_add(s, out.iov_len, sizeof(status));
+-    if (unlikely(dev_written < 0)) {
+-        goto out;
++    if (*(uint8_t *)s->cvq_cmd_out_buffer == VIRTIO_NET_CTRL_ANNOUNCE) {
++        /*
++         * Guest announce capability is emulated by qemu, so don't forward to
++         * the device.
++         */
++        dev_written = sizeof(status);
++        *s->status = VIRTIO_NET_OK;
++    } else {
++        dev_written = vhost_vdpa_net_cvq_add(s, out.iov_len, sizeof(status));
++        if (unlikely(dev_written < 0)) {
++            goto out;
++        }
+     }
+ 
+     if (unlikely(dev_written < sizeof(status))) {
+-- 
+2.31.1
+

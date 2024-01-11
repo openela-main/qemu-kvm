@@ -1,0 +1,144 @@
+From e419493e6ec188461aa6f06c1b1cdc8a698859df Mon Sep 17 00:00:00 2001
+From: Richard Henderson <richard.henderson@linaro.org>
+Date: Sat, 14 Jan 2023 15:21:03 -1000
+Subject: [PATCH 6/8] target/i386: Fix 32-bit AD[CO]X insns in 64-bit mode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 154: target/i386: fix bugs in emulation of BMI instructions
+RH-Bugzilla: 2173590
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Bandan Das <None>
+RH-Commit: [6/7] 0fa4d3858319d4f877a5b3f31776121a72e2c57a (bonzini/rhel-qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2173590
+Upstream-Status: merged
+
+Failure to truncate the inputs results in garbage for the carry-out.
+
+Resolves: https://gitlab.com/qemu-project/qemu/-/issues/1373
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-Id: <20230115012103.3131796-1-richard.henderson@linaro.org>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 6fbef9426bac7184b5d5887589d8386e732865eb)
+---
+ target/i386/tcg/emit.c.inc       |  2 +
+ tests/tcg/x86_64/Makefile.target |  3 ++
+ tests/tcg/x86_64/adox.c          | 69 ++++++++++++++++++++++++++++++++
+ 3 files changed, 74 insertions(+)
+ create mode 100644 tests/tcg/x86_64/adox.c
+
+diff --git a/target/i386/tcg/emit.c.inc b/target/i386/tcg/emit.c.inc
+index 0d7c6e80ae..e61ae9a2e9 100644
+--- a/target/i386/tcg/emit.c.inc
++++ b/target/i386/tcg/emit.c.inc
+@@ -1037,6 +1037,8 @@ static void gen_ADCOX(DisasContext *s, CPUX86State *env, MemOp ot, int cc_op)
+ #ifdef TARGET_X86_64
+     case MO_32:
+         /* If TL is 64-bit just do everything in 64-bit arithmetic.  */
++        tcg_gen_ext32u_tl(s->T0, s->T0);
++        tcg_gen_ext32u_tl(s->T1, s->T1);
+         tcg_gen_add_i64(s->T0, s->T0, s->T1);
+         tcg_gen_add_i64(s->T0, s->T0, carry_in);
+         tcg_gen_shri_i64(carry_out, s->T0, 32);
+diff --git a/tests/tcg/x86_64/Makefile.target b/tests/tcg/x86_64/Makefile.target
+index 4eac78293f..e64aab1b81 100644
+--- a/tests/tcg/x86_64/Makefile.target
++++ b/tests/tcg/x86_64/Makefile.target
+@@ -12,11 +12,14 @@ ifeq ($(filter %-linux-user, $(TARGET)),$(TARGET))
+ X86_64_TESTS += vsyscall
+ X86_64_TESTS += noexec
+ X86_64_TESTS += cmpxchg
++X86_64_TESTS += adox
+ TESTS=$(MULTIARCH_TESTS) $(X86_64_TESTS) test-x86_64
+ else
+ TESTS=$(MULTIARCH_TESTS)
+ endif
+ 
++adox: CFLAGS=-O2
++
+ run-test-i386-ssse3: QEMU_OPTS += -cpu max
+ run-plugin-test-i386-ssse3-%: QEMU_OPTS += -cpu max
+ 
+diff --git a/tests/tcg/x86_64/adox.c b/tests/tcg/x86_64/adox.c
+new file mode 100644
+index 0000000000..36be644c8b
+--- /dev/null
++++ b/tests/tcg/x86_64/adox.c
+@@ -0,0 +1,69 @@
++/* See if ADOX give expected results */
++
++#include <assert.h>
++#include <stdint.h>
++#include <stdbool.h>
++
++static uint64_t adoxq(bool *c_out, uint64_t a, uint64_t b, bool c)
++{
++    asm ("addl $0x7fffffff, %k1\n\t"
++         "adoxq %2, %0\n\t"
++         "seto %b1"
++         : "+r"(a), "=&r"(c) : "r"(b), "1"((int)c));
++    *c_out = c;
++    return a;
++}
++
++static uint64_t adoxl(bool *c_out, uint64_t a, uint64_t b, bool c)
++{
++    asm ("addl $0x7fffffff, %k1\n\t"
++         "adoxl %k2, %k0\n\t"
++         "seto %b1"
++         : "+r"(a), "=&r"(c) : "r"(b), "1"((int)c));
++    *c_out = c;
++    return a;
++}
++
++int main()
++{
++    uint64_t r;
++    bool c;
++
++    r = adoxq(&c, 0, 0, 0);
++    assert(r == 0);
++    assert(c == 0);
++
++    r = adoxl(&c, 0, 0, 0);
++    assert(r == 0);
++    assert(c == 0);
++
++    r = adoxl(&c, 0x100000000, 0, 0);
++    assert(r == 0);
++    assert(c == 0);
++
++    r = adoxq(&c, 0, 0, 1);
++    assert(r == 1);
++    assert(c == 0);
++
++    r = adoxl(&c, 0, 0, 1);
++    assert(r == 1);
++    assert(c == 0);
++
++    r = adoxq(&c, -1, -1, 0);
++    assert(r == -2);
++    assert(c == 1);
++
++    r = adoxl(&c, -1, -1, 0);
++    assert(r == 0xfffffffe);
++    assert(c == 1);
++
++    r = adoxq(&c, -1, -1, 1);
++    assert(r == -1);
++    assert(c == 1);
++
++    r = adoxl(&c, -1, -1, 1);
++    assert(r == 0xffffffff);
++    assert(c == 1);
++
++    return 0;
++}
+-- 
+2.39.1
+
