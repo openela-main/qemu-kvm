@@ -1,0 +1,55 @@
+From 57ee29fbb08f7b89ee1b7c75b749392c08af3b03 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 15:23:54 -0400
+Subject: [PATCH 1/5] qapi, i386/sev: Change the reduced-phys-bits value from 5
+ to 1
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 296: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214840
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [1/4] 4137cb3b57cbb175078bc908fb2301ea2b97fd17
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214840
+
+commit 798a818f50a9bfc01e8b5943090de458863b897b
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:27 2022 -0500
+
+    qapi, i386/sev: Change the reduced-phys-bits value from 5 to 1
+
+    A guest only ever experiences, at most, 1 bit of reduced physical
+    addressing. Change the query-sev-capabilities json comment to use 1.
+
+    Fixes: 31dd67f684 ("sev/i386: qmp: add query-sev-capabilities command")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <cb96d8e09154533af4b4e6988469bc0b32390b65.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+RHEL Notes:
+     Conflicts: Context differences, since commit 811b4ec7f8eb<qapi, target/i386/sev: Add cpu0-id to query-sev-capabilities>
+     is missing
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ qapi/misc-target.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qapi/misc-target.json b/qapi/misc-target.json
+index 4bc45d2474..ede9052440 100644
+--- a/qapi/misc-target.json
++++ b/qapi/misc-target.json
+@@ -205,7 +205,7 @@
+ #
+ # -> { "execute": "query-sev-capabilities" }
+ # <- { "return": { "pdh": "8CCDD8DDD", "cert-chain": "888CCCDDDEE",
+-#                  "cbitpos": 47, "reduced-phys-bits": 5}}
++#                  "cbitpos": 47, "reduced-phys-bits": 1}}
+ #
+ ##
+ { 'command': 'query-sev-capabilities', 'returns': 'SevCapability',
+-- 
+2.37.3
+

@@ -1,0 +1,78 @@
+From 19504ea76b6341c11213316402bb5194487e1f01 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 15:13:19 -0400
+Subject: [PATCH 3/5] i386/sev: Update checks and information related to
+ reduced-phys-bits
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 296: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214840
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [3/4] b617173d2b15fa39cdc02b5c1ac4d52e9b0dfede
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214840
+
+commit 8168fed9f84e3128f7628969ae78af49433d5ce7
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:29 2022 -0500
+
+    i386/sev: Update checks and information related to reduced-phys-bits
+
+    The value of the reduced-phys-bits parameter is propogated to the CPUID
+    information exposed to the guest. Update the current validation check to
+    account for the size of the CPUID field (6-bits), ensuring the value is
+    in the range of 1 to 63.
+
+    Maintain backward compatibility, to an extent, by allowing a value greater
+    than 1 (so that the previously documented value of 5 still works), but not
+    allowing anything over 63.
+
+    Fixes: d8575c6c02 ("sev/i386: add command to initialize the memory encryption context")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <cca5341a95ac73f904e6300f10b04f9c62e4e8ff.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/sev.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index 025ff7a6f8..ba6a65e90c 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -892,15 +892,26 @@ int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     host_cpuid(0x8000001F, 0, NULL, &ebx, NULL, NULL);
+     host_cbitpos = ebx & 0x3f;
+ 
++    /*
++     * The cbitpos value will be placed in bit positions 5:0 of the EBX
++     * register of CPUID 0x8000001F. No need to verify the range as the
++     * comparison against the host value accomplishes that.
++     */
+     if (host_cbitpos != sev->cbitpos) {
+         error_setg(errp, "%s: cbitpos check failed, host '%d' requested '%d'",
+                    __func__, host_cbitpos, sev->cbitpos);
+         goto err;
+     }
+ 
+-    if (sev->reduced_phys_bits < 1) {
+-        error_setg(errp, "%s: reduced_phys_bits check failed, it should be >=1,"
+-                   " requested '%d'", __func__, sev->reduced_phys_bits);
++    /*
++     * The reduced-phys-bits value will be placed in bit positions 11:6 of
++     * the EBX register of CPUID 0x8000001F, so verify the supplied value
++     * is in the range of 1 to 63.
++     */
++    if (sev->reduced_phys_bits < 1 || sev->reduced_phys_bits > 63) {
++        error_setg(errp, "%s: reduced_phys_bits check failed,"
++                   " it should be in the range of 1 to 63, requested '%d'",
++                   __func__, sev->reduced_phys_bits);
+         goto err;
+     }
+ 
+-- 
+2.37.3
+

@@ -1,0 +1,54 @@
+From 2bfd1db9c3efcf7b73790565b4f8597bc04762c2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 13/22] target/s390x: Fix the accumulation of ccm in op_icm
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [12/21] ad52141b1d733a34d392b72d9962ea7ac521dc17
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 21641ee5a9b31568c990c7fc949eeb9bcd0f6a0f
+Author: Richard Henderson <richard.henderson@linaro.org>
+Date:   Fri Apr 1 13:36:59 2022 -0600
+
+    target/s390x: Fix the accumulation of ccm in op_icm
+
+    Coverity rightly reports that 0xff << pos can overflow.
+    This would affect the ICMH instruction.
+
+    Fixes: Coverity CID 1487161
+    Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Message-Id: <20220401193659.332079-1-richard.henderson@linaro.org>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/translate.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/translate.c b/target/s390x/tcg/translate.c
+index 7ff7f90e23..75f0418c10 100644
+--- a/target/s390x/tcg/translate.c
++++ b/target/s390x/tcg/translate.c
+@@ -2592,7 +2592,7 @@ static DisasJumpType op_icm(DisasContext *s, DisasOps *o)
+                 tcg_gen_qemu_ld8u(tmp, o->in2, get_mem_index(s));
+                 tcg_gen_addi_i64(o->in2, o->in2, 1);
+                 tcg_gen_deposit_i64(o->out, o->out, tmp, pos, 8);
+-                ccm |= 0xff << pos;
++                ccm |= 0xffull << pos;
+             }
+             m3 = (m3 << 1) & 0xf;
+             pos -= 8;
+-- 
+2.37.3
+

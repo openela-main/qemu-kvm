@@ -1,0 +1,68 @@
+From c24e38eb508b3fb42ce3ea62fe8de0be6a95a6a8 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Wed, 7 Jun 2023 11:45:09 -0400
+Subject: [PATCH 10/15] memory: stricter checks prior to unsetting
+ engaged_in_io
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [10/12] 773b62a84b2bd4f5ee7fb8e1cfb3bb91c3a01de1 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit 3884bf6468ac6bbb58c2b3feaa74e87f821b52f3
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Tue May 16 04:40:02 2023 -0400
+
+    memory: stricter checks prior to unsetting engaged_in_io
+
+    engaged_in_io could be unset by an MR with re-entrancy checks disabled.
+    Ensure that only MRs that can set the engaged_in_io flag can unset it.
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Message-Id: <20230516084002.3813836-1-alxndr@bu.edu>
+    Reviewed-by: Darren Kenny <darren.kenny@oracle.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ softmmu/memory.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/softmmu/memory.c b/softmmu/memory.c
+index 102f0a4248..6b98615357 100644
+--- a/softmmu/memory.c
++++ b/softmmu/memory.c
+@@ -533,6 +533,7 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
+     unsigned access_size;
+     unsigned i;
+     MemTxResult r = MEMTX_OK;
++    bool reentrancy_guard_applied = false;
+ 
+     if (!access_size_min) {
+         access_size_min = 1;
+@@ -551,6 +552,7 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
+             return MEMTX_ACCESS_ERROR;
+         }
+         mr->dev->mem_reentrancy_guard.engaged_in_io = true;
++        reentrancy_guard_applied = true;
+     }
+ 
+     /* FIXME: support unaligned access? */
+@@ -567,7 +569,7 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
+                         access_mask, attrs);
+         }
+     }
+-    if (mr->dev) {
++    if (mr->dev && reentrancy_guard_applied) {
+         mr->dev->mem_reentrancy_guard.engaged_in_io = false;
+     }
+     return r;
+-- 
+2.37.3
+

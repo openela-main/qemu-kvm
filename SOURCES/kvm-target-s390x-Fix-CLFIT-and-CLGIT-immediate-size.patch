@@ -1,0 +1,57 @@
+From 4744afb2458701351c9a1435770566fbee055079 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 16/22] target/s390x: Fix CLFIT and CLGIT immediate size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [15/21] 68c0b87490dfe5349797acd7494fd293c3f733ca
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit d324c21ba0b84b3033baa097e44a7fbbec815fad
+Author: Ilya Leoshkevich <iii@linux.ibm.com>
+Date:   Wed Aug 17 18:15:29 2022 +0200
+
+    target/s390x: Fix CLFIT and CLGIT immediate size
+
+    I2 is 16 bits, not 32.
+
+    Found by running valgrind's none/tests/s390x/traps.
+
+    Fixes: 1c2687518235 ("target-s390: Implement COMPARE AND TRAP")
+    Signed-off-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Message-Id: <20220817161529.597414-1-iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/insn-data.def | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/target/s390x/tcg/insn-data.def b/target/s390x/tcg/insn-data.def
+index 99f4f5e36e..96d4794162 100644
+--- a/target/s390x/tcg/insn-data.def
++++ b/target/s390x/tcg/insn-data.def
+@@ -287,8 +287,8 @@
+     D(0xb961, CLGRT,   RRF_c, GIE, r1_o, r2_o, 0, 0, ct, 0, 1)
+     D(0xeb23, CLT,     RSY_b, MIE, r1_32u, m2_32u, 0, 0, ct, 0, 1)
+     D(0xeb2b, CLGT,    RSY_b, MIE, r1_o, m2_64, 0, 0, ct, 0, 1)
+-    D(0xec73, CLFIT,   RIE_a, GIE, r1_32u, i2_32u, 0, 0, ct, 0, 1)
+-    D(0xec71, CLGIT,   RIE_a, GIE, r1_o, i2_32u, 0, 0, ct, 0, 1)
++    D(0xec73, CLFIT,   RIE_a, GIE, r1_32u, i2_16u, 0, 0, ct, 0, 1)
++    D(0xec71, CLGIT,   RIE_a, GIE, r1_o, i2_16u, 0, 0, ct, 0, 1)
+ 
+ /* CONVERT TO DECIMAL */
+     C(0x4e00, CVD,     RX_a,  Z,   r1_o, a2, 0, 0, cvd, 0)
+-- 
+2.37.3
+

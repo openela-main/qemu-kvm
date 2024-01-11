@@ -1,0 +1,98 @@
+From 884e6dfecc8b0f155015f0a25888300d8e1707f8 Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Tue, 11 Apr 2023 19:34:15 +0200
+Subject: [PATCH 1/5] util/iov: Make qiov_slice() public
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 291: block: Split padded I/O vectors exceeding IOV_MAX
+RH-Bugzilla: 2141964
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/5] 7f082982e49bacbcc21ca24e471b4399e64321a9
+
+We want to inline qemu_iovec_init_extended() in block/io.c for padding
+requests, and having access to qiov_slice() is useful for this.  As a
+public function, it is renamed to qemu_iovec_slice().
+
+(We will need to count the number of I/O vector elements of a slice
+there, and then later process this slice.  Without qiov_slice(), we
+would need to call qemu_iovec_subvec_niov(), and all further
+IOV-processing functions may need to skip prefixing elements to
+accomodate for a qiov_offset.  Because qemu_iovec_subvec_niov()
+internally calls qiov_slice(), we can just have the block/io.c code call
+qiov_slice() itself, thus get the number of elements, and also create an
+iovec array with the superfluous prefixing elements stripped, so the
+following processing functions no longer need to skip them.)
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-Id: <20230411173418.19549-2-hreitz@redhat.com>
+(cherry picked from commit 3d06cea8256d54a6b0238934c31012f7f17100f5)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ include/qemu/iov.h |  3 +++
+ util/iov.c         | 14 +++++++-------
+ 2 files changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/include/qemu/iov.h b/include/qemu/iov.h
+index 9330746680..46fadfb27a 100644
+--- a/include/qemu/iov.h
++++ b/include/qemu/iov.h
+@@ -229,6 +229,9 @@ int qemu_iovec_init_extended(
+         void *tail_buf, size_t tail_len);
+ void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
+                            size_t offset, size_t len);
++struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
++                               size_t offset, size_t len,
++                               size_t *head, size_t *tail, int *niov);
+ int qemu_iovec_subvec_niov(QEMUIOVector *qiov, size_t offset, size_t len);
+ void qemu_iovec_add(QEMUIOVector *qiov, void *base, size_t len);
+ void qemu_iovec_concat(QEMUIOVector *dst,
+diff --git a/util/iov.c b/util/iov.c
+index 58c7b3eeee..3ccb530b16 100644
+--- a/util/iov.c
++++ b/util/iov.c
+@@ -373,15 +373,15 @@ static struct iovec *iov_skip_offset(struct iovec *iov, size_t offset,
+ }
+ 
+ /*
+- * qiov_slice
++ * qemu_iovec_slice
+  *
+  * Find subarray of iovec's, containing requested range. @head would
+  * be offset in first iov (returned by the function), @tail would be
+  * count of extra bytes in last iovec (returned iov + @niov - 1).
+  */
+-static struct iovec *qiov_slice(QEMUIOVector *qiov,
+-                                size_t offset, size_t len,
+-                                size_t *head, size_t *tail, int *niov)
++struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
++                               size_t offset, size_t len,
++                               size_t *head, size_t *tail, int *niov)
+ {
+     struct iovec *iov, *end_iov;
+ 
+@@ -406,7 +406,7 @@ int qemu_iovec_subvec_niov(QEMUIOVector *qiov, size_t offset, size_t len)
+     size_t head, tail;
+     int niov;
+ 
+-    qiov_slice(qiov, offset, len, &head, &tail, &niov);
++    qemu_iovec_slice(qiov, offset, len, &head, &tail, &niov);
+ 
+     return niov;
+ }
+@@ -434,8 +434,8 @@ int qemu_iovec_init_extended(
+     }
+ 
+     if (mid_len) {
+-        mid_iov = qiov_slice(mid_qiov, mid_offset, mid_len,
+-                             &mid_head, &mid_tail, &mid_niov);
++        mid_iov = qemu_iovec_slice(mid_qiov, mid_offset, mid_len,
++                                   &mid_head, &mid_tail, &mid_niov);
+     }
+ 
+     total_niov = !!head_len + mid_niov + !!tail_len;
+-- 
+2.39.3
+

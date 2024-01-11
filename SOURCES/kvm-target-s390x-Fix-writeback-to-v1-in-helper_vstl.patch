@@ -1,0 +1,60 @@
+From 95d7d0e24fa51913b41cca7c35cb75460b850ecb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 14/22] target/s390x: Fix writeback to v1 in helper_vstl
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [13/21] 9db50d12afc0a85921e6bfdb69f12ba29f3dce72
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit db67a6ff480b346b1415b983f9582028cf8e18f0
+Author: Richard Henderson <richard.henderson@linaro.org>
+Date:   Thu Apr 28 11:46:56 2022 +0200
+
+    target/s390x: Fix writeback to v1 in helper_vstl
+
+    Fixes: 0e0a5b49ad58 ("s390x/tcg: Implement VECTOR STORE WITH LENGTH")
+    Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+    Signed-off-by: David Hildenbrand <david@redhat.com>
+    Tested-by: Thomas Huth <thuth@redhat.com>
+    Reviewed-by: David Miller <dmiller423@gmail.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Message-Id: <20220428094708.84835-2-david@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/vec_helper.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/target/s390x/tcg/vec_helper.c b/target/s390x/tcg/vec_helper.c
+index ededf13cf0..48d86722b2 100644
+--- a/target/s390x/tcg/vec_helper.c
++++ b/target/s390x/tcg/vec_helper.c
+@@ -200,7 +200,6 @@ void HELPER(vstl)(CPUS390XState *env, const void *v1, uint64_t addr,
+         addr = wrap_address(env, addr + 8);
+         cpu_stq_data_ra(env, addr, s390_vec_read_element64(v1, 1), GETPC());
+     } else {
+-        S390Vector tmp = {};
+         int i;
+ 
+         for (i = 0; i < bytes; i++) {
+@@ -209,6 +208,5 @@ void HELPER(vstl)(CPUS390XState *env, const void *v1, uint64_t addr,
+             cpu_stb_data_ra(env, addr, byte, GETPC());
+             addr = wrap_address(env, addr + 1);
+         }
+-        *(S390Vector *)v1 = tmp;
+     }
+ }
+-- 
+2.37.3
+

@@ -1,0 +1,56 @@
+From 866a3b56f6a2d43f3cf7b3313fb41808bc5e6e1f Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 03/15] checkpatch: add qemu_bh_new/aio_bh_new checks
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/12] 620b480b0878c18223f3cc103450bc16aa6d7e21 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit ef56ffbdd6b0605dc1e305611287b948c970e236
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Thu Apr 27 17:10:08 2023 -0400
+
+    checkpatch: add qemu_bh_new/aio_bh_new checks
+
+    Advise authors to use the _guarded versions of the APIs, instead.
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Darren Kenny <darren.kenny@oracle.com>
+    Message-Id: <20230427211013.2994127-4-alxndr@bu.edu>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ scripts/checkpatch.pl | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
+index cb8eff233e..b2428e80cc 100755
+--- a/scripts/checkpatch.pl
++++ b/scripts/checkpatch.pl
+@@ -2858,6 +2858,14 @@ sub process {
+ 		if ($line =~ /\bsignal\s*\(/ && !($line =~ /SIG_(?:IGN|DFL)/)) {
+ 			ERROR("use sigaction to establish signal handlers; signal is not portable\n" . $herecurr);
+ 		}
++# recommend qemu_bh_new_guarded instead of qemu_bh_new
++        if ($realfile =~ /.*\/hw\/.*/ && $line =~ /\bqemu_bh_new\s*\(/) {
++			ERROR("use qemu_bh_new_guarded() instead of qemu_bh_new() to avoid reentrancy problems\n" . $herecurr);
++		}
++# recommend aio_bh_new_guarded instead of aio_bh_new
++        if ($realfile =~ /.*\/hw\/.*/ && $line =~ /\baio_bh_new\s*\(/) {
++			ERROR("use aio_bh_new_guarded() instead of aio_bh_new() to avoid reentrancy problems\n" . $herecurr);
++		}
+ # check for module_init(), use category-specific init macros explicitly please
+ 		if ($line =~ /^module_init\s*\(/) {
+ 			ERROR("please use block_init(), type_init() etc. instead of module_init()\n" . $herecurr);
+-- 
+2.37.3
+

@@ -1,0 +1,57 @@
+From 5eae4fd33e2101630ccb7aadeb3ba965800f6f32 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 17/22] s390x/tcg: Fix opcode for lzrf
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [16/21] 43af79d2c9cd818bfa7ac1819bd9964c86915d97
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 131aafa7eff4aa4d747cb7113726b27394a38866
+Author: Christian Borntraeger <borntraeger@linux.ibm.com>
+Date:   Wed Sep 14 12:57:50 2022 +0200
+
+    s390x/tcg: Fix opcode for lzrf
+
+    Fix the opcode for Load and Zero Rightmost Byte (32).
+
+    Fixes: c2a5c1d718ea ("target/s390x: Implement load-and-zero-rightmost-byte insns")
+    Reported-by: Nathan Chancellor <nathan@kernel.org>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Tested-by: Nathan Chancellor <nathan@kernel.org>
+    Reviewed-by: Cornelia Huck <cohuck@redhat.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Cc: qemu-stable@nongnu.org
+    Message-Id: <20220914105750.767697-1-borntraeger@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/insn-data.def | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/insn-data.def b/target/s390x/tcg/insn-data.def
+index 96d4794162..d54673a3ba 100644
+--- a/target/s390x/tcg/insn-data.def
++++ b/target/s390x/tcg/insn-data.def
+@@ -463,7 +463,7 @@
+     C(0xe39f, LAT,     RXY_a, LAT, 0, m2_32u, r1, 0, lat, 0)
+     C(0xe385, LGAT,    RXY_a, LAT, 0, a2, r1, 0, lgat, 0)
+ /* LOAD AND ZERO RIGHTMOST BYTE */
+-    C(0xe3eb, LZRF,    RXY_a, LZRB, 0, m2_32u, new, r1_32, lzrb, 0)
++    C(0xe33b, LZRF,    RXY_a, LZRB, 0, m2_32u, new, r1_32, lzrb, 0)
+     C(0xe32a, LZRG,    RXY_a, LZRB, 0, m2_64, r1, 0, lzrb, 0)
+ /* LOAD LOGICAL AND ZERO RIGHTMOST BYTE */
+     C(0xe33a, LLZRGF,  RXY_a, LZRB, 0, m2_32u, r1, 0, lzrb, 0)
+-- 
+2.37.3
+

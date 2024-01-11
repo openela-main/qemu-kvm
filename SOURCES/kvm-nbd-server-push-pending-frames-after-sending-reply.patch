@@ -1,0 +1,72 @@
+From 170872370c6f3c916e741eb32d80431995d7a870 Mon Sep 17 00:00:00 2001
+From: Florian Westphal <fw@strlen.de>
+Date: Fri, 24 Mar 2023 11:47:20 +0100
+Subject: [PATCH 4/5] nbd/server: push pending frames after sending reply
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 274: nbd: improve TLS performance of NBD server
+RH-Bugzilla: 2035712
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [1/2] ab92c06c48810aa40380de0433dcac4c6e4be9a5 (ebblake/qemu-kvm)
+
+qemu-nbd doesn't set TCP_NODELAY on the tcp socket.
+
+Kernel waits for more data and avoids transmission of small packets.
+Without TLS this is barely noticeable, but with TLS this really shows.
+
+Booting a VM via qemu-nbd on localhost (with tls) takes more than
+2 minutes on my system.  tcpdump shows frequent wait periods, where no
+packets get sent for a 40ms period.
+
+Add explicit (un)corking when processing (and responding to) requests.
+"TCP_CORK, &zero" after earlier "CORK, &one" will flush pending data.
+
+VM Boot time:
+main:    no tls:  23s, with tls: 2m45s
+patched: no tls:  14s, with tls: 15s
+
+VM Boot time, qemu-nbd via network (same lan):
+main:    no tls:  18s, with tls: 1m50s
+patched: no tls:  17s, with tls: 18s
+
+Future optimization: if we could detect if there is another pending
+request we could defer the uncork operation because more data would be
+appended.
+
+Signed-off-by: Florian Westphal <fw@strlen.de>
+Message-Id: <20230324104720.2498-1-fw@strlen.de>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit bd2cd4a441ded163b62371790876f28a9b834317)
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ nbd/server.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/nbd/server.c b/nbd/server.c
+index 4630dd7322..a5edc7f681 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -2647,6 +2647,8 @@ static coroutine_fn void nbd_trip(void *opaque)
+         goto disconnect;
+     }
+ 
++    qio_channel_set_cork(client->ioc, true);
++
+     if (ret < 0) {
+         /* It wans't -EIO, so, according to nbd_co_receive_request()
+          * semantics, we should return the error to the client. */
+@@ -2672,6 +2674,7 @@ static coroutine_fn void nbd_trip(void *opaque)
+         goto disconnect;
+     }
+ 
++    qio_channel_set_cork(client->ioc, false);
+ done:
+     nbd_request_put(req);
+     nbd_client_put(client);
+-- 
+2.39.1
+

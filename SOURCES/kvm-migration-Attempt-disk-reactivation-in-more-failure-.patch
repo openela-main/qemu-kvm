@@ -1,0 +1,111 @@
+From a1f2a51d1a789c46e806adb332236ca16d538bf9 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Tue, 2 May 2023 15:52:12 -0500
+Subject: [PATCH 3/5] migration: Attempt disk reactivation in more failure
+ scenarios
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 273: migration: prevent source core dump if NFS dies mid-migration
+RH-Bugzilla: 2177957
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [3/3] e84bf1e7233c0273ca3136ecaa6b2cfc9c0efacb (ebblake/qemu-kvm)
+
+Commit fe904ea824 added a fail_inactivate label, which tries to
+reactivate disks on the source after a failure while s->state ==
+MIGRATION_STATUS_ACTIVE, but didn't actually use the label if
+qemu_savevm_state_complete_precopy() failed.  This failure to
+reactivate is also present in commit 6039dd5b1c (also covering the new
+s->state == MIGRATION_STATUS_DEVICE state) and 403d18ae (ensuring
+s->block_inactive is set more reliably).
+
+Consolidate the two labels back into one - no matter HOW migration is
+failed, if there is any chance we can reach vm_start() after having
+attempted inactivation, it is essential that we have tried to restart
+disks before then.  This also makes the cleanup more like
+migrate_fd_cancel().
+
+Suggested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Message-Id: <20230502205212.134680-1-eblake@redhat.com>
+Acked-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 6dab4c93ecfae48e2e67b984d1032c1e988d3005)
+[eblake: downstream migrate_colo() => migrate_colo_enabled()]
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ migration/migration.c | 24 ++++++++++++++----------
+ 1 file changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 6ba8eb0fdf..817170d52d 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -3255,6 +3255,11 @@ static void migration_completion(MigrationState *s)
+                                             MIGRATION_STATUS_DEVICE);
+             }
+             if (ret >= 0) {
++                /*
++                 * Inactivate disks except in COLO, and track that we
++                 * have done so in order to remember to reactivate
++                 * them if migration fails or is cancelled.
++                 */
+                 s->block_inactive = !migrate_colo_enabled();
+                 qemu_file_set_rate_limit(s->to_dst_file, INT64_MAX);
+                 ret = qemu_savevm_state_complete_precopy(s->to_dst_file, false,
+@@ -3290,13 +3295,13 @@ static void migration_completion(MigrationState *s)
+         rp_error = await_return_path_close_on_source(s);
+         trace_migration_return_path_end_after(rp_error);
+         if (rp_error) {
+-            goto fail_invalidate;
++            goto fail;
+         }
+     }
+ 
+     if (qemu_file_get_error(s->to_dst_file)) {
+         trace_migration_completion_file_err();
+-        goto fail_invalidate;
++        goto fail;
+     }
+ 
+     if (!migrate_colo_enabled()) {
+@@ -3306,26 +3311,25 @@ static void migration_completion(MigrationState *s)
+ 
+     return;
+ 
+-fail_invalidate:
+-    /* If not doing postcopy, vm_start() will be called: let's regain
+-     * control on images.
+-     */
+-    if (s->state == MIGRATION_STATUS_ACTIVE ||
+-        s->state == MIGRATION_STATUS_DEVICE) {
++fail:
++    if (s->block_inactive && (s->state == MIGRATION_STATUS_ACTIVE ||
++                              s->state == MIGRATION_STATUS_DEVICE)) {
++        /*
++         * If not doing postcopy, vm_start() will be called: let's
++         * regain control on images.
++         */
+         Error *local_err = NULL;
+ 
+         qemu_mutex_lock_iothread();
+         bdrv_invalidate_cache_all(&local_err);
+         if (local_err) {
+             error_report_err(local_err);
+-            s->block_inactive = true;
+         } else {
+             s->block_inactive = false;
+         }
+         qemu_mutex_unlock_iothread();
+     }
+ 
+-fail:
+     migrate_set_state(&s->state, current_active_state,
+                       MIGRATION_STATUS_FAILED);
+ }
+-- 
+2.39.1
+

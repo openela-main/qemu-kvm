@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 33%{?rcrel}%{?dist}
+Release: 40%{?rcrel}%{?dist}.1
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -652,8 +652,141 @@ Patch255: kvm-scsi-protect-req-aiocb-with-AioContext-lock.patch
 Patch256: kvm-dma-helpers-prevent-dma_blk_cb-vs-dma_aio_cancel-rac.patch
 # For bz#2090990 - qemu crash with error scsi_req_unref(SCSIRequest *): Assertion `req->refcount > 0' failed or scsi_dma_complete(void *, int): Assertion `r->req.aiocb != NULL' failed [8.7.0]
 Patch257: kvm-virtio-scsi-reset-SCSI-devices-from-main-loop-thread.patch
-# For bz#2216510 - CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.8.0.z]
-Patch258: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
+# For bz#2187159 - RHEL8.8 - KVM - Secure Guest crashed during booting with 248 vcpus
+Patch258: kvm-s390x-pv-Implement-a-CGS-check-helper.patch
+# For bz#2177957 - Qemu core dump if cut off nfs storage during migration
+Patch259: kvm-migration-Handle-block-device-inactivation-failures-.patch
+# For bz#2177957 - Qemu core dump if cut off nfs storage during migration
+Patch260: kvm-migration-Minor-control-flow-simplification.patch
+# For bz#2177957 - Qemu core dump if cut off nfs storage during migration
+Patch261: kvm-migration-Attempt-disk-reactivation-in-more-failure-.patch
+# For bz#2035712 - [qemu] Booting from Guest Image over NBD with TLS Is Slow
+Patch262: kvm-nbd-server-push-pending-frames-after-sending-reply.patch
+# For bz#2035712 - [qemu] Booting from Guest Image over NBD with TLS Is Slow
+Patch263: kvm-nbd-server-Request-TCP_NODELAY.patch
+# For bz#2196880 - [virtiofs] Backport FUSE_SYNCFS support
+Patch264: kvm-virtiofsd-Add-basic-support-for-FUSE_SYNCFS-request.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch265: kvm-s390-kvm-adjust-diag318-resets-to-retain-data.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch266: kvm-target-s390x-Fix-SLDA-sign-bit-index.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch267: kvm-target-s390x-Fix-SRDA-CC-calculation.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch268: kvm-target-s390x-Fix-cc_calc_sla_64-missing-overflows.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch269: kvm-target-s390x-Fix-shifting-32-bit-values-for-more-tha.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch270: kvm-s390x-sigp-Reorder-the-SIGP-STOP-code.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch271: kvm-s390x-tcg-Fix-BRASL-with-a-large-negative-offset.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch272: kvm-s390x-tcg-Fix-BRCL-with-a-large-negative-offset.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch273: kvm-target-s390x-Fix-determination-of-overflow-condition.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch274: kvm-target-s390x-Fix-determination-of-overflow-cond.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch275: kvm-s390x-follow-qdev-tree-to-detect-SCSI-device-on-a-CC.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch276: kvm-target-s390x-Fix-the-accumulation-of-ccm-in-op_icm.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch277: kvm-target-s390x-Fix-writeback-to-v1-in-helper_vstl.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch278: kvm-target-s390x-fix-handling-of-zeroes-in-vfmin-vfmax.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch279: kvm-target-s390x-Fix-CLFIT-and-CLGIT-immediate-size.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch280: kvm-s390x-tcg-Fix-opcode-for-lzrf.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch281: kvm-target-s390x-Fix-emulation-of-the-VISTR-instruction.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch282: kvm-s390x-css-revert-SCSW-ctrl-flag-bits-on-error.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch283: kvm-target-s390x-tcg-Fix-and-improve-the-SACF-instructio.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch284: kvm-target-s390x-tcg-mem_helper-Test-the-right-bits-in-p.patch
+# For bz#2169308 - Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+# For bz#2209605 - [IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu)
+Patch285: kvm-pc-bios-Add-support-for-List-Directed-IPL-from-ECKD-.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch286: kvm-memory-prevent-dma-reentracy-issues.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch287: kvm-async-Add-an-optional-reentrancy-guard-to-the-BH-API.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch288: kvm-checkpatch-add-qemu_bh_new-aio_bh_new-checks.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch289: kvm-hw-replace-most-qemu_bh_new-calls-with-qemu_bh_new_g.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch290: kvm-lsi53c895a-disable-reentrancy-detection-for-script-R.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch291: kvm-bcm2835_property-disable-reentrancy-detection-for-io.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch292: kvm-raven-disable-reentrancy-detection-for-iomem.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch293: kvm-apic-disable-reentrancy-detection-for-apic-msi.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch294: kvm-async-avoid-use-after-free-on-re-entrancy-guard.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch295: kvm-memory-stricter-checks-prior-to-unsetting-engaged_in.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch296: kvm-lsi53c895a-disable-reentrancy-detection-for-MMIO-reg.patch
+# For bz#1999236 - CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8]
+Patch297: kvm-hw-scsi-lsi53c895a-Fix-reentrancy-issues-in-the-LSI-.patch
+# For bz#2216203 - [qemu-kvm]VM reports vulnerabilty to mmio_stale_data on patched host with microcode
+Patch298: kvm-target-i386-add-support-for-FLUSH_L1D-feature.patch
+# For bz#2216203 - [qemu-kvm]VM reports vulnerabilty to mmio_stale_data on patched host with microcode
+Patch299: kvm-target-i386-add-support-for-FB_CLEAR-feature.patch
+# For bz#2169733 - Qemu on destination host crashed if migrate with postcopy and multifd enabled
+Patch300: kvm-migration-Disable-postcopy-multifd-migration.patch
+# For bz#2141964 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk
+Patch301: kvm-util-iov-Make-qiov_slice-public.patch
+# For bz#2141964 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk
+Patch302: kvm-block-Collapse-padded-I-O-vecs-exceeding-IOV_MAX.patch
+# For bz#2141964 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk
+Patch303: kvm-util-iov-Remove-qemu_iovec_init_extended.patch
+# For bz#2141964 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk
+Patch304: kvm-iotests-iov-padding-New-test.patch
+# For bz#2141964 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk
+Patch305: kvm-block-Fix-pad_request-s-request-restriction.patch
+# For bz#2214840 - [AMDSERVER 8.9 Bug] Qemu SEV reduced-phys-bits fixes
+Patch306: kvm-qapi-i386-sev-Change-the-reduced-phys-bits-value-fro.patch
+# For bz#2214840 - [AMDSERVER 8.9 Bug] Qemu SEV reduced-phys-bits fixes
+Patch307: kvm-qemu-options.hx-Update-the-reduced-phys-bits-documen.patch
+# For bz#2214840 - [AMDSERVER 8.9 Bug] Qemu SEV reduced-phys-bits fixes
+Patch308: kvm-i386-sev-Update-checks-and-information-related-to-re.patch
+# For bz#2214840 - [AMDSERVER 8.9 Bug] Qemu SEV reduced-phys-bits fixes
+Patch309: kvm-i386-cpu-Update-how-the-EBX-register-of-CPUID-0x8000.patch
+# For bz#2223947 - [RHEL8.9] qemu core dump with '-cpu host,mpx=off' on Cascadelake host
+Patch310: kvm-target-i386-kvm-Fix-disabling-MPX-on-cpu-host-with-M.patch
+# For bz#2215786 - CVE-2023-3301 virt:rhel/qemu-kvm: QEMU: net: triggerable assertion due to race condition in hot-unplug [rhel-8]
+Patch311: kvm-vhost-vdpa-do-not-cleanup-the-vdpa-vhost-net-structu.patch
+# For RHEL-2186 - [RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9
+Patch312: kvm-acpi-fix-acpi_index-migration.patch
+# For RHEL-2186 - [RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9
+Patch313: kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch
+# For RHEL-7339 - CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.9.0]
+Patch314: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -1823,10 +1956,110 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
-* Fri Aug 25 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-33.el8_8
-- kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [bz#2216510]
-- Resolves: bz#2216510
-  (CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.8.0.z])
+* Wed Sep 27 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-40.el8_9.1
+- kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [RHEL-7339]
+- Resolves: RHEL-7339
+  (CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.9.0])
+
+* Thu Sep 21 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-40.el8_9
+- kvm-acpi-fix-acpi_index-migration.patch [RHEL-2186]
+- kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch [RHEL-2186]
+- Resolves: RHEL-2186
+  ([RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9)
+
+* Mon Aug 28 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-39
+- kvm-vhost-vdpa-do-not-cleanup-the-vdpa-vhost-net-structu.patch [bz#2215786]
+- Resolves: bz#2215786
+  (CVE-2023-3301 virt:rhel/qemu-kvm: QEMU: net: triggerable assertion due to race condition in hot-unplug [rhel-8])
+
+* Wed Aug 09 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-38
+- kvm-qapi-i386-sev-Change-the-reduced-phys-bits-value-fro.patch [bz#2214840]
+- kvm-qemu-options.hx-Update-the-reduced-phys-bits-documen.patch [bz#2214840]
+- kvm-i386-sev-Update-checks-and-information-related-to-re.patch [bz#2214840]
+- kvm-i386-cpu-Update-how-the-EBX-register-of-CPUID-0x8000.patch [bz#2214840]
+- kvm-target-i386-kvm-Fix-disabling-MPX-on-cpu-host-with-M.patch [bz#2223947]
+- Resolves: bz#2214840
+  ([AMDSERVER 8.9 Bug] Qemu SEV reduced-phys-bits fixes)
+- Resolves: bz#2223947
+  ([RHEL8.9] qemu core dump with '-cpu host,mpx=off' on Cascadelake host)
+
+* Tue Jul 25 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-37
+- kvm-util-iov-Make-qiov_slice-public.patch [bz#2141964]
+- kvm-block-Collapse-padded-I-O-vecs-exceeding-IOV_MAX.patch [bz#2141964]
+- kvm-util-iov-Remove-qemu_iovec_init_extended.patch [bz#2141964]
+- kvm-iotests-iov-padding-New-test.patch [bz#2141964]
+- kvm-block-Fix-pad_request-s-request-restriction.patch [bz#2141964]
+- Resolves: bz#2141964
+  (Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk)
+
+* Thu Jun 29 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-36
+- kvm-memory-prevent-dma-reentracy-issues.patch [bz#1999236]
+- kvm-async-Add-an-optional-reentrancy-guard-to-the-BH-API.patch [bz#1999236]
+- kvm-checkpatch-add-qemu_bh_new-aio_bh_new-checks.patch [bz#1999236]
+- kvm-hw-replace-most-qemu_bh_new-calls-with-qemu_bh_new_g.patch [bz#1999236]
+- kvm-lsi53c895a-disable-reentrancy-detection-for-script-R.patch [bz#1999236]
+- kvm-bcm2835_property-disable-reentrancy-detection-for-io.patch [bz#1999236]
+- kvm-raven-disable-reentrancy-detection-for-iomem.patch [bz#1999236]
+- kvm-apic-disable-reentrancy-detection-for-apic-msi.patch [bz#1999236]
+- kvm-async-avoid-use-after-free-on-re-entrancy-guard.patch [bz#1999236]
+- kvm-memory-stricter-checks-prior-to-unsetting-engaged_in.patch [bz#1999236]
+- kvm-lsi53c895a-disable-reentrancy-detection-for-MMIO-reg.patch [bz#1999236]
+- kvm-hw-scsi-lsi53c895a-Fix-reentrancy-issues-in-the-LSI-.patch [bz#1999236]
+- kvm-target-i386-add-support-for-FLUSH_L1D-feature.patch [bz#2216203]
+- kvm-target-i386-add-support-for-FB_CLEAR-feature.patch [bz#2216203]
+- kvm-migration-Disable-postcopy-multifd-migration.patch [bz#2169733]
+- Resolves: bz#1999236
+  (CVE-2021-3750 virt:rhel/qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue leads to use-after-free [rhel-8])
+- Resolves: bz#2216203
+  ([qemu-kvm]VM reports vulnerabilty to mmio_stale_data on patched host with microcode)
+- Resolves: bz#2169733
+  (Qemu on destination host crashed if migrate with postcopy and multifd enabled)
+
+* Fri Jun 02 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-35
+- kvm-virtiofsd-Add-basic-support-for-FUSE_SYNCFS-request.patch [bz#2196880]
+- kvm-s390-kvm-adjust-diag318-resets-to-retain-data.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-SLDA-sign-bit-index.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-SRDA-CC-calculation.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-cc_calc_sla_64-missing-overflows.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-shifting-32-bit-values-for-more-tha.patch [bz#2169308 bz#2209605]
+- kvm-s390x-sigp-Reorder-the-SIGP-STOP-code.patch [bz#2169308 bz#2209605]
+- kvm-s390x-tcg-Fix-BRASL-with-a-large-negative-offset.patch [bz#2169308 bz#2209605]
+- kvm-s390x-tcg-Fix-BRCL-with-a-large-negative-offset.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-determination-of-overflow-condition.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-determination-of-overflow-cond.patch [bz#2169308 bz#2209605]
+- kvm-s390x-follow-qdev-tree-to-detect-SCSI-device-on-a-CC.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-the-accumulation-of-ccm-in-op_icm.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-writeback-to-v1-in-helper_vstl.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-fix-handling-of-zeroes-in-vfmin-vfmax.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-CLFIT-and-CLGIT-immediate-size.patch [bz#2169308 bz#2209605]
+- kvm-s390x-tcg-Fix-opcode-for-lzrf.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-Fix-emulation-of-the-VISTR-instruction.patch [bz#2169308 bz#2209605]
+- kvm-s390x-css-revert-SCSW-ctrl-flag-bits-on-error.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-tcg-Fix-and-improve-the-SACF-instructio.patch [bz#2169308 bz#2209605]
+- kvm-target-s390x-tcg-mem_helper-Test-the-right-bits-in-p.patch [bz#2169308 bz#2209605]
+- kvm-pc-bios-Add-support-for-List-Directed-IPL-from-ECKD-.patch [bz#2169308 bz#2209605]
+- Resolves: bz#2196880
+  ([virtiofs] Backport FUSE_SYNCFS support)
+- Resolves: bz#2169308
+  (Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9)
+- Resolves: bz#2209605
+  ([IBM 8.9 FEAT] KVM: ECKD List Directed IPL - virtio (qemu))
+
+* Fri May 19 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-34
+- kvm-migration-Handle-block-device-inactivation-failures-.patch [bz#2177957]
+- kvm-migration-Minor-control-flow-simplification.patch [bz#2177957]
+- kvm-migration-Attempt-disk-reactivation-in-more-failure-.patch [bz#2177957]
+- kvm-nbd-server-push-pending-frames-after-sending-reply.patch [bz#2035712]
+- kvm-nbd-server-Request-TCP_NODELAY.patch [bz#2035712]
+- Resolves: bz#2177957
+  (Qemu core dump if cut off nfs storage during migration)
+- Resolves: bz#2035712
+  ([qemu] Booting from Guest Image over NBD with TLS Is Slow)
+
+* Tue Apr 25 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-33
+- kvm-s390x-pv-Implement-a-CGS-check-helper.patch [bz#2187159]
+- Resolves: bz#2187159
+  (RHEL8.8 - KVM - Secure Guest crashed during booting with 248 vcpus)
 
 * Mon Mar 13 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-32.el8_8
 - kvm-aio_wait_kick-add-missing-memory-barrier.patch [bz#2168472]

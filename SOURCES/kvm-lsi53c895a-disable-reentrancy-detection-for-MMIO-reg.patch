@@ -1,0 +1,71 @@
+From 8f19df61a101c1e57a1bce8adddb57a4a7123a77 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 16 May 2023 11:05:56 +0200
+Subject: [PATCH 11/15] lsi53c895a: disable reentrancy detection for MMIO
+ region, too
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 277: memory: prevent dma-reentracy issues
+RH-Bugzilla: 1999236
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [11/12] 8016c86f8432f5ea06c831d1181e87e6d45a6a50 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1999236
+Upstream: Merged
+CVE: CVE-2021-3750
+
+commit d139fe9ad8a27bcc50b4ead77d2f97d191a0e95e
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Tue May 16 11:05:56 2023 +0200
+
+    lsi53c895a: disable reentrancy detection for MMIO region, too
+
+    While trying to use a SCSI disk on the LSI controller with an
+    older version of Fedora (25), I'm getting:
+
+     qemu: warning: Blocked re-entrant IO on MemoryRegion: lsi-mmio at addr: 0x34
+
+    and the SCSI controller is not usable. Seems like we have to
+    disable the reentrancy checker for the MMIO region, too, to
+    get this working again.
+
+    The problem could be reproduced it like this:
+
+    ./qemu-system-x86_64 -accel kvm -m 2G -machine q35 \
+     -device lsi53c810,id=lsi1 -device scsi-hd,drive=d0 \
+     -drive if=none,id=d0,file=.../somedisk.qcow2 \
+     -cdrom Fedora-Everything-netinst-i386-25-1.3.iso
+
+    Where somedisk.qcow2 is an image that contains already some partitions
+    and file systems.
+
+    In the boot menu of Fedora, go to
+    "Troubleshooting" -> "Rescue a Fedora system" -> "3) Skip to shell"
+
+    Then check "dmesg | grep -i 53c" for failure messages, and try to mount
+    a partition from somedisk.qcow2.
+
+    Message-Id: <20230516090556.553813-1-thuth@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/scsi/lsi53c895a.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/scsi/lsi53c895a.c b/hw/scsi/lsi53c895a.c
+index 1e15e13fbf..2b9cb2ac5d 100644
+--- a/hw/scsi/lsi53c895a.c
++++ b/hw/scsi/lsi53c895a.c
+@@ -2306,6 +2306,7 @@ static void lsi_scsi_realize(PCIDevice *dev, Error **errp)
+      * re-entrancy guard.
+      */
+     s->ram_io.disable_reentrancy_guard = true;
++    s->mmio_io.disable_reentrancy_guard = true;
+ 
+     address_space_init(&s->pci_io_as, pci_address_space_io(dev), "lsi-pci-io");
+     qdev_init_gpio_out(d, &s->ext_irq, 1);
+-- 
+2.37.3
+

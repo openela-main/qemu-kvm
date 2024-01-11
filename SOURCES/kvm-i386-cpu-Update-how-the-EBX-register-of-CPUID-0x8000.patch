@@ -1,0 +1,53 @@
+From 18ac13c7d64266238bd44b2188e0d044af3c3377 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 15:14:14 -0400
+Subject: [PATCH 4/5] i386/cpu: Update how the EBX register of CPUID 0x8000001F
+ is set
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 296: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214840
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [4/4] 8b236fd9bc4c177bfacf6220a429e711b5bf062e
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214840
+
+commit fb6bbafc0f19385fb257ee073ed13dcaf613f2f8
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:30 2022 -0500
+
+    i386/cpu: Update how the EBX register of CPUID 0x8000001F is set
+
+    Update the setting of CPUID 0x8000001F EBX to clearly document the ranges
+    associated with fields being set.
+
+    Fixes: 6cb8f2a663 ("cpu/i386: populate CPUID 0x8000_001F when SEV is active")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <5822fd7d02b575121380e1f493a8f6d9eba2b11a.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/cpu.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 9d3dcdcc0d..265f0aadfc 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5836,8 +5836,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (sev_enabled()) {
+             *eax = 0x2;
+             *eax |= sev_es_enabled() ? 0x8 : 0;
+-            *ebx = sev_get_cbit_position();
+-            *ebx |= sev_get_reduced_phys_bits() << 6;
++            *ebx = sev_get_cbit_position() & 0x3f; /* EBX[5:0] */
++            *ebx |= (sev_get_reduced_phys_bits() & 0x3f) << 6; /* EBX[11:6] */
+         }
+         break;
+     default:
+-- 
+2.37.3
+

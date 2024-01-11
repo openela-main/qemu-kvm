@@ -1,0 +1,55 @@
+From 85c0b90fe4ce1e191e215a1fb2fccfe7269527e3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 08/22] s390x/tcg: Fix BRASL with a large negative offset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [7/21] f2eb97bf300afcb440cd5dc6d398ce7ad34f1db9
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit fc3dd86a290a9c7c3c3273961b03058ae8f1d49f
+Author: Ilya Leoshkevich <iii@linux.ibm.com>
+Date:   Mon Mar 14 11:42:30 2022 +0100
+
+    s390x/tcg: Fix BRASL with a large negative offset
+
+    When RI2 is 0x80000000, qemu enters an infinite loop instead of jumping
+    backwards. Fix by adding a missing cast, like in in2_ri2().
+
+    Fixes: 8ac33cdb8bfb ("Convert BRANCH AND SAVE")
+    Signed-off-by: Ilya Leoshkevich <iii@linux.ibm.com>
+    Message-Id: <20220314104232.675863-2-iii@linux.ibm.com>
+    Reviewed-by: David Hildenbrand <david@redhat.com>
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/translate.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/s390x/tcg/translate.c b/target/s390x/tcg/translate.c
+index b14e6a04a7..8147d952df 100644
+--- a/target/s390x/tcg/translate.c
++++ b/target/s390x/tcg/translate.c
+@@ -1567,7 +1567,7 @@ static DisasJumpType op_bal(DisasContext *s, DisasOps *o)
+ static DisasJumpType op_basi(DisasContext *s, DisasOps *o)
+ {
+     pc_to_link_info(o->out, s, s->pc_tmp);
+-    return help_goto_direct(s, s->base.pc_next + 2 * get_field(s, i2));
++    return help_goto_direct(s, s->base.pc_next + (int64_t)get_field(s, i2) * 2);
+ }
+ 
+ static DisasJumpType op_bc(DisasContext *s, DisasOps *o)
+-- 
+2.37.3
+

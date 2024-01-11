@@ -1,0 +1,98 @@
+From 2ddea7186ae50c1f29d790027e8aa98894e51694 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 23 May 2023 12:34:33 +0200
+Subject: [PATCH 10/22] target/s390x: Fix determination of overflow condition
+ code after addition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 279: Backport latest s390x-related fixes from upstream QEMU for qemu-kvm in RHEL 8.9
+RH-Bugzilla: 2169308 2209605
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [9/21] e8b946ff4e521e0367cb03fcd918a2f8af8bd4d5
+
+Bugzilla: https://bugzilla.redhat.com/2169308
+
+commit 5a2e67a691501bc4dd81c46c81b8f1881c8bd5df
+Author: Bruno Haible <bruno@clisp.org>
+Date:   Wed Mar 23 17:26:20 2022 +0100
+
+    target/s390x: Fix determination of overflow condition code after addition
+
+    This program currently prints different results when run with TCG instead
+    of running on real s390x hardware:
+
+     #include <stdio.h>
+
+     int overflow_32 (int x, int y)
+     {
+       int sum;
+       return ! __builtin_add_overflow (x, y, &sum);
+     }
+
+     int overflow_64 (long long x, long long y)
+     {
+       long sum;
+       return ! __builtin_add_overflow (x, y, &sum);
+     }
+
+     int a1 = -2147483648;
+     int b1 = -2147483648;
+     long long a2 = -9223372036854775808L;
+     long long b2 = -9223372036854775808L;
+
+     int main ()
+     {
+       {
+         int a = a1;
+         int b = b1;
+         printf ("a = 0x%x, b = 0x%x\n", a, b);
+         printf ("no_overflow = %d\n", overflow_32 (a, b));
+       }
+       {
+         long long a = a2;
+         long long b = b2;
+         printf ("a = 0x%llx, b = 0x%llx\n", a, b);
+         printf ("no_overflow = %d\n", overflow_64 (a, b));
+       }
+     }
+
+    Signed-off-by: Bruno Haible <bruno@clisp.org>
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/616
+    Message-Id: <20220323162621.139313-2-thuth@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ target/s390x/tcg/cc_helper.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/target/s390x/tcg/cc_helper.c b/target/s390x/tcg/cc_helper.c
+index 8d04097f78..e11cdb745d 100644
+--- a/target/s390x/tcg/cc_helper.c
++++ b/target/s390x/tcg/cc_helper.c
+@@ -136,7 +136,7 @@ static uint32_t cc_calc_subu(uint64_t borrow_out, uint64_t result)
+ 
+ static uint32_t cc_calc_add_64(int64_t a1, int64_t a2, int64_t ar)
+ {
+-    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar > 0)) {
++    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar >= 0)) {
+         return 3; /* overflow */
+     } else {
+         if (ar < 0) {
+@@ -196,7 +196,7 @@ static uint32_t cc_calc_comp_64(int64_t dst)
+ 
+ static uint32_t cc_calc_add_32(int32_t a1, int32_t a2, int32_t ar)
+ {
+-    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar > 0)) {
++    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar >= 0)) {
+         return 3; /* overflow */
+     } else {
+         if (ar < 0) {
+-- 
+2.37.3
+

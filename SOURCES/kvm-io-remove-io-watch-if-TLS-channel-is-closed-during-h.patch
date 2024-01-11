@@ -1,4 +1,4 @@
-From 5282809c2c0c57228c4ce870dae413e84b09ebf6 Mon Sep 17 00:00:00 2001
+From b96215922bdc4c408f4ba5ac89db17f3855b8620 Mon Sep 17 00:00:00 2001
 From: Jon Maloy <jmaloy@redhat.com>
 Date: Tue, 15 Aug 2023 00:08:55 +0000
 Subject: [PATCH] io: remove io watch if TLS channel is closed during handshake
@@ -7,13 +7,12 @@ Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 303: io: remove io watch if TLS channel is closed during handshake
-RH-Bugzilla: 2216510
+RH-MergeRequest: 320: io: remove io watch if TLS channel is closed during handshake
+RH-Jira: RHEL-7339
 RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [1/1] 40526f8952e752656662e11e935b1fc63a0c1061 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] c120fc5e97f76ab4729cef5e3e0e02055928849a (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
 
-Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2216510
 CVE: CVE-2023-3354
 Upstream: Merged
 
@@ -98,5 +97,5 @@ index c730cb8ec5..bd79e78837 100644
  }
  
 -- 
-2.37.3
+2.39.3
 
