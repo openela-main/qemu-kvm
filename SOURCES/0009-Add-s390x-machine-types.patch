@@ -1,4 +1,4 @@
-From 1973257ed781a93943f27f1518933e8c09c50f88 Mon Sep 17 00:00:00 2001
+From 3c7647197729fcd76e219070c6f359bb3667d04d Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 19 Oct 2018 13:47:32 +0200
 Subject: Add s390x machine types
@@ -30,45 +30,72 @@ Merged patches (7.1.0 rc0):
 
 Merged patches (7.2.0 rc0):
 - 0be2889fa2 Introduce upstream 7.0 compat changes (only applicable parts)
+
+Merged patches (8.0.0-rc1):
+- 27c188c6a4 redhat: Update s390x machine type compatibility for QEMU 7.2.0 update
+- a932b8d429 redhat: Add new rhel-9.2.0 s390x machine type
+- ac88104bad s390x/s390-virtio-ccw: Activate zPCI features on s390-ccw-virtio-rhel8.6.0
 ---
- hw/s390x/s390-virtio-ccw.c       | 108 +++++++++++++++++++++++++++++++
- target/s390x/cpu_models.c        |  11 ++++
+ hw/s390x/s390-virtio-ccw.c       | 143 +++++++++++++++++++++++++++++++
+ target/s390x/cpu_models.c        |  11 +++
  target/s390x/cpu_models.h        |   2 +
  target/s390x/cpu_models_sysemu.c |   2 +
- 4 files changed, 123 insertions(+)
+ 4 files changed, 158 insertions(+)
 
 diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
-index 2e64ffab45..8d5221fbb1 100644
+index 503f212a31..dcd3b966b0 100644
 --- a/hw/s390x/s390-virtio-ccw.c
 +++ b/hw/s390x/s390-virtio-ccw.c
-@@ -823,6 +823,7 @@ bool css_migration_enabled(void)
+@@ -826,6 +826,7 @@ bool css_migration_enabled(void)
      }                                                                         \
      type_init(ccw_machine_register_##suffix)
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
- static void ccw_machine_7_2_instance_options(MachineState *machine)
+ static void ccw_machine_8_0_instance_options(MachineState *machine)
  {
  }
-@@ -1186,6 +1187,113 @@ static void ccw_machine_2_4_class_options(MachineClass *mc)
+@@ -1201,6 +1202,148 @@ static void ccw_machine_2_4_class_options(MachineClass *mc)
      compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
  }
  DEFINE_CCW_MACHINE(2_4, "2.4", false);
 +#endif
 +
 +
++static void ccw_machine_rhel920_instance_options(MachineState *machine)
++{
++}
++
++static void ccw_machine_rhel920_class_options(MachineClass *mc)
++{
++}
++DEFINE_CCW_MACHINE(rhel920, "rhel9.2.0", true);
++
 +static void ccw_machine_rhel900_instance_options(MachineState *machine)
 +{
 +    static const S390FeatInit qemu_cpu_feat = { S390_FEAT_LIST_QEMU_V6_2 };
 +
++    ccw_machine_rhel920_instance_options(machine);
++
 +    s390_set_qemu_cpu_model(0x3906, 14, 2, qemu_cpu_feat);
++    s390_cpudef_featoff_greater(16, 1, S390_FEAT_PAIE);
 +}
 +
 +static void ccw_machine_rhel900_class_options(MachineClass *mc)
 +{
++    S390CcwMachineClass *s390mc = S390_CCW_MACHINE_CLASS(mc);
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "off", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "off", },
++    };
++
++    ccw_machine_rhel920_class_options(mc);
++
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
 +    compat_props_add(mc->compat_props, hw_compat_rhel_9_1, hw_compat_rhel_9_1_len);
 +    compat_props_add(mc->compat_props, hw_compat_rhel_9_0, hw_compat_rhel_9_0_len);
++    s390mc->max_threads = S390_MAX_CPUS;
 +}
-+DEFINE_CCW_MACHINE(rhel900, "rhel9.0.0", true);
++DEFINE_CCW_MACHINE(rhel900, "rhel9.0.0", false);
 +
 +static void ccw_machine_rhel860_instance_options(MachineState *machine)
 +{
@@ -78,7 +105,14 @@ index 2e64ffab45..8d5221fbb1 100644
 +
 +static void ccw_machine_rhel860_class_options(MachineClass *mc)
 +{
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "on", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "on", },
++    };
++
 +    ccw_machine_rhel900_class_options(mc);
++    compat_props_add(mc->compat_props, hw_compat_rhel_8_6, hw_compat_rhel_8_6_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
 +
 +    /* All RHEL machines for prior major releases are deprecated */
 +    mc->deprecation_reason = rhel_old_machine_deprecation;
@@ -102,8 +136,14 @@ index 2e64ffab45..8d5221fbb1 100644
 +
 +static void ccw_machine_rhel850_class_options(MachineClass *mc)
 +{
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "interpret", "off", },
++        { TYPE_S390_PCI_DEVICE, "forwarding-assist", "off", },
++    };
++
 +    ccw_machine_rhel860_class_options(mc);
 +    compat_props_add(mc->compat_props, hw_compat_rhel_8_5, hw_compat_rhel_8_5_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
 +    mc->smp_props.prefer_sockets = true;
 +}
 +DEFINE_CCW_MACHINE(rhel850, "rhel8.5.0", false);
@@ -164,10 +204,10 @@ index 2e64ffab45..8d5221fbb1 100644
  static void ccw_machine_register_types(void)
  {
 diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
-index c3a4f80633..739770dc15 100644
+index 457b5cb10c..ff6b9463cb 100644
 --- a/target/s390x/cpu_models.c
 +++ b/target/s390x/cpu_models.c
-@@ -45,6 +45,9 @@
+@@ -46,6 +46,9 @@
   * of a following release have been a superset of the previous release. With
   * generation 15 one base feature and one optional feature have been deprecated.
   */
@@ -177,7 +217,7 @@ index c3a4f80633..739770dc15 100644
  static S390CPUDef s390_cpu_defs[] = {
      CPUDEF_INIT(0x2064, 7, 1, 38, 0x00000000U, "z900", "IBM zSeries 900 GA1"),
      CPUDEF_INIT(0x2064, 7, 2, 38, 0x00000000U, "z900.2", "IBM zSeries 900 GA2"),
-@@ -854,22 +857,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
+@@ -857,22 +860,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
  static void s390_base_cpu_model_class_init(ObjectClass *oc, void *data)
  {
      S390CPUClass *xcc = S390_CPU_CLASS(oc);
@@ -222,7 +262,7 @@ index fb1adc8b21..d76745afa9 100644
  
  /* CPU model based on a CPU definition */
 diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
-index d086b1c39c..1b9cc66405 100644
+index 87a4480c05..28c1b0486c 100644
 --- a/target/s390x/cpu_models_sysemu.c
 +++ b/target/s390x/cpu_models_sysemu.c
 @@ -60,6 +60,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
@@ -242,5 +282,5 @@ index d086b1c39c..1b9cc66405 100644
      if (cpu_list_data->model) {
          Object *obj;
 -- 
-2.31.1
+2.39.1
 

@@ -1,0 +1,78 @@
+From c4bfb4900b95e13bef2d86b83c33786c7c4f6289 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 21 Jun 2022 12:21:32 +0200
+Subject: [PATCH 06/12] multifd: Protect multifd_send_sync_main() calls
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: quintela1 <quintela@redhat.com>
+RH-MergeRequest: 186: Multifd flushes its channels 10 times per second
+RH-Bugzilla: 2196295
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Commit: [2/3] a91adf59c6b2f39bf4a308f566b00e39cae6e0ae (juan.quintela/c9s-qemu-kvm)
+
+We only need to do that on the ram_save_iterate() call on sending and
+on destination when we get a RAM_SAVE_FLAG_EOS.
+
+In setup() and complete() we need to synch in both new and old cases,
+so don't add a check there.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Acked-by: Peter Xu <peterx@redhat.com>
+
+---
+
+Remove the wrappers that we take out on patch 5.
+
+(cherry picked from commit b05292c237030343516d073b1a1e5f49ffc017a8)
+---
+ migration/ram.c | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/migration/ram.c b/migration/ram.c
+index 01356f60a4..1e2414d681 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -3394,9 +3394,11 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
+ out:
+     if (ret >= 0
+         && migration_is_setup_or_active(migrate_get_current()->state)) {
+-        ret = multifd_send_sync_main(rs->pss[RAM_CHANNEL_PRECOPY].pss_channel);
+-        if (ret < 0) {
+-            return ret;
++        if (migrate_multifd_flush_after_each_section()) {
++            ret = multifd_send_sync_main(rs->pss[RAM_CHANNEL_PRECOPY].pss_channel);
++            if (ret < 0) {
++                return ret;
++            }
+         }
+ 
+         qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
+@@ -4153,7 +4155,9 @@ int ram_load_postcopy(QEMUFile *f, int channel)
+ 
+         case RAM_SAVE_FLAG_EOS:
+             /* normal exit */
+-            multifd_recv_sync_main();
++            if (migrate_multifd_flush_after_each_section()) {
++                multifd_recv_sync_main();
++            }
+             break;
+         default:
+             error_report("Unknown combination of migration flags: 0x%x"
+@@ -4424,7 +4428,9 @@ static int ram_load_precopy(QEMUFile *f)
+             break;
+         case RAM_SAVE_FLAG_EOS:
+             /* normal exit */
+-            multifd_recv_sync_main();
++            if (migrate_multifd_flush_after_each_section()) {
++                multifd_recv_sync_main();
++            }
+             break;
+         default:
+             if (flags & RAM_SAVE_FLAG_HOOK) {
+-- 
+2.39.3
+

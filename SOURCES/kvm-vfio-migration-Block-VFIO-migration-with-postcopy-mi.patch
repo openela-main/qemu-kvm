@@ -1,0 +1,90 @@
+From df7814de08c8c7c45eacb7b9d9ead9be4d1e3baf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 11 Sep 2023 16:10:19 +0200
+Subject: [PATCH 4/4] vfio/migration: Block VFIO migration with postcopy
+ migration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 318: VFIO migration: fix a QEMU crash when postcopy is enabled
+RH-Bugzilla: 2229868
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [4/4] 36eedf879547044c2ba2763fb48784a95f9e4ea7
+
+Bugzilla: https://bugzilla.redhat.com/2229868
+
+commit bf7ef7a2da3e61dc104f26c679c9465e3fbe7dde
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Sep 6 18:08:52 2023 +0300
+
+    vfio/migration: Block VFIO migration with postcopy migration
+
+    VFIO migration is not compatible with postcopy migration. A VFIO device
+    in the destination can't handle page faults for pages that have not been
+    sent yet.
+
+    Doing such migration will cause the VM to crash in the destination:
+
+    qemu-system-x86_64: VFIO_MAP_DMA failed: Bad address
+    qemu-system-x86_64: vfio_dma_map(0x55a28c7659d0, 0xc0000, 0xb000, 0x7f1b11a00000) = -14 (Bad address)
+    qemu: hardware error: vfio: DMA mapping failed, unable to continue
+
+    To prevent this, block VFIO migration with postcopy migration.
+
+    Reported-by: Yanghang Liu <yanghliu@redhat.com>
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Tested-by: Yanghang Liu <yanghliu@redhat.com>
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/migration.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/hw/vfio/migration.c b/hw/vfio/migration.c
+index 2674f4bc47..4f018c7531 100644
+--- a/hw/vfio/migration.c
++++ b/hw/vfio/migration.c
+@@ -331,6 +331,27 @@ static bool vfio_precopy_supported(VFIODevice *vbasedev)
+ 
+ /* ---------------------------------------------------------------------- */
+ 
++static int vfio_save_prepare(void *opaque, Error **errp)
++{
++    VFIODevice *vbasedev = opaque;
++
++    /*
++     * Snapshot doesn't use postcopy, so allow snapshot even if postcopy is on.
++     */
++    if (runstate_check(RUN_STATE_SAVE_VM)) {
++        return 0;
++    }
++
++    if (migrate_postcopy_ram()) {
++        error_setg(
++            errp, "%s: VFIO migration is not supported with postcopy migration",
++            vbasedev->name);
++        return -EOPNOTSUPP;
++    }
++
++    return 0;
++}
++
+ static int vfio_save_setup(QEMUFile *f, void *opaque)
+ {
+     VFIODevice *vbasedev = opaque;
+@@ -630,6 +651,7 @@ static bool vfio_switchover_ack_needed(void *opaque)
+ }
+ 
+ static const SaveVMHandlers savevm_vfio_handlers = {
++    .save_prepare = vfio_save_prepare,
+     .save_setup = vfio_save_setup,
+     .save_cleanup = vfio_save_cleanup,
+     .state_pending_estimate = vfio_state_pending_estimate,
+-- 
+2.39.3
+

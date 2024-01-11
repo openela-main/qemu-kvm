@@ -1,4 +1,4 @@
-From 283a0e258dc2f3b83c58e6f948bafe430cd2c1d5 Mon Sep 17 00:00:00 2001
+From 8964a3e8835992442902d35b011a708787366d82 Mon Sep 17 00:00:00 2001
 From: Eduardo Habkost <ehabkost@redhat.com>
 Date: Wed, 4 Dec 2013 18:53:17 +0100
 Subject: Add support statement to -help output
@@ -21,7 +21,7 @@ Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
  1 file changed, 9 insertions(+)
 
 diff --git a/softmmu/vl.c b/softmmu/vl.c
-index 5115221efe..17188df528 100644
+index ea20b23e4c..ad4173138d 100644
 --- a/softmmu/vl.c
 +++ b/softmmu/vl.c
 @@ -834,9 +834,17 @@ static void version(void)
@@ -51,5 +51,5 @@ index 5115221efe..17188df528 100644
  }
  
 -- 
-2.31.1
+2.39.1
 

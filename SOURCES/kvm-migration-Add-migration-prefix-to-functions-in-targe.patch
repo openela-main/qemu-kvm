@@ -1,0 +1,139 @@
+From f053185a7fb9fab2a41c0a5ae4e1a403bc99a9a0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 11 Sep 2023 16:10:19 +0200
+Subject: [PATCH 1/4] migration: Add migration prefix to functions in target.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 318: VFIO migration: fix a QEMU crash when postcopy is enabled
+RH-Bugzilla: 2229868
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [1/4] 4594d2035423385690d7f1feb5f2e4c8f0be74f5
+
+Bugzilla: https://bugzilla.redhat.com/2229868
+
+commit 38c482b4778595ee337761f73ec0730d6c47b404
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Sep 6 18:08:48 2023 +0300
+
+    migration: Add migration prefix to functions in target.c
+
+    The functions in target.c are not static, yet they don't have a proper
+    migration prefix. Add such prefix.
+
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Conflicts:
+    - migration/migration.c, migration/savevm.c
+      context changes in migrate_prepare() and qemu_savevm_state() due
+      to missing commit aff3f6606d14 ("migration: Rename ram_counters
+      to mig_stats")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ migration/migration.c | 6 +++---
+ migration/migration.h | 4 ++--
+ migration/savevm.c    | 2 +-
+ migration/target.c    | 8 ++++----
+ 4 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 47ad6c43cb..5aa9e5dada 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1021,7 +1021,7 @@ static void fill_source_migration_info(MigrationInfo *info)
+         populate_time_info(info, s);
+         populate_ram_info(info, s);
+         populate_disk_info(info);
+-        populate_vfio_info(info);
++        migration_populate_vfio_info(info);
+         break;
+     case MIGRATION_STATUS_COLO:
+         info->has_status = true;
+@@ -1030,7 +1030,7 @@ static void fill_source_migration_info(MigrationInfo *info)
+     case MIGRATION_STATUS_COMPLETED:
+         populate_time_info(info, s);
+         populate_ram_info(info, s);
+-        populate_vfio_info(info);
++        migration_populate_vfio_info(info);
+         break;
+     case MIGRATION_STATUS_FAILED:
+         info->has_status = true;
+@@ -1638,7 +1638,7 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+      */
+     memset(&ram_counters, 0, sizeof(ram_counters));
+     memset(&compression_counters, 0, sizeof(compression_counters));
+-    reset_vfio_bytes_transferred();
++    migration_reset_vfio_bytes_transferred();
+ 
+     return true;
+ }
+diff --git a/migration/migration.h b/migration/migration.h
+index dfec649af8..c5b98485e3 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -505,8 +505,8 @@ void migration_consume_urgent_request(void);
+ bool migration_rate_limit(void);
+ void migration_cancel(const Error *error);
+ 
+-void populate_vfio_info(MigrationInfo *info);
+-void reset_vfio_bytes_transferred(void);
++void migration_populate_vfio_info(MigrationInfo *info);
++void migration_reset_vfio_bytes_transferred(void);
+ void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
+ 
+ #endif
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 83088fc3f8..05db79bfad 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1620,7 +1620,7 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
+     migrate_init(ms);
+     memset(&ram_counters, 0, sizeof(ram_counters));
+     memset(&compression_counters, 0, sizeof(compression_counters));
+-    reset_vfio_bytes_transferred();
++    migration_reset_vfio_bytes_transferred();
+     ms->to_dst_file = f;
+ 
+     qemu_mutex_unlock_iothread();
+diff --git a/migration/target.c b/migration/target.c
+index f39c9a8d88..a6ffa9a5ce 100644
+--- a/migration/target.c
++++ b/migration/target.c
+@@ -15,7 +15,7 @@
+ #endif
+ 
+ #ifdef CONFIG_VFIO
+-void populate_vfio_info(MigrationInfo *info)
++void migration_populate_vfio_info(MigrationInfo *info)
+ {
+     if (vfio_mig_active()) {
+         info->vfio = g_malloc0(sizeof(*info->vfio));
+@@ -23,16 +23,16 @@ void populate_vfio_info(MigrationInfo *info)
+     }
+ }
+ 
+-void reset_vfio_bytes_transferred(void)
++void migration_reset_vfio_bytes_transferred(void)
+ {
+     vfio_reset_bytes_transferred();
+ }
+ #else
+-void populate_vfio_info(MigrationInfo *info)
++void migration_populate_vfio_info(MigrationInfo *info)
+ {
+ }
+ 
+-void reset_vfio_bytes_transferred(void)
++void migration_reset_vfio_bytes_transferred(void)
+ {
+ }
+ #endif
+-- 
+2.39.3
+

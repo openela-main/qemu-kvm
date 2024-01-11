@@ -1,0 +1,144 @@
+From 399bfc04fb8352af6d2f4c984e68c334d2043368 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Wed, 17 May 2023 17:28:34 +0200
+Subject: [PATCH 04/21] iotests: Test commit with iothreads and ongoing I/O
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 166: block/graph-lock: Disable locking for now
+RH-Bugzilla: 2186725
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [4/4] 1e42fde5951ae12bddc4eea2320f066f7079878f (kmwolf/centos-qemu-kvm)
+
+This tests exercises graph locking, draining, and graph modifications
+with AioContext switches a lot. Amongst others, it serves as a
+regression test for bdrv_graph_wrlock() deadlocking because it is called
+with a locked AioContext and for AioContext handling in the NBD server.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20230517152834.277483-4-kwolf@redhat.com>
+Tested-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 95fdd8db61848d31fde1d9b32da7f3f76babfa25)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/iotests.py                 |  4 ++
+ .../qemu-iotests/tests/graph-changes-while-io | 56 +++++++++++++++++--
+ .../tests/graph-changes-while-io.out          |  4 +-
+ 3 files changed, 58 insertions(+), 6 deletions(-)
+
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index 3e82c634cf..7073579a7d 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -462,6 +462,10 @@ def qmp(self, cmd: str, args: Optional[Dict[str, object]] = None) \
+         assert self._qmp is not None
+         return self._qmp.cmd(cmd, args)
+ 
++    def get_qmp(self) -> QEMUMonitorProtocol:
++        assert self._qmp is not None
++        return self._qmp
++
+     def stop(self, kill_signal=15):
+         self._p.send_signal(kill_signal)
+         self._p.wait()
+diff --git a/tests/qemu-iotests/tests/graph-changes-while-io b/tests/qemu-iotests/tests/graph-changes-while-io
+index 7664f33689..750e7d4d38 100755
+--- a/tests/qemu-iotests/tests/graph-changes-while-io
++++ b/tests/qemu-iotests/tests/graph-changes-while-io
+@@ -22,19 +22,19 @@
+ import os
+ from threading import Thread
+ import iotests
+-from iotests import imgfmt, qemu_img, qemu_img_create, QMPTestCase, \
+-        QemuStorageDaemon
++from iotests import imgfmt, qemu_img, qemu_img_create, qemu_io, \
++        QMPTestCase, QemuStorageDaemon
+ 
+ 
+ top = os.path.join(iotests.test_dir, 'top.img')
+ nbd_sock = os.path.join(iotests.sock_dir, 'nbd.sock')
+ 
+ 
+-def do_qemu_img_bench() -> None:
++def do_qemu_img_bench(count: int = 2000000) -> None:
+     """
+     Do some I/O requests on `nbd_sock`.
+     """
+-    qemu_img('bench', '-f', 'raw', '-c', '2000000',
++    qemu_img('bench', '-f', 'raw', '-c', str(count),
+              f'nbd+unix:///node0?socket={nbd_sock}')
+ 
+ 
+@@ -84,6 +84,54 @@ class TestGraphChangesWhileIO(QMPTestCase):
+ 
+         bench_thr.join()
+ 
++    def test_commit_while_io(self) -> None:
++        # Run qemu-img bench in the background
++        bench_thr = Thread(target=do_qemu_img_bench, args=(200000, ))
++        bench_thr.start()
++
++        qemu_io('-c', 'write 0 64k', top)
++        qemu_io('-c', 'write 128k 64k', top)
++
++        result = self.qsd.qmp('blockdev-add', {
++            'driver': imgfmt,
++            'node-name': 'overlay',
++            'backing': None,
++            'file': {
++                'driver': 'file',
++                'filename': top
++            }
++        })
++        self.assert_qmp(result, 'return', {})
++
++        result = self.qsd.qmp('blockdev-snapshot', {
++            'node': 'node0',
++            'overlay': 'overlay',
++        })
++        self.assert_qmp(result, 'return', {})
++
++        # While qemu-img bench is running, repeatedly commit overlay to node0
++        while bench_thr.is_alive():
++            result = self.qsd.qmp('block-commit', {
++                'job-id': 'job0',
++                'device': 'overlay',
++            })
++            self.assert_qmp(result, 'return', {})
++
++            result = self.qsd.qmp('block-job-cancel', {
++                'device': 'job0',
++            })
++            self.assert_qmp(result, 'return', {})
++
++            cancelled = False
++            while not cancelled:
++                for event in self.qsd.get_qmp().get_events(wait=10.0):
++                    if event['event'] != 'JOB_STATUS_CHANGE':
++                        continue
++                    if event['data']['status'] == 'null':
++                        cancelled = True
++
++        bench_thr.join()
++
+ if __name__ == '__main__':
+     # Format must support raw backing files
+     iotests.main(supported_fmts=['qcow', 'qcow2', 'qed'],
+diff --git a/tests/qemu-iotests/tests/graph-changes-while-io.out b/tests/qemu-iotests/tests/graph-changes-while-io.out
+index ae1213e6f8..fbc63e62f8 100644
+--- a/tests/qemu-iotests/tests/graph-changes-while-io.out
++++ b/tests/qemu-iotests/tests/graph-changes-while-io.out
+@@ -1,5 +1,5 @@
+-.
++..
+ ----------------------------------------------------------------------
+-Ran 1 tests
++Ran 2 tests
+ 
+ OK
+-- 
+2.39.3
+

@@ -1,0 +1,98 @@
+From 710fe195a3c13ffe96795a7a2b550c00319997ea Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 10:44:20 +0100
+Subject: [PATCH 47/56] migration: Move migrate_postcopy() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [46/50] a4f3455b3524a331f44b481bf7a79318aef5abaa (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit f774fde5d4e97cbfc64dab6622c2c53c5fe5c9fe)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 5 -----
+ migration/migration.h | 2 --
+ migration/options.c   | 8 ++++++++
+ migration/options.h   | 9 +++++++++
+ 4 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index f27ce30be2..46a5ea4d42 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2245,11 +2245,6 @@ void qmp_migrate_continue(MigrationStatus state, Error **errp)
+     qemu_sem_post(&s->pause_sem);
+ }
+ 
+-bool migrate_postcopy(void)
+-{
+-    return migrate_postcopy_ram() || migrate_dirty_bitmaps();
+-}
+-
+ int migrate_use_tls(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 3ae938b19c..dcf906868d 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -447,8 +447,6 @@ bool migration_is_blocked(Error **errp);
+ bool migration_in_postcopy(void);
+ MigrationState *migrate_get_current(void);
+ 
+-bool migrate_postcopy(void);
+-
+ int migrate_use_tls(void);
+ 
+ uint64_t ram_get_total_transferred_pages(void);
+diff --git a/migration/options.c b/migration/options.c
+index 615534c151..8bd2d949ae 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -204,6 +204,14 @@ bool migrate_zero_copy_send(void)
+ 
+     return s->capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
+ }
++
++/* pseudo capabilities */
++
++bool migrate_postcopy(void)
++{
++    return migrate_postcopy_ram() || migrate_dirty_bitmaps();
++}
++
+ typedef enum WriteTrackingSupport {
+     WT_SUPPORT_UNKNOWN = 0,
+     WT_SUPPORT_ABSENT,
+diff --git a/migration/options.h b/migration/options.h
+index 99f6bbd7a1..093bc907a1 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -38,6 +38,15 @@ bool migrate_xbzrle(void);
+ bool migrate_zero_blocks(void);
+ bool migrate_zero_copy_send(void);
+ 
++/*
++ * pseudo capabilities
++ *
++ * These are functions that are used in a similar way to capabilities
++ * check, but they are not a capability.
++ */
++
++bool migrate_postcopy(void);
++
+ /* capabilities helpers */
+ 
+ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp);
+-- 
+2.39.1
+

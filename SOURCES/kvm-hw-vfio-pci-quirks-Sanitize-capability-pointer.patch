@@ -1,0 +1,76 @@
+From fcd6219a95851d17fd8bde69d87e78c6533be990 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 24/37] hw/vfio/pci-quirks: Sanitize capability pointer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [22/28] cb080409c1912f4365f8e31cd23c914b48f91575 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 0ddcb39c9357
+Author: Alex Williamson <alex.williamson@redhat.com>
+Date:   Fri Jun 30 16:36:08 2023 -0600
+
+    hw/vfio/pci-quirks: Sanitize capability pointer
+
+    Coverity reports a tained scalar when traversing the capabilities
+    chain (CID 1516589).  In practice I've never seen a device with a
+    chain so broken as to cause an issue, but it's also pretty easy to
+    sanitize.
+
+    Fixes: f6b30c1984f7 ("hw/vfio/pci-quirks: Support alternate offset for GPUDirect Cliques")
+    Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci-quirks.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci-quirks.c b/hw/vfio/pci-quirks.c
+index 0ed2fcd531..f4ff836805 100644
+--- a/hw/vfio/pci-quirks.c
++++ b/hw/vfio/pci-quirks.c
+@@ -1530,6 +1530,12 @@ const PropertyInfo qdev_prop_nv_gpudirect_clique = {
+     .set = set_nv_gpudirect_clique_id,
+ };
+ 
++static bool is_valid_std_cap_offset(uint8_t pos)
++{
++    return (pos >= PCI_STD_HEADER_SIZEOF &&
++            pos <= (PCI_CFG_SPACE_SIZE - PCI_CAP_SIZEOF));
++}
++
+ static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+ {
+     PCIDevice *pdev = &vdev->pdev;
+@@ -1563,7 +1569,7 @@ static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+      */
+     ret = pread(vdev->vbasedev.fd, &tmp, 1,
+                 vdev->config_offset + PCI_CAPABILITY_LIST);
+-    if (ret != 1 || !tmp) {
++    if (ret != 1 || !is_valid_std_cap_offset(tmp)) {
+         error_setg(errp, "NVIDIA GPUDirect Clique ID: error getting cap list");
+         return -EINVAL;
+     }
+@@ -1575,7 +1581,7 @@ static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+             d4_conflict = true;
+         }
+         tmp = pdev->config[tmp + PCI_CAP_LIST_NEXT];
+-    } while (tmp);
++    } while (is_valid_std_cap_offset(tmp));
+ 
+     if (!c8_conflict) {
+         pos = 0xC8;
+-- 
+2.39.3
+

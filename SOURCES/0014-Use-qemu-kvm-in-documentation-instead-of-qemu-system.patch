@@ -1,4 +1,4 @@
-From d8ded821aa698b3b03bd9089fbd6c2b33da87b9e Mon Sep 17 00:00:00 2001
+From 0b72d348fa0714de641ee242e5cee97df006e8fd Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 8 Jul 2020 08:35:50 +0200
 Subject: Use qemu-kvm in documentation instead of qemu-system-<arch>
@@ -36,10 +36,10 @@ index 52d6454b93..d74dbdeca9 100644
  .. |I2C| replace:: I\ :sup:`2`\ C
  .. |I2S| replace:: I\ :sup:`2`\ S
 diff --git a/qemu-options.hx b/qemu-options.hx
-index 7f99d15b23..ea02ca3a45 100644
+index 59bdf67a2c..52b49f1f6a 100644
 --- a/qemu-options.hx
 +++ b/qemu-options.hx
-@@ -3300,11 +3300,11 @@ SRST
+@@ -3296,11 +3296,11 @@ SRST
  
      ::
  
@@ -57,5 +57,5 @@ index 7f99d15b23..ea02ca3a45 100644
  ``-netdev vhost-vdpa[,vhostdev=/path/to/dev][,vhostfd=h]``
      Establish a vhost-vdpa netdev.
 -- 
-2.31.1
+2.39.1
 

@@ -1,0 +1,50 @@
+From b5b243cbbb897b236c08699529e13457e1e49924 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Thu, 22 Jun 2023 15:08:22 +0200
+Subject: [PATCH 31/37] pc-bios/s390-ccw/Makefile: Use -z noexecstack to
+ silence linker warning
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 180: Fix misaligned symbol error in the s390-ccw image during qemu-kvm build with binutils 2.40
+RH-Bugzilla: 2220866
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/4] 04f6f83169f1c5545a0e2772b4babfc6a50bd5bf (thuth/qemu-kvm-cs9)
+
+Recent versions of ld complain when linking the s390-ccw bios:
+
+ /usr/bin/ld: warning: start.o: missing .note.GNU-stack section implies
+              executable stack
+ /usr/bin/ld: NOTE: This behaviour is deprecated and will be removed in
+              a future version of the linker
+
+We can silence the warning by telling the linker to mark the stack
+as not executable.
+
+Message-Id: <20230622130822.396793-1-thuth@redhat.com>
+Acked-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 442ef32ee5b6059a8f247fb2def9d449578d0a89)
+---
+ pc-bios/s390-ccw/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pc-bios/s390-ccw/Makefile b/pc-bios/s390-ccw/Makefile
+index 10e8f5cb63..2a590af4a9 100644
+--- a/pc-bios/s390-ccw/Makefile
++++ b/pc-bios/s390-ccw/Makefile
+@@ -53,7 +53,7 @@ config-cc.mak: Makefile
+ 	    $(call cc-option,-march=z900,-march=z10)) 3> config-cc.mak
+ -include config-cc.mak
+ 
+-LDFLAGS += -Wl,-pie -nostdlib
++LDFLAGS += -Wl,-pie -nostdlib -z noexecstack
+ 
+ build-all: s390-ccw.img s390-netboot.img
+ 
+-- 
+2.39.3
+

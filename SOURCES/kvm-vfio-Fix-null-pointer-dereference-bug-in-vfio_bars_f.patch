@@ -1,0 +1,72 @@
+From 97124d4f2afbc8e65a3ecf76096e6b34a9b71541 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 30/37] vfio: Fix null pointer dereference bug in
+ vfio_bars_finalize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [28/28] 4bbdf7f9c5595897244c6cc3d88d487dd5f99bf0 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 8af87a3ec7e4
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Tue Jul 4 16:39:27 2023 +0300
+
+    vfio: Fix null pointer dereference bug in vfio_bars_finalize()
+
+    vfio_realize() has the following flow:
+    1. vfio_bars_prepare() -- sets VFIOBAR->size.
+    2. msix_early_setup().
+    3. vfio_bars_register() -- allocates VFIOBAR->mr.
+
+    After vfio_bars_prepare() is called msix_early_setup() can fail. If it
+    does fail, vfio_bars_register() is never called and VFIOBAR->mr is not
+    allocated.
+
+    In this case, vfio_bars_finalize() is called as part of the error flow
+    to free the bars' resources. However, vfio_bars_finalize() calls
+    object_unparent() for VFIOBAR->mr after checking only VFIOBAR->size, and
+    thus we get a null pointer dereference.
+
+    Fix it by checking VFIOBAR->mr in vfio_bars_finalize().
+
+    Fixes: 89d5202edc50 ("vfio/pci: Allow relocating MSI-X MMIO")
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index ba40ca8784..9189459a38 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -1755,9 +1755,11 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
+ 
+         vfio_bar_quirk_finalize(vdev, i);
+         vfio_region_finalize(&bar->region);
+-        if (bar->size) {
++        if (bar->mr) {
++            assert(bar->size);
+             object_unparent(OBJECT(bar->mr));
+             g_free(bar->mr);
++            bar->mr = NULL;
+         }
+     }
+ 
+-- 
+2.39.3
+

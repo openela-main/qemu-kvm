@@ -1,0 +1,165 @@
+From a63b4010ba4f491c9144afff363bebcf35ecf496 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 20/37] vfio/migration: Reset bytes_transferred properly
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [18/28] e9a70faeca4fd5aa7ef36502cf76bf0b62f65057 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 808642a2f640
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Jun 28 10:31:11 2023 +0300
+
+    vfio/migration: Reset bytes_transferred properly
+
+    Currently, VFIO bytes_transferred is not reset properly:
+    1. bytes_transferred is not reset after a VM snapshot (so a migration
+       following a snapshot will report incorrect value).
+    2. bytes_transferred is a single counter for all VFIO devices, however
+       upon migration failure it is reset multiple times, by each VFIO
+       device.
+
+    Fix it by introducing a new function vfio_reset_bytes_transferred() and
+    calling it during migration and snapshot start.
+
+    Remove existing bytes_transferred reset in VFIO migration state
+    notifier, which is not needed anymore.
+
+    Fixes: 3710586caa5d ("qapi: Add VFIO devices migration stats in Migration stats")
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Conflicts:
+    - migration/migration.c
+      migration/savevm.c
+      context changes due to commit aff3f6606d14 ("migration: Rename
+      ram_counters to mig_stats")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/migration.c           |  6 +++++-
+ include/hw/vfio/vfio-common.h |  1 +
+ migration/migration.c         |  1 +
+ migration/migration.h         |  1 +
+ migration/savevm.c            |  1 +
+ migration/target.c            | 17 +++++++++++++++--
+ 6 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/migration.c b/hw/vfio/migration.c
+index acbf0bb7ab..7cf143926c 100644
+--- a/hw/vfio/migration.c
++++ b/hw/vfio/migration.c
+@@ -697,7 +697,6 @@ static void vfio_migration_state_notifier(Notifier *notifier, void *data)
+     case MIGRATION_STATUS_CANCELLING:
+     case MIGRATION_STATUS_CANCELLED:
+     case MIGRATION_STATUS_FAILED:
+-        bytes_transferred = 0;
+         /*
+          * If setting the device in RUNNING state fails, the device should
+          * be reset. To do so, use ERROR state as a recover state.
+@@ -818,6 +817,11 @@ int64_t vfio_mig_bytes_transferred(void)
+     return bytes_transferred;
+ }
+ 
++void vfio_reset_bytes_transferred(void)
++{
++    bytes_transferred = 0;
++}
++
+ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+ {
+     int ret = -ENOTSUP;
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 6d1b8487c3..1d19c6f251 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -229,6 +229,7 @@ int vfio_block_multiple_devices_migration(Error **errp);
+ void vfio_unblock_multiple_devices_migration(void);
+ int vfio_block_giommu_migration(Error **errp);
+ int64_t vfio_mig_bytes_transferred(void);
++void vfio_reset_bytes_transferred(void);
+ 
+ #ifdef CONFIG_LINUX
+ int vfio_get_region_info(VFIODevice *vbasedev, int index,
+diff --git a/migration/migration.c b/migration/migration.c
+index 9bf1caee6c..47ad6c43cb 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1638,6 +1638,7 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+      */
+     memset(&ram_counters, 0, sizeof(ram_counters));
+     memset(&compression_counters, 0, sizeof(compression_counters));
++    reset_vfio_bytes_transferred();
+ 
+     return true;
+ }
+diff --git a/migration/migration.h b/migration/migration.h
+index e9679f8029..7ccf460aa2 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -495,6 +495,7 @@ bool migration_rate_limit(void);
+ void migration_cancel(const Error *error);
+ 
+ void populate_vfio_info(MigrationInfo *info);
++void reset_vfio_bytes_transferred(void);
+ void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
+ 
+ #endif
+diff --git a/migration/savevm.c b/migration/savevm.c
+index aff70e6263..83088fc3f8 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1620,6 +1620,7 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
+     migrate_init(ms);
+     memset(&ram_counters, 0, sizeof(ram_counters));
+     memset(&compression_counters, 0, sizeof(compression_counters));
++    reset_vfio_bytes_transferred();
+     ms->to_dst_file = f;
+ 
+     qemu_mutex_unlock_iothread();
+diff --git a/migration/target.c b/migration/target.c
+index 00ca007f97..f39c9a8d88 100644
+--- a/migration/target.c
++++ b/migration/target.c
+@@ -14,12 +14,25 @@
+ #include "hw/vfio/vfio-common.h"
+ #endif
+ 
++#ifdef CONFIG_VFIO
+ void populate_vfio_info(MigrationInfo *info)
+ {
+-#ifdef CONFIG_VFIO
+     if (vfio_mig_active()) {
+         info->vfio = g_malloc0(sizeof(*info->vfio));
+         info->vfio->transferred = vfio_mig_bytes_transferred();
+     }
+-#endif
+ }
++
++void reset_vfio_bytes_transferred(void)
++{
++    vfio_reset_bytes_transferred();
++}
++#else
++void populate_vfio_info(MigrationInfo *info)
++{
++}
++
++void reset_vfio_bytes_transferred(void)
++{
++}
++#endif
+-- 
+2.39.3
+

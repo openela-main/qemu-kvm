@@ -1,0 +1,56 @@
+From 5bb94c4eaeb94f0b41a57660098a4c12a295b725 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 28/37] vfio/migration: Remove print of "Migration disabled"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [26/28] c7ff1f9c90b4cfcb327ef474042ea71ea577a94d (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit 0520d63c7701
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Mon Jul 3 15:15:09 2023 +0800
+
+    vfio/migration: Remove print of "Migration disabled"
+
+    Property enable_migration supports [on/off/auto].
+    In ON mode, error pointer is passed to errp and logged.
+    In OFF mode, we doesn't need to log "Migration disabled" as it's intentional.
+    In AUTO mode, we should only ever see errors or warnings if the device
+    supports migration and an error or incompatibility occurs while further
+    probing or configuring it. Lack of support for migration shoundn't
+    generate an error or warning.
+
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 037b7d4176..a60b868c38 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3233,7 +3233,6 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+     if (!pdev->failover_pair_id) {
+         ret = vfio_migration_realize(vbasedev, errp);
+         if (ret) {
+-            error_report("%s: Migration disabled", vbasedev->name);
+             goto out_deregister;
+         }
+     }
+-- 
+2.39.3
+

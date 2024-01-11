@@ -1,4 +1,4 @@
-From 8501581c99760ed8a800d0c98eeb17a4bf450366 Mon Sep 17 00:00:00 2001
+From ec6468b65a3af0e2b84575c9f965f61916d0d8ea Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 19 Oct 2018 12:53:31 +0200
 Subject: Add aarch64 machine types
@@ -26,6 +26,9 @@ Rebase notes (7.1.0 rc3):
 Rebase notes (7.2.0 rc0):
 - Disabled cortex-a35
 
+Rebase notes (8.0.0-rc1):
+- Moved changed code from target/arm/helper.c to target/arm/arm-qmp-cmds.c
+
 Merged patches (6.2.0):
 - 9a3d4fde0e hw/arm/virt: Remove 9.0 machine type
 - f7d04d6695 hw: arm: virt: Add hw_compat_rhel_8_5 to 8.5 machine type
@@ -49,23 +52,27 @@ Merged patches (7.1.0 rc0):
 
 Merged patches (7.2.0 rc0):
 - 0be2889fa2 Introduce upstream 7.0 compat changes (only applicable parts)
+
+Merged patches (8.0.0-rc1):
+- c1a21266d8 redhat: aarch64: add rhel9.2.0 virt machine type
+- d97cd7c513 redhat: fix virt-rhel9.2.0 compat props
 ---
- hw/arm/virt.c                  | 237 ++++++++++++++++++++++++++++++++-
+ hw/arm/virt.c                  | 251 ++++++++++++++++++++++++++++++++-
  include/hw/arm/virt.h          |   8 ++
+ target/arm/arm-qmp-cmds.c      |   2 +
  target/arm/cpu-qom.h           |   1 +
  target/arm/cpu.c               |   5 +
  target/arm/cpu.h               |   2 +
  target/arm/cpu64.c             |  16 ++-
  target/arm/cpu_tcg.c           |  12 +-
- target/arm/helper.c            |   2 +
  tests/qtest/arm-cpu-features.c |   6 +
- 9 files changed, 277 insertions(+), 12 deletions(-)
+ 9 files changed, 289 insertions(+), 14 deletions(-)
 
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index d633300fdc..dfcab40a73 100644
+index 4a6e89c7bc..1ae1654be5 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -80,6 +80,7 @@
+@@ -81,6 +81,7 @@
  #include "hw/char/pl011.h"
  #include "qemu/guest-random.h"
  
@@ -73,7 +80,7 @@ index d633300fdc..dfcab40a73 100644
  #define DEFINE_VIRT_MACHINE_LATEST(major, minor, latest) \
      static void virt_##major##_##minor##_class_init(ObjectClass *oc, \
                                                      void *data) \
-@@ -106,7 +107,48 @@
+@@ -107,7 +108,48 @@
      DEFINE_VIRT_MACHINE_LATEST(major, minor, true)
  #define DEFINE_VIRT_MACHINE(major, minor) \
      DEFINE_VIRT_MACHINE_LATEST(major, minor, false)
@@ -123,7 +130,7 @@ index d633300fdc..dfcab40a73 100644
  
  /* Number of external interrupt lines to configure the GIC with */
  #define NUM_IRQS 256
-@@ -197,15 +239,19 @@ static const int a15irqmap[] = {
+@@ -204,16 +246,20 @@ static const int a15irqmap[] = {
  };
  
  static const char *valid_cpus[] = {
@@ -132,6 +139,7 @@ index d633300fdc..dfcab40a73 100644
      ARM_CPU_TYPE_NAME("cortex-a15"),
      ARM_CPU_TYPE_NAME("cortex-a35"),
      ARM_CPU_TYPE_NAME("cortex-a53"),
+     ARM_CPU_TYPE_NAME("cortex-a55"),
 +#endif /* disabled for RHEL */
      ARM_CPU_TYPE_NAME("cortex-a57"),
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
@@ -143,7 +151,7 @@ index d633300fdc..dfcab40a73 100644
      ARM_CPU_TYPE_NAME("host"),
      ARM_CPU_TYPE_NAME("max"),
  };
-@@ -2290,6 +2336,7 @@ static void machvirt_init(MachineState *machine)
+@@ -2339,6 +2385,7 @@ static void machvirt_init(MachineState *machine)
      qemu_add_machine_init_done_notifier(&vms->machine_done);
  }
  
@@ -151,7 +159,7 @@ index d633300fdc..dfcab40a73 100644
  static bool virt_get_secure(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2317,6 +2364,7 @@ static void virt_set_virt(Object *obj, bool value, Error **errp)
+@@ -2366,6 +2413,7 @@ static void virt_set_virt(Object *obj, bool value, Error **errp)
  
      vms->virt = value;
  }
@@ -159,7 +167,25 @@ index d633300fdc..dfcab40a73 100644
  
  static bool virt_get_highmem(Object *obj, Error **errp)
  {
-@@ -2346,6 +2394,7 @@ static void virt_set_its(Object *obj, bool value, Error **errp)
+@@ -2380,7 +2428,7 @@ static void virt_set_highmem(Object *obj, bool value, Error **errp)
+ 
+     vms->highmem = value;
+ }
+-
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static bool virt_get_compact_highmem(Object *obj, Error **errp)
+ {
+     VirtMachineState *vms = VIRT_MACHINE(obj);
+@@ -2436,7 +2484,7 @@ static void virt_set_highmem_mmio(Object *obj, bool value, Error **errp)
+ 
+     vms->highmem_mmio = value;
+ }
+-
++#endif /* disabled for RHEL */
+ 
+ static bool virt_get_its(Object *obj, Error **errp)
+ {
+@@ -2452,6 +2500,7 @@ static void virt_set_its(Object *obj, bool value, Error **errp)
      vms->its = value;
  }
  
@@ -167,7 +193,7 @@ index d633300fdc..dfcab40a73 100644
  static bool virt_get_dtb_randomness(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2359,6 +2408,7 @@ static void virt_set_dtb_randomness(Object *obj, bool value, Error **errp)
+@@ -2465,6 +2514,7 @@ static void virt_set_dtb_randomness(Object *obj, bool value, Error **errp)
  
      vms->dtb_randomness = value;
  }
@@ -175,7 +201,7 @@ index d633300fdc..dfcab40a73 100644
  
  static char *virt_get_oem_id(Object *obj, Error **errp)
  {
-@@ -2442,6 +2492,7 @@ static void virt_set_ras(Object *obj, bool value, Error **errp)
+@@ -2548,6 +2598,7 @@ static void virt_set_ras(Object *obj, bool value, Error **errp)
      vms->ras = value;
  }
  
@@ -183,7 +209,7 @@ index d633300fdc..dfcab40a73 100644
  static bool virt_get_mte(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2455,6 +2506,7 @@ static void virt_set_mte(Object *obj, bool value, Error **errp)
+@@ -2561,6 +2612,7 @@ static void virt_set_mte(Object *obj, bool value, Error **errp)
  
      vms->mte = value;
  }
@@ -191,7 +217,7 @@ index d633300fdc..dfcab40a73 100644
  
  static char *virt_get_gic_version(Object *obj, Error **errp)
  {
-@@ -2886,6 +2938,7 @@ static int virt_kvm_type(MachineState *ms, const char *type_str)
+@@ -2988,6 +3040,7 @@ static int virt_kvm_type(MachineState *ms, const char *type_str)
      return fixed_ipa ? 0 : requested_pa_size;
  }
  
@@ -199,7 +225,7 @@ index d633300fdc..dfcab40a73 100644
  static void virt_machine_class_init(ObjectClass *oc, void *data)
  {
      MachineClass *mc = MACHINE_CLASS(oc);
-@@ -3294,3 +3347,185 @@ static void virt_machine_2_6_options(MachineClass *mc)
+@@ -3441,3 +3494,195 @@ static void virt_machine_2_6_options(MachineClass *mc)
      vmc->no_pmu = true;
  }
  DEFINE_VIRT_MACHINE(2, 6)
@@ -312,6 +338,7 @@ index d633300fdc..dfcab40a73 100644
 +
 +    /* High memory is enabled by default */
 +    vms->highmem = true;
++    vms->highmem_compact = !vmc->no_highmem_compact;
 +    vms->gic_version = VIRT_GIC_VERSION_NOSEL;
 +
 +    vms->highmem_ecam = !vmc->no_highmem_ecam;
@@ -374,22 +401,31 @@ index d633300fdc..dfcab40a73 100644
 +}
 +type_init(rhel_machine_init);
 +
++static void rhel920_virt_options(MachineClass *mc)
++{
++    compat_props_add(mc->compat_props, arm_rhel_compat, arm_rhel_compat_len);
++}
++DEFINE_RHEL_MACHINE_AS_LATEST(9, 2, 0)
++
 +static void rhel900_virt_options(MachineClass *mc)
 +{
 +    VirtMachineClass *vmc = VIRT_MACHINE_CLASS(OBJECT_CLASS(mc));
 +
-+    compat_props_add(mc->compat_props, arm_rhel_compat, arm_rhel_compat_len);
++    rhel920_virt_options(mc);
++
 +    compat_props_add(mc->compat_props, hw_compat_rhel_9_1, hw_compat_rhel_9_1_len);
 +
 +    /* Disable FEAT_LPA2 since old kernels (<= v5.12) don't boot with that feature */
 +    vmc->no_tcg_lpa2 = true;
++    /* Compact layout for high memory regions was introduced with 9.2.0 */
++    vmc->no_highmem_compact = true;
 +}
-+DEFINE_RHEL_MACHINE_AS_LATEST(9, 0, 0)
++DEFINE_RHEL_MACHINE(9, 0, 0)
 diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
-index 6ec479ca2b..22b54ec510 100644
+index e1ddbea96b..81c2363a40 100644
 --- a/include/hw/arm/virt.h
 +++ b/include/hw/arm/virt.h
-@@ -180,9 +180,17 @@ struct VirtMachineState {
+@@ -187,9 +187,17 @@ struct VirtMachineState {
  
  #define VIRT_ECAM_ID(high) (high ? VIRT_HIGH_PCIE_ECAM : VIRT_PCIE_ECAM)
  
@@ -407,8 +443,28 @@ index 6ec479ca2b..22b54ec510 100644
  void virt_acpi_setup(VirtMachineState *vms);
  bool virt_is_acpi_enabled(VirtMachineState *vms);
  
+diff --git a/target/arm/arm-qmp-cmds.c b/target/arm/arm-qmp-cmds.c
+index c8fa524002..3aa089abf3 100644
+--- a/target/arm/arm-qmp-cmds.c
++++ b/target/arm/arm-qmp-cmds.c
+@@ -231,6 +231,7 @@ CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
+ static void arm_cpu_add_definition(gpointer data, gpointer user_data)
+ {
+     ObjectClass *oc = data;
++    CPUClass *cc = CPU_CLASS(oc);
+     CpuDefinitionInfoList **cpu_list = user_data;
+     CpuDefinitionInfo *info;
+     const char *typename;
+@@ -240,6 +241,7 @@ static void arm_cpu_add_definition(gpointer data, gpointer user_data)
+     info->name = g_strndup(typename,
+                            strlen(typename) - strlen("-" TYPE_ARM_CPU));
+     info->q_typename = g_strdup(typename);
++    info->deprecated = !!cc->deprecation_note;
+ 
+     QAPI_LIST_PREPEND(*cpu_list, info);
+ }
 diff --git a/target/arm/cpu-qom.h b/target/arm/cpu-qom.h
-index 64c44cef2d..82e97249bc 100644
+index 514c22ced9..f789173451 100644
 --- a/target/arm/cpu-qom.h
 +++ b/target/arm/cpu-qom.h
 @@ -35,6 +35,7 @@ typedef struct ARMCPUInfo {
@@ -420,10 +476,10 @@ index 64c44cef2d..82e97249bc 100644
  
  void arm_cpu_register(const ARMCPUInfo *info);
 diff --git a/target/arm/cpu.c b/target/arm/cpu.c
-index 38d066c294..a845814bfb 100644
+index 5182ed0c91..6740a8b940 100644
 --- a/target/arm/cpu.c
 +++ b/target/arm/cpu.c
-@@ -2250,8 +2250,13 @@ static void arm_cpu_instance_init(Object *obj)
+@@ -2290,8 +2290,13 @@ static void arm_cpu_instance_init(Object *obj)
  static void cpu_register_class_init(ObjectClass *oc, void *data)
  {
      ARMCPUClass *acc = ARM_CPU_CLASS(oc);
@@ -438,7 +494,7 @@ index 38d066c294..a845814bfb 100644
  
  void arm_cpu_register(const ARMCPUInfo *info)
 diff --git a/target/arm/cpu.h b/target/arm/cpu.h
-index 9aeed3c848..f9f504d89e 100644
+index c097cae988..829d4a2328 100644
 --- a/target/arm/cpu.h
 +++ b/target/arm/cpu.h
 @@ -34,6 +34,8 @@
@@ -451,10 +507,10 @@ index 9aeed3c848..f9f504d89e 100644
  #define EXCP_SWI             2   /* software interrupt */
  #define EXCP_PREFETCH_ABORT  3
 diff --git a/target/arm/cpu64.c b/target/arm/cpu64.c
-index 3d74f134f5..4b330a52b5 100644
+index 0fb07cc7b6..47459627fb 100644
 --- a/target/arm/cpu64.c
 +++ b/target/arm/cpu64.c
-@@ -36,6 +36,7 @@
+@@ -31,6 +31,7 @@
  #include "hw/qdev-properties.h"
  #include "internals.h"
  
@@ -462,7 +518,7 @@ index 3d74f134f5..4b330a52b5 100644
  static void aarch64_a35_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -115,6 +116,7 @@ static void aarch64_a35_initfn(Object *obj)
+@@ -110,6 +111,7 @@ static void aarch64_a35_initfn(Object *obj)
      /* These values are the same with A53/A57/A72. */
      define_cortex_a72_a57_a53_cp_reginfo(cpu);
  }
@@ -470,7 +526,7 @@ index 3d74f134f5..4b330a52b5 100644
  
  void arm_cpu_sve_finalize(ARMCPU *cpu, Error **errp)
  {
-@@ -735,6 +737,7 @@ static void aarch64_a57_initfn(Object *obj)
+@@ -730,6 +732,7 @@ static void aarch64_a57_initfn(Object *obj)
      define_cortex_a72_a57_a53_cp_reginfo(cpu);
  }
  
@@ -478,15 +534,15 @@ index 3d74f134f5..4b330a52b5 100644
  static void aarch64_a53_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -1033,6 +1036,7 @@ static void aarch64_neoverse_n1_initfn(Object *obj)
-     /* From D5.1 AArch64 PMU register summary */
-     cpu->isar.reset_pmcr_el0 = 0x410c3000;
+@@ -1164,6 +1167,7 @@ static void aarch64_neoverse_n1_initfn(Object *obj)
+ 
+     define_neoverse_n1_cp_reginfo(cpu);
  }
 +#endif /* disabled for RHEL */
  
  static void aarch64_host_initfn(Object *obj)
  {
-@@ -1240,13 +1244,18 @@ static void aarch64_max_initfn(Object *obj)
+@@ -1373,14 +1377,19 @@ static void aarch64_max_initfn(Object *obj)
  }
  
  static const ARMCPUInfo aarch64_cpus[] = {
@@ -498,6 +554,7 @@ index 3d74f134f5..4b330a52b5 100644
 +      .deprecation_note = RHEL_CPU_DEPRECATION },
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
      { .name = "cortex-a53",         .initfn = aarch64_a53_initfn },
+     { .name = "cortex-a55",         .initfn = aarch64_a55_initfn },
      { .name = "cortex-a72",         .initfn = aarch64_a72_initfn },
      { .name = "cortex-a76",         .initfn = aarch64_a76_initfn },
      { .name = "a64fx",              .initfn = aarch64_a64fx_initfn },
@@ -506,7 +563,7 @@ index 3d74f134f5..4b330a52b5 100644
      { .name = "max",                .initfn = aarch64_max_initfn },
  #if defined(CONFIG_KVM) || defined(CONFIG_HVF)
      { .name = "host",               .initfn = aarch64_host_initfn },
-@@ -1318,8 +1327,13 @@ static void aarch64_cpu_instance_init(Object *obj)
+@@ -1452,8 +1461,13 @@ static void aarch64_cpu_instance_init(Object *obj)
  static void cpu_register_class_init(ObjectClass *oc, void *data)
  {
      ARMCPUClass *acc = ARM_CPU_CLASS(oc);
@@ -521,10 +578,10 @@ index 3d74f134f5..4b330a52b5 100644
  
  void aarch64_cpu_register(const ARMCPUInfo *info)
 diff --git a/target/arm/cpu_tcg.c b/target/arm/cpu_tcg.c
-index a528ff9a3d..053f70e399 100644
+index c154a4dcf2..f29425b656 100644
 --- a/target/arm/cpu_tcg.c
 +++ b/target/arm/cpu_tcg.c
-@@ -148,10 +148,10 @@ void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu)
+@@ -152,10 +152,10 @@ void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu)
  }
  #endif /* !CONFIG_USER_ONLY */
  
@@ -536,7 +593,7 @@ index a528ff9a3d..053f70e399 100644
  #if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TCG)
  static bool arm_v7m_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
  {
-@@ -505,7 +505,6 @@ static void cortex_a9_initfn(Object *obj)
+@@ -509,7 +509,6 @@ static void cortex_a9_initfn(Object *obj)
      cpu->isar.reset_pmcr_el0 = 0x41093000;
      define_arm_cp_regs(cpu, cortexa9_cp_reginfo);
  }
@@ -544,7 +601,7 @@ index a528ff9a3d..053f70e399 100644
  
  #ifndef CONFIG_USER_ONLY
  static uint64_t a15_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
-@@ -530,7 +529,6 @@ static const ARMCPRegInfo cortexa15_cp_reginfo[] = {
+@@ -534,7 +533,6 @@ static const ARMCPRegInfo cortexa15_cp_reginfo[] = {
        .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
  };
  
@@ -552,7 +609,7 @@ index a528ff9a3d..053f70e399 100644
  static void cortex_a7_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -579,7 +577,6 @@ static void cortex_a7_initfn(Object *obj)
+@@ -583,7 +581,6 @@ static void cortex_a7_initfn(Object *obj)
      cpu->isar.reset_pmcr_el0 = 0x41072000;
      define_arm_cp_regs(cpu, cortexa15_cp_reginfo); /* Same as A15 */
  }
@@ -560,7 +617,7 @@ index a528ff9a3d..053f70e399 100644
  
  static void cortex_a15_initfn(Object *obj)
  {
-@@ -628,7 +625,6 @@ static void cortex_a15_initfn(Object *obj)
+@@ -632,7 +629,6 @@ static void cortex_a15_initfn(Object *obj)
      define_arm_cp_regs(cpu, cortexa15_cp_reginfo);
  }
  
@@ -568,7 +625,7 @@ index a528ff9a3d..053f70e399 100644
  static void cortex_m0_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -1070,7 +1066,6 @@ static void arm_v7m_class_init(ObjectClass *oc, void *data)
+@@ -1115,7 +1111,6 @@ static void arm_v7m_class_init(ObjectClass *oc, void *data)
  
      cc->gdb_core_xml_file = "arm-m-profile.xml";
  }
@@ -576,7 +633,7 @@ index a528ff9a3d..053f70e399 100644
  
  #ifndef TARGET_AARCH64
  /*
-@@ -1138,7 +1133,6 @@ static void arm_max_initfn(Object *obj)
+@@ -1183,7 +1178,6 @@ static void arm_max_initfn(Object *obj)
  #endif /* !TARGET_AARCH64 */
  
  static const ARMCPUInfo arm_tcg_cpus[] = {
@@ -584,7 +641,7 @@ index a528ff9a3d..053f70e399 100644
      { .name = "arm926",      .initfn = arm926_initfn },
      { .name = "arm946",      .initfn = arm946_initfn },
      { .name = "arm1026",     .initfn = arm1026_initfn },
-@@ -1154,9 +1148,7 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
+@@ -1199,9 +1193,7 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
      { .name = "cortex-a7",   .initfn = cortex_a7_initfn },
      { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
      { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
@@ -594,7 +651,7 @@ index a528ff9a3d..053f70e399 100644
      { .name = "cortex-m0",   .initfn = cortex_m0_initfn,
                               .class_init = arm_v7m_class_init },
      { .name = "cortex-m3",   .initfn = cortex_m3_initfn,
-@@ -1187,7 +1179,6 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
+@@ -1233,7 +1225,6 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
      { .name = "pxa270-b1",   .initfn = pxa270b1_initfn },
      { .name = "pxa270-c0",   .initfn = pxa270c0_initfn },
      { .name = "pxa270-c5",   .initfn = pxa270c5_initfn },
@@ -602,36 +659,16 @@ index a528ff9a3d..053f70e399 100644
  #ifndef TARGET_AARCH64
      { .name = "max",         .initfn = arm_max_initfn },
  #endif
-@@ -1215,3 +1206,4 @@ static void arm_tcg_cpu_register_types(void)
+@@ -1261,3 +1252,4 @@ static void arm_tcg_cpu_register_types(void)
  type_init(arm_tcg_cpu_register_types)
  
  #endif /* !CONFIG_USER_ONLY || !TARGET_AARCH64 */
 +#endif /* disabled for RHEL */
-diff --git a/target/arm/helper.c b/target/arm/helper.c
-index d8c8223ec3..ad9d235773 100644
---- a/target/arm/helper.c
-+++ b/target/arm/helper.c
-@@ -8476,6 +8476,7 @@ void arm_cpu_list(void)
- static void arm_cpu_add_definition(gpointer data, gpointer user_data)
- {
-     ObjectClass *oc = data;
-+    CPUClass *cc = CPU_CLASS(oc);
-     CpuDefinitionInfoList **cpu_list = user_data;
-     CpuDefinitionInfo *info;
-     const char *typename;
-@@ -8485,6 +8486,7 @@ static void arm_cpu_add_definition(gpointer data, gpointer user_data)
-     info->name = g_strndup(typename,
-                            strlen(typename) - strlen("-" TYPE_ARM_CPU));
-     info->q_typename = g_strdup(typename);
-+    info->deprecated = !!cc->deprecation_note;
- 
-     QAPI_LIST_PREPEND(*cpu_list, info);
- }
 diff --git a/tests/qtest/arm-cpu-features.c b/tests/qtest/arm-cpu-features.c
-index 5a14527386..a3579fc303 100644
+index 1cb08138ad..834497dfec 100644
 --- a/tests/qtest/arm-cpu-features.c
 +++ b/tests/qtest/arm-cpu-features.c
-@@ -440,8 +440,10 @@ static void test_query_cpu_model_expansion(const void *data)
+@@ -441,8 +441,10 @@ static void test_query_cpu_model_expansion(const void *data)
      assert_error(qts, "host", "The CPU type 'host' requires KVM", NULL);
  
      /* Test expected feature presence/absence for some cpu types */
@@ -642,7 +679,7 @@ index 5a14527386..a3579fc303 100644
  
      /* Enabling and disabling pmu should always work. */
      assert_has_feature_enabled(qts, "max", "pmu");
-@@ -458,6 +460,7 @@ static void test_query_cpu_model_expansion(const void *data)
+@@ -459,6 +461,7 @@ static void test_query_cpu_model_expansion(const void *data)
          assert_has_feature_enabled(qts, "cortex-a57", "pmu");
          assert_has_feature_enabled(qts, "cortex-a57", "aarch64");
  
@@ -650,7 +687,7 @@ index 5a14527386..a3579fc303 100644
          assert_has_feature_enabled(qts, "a64fx", "pmu");
          assert_has_feature_enabled(qts, "a64fx", "aarch64");
          /*
-@@ -470,6 +473,7 @@ static void test_query_cpu_model_expansion(const void *data)
+@@ -471,6 +474,7 @@ static void test_query_cpu_model_expansion(const void *data)
                       "{ 'sve384': true }");
          assert_error(qts, "a64fx", "cannot enable sve640",
                       "{ 'sve640': true }");
@@ -658,7 +695,7 @@ index 5a14527386..a3579fc303 100644
  
          sve_tests_default(qts, "max");
          pauth_tests_default(qts, "max");
-@@ -505,9 +509,11 @@ static void test_query_cpu_model_expansion_kvm(const void *data)
+@@ -506,9 +510,11 @@ static void test_query_cpu_model_expansion_kvm(const void *data)
          QDict *resp;
          char *error;
  
@@ -671,5 +708,5 @@ index 5a14527386..a3579fc303 100644
          assert_has_feature_enabled(qts, "host", "aarch64");
  
 -- 
-2.31.1
+2.39.1
 

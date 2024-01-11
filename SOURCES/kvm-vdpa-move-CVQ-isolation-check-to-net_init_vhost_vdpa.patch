@@ -1,0 +1,286 @@
+From 1609e47511c9a02b26e0023ff6e1e999d7cdf179 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 26 May 2023 17:31:43 +0200
+Subject: [PATCH 2/7] vdpa: move CVQ isolation check to net_init_vhost_vdpa
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [2/7] caed8f81c3e30e6147817e7f43225aa3ee90ff37 (eperezmartin/qemu-kvm)
+
+Evaluating it at start time instead of initialization time may make the
+guest capable of dynamically adding or removing migration blockers.
+
+Also, moving to initialization reduces the number of ioctls in the
+migration, reducing failure possibilities.
+
+As a drawback we need to check for CVQ isolation twice: one time with no
+MQ negotiated and another one acking it, as long as the device supports
+it.  This is because Vring ASID / group management is based on vq
+indexes, but we don't know the index of CVQ before negotiating MQ.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20230526153143.470745-3-eperezma@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+---
+ net/vhost-vdpa.c | 155 ++++++++++++++++++++++++++++++++++-------------
+ 1 file changed, 112 insertions(+), 43 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 801d4e0422..ce17e4416a 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -43,6 +43,10 @@ typedef struct VhostVDPAState {
+ 
+     /* The device always have SVQ enabled */
+     bool always_svq;
++
++    /* The device can isolate CVQ in its own ASID */
++    bool cvq_isolated;
++
+     bool started;
+ } VhostVDPAState;
+ 
+@@ -369,15 +373,8 @@ static NetClientInfo net_vhost_vdpa_info = {
+         .check_peer_type = vhost_vdpa_check_peer_type,
+ };
+ 
+-/**
+- * Get vring virtqueue group
+- *
+- * @device_fd  vdpa device fd
+- * @vq_index   Virtqueue index
+- *
+- * Return -errno in case of error, or vq group if success.
+- */
+-static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index)
++static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index,
++                                          Error **errp)
+ {
+     struct vhost_vring_state state = {
+         .index = vq_index,
+@@ -386,8 +383,7 @@ static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index)
+ 
+     if (unlikely(r < 0)) {
+         r = -errno;
+-        error_report("Cannot get VQ %u group: %s", vq_index,
+-                     g_strerror(errno));
++        error_setg_errno(errp, errno, "Cannot get VQ %u group", vq_index);
+         return r;
+     }
+ 
+@@ -487,9 +483,9 @@ static int vhost_vdpa_net_cvq_start(NetClientState *nc)
+ {
+     VhostVDPAState *s, *s0;
+     struct vhost_vdpa *v;
+-    uint64_t backend_features;
+     int64_t cvq_group;
+-    int cvq_index, r;
++    int r;
++    Error *err = NULL;
+ 
+     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
+ 
+@@ -509,41 +505,22 @@ static int vhost_vdpa_net_cvq_start(NetClientState *nc)
+     /*
+      * If we early return in these cases SVQ will not be enabled. The migration
+      * will be blocked as long as vhost-vdpa backends will not offer _F_LOG.
+-     *
+-     * Calling VHOST_GET_BACKEND_FEATURES as they are not available in v->dev
+-     * yet.
+      */
+-    r = ioctl(v->device_fd, VHOST_GET_BACKEND_FEATURES, &backend_features);
+-    if (unlikely(r < 0)) {
+-        error_report("Cannot get vdpa backend_features: %s(%d)",
+-            g_strerror(errno), errno);
+-        return -1;
++    if (!vhost_vdpa_net_valid_svq_features(v->dev->features, NULL)) {
++        return 0;
+     }
+-    if (!(backend_features & BIT_ULL(VHOST_BACKEND_F_IOTLB_ASID)) ||
+-        !vhost_vdpa_net_valid_svq_features(v->dev->features, NULL)) {
++
++    if (!s->cvq_isolated) {
+         return 0;
+     }
+ 
+-    /*
+-     * Check if all the virtqueues of the virtio device are in a different vq
+-     * than the last vq. VQ group of last group passed in cvq_group.
+-     */
+-    cvq_index = v->dev->vq_index_end - 1;
+-    cvq_group = vhost_vdpa_get_vring_group(v->device_fd, cvq_index);
++    cvq_group = vhost_vdpa_get_vring_group(v->device_fd,
++                                           v->dev->vq_index_end - 1,
++                                           &err);
+     if (unlikely(cvq_group < 0)) {
++        error_report_err(err);
+         return cvq_group;
+     }
+-    for (int i = 0; i < cvq_index; ++i) {
+-        int64_t group = vhost_vdpa_get_vring_group(v->device_fd, i);
+-
+-        if (unlikely(group < 0)) {
+-            return group;
+-        }
+-
+-        if (group == cvq_group) {
+-            return 0;
+-        }
+-    }
+ 
+     r = vhost_vdpa_set_address_space_id(v, cvq_group, VHOST_VDPA_NET_CVQ_ASID);
+     if (unlikely(r < 0)) {
+@@ -806,6 +783,87 @@ static const VhostShadowVirtqueueOps vhost_vdpa_net_svq_ops = {
+     .avail_handler = vhost_vdpa_net_handle_ctrl_avail,
+ };
+ 
++/**
++ * Probe if CVQ is isolated
++ *
++ * @device_fd         The vdpa device fd
++ * @features          Features offered by the device.
++ * @cvq_index         The control vq pair index
++ *
++ * Returns <0 in case of failure, 0 if false and 1 if true.
++ */
++static int vhost_vdpa_probe_cvq_isolation(int device_fd, uint64_t features,
++                                          int cvq_index, Error **errp)
++{
++    uint64_t backend_features;
++    int64_t cvq_group;
++    uint8_t status = VIRTIO_CONFIG_S_ACKNOWLEDGE |
++                     VIRTIO_CONFIG_S_DRIVER |
++                     VIRTIO_CONFIG_S_FEATURES_OK;
++    int r;
++
++    ERRP_GUARD();
++
++    r = ioctl(device_fd, VHOST_GET_BACKEND_FEATURES, &backend_features);
++    if (unlikely(r < 0)) {
++        error_setg_errno(errp, errno, "Cannot get vdpa backend_features");
++        return r;
++    }
++
++    if (!(backend_features & BIT_ULL(VHOST_BACKEND_F_IOTLB_ASID))) {
++        return 0;
++    }
++
++    r = ioctl(device_fd, VHOST_SET_FEATURES, &features);
++    if (unlikely(r)) {
++        error_setg_errno(errp, errno, "Cannot set features");
++    }
++
++    r = ioctl(device_fd, VHOST_VDPA_SET_STATUS, &status);
++    if (unlikely(r)) {
++        error_setg_errno(errp, -r, "Cannot set device features");
++        goto out;
++    }
++
++    cvq_group = vhost_vdpa_get_vring_group(device_fd, cvq_index, errp);
++    if (unlikely(cvq_group < 0)) {
++        if (cvq_group != -ENOTSUP) {
++            r = cvq_group;
++            goto out;
++        }
++
++        /*
++         * The kernel report VHOST_BACKEND_F_IOTLB_ASID if the vdpa frontend
++         * support ASID even if the parent driver does not.  The CVQ cannot be
++         * isolated in this case.
++         */
++        error_free(*errp);
++        *errp = NULL;
++        r = 0;
++        goto out;
++    }
++
++    for (int i = 0; i < cvq_index; ++i) {
++        int64_t group = vhost_vdpa_get_vring_group(device_fd, i, errp);
++        if (unlikely(group < 0)) {
++            r = group;
++            goto out;
++        }
++
++        if (group == (int64_t)cvq_group) {
++            r = 0;
++            goto out;
++        }
++    }
++
++    r = 1;
++
++out:
++    status = 0;
++    ioctl(device_fd, VHOST_VDPA_SET_STATUS, &status);
++    return r;
++}
++
+ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+                                        const char *device,
+                                        const char *name,
+@@ -815,16 +873,26 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+                                        bool is_datapath,
+                                        bool svq,
+                                        struct vhost_vdpa_iova_range iova_range,
+-                                       uint64_t features)
++                                       uint64_t features,
++                                       Error **errp)
+ {
+     NetClientState *nc = NULL;
+     VhostVDPAState *s;
+     int ret = 0;
+     assert(name);
++    int cvq_isolated;
++
+     if (is_datapath) {
+         nc = qemu_new_net_client(&net_vhost_vdpa_info, peer, device,
+                                  name);
+     } else {
++        cvq_isolated = vhost_vdpa_probe_cvq_isolation(vdpa_device_fd, features,
++                                                      queue_pair_index * 2,
++                                                      errp);
++        if (unlikely(cvq_isolated < 0)) {
++            return NULL;
++        }
++
+         nc = qemu_new_net_control_client(&net_vhost_vdpa_cvq_info, peer,
+                                          device, name);
+     }
+@@ -851,6 +919,7 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+ 
+         s->vhost_vdpa.shadow_vq_ops = &vhost_vdpa_net_svq_ops;
+         s->vhost_vdpa.shadow_vq_ops_opaque = s;
++        s->cvq_isolated = cvq_isolated;
+ 
+         /*
+          * TODO: We cannot migrate devices with CVQ and no x-svq enabled as
+@@ -982,7 +1051,7 @@ int net_init_vhost_vdpa(const Netdev *netdev, const char *name,
+     for (i = 0; i < queue_pairs; i++) {
+         ncs[i] = net_vhost_vdpa_init(peer, TYPE_VHOST_VDPA, name,
+                                      vdpa_device_fd, i, 2, true, opts->x_svq,
+-                                     iova_range, features);
++                                     iova_range, features, errp);
+         if (!ncs[i])
+             goto err;
+     }
+@@ -990,7 +1059,7 @@ int net_init_vhost_vdpa(const Netdev *netdev, const char *name,
+     if (has_cvq) {
+         nc = net_vhost_vdpa_init(peer, TYPE_VHOST_VDPA, name,
+                                  vdpa_device_fd, i, 1, false,
+-                                 opts->x_svq, iova_range, features);
++                                 opts->x_svq, iova_range, features, errp);
+         if (!nc)
+             goto err;
+     }
+-- 
+2.39.3
+

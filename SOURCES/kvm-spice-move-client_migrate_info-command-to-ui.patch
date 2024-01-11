@@ -1,0 +1,248 @@
+From 00f6e941e75f378c84c773a15efde7dd085d9ce3 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 19:40:14 +0100
+Subject: [PATCH 21/56] spice: move client_migrate_info command to ui/
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [20/50] a587bb001b51a1f9fdf2fcfb0978bb931ae443b6 (peterx/qemu-kvm)
+
+It has nothing to do with migration, except for the "migrate" in the
+name of the command.  Move it with the rest of the ui commands.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit f9e1ef7482f1ee289b04f4b45702a1701bc8929d)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration-hmp-cmds.c | 17 -----------------
+ migration/migration.c          | 30 ------------------------------
+ qapi/migration.json            | 28 ----------------------------
+ qapi/ui.json                   | 28 ++++++++++++++++++++++++++++
+ ui/ui-hmp-cmds.c               | 17 +++++++++++++++++
+ ui/ui-qmp-cmds.c               | 29 +++++++++++++++++++++++++++++
+ 6 files changed, 74 insertions(+), 75 deletions(-)
+
+diff --git a/migration/migration-hmp-cmds.c b/migration/migration-hmp-cmds.c
+index 71da91967a..4e9f00e7dc 100644
+--- a/migration/migration-hmp-cmds.c
++++ b/migration/migration-hmp-cmds.c
+@@ -636,23 +636,6 @@ void hmp_migrate_set_parameter(Monitor *mon, const QDict *qdict)
+     hmp_handle_error(mon, err);
+ }
+ 
+-void hmp_client_migrate_info(Monitor *mon, const QDict *qdict)
+-{
+-    Error *err = NULL;
+-    const char *protocol = qdict_get_str(qdict, "protocol");
+-    const char *hostname = qdict_get_str(qdict, "hostname");
+-    bool has_port        = qdict_haskey(qdict, "port");
+-    int port             = qdict_get_try_int(qdict, "port", -1);
+-    bool has_tls_port    = qdict_haskey(qdict, "tls-port");
+-    int tls_port         = qdict_get_try_int(qdict, "tls-port", -1);
+-    const char *cert_subject = qdict_get_try_str(qdict, "cert-subject");
+-
+-    qmp_client_migrate_info(protocol, hostname,
+-                            has_port, port, has_tls_port, tls_port,
+-                            cert_subject, &err);
+-    hmp_handle_error(mon, err);
+-}
+-
+ void hmp_migrate_start_postcopy(Monitor *mon, const QDict *qdict)
+ {
+     Error *err = NULL;
+diff --git a/migration/migration.c b/migration/migration.c
+index aa96ffdc5b..b745d829a4 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -63,7 +63,6 @@
+ #include "sysemu/cpus.h"
+ #include "yank_functions.h"
+ #include "sysemu/qtest.h"
+-#include "ui/qemu-spice.h"
+ 
+ #define MAX_THROTTLE  (128 << 20)      /* Migration transfer speed throttling */
+ 
+@@ -1018,35 +1017,6 @@ MigrationParameters *qmp_query_migrate_parameters(Error **errp)
+     return params;
+ }
+ 
+-void qmp_client_migrate_info(const char *protocol, const char *hostname,
+-                             bool has_port, int64_t port,
+-                             bool has_tls_port, int64_t tls_port,
+-                             const char *cert_subject,
+-                             Error **errp)
+-{
+-    if (strcmp(protocol, "spice") == 0) {
+-        if (!qemu_using_spice(errp)) {
+-            return;
+-        }
+-
+-        if (!has_port && !has_tls_port) {
+-            error_setg(errp, QERR_MISSING_PARAMETER, "port/tls-port");
+-            return;
+-        }
+-
+-        if (qemu_spice.migrate_info(hostname,
+-                                    has_port ? port : -1,
+-                                    has_tls_port ? tls_port : -1,
+-                                    cert_subject)) {
+-            error_setg(errp, "Could not set up display for migration");
+-            return;
+-        }
+-        return;
+-    }
+-
+-    error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "protocol", "'spice'");
+-}
+-
+ AnnounceParameters *migrate_announce_params(void)
+ {
+     static AnnounceParameters ap;
+diff --git a/qapi/migration.json b/qapi/migration.json
+index c84fa10e86..2c35b7b9cf 100644
+--- a/qapi/migration.json
++++ b/qapi/migration.json
+@@ -1203,34 +1203,6 @@
+ { 'command': 'query-migrate-parameters',
+   'returns': 'MigrationParameters' }
+ 
+-##
+-# @client_migrate_info:
+-#
+-# Set migration information for remote display.  This makes the server
+-# ask the client to automatically reconnect using the new parameters
+-# once migration finished successfully.  Only implemented for SPICE.
+-#
+-# @protocol: must be "spice"
+-# @hostname: migration target hostname
+-# @port: spice tcp port for plaintext channels
+-# @tls-port: spice tcp port for tls-secured channels
+-# @cert-subject: server certificate subject
+-#
+-# Since: 0.14
+-#
+-# Example:
+-#
+-# -> { "execute": "client_migrate_info",
+-#      "arguments": { "protocol": "spice",
+-#                     "hostname": "virt42.lab.kraxel.org",
+-#                     "port": 1234 } }
+-# <- { "return": {} }
+-#
+-##
+-{ 'command': 'client_migrate_info',
+-  'data': { 'protocol': 'str', 'hostname': 'str', '*port': 'int',
+-            '*tls-port': 'int', '*cert-subject': 'str' } }
+-
+ ##
+ # @migrate-start-postcopy:
+ #
+diff --git a/qapi/ui.json b/qapi/ui.json
+index 98322342f7..7ddd27a932 100644
+--- a/qapi/ui.json
++++ b/qapi/ui.json
+@@ -1554,3 +1554,31 @@
+ { 'command': 'display-update',
+   'data': 'DisplayUpdateOptions',
+   'boxed' : true }
++
++##
++# @client_migrate_info:
++#
++# Set migration information for remote display.  This makes the server
++# ask the client to automatically reconnect using the new parameters
++# once migration finished successfully.  Only implemented for SPICE.
++#
++# @protocol: must be "spice"
++# @hostname: migration target hostname
++# @port: spice tcp port for plaintext channels
++# @tls-port: spice tcp port for tls-secured channels
++# @cert-subject: server certificate subject
++#
++# Since: 0.14
++#
++# Example:
++#
++# -> { "execute": "client_migrate_info",
++#      "arguments": { "protocol": "spice",
++#                     "hostname": "virt42.lab.kraxel.org",
++#                     "port": 1234 } }
++# <- { "return": {} }
++#
++##
++{ 'command': 'client_migrate_info',
++  'data': { 'protocol': 'str', 'hostname': 'str', '*port': 'int',
++            '*tls-port': 'int', '*cert-subject': 'str' } }
+diff --git a/ui/ui-hmp-cmds.c b/ui/ui-hmp-cmds.c
+index 5c456ecc02..c671389473 100644
+--- a/ui/ui-hmp-cmds.c
++++ b/ui/ui-hmp-cmds.c
+@@ -458,3 +458,20 @@ hmp_screendump(Monitor *mon, const QDict *qdict)
+ end:
+     hmp_handle_error(mon, err);
+ }
++
++void hmp_client_migrate_info(Monitor *mon, const QDict *qdict)
++{
++    Error *err = NULL;
++    const char *protocol = qdict_get_str(qdict, "protocol");
++    const char *hostname = qdict_get_str(qdict, "hostname");
++    bool has_port        = qdict_haskey(qdict, "port");
++    int port             = qdict_get_try_int(qdict, "port", -1);
++    bool has_tls_port    = qdict_haskey(qdict, "tls-port");
++    int tls_port         = qdict_get_try_int(qdict, "tls-port", -1);
++    const char *cert_subject = qdict_get_try_str(qdict, "cert-subject");
++
++    qmp_client_migrate_info(protocol, hostname,
++                            has_port, port, has_tls_port, tls_port,
++                            cert_subject, &err);
++    hmp_handle_error(mon, err);
++}
+diff --git a/ui/ui-qmp-cmds.c b/ui/ui-qmp-cmds.c
+index dbc4afcd73..a37a7024f3 100644
+--- a/ui/ui-qmp-cmds.c
++++ b/ui/ui-qmp-cmds.c
+@@ -175,3 +175,32 @@ void qmp_display_update(DisplayUpdateOptions *arg, Error **errp)
+         abort();
+     }
+ }
++
++void qmp_client_migrate_info(const char *protocol, const char *hostname,
++                             bool has_port, int64_t port,
++                             bool has_tls_port, int64_t tls_port,
++                             const char *cert_subject,
++                             Error **errp)
++{
++    if (strcmp(protocol, "spice") == 0) {
++        if (!qemu_using_spice(errp)) {
++            return;
++        }
++
++        if (!has_port && !has_tls_port) {
++            error_setg(errp, QERR_MISSING_PARAMETER, "port/tls-port");
++            return;
++        }
++
++        if (qemu_spice.migrate_info(hostname,
++                                    has_port ? port : -1,
++                                    has_tls_port ? tls_port : -1,
++                                    cert_subject)) {
++            error_setg(errp, "Could not set up display for migration");
++            return;
++        }
++        return;
++    }
++
++    error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "protocol", "'spice'");
++}
+-- 
+2.39.1
+

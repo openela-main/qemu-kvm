@@ -1,0 +1,52 @@
+From f9d982fae156aa9db0506e1e098c1e8a7f7eec94 Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Thu, 3 Aug 2023 14:29:15 -0400
+Subject: [PATCH 13/14] i386/cpu: Update how the EBX register of CPUID
+ 0x8000001F is set
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 196: Updates to SEV reduced-phys-bits parameter
+RH-Bugzilla: 2214839
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/4] efc368b2c844fd4fbc3c755a5e2da288329e7a2c (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214839
+
+commit fb6bbafc0f19385fb257ee073ed13dcaf613f2f8
+Author: Tom Lendacky <thomas.lendacky@amd.com>
+Date:   Fri Sep 30 10:14:30 2022 -0500
+
+    i386/cpu: Update how the EBX register of CPUID 0x8000001F is set
+
+    Update the setting of CPUID 0x8000001F EBX to clearly document the ranges
+    associated with fields being set.
+
+    Fixes: 6cb8f2a663 ("cpu/i386: populate CPUID 0x8000_001F when SEV is active")
+    Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+    Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+    Message-Id: <5822fd7d02b575121380e1f493a8f6d9eba2b11a.1664550870.git.thomas.lendacky@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/cpu.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 839706b430..4ac3046313 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -6008,8 +6008,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (sev_enabled()) {
+             *eax = 0x2;
+             *eax |= sev_es_enabled() ? 0x8 : 0;
+-            *ebx = sev_get_cbit_position();
+-            *ebx |= sev_get_reduced_phys_bits() << 6;
++            *ebx = sev_get_cbit_position() & 0x3f; /* EBX[5:0] */
++            *ebx |= (sev_get_reduced_phys_bits() & 0x3f) << 6; /* EBX[11:6] */
+         }
+         break;
+     default:
+-- 
+2.39.3
+

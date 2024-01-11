@@ -1,0 +1,151 @@
+From 08c8af80dbd03b46a6a8397ef0c41cda3e6de22c Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Wed, 5 Jul 2023 18:51:17 +0200
+Subject: [PATCH 01/37] virtio-iommu: Fix 64kB host page size VFIO device
+ assignment
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 182: VIRTIO-IOMMU/VFIO page size related fixes
+RH-Bugzilla: 2211609 2211634
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Sebastian Ott <None>
+RH-Commit: [1/2] b48db1c964559505dda4c6c9a3b79d68207b25eb (eauger1/centos-qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2211634
+
+When running on a 64kB page size host and protecting a VFIO device
+with the virtio-iommu, qemu crashes with this kind of message:
+
+qemu-kvm: virtio-iommu page mask 0xfffffffffffff000 is incompatible
+with mask 0x20010000
+qemu: hardware error: vfio: DMA mapping failed, unable to continue
+
+This is due to the fact the IOMMU MR corresponding to the VFIO device
+is enabled very late on domain attach, after the machine init.
+The device reports a minimal 64kB page size but it is too late to be
+applied. virtio_iommu_set_page_size_mask() fails and this causes
+vfio_listener_region_add() to end up with hw_error();
+
+To work around this issue, we transiently enable the IOMMU MR on
+machine init to collect the page size requirements and then restore
+the bypass state.
+
+Fixes: 90519b9053 ("virtio-iommu: Add bypass mode support to assigned device")
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+
+Message-Id: <20230705165118.28194-2-eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jean-Philippe Brucker <jean-philippe@linaro.org>
+Tested-by: Jean-Philippe Brucker <jean-philippe@linaro.org>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+(cherry picked from commit 94df5b2180d61fb2ee2b04cc007981e58b6479a9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/virtio/trace-events           |  1 +
+ hw/virtio/virtio-iommu.c         | 31 +++++++++++++++++++++++++++++--
+ include/hw/virtio/virtio-iommu.h |  2 ++
+ 3 files changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
+index 8f8d05cf9b..68b752e304 100644
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -131,6 +131,7 @@ virtio_iommu_set_page_size_mask(const char *name, uint64_t old, uint64_t new) "m
+ virtio_iommu_notify_flag_add(const char *name) "add notifier to mr %s"
+ virtio_iommu_notify_flag_del(const char *name) "del notifier from mr %s"
+ virtio_iommu_switch_address_space(uint8_t bus, uint8_t slot, uint8_t fn, bool on) "Device %02x:%02x.%x switching address space (iommu enabled=%d)"
++virtio_iommu_freeze_granule(uint64_t page_size_mask) "granule set to 0x%"PRIx64
+ 
+ # virtio-mem.c
+ virtio_mem_send_response(uint16_t type) "type=%" PRIu16
+diff --git a/hw/virtio/virtio-iommu.c b/hw/virtio/virtio-iommu.c
+index 1cd258135d..542679b321 100644
+--- a/hw/virtio/virtio-iommu.c
++++ b/hw/virtio/virtio-iommu.c
+@@ -24,6 +24,7 @@
+ #include "hw/virtio/virtio.h"
+ #include "sysemu/kvm.h"
+ #include "sysemu/reset.h"
++#include "sysemu/sysemu.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+ #include "trace.h"
+@@ -1106,12 +1107,12 @@ static int virtio_iommu_set_page_size_mask(IOMMUMemoryRegion *mr,
+     }
+ 
+     /*
+-     * After the machine is finalized, we can't change the mask anymore. If by
++     * Once the granule is frozen we can't change the mask anymore. If by
+      * chance the hotplugged device supports the same granule, we can still
+      * accept it. Having a different masks is possible but the guest will use
+      * sub-optimal block sizes, so warn about it.
+      */
+-    if (phase_check(PHASE_MACHINE_READY)) {
++    if (s->granule_frozen) {
+         int new_granule = ctz64(new_mask);
+         int cur_granule = ctz64(cur_mask);
+ 
+@@ -1146,6 +1147,28 @@ static void virtio_iommu_system_reset(void *opaque)
+ 
+ }
+ 
++static void virtio_iommu_freeze_granule(Notifier *notifier, void *data)
++{
++    VirtIOIOMMU *s = container_of(notifier, VirtIOIOMMU, machine_done);
++    int granule;
++
++    if (likely(s->config.bypass)) {
++        /*
++         * Transient IOMMU MR enable to collect page_size_mask requirements
++         * through memory_region_iommu_set_page_size_mask() called by
++         * VFIO region_add() callback
++         */
++         s->config.bypass = false;
++         virtio_iommu_switch_address_space_all(s);
++         /* restore default */
++         s->config.bypass = true;
++         virtio_iommu_switch_address_space_all(s);
++    }
++    s->granule_frozen = true;
++    granule = ctz64(s->config.page_size_mask);
++    trace_virtio_iommu_freeze_granule(BIT(granule));
++}
++
+ static void virtio_iommu_device_realize(DeviceState *dev, Error **errp)
+ {
+     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
+@@ -1189,6 +1212,9 @@ static void virtio_iommu_device_realize(DeviceState *dev, Error **errp)
+         error_setg(errp, "VIRTIO-IOMMU is not attached to any PCI bus!");
+     }
+ 
++    s->machine_done.notify = virtio_iommu_freeze_granule;
++    qemu_add_machine_init_done_notifier(&s->machine_done);
++
+     qemu_register_reset(virtio_iommu_system_reset, s);
+ }
+ 
+@@ -1198,6 +1224,7 @@ static void virtio_iommu_device_unrealize(DeviceState *dev)
+     VirtIOIOMMU *s = VIRTIO_IOMMU(dev);
+ 
+     qemu_unregister_reset(virtio_iommu_system_reset, s);
++    qemu_remove_machine_init_done_notifier(&s->machine_done);
+ 
+     g_hash_table_destroy(s->as_by_busptr);
+     if (s->domains) {
+diff --git a/include/hw/virtio/virtio-iommu.h b/include/hw/virtio/virtio-iommu.h
+index 2ad5ee320b..a93fc5383e 100644
+--- a/include/hw/virtio/virtio-iommu.h
++++ b/include/hw/virtio/virtio-iommu.h
+@@ -61,6 +61,8 @@ struct VirtIOIOMMU {
+     QemuRecMutex mutex;
+     GTree *endpoints;
+     bool boot_bypass;
++    Notifier machine_done;
++    bool granule_frozen;
+ };
+ 
+ #endif
+-- 
+2.39.3
+

@@ -1,0 +1,67 @@
+From 09583f39d51d16079c9fda32545d7a44b6f5c8c6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 26 May 2023 17:31:42 +0200
+Subject: [PATCH 1/7] vdpa: return errno in vhost_vdpa_get_vring_group error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [1/7] 89745b1828a1af535c40657022d385250688d11d (eperezmartin/qemu-kvm)
+
+We need to tell in the caller, as some errors are expected in a normal
+workflow.  In particular, parent drivers in recent kernels with
+VHOST_BACKEND_F_IOTLB_ASID may not support vring groups.  In that case,
+-ENOTSUP is returned.
+
+This is the case of vp_vdpa in Linux 6.2.
+
+Next patches in this series will use that information to know if it must
+abort or not.  Also, next patches return properly an errp instead of
+printing with error_report.
+
+Reviewed-by: Stefano Garzarella <sgarzare@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20230526153143.470745-2-eperezma@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+---
+ net/vhost-vdpa.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 1ae839da34..801d4e0422 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -369,6 +369,14 @@ static NetClientInfo net_vhost_vdpa_info = {
+         .check_peer_type = vhost_vdpa_check_peer_type,
+ };
+ 
++/**
++ * Get vring virtqueue group
++ *
++ * @device_fd  vdpa device fd
++ * @vq_index   Virtqueue index
++ *
++ * Return -errno in case of error, or vq group if success.
++ */
+ static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index)
+ {
+     struct vhost_vring_state state = {
+@@ -377,6 +385,7 @@ static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index)
+     int r = ioctl(device_fd, VHOST_VDPA_GET_VRING_GROUP, &state);
+ 
+     if (unlikely(r < 0)) {
++        r = -errno;
+         error_report("Cannot get VQ %u group: %s", vq_index,
+                      g_strerror(errno));
+         return r;
+-- 
+2.39.3
+

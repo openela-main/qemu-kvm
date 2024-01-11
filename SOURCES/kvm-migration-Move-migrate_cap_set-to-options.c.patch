@@ -1,0 +1,110 @@
+From 9c4f8d869f5bbdd07381f6baad2ed755b07d03f4 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 23:25:44 +0100
+Subject: [PATCH 36/56] migration: Move migrate_cap_set() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [35/50] d0cd6b8e9cf0534a56795d94c3da18622fa10ad7 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit f80196b772ddeeb07d3d80d5c8382cb5d1063fa2)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 20 --------------------
+ migration/options.c   | 21 +++++++++++++++++++++
+ migration/options.h   |  1 +
+ 3 files changed, 22 insertions(+), 20 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 369cd91796..880a51210e 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1666,26 +1666,6 @@ void migrate_set_state(int *state, int old_state, int new_state)
+     }
+ }
+ 
+-static bool migrate_cap_set(int cap, bool value, Error **errp)
+-{
+-    MigrationState *s = migrate_get_current();
+-    bool new_caps[MIGRATION_CAPABILITY__MAX];
+-
+-    if (migration_is_running(s->state)) {
+-        error_setg(errp, QERR_MIGRATION_ACTIVE);
+-        return false;
+-    }
+-
+-    memcpy(new_caps, s->capabilities, sizeof(new_caps));
+-    new_caps[cap] = value;
+-
+-    if (!migrate_caps_check(s->capabilities, new_caps, errp)) {
+-        return false;
+-    }
+-    s->capabilities[cap] = value;
+-    return true;
+-}
+-
+ static void migrate_set_block_incremental(MigrationState *s, bool value)
+ {
+     s->parameters.block_incremental = value;
+diff --git a/migration/options.c b/migration/options.c
+index 4cbe77e35a..f3b2d6e482 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -14,6 +14,7 @@
+ #include "qemu/osdep.h"
+ #include "qapi/error.h"
+ #include "qapi/qapi-commands-migration.h"
++#include "qapi/qmp/qerror.h"
+ #include "sysemu/runstate.h"
+ #include "migration.h"
+ #include "ram.h"
+@@ -392,6 +393,26 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
+     return true;
+ }
+ 
++bool migrate_cap_set(int cap, bool value, Error **errp)
++{
++    MigrationState *s = migrate_get_current();
++    bool new_caps[MIGRATION_CAPABILITY__MAX];
++
++    if (migration_is_running(s->state)) {
++        error_setg(errp, QERR_MIGRATION_ACTIVE);
++        return false;
++    }
++
++    memcpy(new_caps, s->capabilities, sizeof(new_caps));
++    new_caps[cap] = value;
++
++    if (!migrate_caps_check(s->capabilities, new_caps, errp)) {
++        return false;
++    }
++    s->capabilities[cap] = value;
++    return true;
++}
++
+ MigrationCapabilityStatusList *qmp_query_migrate_capabilities(Error **errp)
+ {
+     MigrationCapabilityStatusList *head = NULL, **tail = &head;
+diff --git a/migration/options.h b/migration/options.h
+index e779f14161..5979e4ff90 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -41,5 +41,6 @@ bool migrate_zero_copy_send(void);
+ /* capabilities helpers */
+ 
+ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp);
++bool migrate_cap_set(int cap, bool value, Error **errp);
+ 
+ #endif
+-- 
+2.39.1
+

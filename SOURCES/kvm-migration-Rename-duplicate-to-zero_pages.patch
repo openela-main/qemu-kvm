@@ -1,0 +1,109 @@
+From 3cecf66655a0dd599666bcac8add2dee85d5651f Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 19 Apr 2023 18:16:05 +0200
+Subject: [PATCH 16/56] migration: Rename duplicate to zero_pages
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [15/50] 89db3c8b167c0f411ba95ce2730540c0e8f1206b (peterx/qemu-kvm)
+
+Rest of counters that refer to pages has a _pages suffix.
+And historically, this showed the number of pages composed of the same
+character, here comes the name "duplicated".  But since years ago, it
+refers to the number of zero_pages.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 1a386e8de5995fb5478ea99baa6d3e71abcf4b80)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c |  2 +-
+ migration/ram.c       | 10 +++++-----
+ migration/ram.h       |  2 +-
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 39501a0ed8..c15e2a61ca 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1142,7 +1142,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram = g_malloc0(sizeof(*info->ram));
+     info->ram->transferred = stat64_get(&ram_counters.transferred);
+     info->ram->total = ram_bytes_total();
+-    info->ram->duplicate = stat64_get(&ram_counters.duplicate);
++    info->ram->duplicate = stat64_get(&ram_counters.zero_pages);
+     /* legacy value.  It is not used anymore */
+     info->ram->skipped = 0;
+     info->ram->normal = stat64_get(&ram_counters.normal);
+diff --git a/migration/ram.c b/migration/ram.c
+index fe69ecaef4..19d345a030 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -1119,7 +1119,7 @@ uint64_t ram_pagesize_summary(void)
+ uint64_t ram_get_total_transferred_pages(void)
+ {
+     return stat64_get(&ram_counters.normal) +
+-        stat64_get(&ram_counters.duplicate) +
++        stat64_get(&ram_counters.zero_pages) +
+         compression_counters.pages + xbzrle_counters.pages;
+ }
+ 
+@@ -1320,7 +1320,7 @@ static int save_zero_page(PageSearchStatus *pss, QEMUFile *f, RAMBlock *block,
+     int len = save_zero_page_to_file(pss, f, block, offset);
+ 
+     if (len) {
+-        stat64_add(&ram_counters.duplicate, 1);
++        stat64_add(&ram_counters.zero_pages, 1);
+         ram_transferred_add(len);
+         return 1;
+     }
+@@ -1359,7 +1359,7 @@ static bool control_save_page(PageSearchStatus *pss, RAMBlock *block,
+     if (bytes_xmit > 0) {
+         stat64_add(&ram_counters.normal, 1);
+     } else if (bytes_xmit == 0) {
+-        stat64_add(&ram_counters.duplicate, 1);
++        stat64_add(&ram_counters.zero_pages, 1);
+     }
+ 
+     return true;
+@@ -1486,7 +1486,7 @@ update_compress_thread_counts(const CompressParam *param, int bytes_xmit)
+     ram_transferred_add(bytes_xmit);
+ 
+     if (param->zero_page) {
+-        stat64_add(&ram_counters.duplicate, 1);
++        stat64_add(&ram_counters.zero_pages, 1);
+         return;
+     }
+ 
+@@ -2621,7 +2621,7 @@ void acct_update_position(QEMUFile *f, size_t size, bool zero)
+     uint64_t pages = size / TARGET_PAGE_SIZE;
+ 
+     if (zero) {
+-        stat64_add(&ram_counters.duplicate, pages);
++        stat64_add(&ram_counters.zero_pages, pages);
+     } else {
+         stat64_add(&ram_counters.normal, pages);
+         ram_transferred_add(size);
+diff --git a/migration/ram.h b/migration/ram.h
+index afa68521d7..55258334fe 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -45,7 +45,7 @@ typedef struct {
+     Stat64 dirty_sync_count;
+     Stat64 dirty_sync_missed_zero_copy;
+     Stat64 downtime_bytes;
+-    Stat64 duplicate;
++    Stat64 zero_pages;
+     Stat64 multifd_bytes;
+     Stat64 normal;
+     Stat64 postcopy_bytes;
+-- 
+2.39.1
+

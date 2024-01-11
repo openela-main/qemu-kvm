@@ -1,4 +1,4 @@
-From 0208f38671b9de4036c0d56142a7f22e5091bae0 Mon Sep 17 00:00:00 2001
+From c13f8e21b32aa06b08847e88080f2fdea5084a9b Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 11 Jan 2019 09:54:45 +0100
 Subject: Machine type related general changes
@@ -46,28 +46,33 @@ Merged patches (7.1.0 rc0):
 
 Merged patches (7.2.0 rc0):
 - 0be2889fa2 Introduce upstream 7.0 compat changes (only applicable parts)
+
+Merged patches (8.0.0-rc1):
+- 21ed34787b Addd 7.2 compat bits for RHEL 9.1 machine type
+- e5c8d5d603 virtio-rng-pci: fix migration compat for vectors
+- 5a5fa77059 virtio-rng-pci: fix transitional migration compat for vectors
 ---
  hw/acpi/piix4.c              |   2 +-
  hw/arm/virt.c                |   2 +-
- hw/core/machine.c            | 222 +++++++++++++++++++++++++++++++++++
+ hw/core/machine.c            | 229 +++++++++++++++++++++++++++++++++++
  hw/display/vga-isa.c         |   2 +-
  hw/i386/pc_piix.c            |   2 +
  hw/i386/pc_q35.c             |   2 +
  hw/net/rtl8139.c             |   4 +-
- hw/smbios/smbios.c           |  46 +++++++-
+ hw/smbios/smbios.c           |  46 ++++++-
  hw/timer/i8254_common.c      |   2 +-
- hw/usb/hcd-xhci-pci.c        |  59 +++++++---
+ hw/usb/hcd-xhci-pci.c        |  59 ++++++---
  hw/usb/hcd-xhci-pci.h        |   1 +
  include/hw/boards.h          |  31 +++++
  include/hw/firmware/smbios.h |   5 +-
  include/hw/i386/pc.h         |   3 +
- 14 files changed, 360 insertions(+), 23 deletions(-)
+ 14 files changed, 367 insertions(+), 23 deletions(-)
 
 diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
-index 0a81f1ad93..dbfb362a8f 100644
+index 63d2113b86..a24b9aac92 100644
 --- a/hw/acpi/piix4.c
 +++ b/hw/acpi/piix4.c
-@@ -248,7 +248,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
+@@ -247,7 +247,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
  static const VMStateDescription vmstate_acpi = {
      .name = "piix4_pm",
      .version_id = 3,
@@ -77,25 +82,25 @@ index 0a81f1ad93..dbfb362a8f 100644
      .fields = (VMStateField[]) {
          VMSTATE_PCI_DEVICE(parent_obj, PIIX4PMState),
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index b871350856..d633300fdc 100644
+index ac626b3bef..4a6e89c7bc 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -1619,7 +1619,7 @@ static void virt_build_smbios(VirtMachineState *vms)
+@@ -1629,7 +1629,7 @@ static void virt_build_smbios(VirtMachineState *vms)
  
      smbios_set_defaults("QEMU", product,
                          vmc->smbios_old_sys_ver ? "1.0" : mc->name, false,
 -                        true, SMBIOS_ENTRY_POINT_TYPE_64);
 +                        true, NULL, NULL, SMBIOS_ENTRY_POINT_TYPE_64);
  
-     smbios_get_tables(MACHINE(vms), NULL, 0,
-                       &smbios_tables, &smbios_tables_len,
+     /* build the array of physical mem area from base_memmap */
+     mem_array.address = vms->memmap[VIRT_MEM].base;
 diff --git a/hw/core/machine.c b/hw/core/machine.c
-index 8d34caa31d..9edec1ca05 100644
+index cd13b8b0a3..5aa567fad3 100644
 --- a/hw/core/machine.c
 +++ b/hw/core/machine.c
-@@ -40,6 +40,228 @@
- #include "hw/virtio/virtio-pci.h"
- #include "qom/object_interfaces.h"
+@@ -46,6 +46,235 @@ GlobalProperty hw_compat_7_2[] = {
+ };
+ const size_t hw_compat_7_2_len = G_N_ELEMENTS(hw_compat_7_2);
  
 +/*
 + * RHEL only: machine types for previous major releases are deprecated
@@ -111,6 +116,13 @@ index 8d34caa31d..9edec1ca05 100644
 +  { "arm-gicv3-common", "force-8-bit-prio", "on" },
 +  /* hw_compat_rhel_9_1 from hw_compat_7_0 */
 +  { "nvme-ns", "eui64-default", "on"},
++  /* hw_compat_rhel_9_1 from hw_compat_7_1 */
++  { "virtio-device", "queue_reset", "false" },
++  /* hw_compat_rhel_9_1 bz 2155749 */
++  { "virtio-rng-pci", "vectors", "0" },
++  /* hw_compat_rhel_9_1 bz 2162569 */
++  { "virtio-rng-pci-transitional", "vectors", "0" },
++  { "virtio-rng-pci-non-transitional", "vectors", "0" },
 +};
 +const size_t hw_compat_rhel_9_1_len = G_N_ELEMENTS(hw_compat_rhel_9_1);
 +
@@ -321,7 +333,7 @@ index 8d34caa31d..9edec1ca05 100644
 +
  GlobalProperty hw_compat_7_1[] = {
      { "virtio-device", "queue_reset", "false" },
- };
+     { "virtio-rng-pci", "vectors", "0" },
 diff --git a/hw/display/vga-isa.c b/hw/display/vga-isa.c
 index 2a5437d803..0db2c2b2a1 100644
 --- a/hw/display/vga-isa.c
@@ -336,10 +348,10 @@ index 2a5437d803..0db2c2b2a1 100644
  };
  
 diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index 0ad0ed1603..0985ff67d2 100644
+index 30eedd62a3..14a794081e 100644
 --- a/hw/i386/pc_piix.c
 +++ b/hw/i386/pc_piix.c
-@@ -187,6 +187,8 @@ static void pc_init1(MachineState *machine,
+@@ -201,6 +201,8 @@ static void pc_init1(MachineState *machine,
          smbios_set_defaults("QEMU", "Standard PC (i440FX + PIIX, 1996)",
                              mc->name, pcmc->smbios_legacy_mode,
                              pcmc->smbios_uuid_encoded,
@@ -349,10 +361,10 @@ index 0ad0ed1603..0985ff67d2 100644
      }
  
 diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index a496bd6e74..ea582254e3 100644
+index 797ba347fd..dc0ba5f9e7 100644
 --- a/hw/i386/pc_q35.c
 +++ b/hw/i386/pc_q35.c
-@@ -201,6 +201,8 @@ static void pc_q35_init(MachineState *machine)
+@@ -202,6 +202,8 @@ static void pc_q35_init(MachineState *machine)
          smbios_set_defaults("QEMU", "Standard PC (Q35 + ICH9, 2009)",
                              mc->name, pcmc->smbios_legacy_mode,
                              pcmc->smbios_uuid_encoded,
@@ -362,7 +374,7 @@ index a496bd6e74..ea582254e3 100644
      }
  
 diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
-index 700b1b66b6..13693aeb4f 100644
+index 5a5aaf868d..3d473d5869 100644
 --- a/hw/net/rtl8139.c
 +++ b/hw/net/rtl8139.c
 @@ -3178,7 +3178,7 @@ static int rtl8139_pre_save(void *opaque)
@@ -385,10 +397,10 @@ index 700b1b66b6..13693aeb4f 100644
          VMSTATE_UINT16(tally_counters.TxUndrn, RTL8139State),
  
 diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
-index b4243de735..c5ad69237e 100644
+index d2007e70fb..319eae9e9d 100644
 --- a/hw/smbios/smbios.c
 +++ b/hw/smbios/smbios.c
-@@ -57,6 +57,9 @@ static bool smbios_legacy = true;
+@@ -58,6 +58,9 @@ static bool smbios_legacy = true;
  static bool smbios_uuid_encoded = true;
  /* end: legacy structures & constants for <= 2.0 machines */
  
@@ -398,7 +410,7 @@ index b4243de735..c5ad69237e 100644
  
  uint8_t *smbios_tables;
  size_t smbios_tables_len;
-@@ -669,7 +672,7 @@ static void smbios_build_type_1_table(void)
+@@ -670,7 +673,7 @@ static void smbios_build_type_1_table(void)
  
  static void smbios_build_type_2_table(void)
  {
@@ -407,7 +419,7 @@ index b4243de735..c5ad69237e 100644
  
      SMBIOS_TABLE_SET_STR(2, manufacturer_str, type2.manufacturer);
      SMBIOS_TABLE_SET_STR(2, product_str, type2.product);
-@@ -977,7 +980,10 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
+@@ -980,7 +983,10 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
  
  void smbios_set_defaults(const char *manufacturer, const char *product,
                           const char *version, bool legacy_mode,
@@ -419,7 +431,7 @@ index b4243de735..c5ad69237e 100644
  {
      smbios_have_defaults = true;
      smbios_legacy = legacy_mode;
-@@ -998,11 +1004,45 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
+@@ -1001,11 +1007,45 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
          g_free(smbios_entries);
      }
  
@@ -579,10 +591,10 @@ index 643d4643e4..529bad9366 100644
      dc->vmsd    = &vmstate_xhci_pci;
      set_bit(DEVICE_CATEGORY_USB, dc->categories);
 diff --git a/hw/usb/hcd-xhci-pci.h b/hw/usb/hcd-xhci-pci.h
-index c193f79443..086a1feb1e 100644
+index 08f70ce97c..1be7527c1b 100644
 --- a/hw/usb/hcd-xhci-pci.h
 +++ b/hw/usb/hcd-xhci-pci.h
-@@ -39,6 +39,7 @@ typedef struct XHCIPciState {
+@@ -40,6 +40,7 @@ typedef struct XHCIPciState {
      XHCIState xhci;
      OnOffAuto msi;
      OnOffAuto msix;
@@ -591,10 +603,10 @@ index c193f79443..086a1feb1e 100644
  
  #endif
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index 90f1dd3aeb..2209d4e416 100644
+index 6fbbfd56c8..c5a965d27f 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -454,4 +454,35 @@ extern const size_t hw_compat_2_2_len;
+@@ -459,4 +459,35 @@ extern const size_t hw_compat_2_2_len;
  extern GlobalProperty hw_compat_2_1[];
  extern const size_t hw_compat_2_1_len;
  
@@ -647,10 +659,10 @@ index 7f3259a630..d24b3ccd32 100644
  void smbios_get_tables(MachineState *ms,
                         const struct smbios_phys_mem_area *mem_array,
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index c95333514e..3754eaa97d 100644
+index 8206d5405a..908a275736 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
-@@ -112,6 +112,9 @@ struct PCMachineClass {
+@@ -111,6 +111,9 @@ struct PCMachineClass {
      bool smbios_defaults;
      bool smbios_legacy_mode;
      bool smbios_uuid_encoded;
@@ -661,5 +673,5 @@ index c95333514e..3754eaa97d 100644
      /* RAM / address space compat: */
      bool gigabyte_align;
 -- 
-2.31.1
+2.39.1
 

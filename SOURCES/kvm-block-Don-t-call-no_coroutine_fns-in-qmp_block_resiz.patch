@@ -1,0 +1,56 @@
+From dfa2811e88afaf996345552330e97f0513c1803c Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 4 May 2023 13:57:34 +0200
+Subject: [PATCH 53/56] block: Don't call no_coroutine_fns in
+ qmp_block_resize()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 164: block: Fix hangs in qmp_block_resize()
+RH-Bugzilla: 2185688
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/4] 7ac7e34821cfc8bd5f0daadd7a1c4a5596bc60a6 (kmwolf/centos-qemu-kvm)
+
+This QMP handler runs in a coroutine, so it must use the corresponding
+no_co_wrappers instead.
+
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=2185688
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-Id: <20230504115750.54437-5-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 0c7d204f50c382c6baac8c94bd57af4a022b3888)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ blockdev.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/blockdev.c b/blockdev.c
+index d7b5c18f0a..eb509cf964 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -2430,7 +2430,7 @@ void coroutine_fn qmp_block_resize(const char *device, const char *node_name,
+         return;
+     }
+ 
+-    blk = blk_new_with_bs(bs, BLK_PERM_RESIZE, BLK_PERM_ALL, errp);
++    blk = blk_co_new_with_bs(bs, BLK_PERM_RESIZE, BLK_PERM_ALL, errp);
+     if (!blk) {
+         return;
+     }
+@@ -2445,7 +2445,7 @@ void coroutine_fn qmp_block_resize(const char *device, const char *node_name,
+ 
+     bdrv_co_lock(bs);
+     bdrv_drained_end(bs);
+-    blk_unref(blk);
++    blk_co_unref(blk);
+     bdrv_co_unlock(bs);
+ }
+ 
+-- 
+2.39.1
+

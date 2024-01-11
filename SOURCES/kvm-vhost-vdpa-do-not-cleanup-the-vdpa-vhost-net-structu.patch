@@ -1,14 +1,15 @@
-From cca66d3e5f7bc1d88d79a7653ae244ba31566ee8 Mon Sep 17 00:00:00 2001
+From 4e30ca551fb3740a428017a0debf0a6aab976639 Mon Sep 17 00:00:00 2001
 From: Ani Sinha <anisinha@redhat.com>
 Date: Mon, 19 Jun 2023 12:22:09 +0530
-Subject: [PATCH 2/2] vhost-vdpa: do not cleanup the vdpa/vhost-net structures
+Subject: [PATCH 6/6] vhost-vdpa: do not cleanup the vdpa/vhost-net structures
  if peer nic is present
 
 RH-Author: Ani Sinha <None>
-RH-MergeRequest: 294: vhost-vdpa: do not cleanup the vdpa/vhost-net structures if peer nic is present
-RH-Bugzilla: 2227721
+RH-MergeRequest: 174: vhost-vdpa: do not cleanup the vdpa/vhost-net structures if peer nic is present
+RH-Bugzilla: 2128929
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/1] af8fa659afb3d8a2e38bb745b31d8cd665a1fc77
+RH-Commit: [1/1] c70d4e5fd93256326d318e0b507db6b9eb93ad86 (anisinha/centos-qemu-kvm)
 
 When a peer nic is still attached to the vdpa backend, it is too early to free
 up the vhost-net and vdpa structures. If these structures are freed here, then
@@ -38,20 +39,17 @@ Message-Id: <20230619065209.442185-1-anisinha@redhat.com>
 Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
 Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
 (cherry picked from commit a0d7215e339b61c7d7a7b3fcf754954d80d93eb8)
-Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
-(Mjt: context change for stable-7.2)
-(cherry picked from commit 3d12598b74ed4bcc6db8b50818a95c4b770d4487)
 ---
  net/vhost-vdpa.c | 8 ++++++++
  1 file changed, 8 insertions(+)
 
 diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
-index 7d9c4ea09d..1b4fec59a2 100644
+index 99904a0da7..8c8900f0f4 100644
 --- a/net/vhost-vdpa.c
 +++ b/net/vhost-vdpa.c
-@@ -180,6 +180,14 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
+@@ -184,6 +184,14 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
+ {
      VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
-     struct vhost_dev *dev = &s->vhost_net->dev;
  
 +    /*
 +     * If a peer NIC is attached, do not cleanup anything.
@@ -63,7 +61,7 @@ index 7d9c4ea09d..1b4fec59a2 100644
 +    }
      qemu_vfree(s->cvq_cmd_out_buffer);
      qemu_vfree(s->status);
-     if (dev->vq_index + dev->nvqs == dev->vq_index_end) {
+     if (s->vhost_net) {
 -- 
 2.39.3
 

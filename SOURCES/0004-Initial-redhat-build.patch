@@ -1,4 +1,4 @@
-From ccc4a5bdc8c2f27678312364a7c12aeafd009bb6 Mon Sep 17 00:00:00 2001
+From 84039bfc860878f3c3421de4a1836ac5d6300ed7 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,7 +13,7 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-This rebase is based on qemu-kvm-7.1.0-7.el9
+This rebase is based on qemu-kvm-7.2.0-14.el9
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 --
@@ -65,6 +65,16 @@ Rebaes changes (7.2.0 rc2):
 Rebase changes (7.2.0):
 - Fix SRPM name generation to work on Fedora 37
 - Switch back to system meson
+
+Rebase changes (8.0.0-rc1):
+- use enable-dtrace-backands instead of enable-dtrace-backend
+- Removed qemu virtiofsd bits
+
+Rebase changes (8.0.0-rc2):
+- test/check-block.sh removed (upstream)
+
+Rebase changes (8.0.0-rc3):
+- Add new --disable-* options for configure
 
 Merged patches (6.0.0):
  - 605758c902 Limit build on Power to qemu-img and qemu-ga only
@@ -162,16 +172,18 @@ Merged patches (7.2.0 rc4):
 - 8c6834feb6 Remove opengl display device subpackages (C9S MR 124)
 - 0ecc97f29e spec: Add requires for packages with additional virtio-gpu variants (C9S MR 124)
 
-Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+Merged patches (8.0.0-rc1):
+- 7754f6ba78 Minor packaging fixes
+- 401af56187 spec: Disable VDUSE
 
-fix
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 ---
  .distro/Makefile                        |  100 +
  .distro/Makefile.common                 |   41 +
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 4315 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 4528 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
  .distro/scripts/process-patches.sh      |    4 +
@@ -180,9 +192,8 @@ fix
  scripts/qemu-guest-agent/fsfreeze-hook  |    2 +-
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
- tests/check-block.sh                    |    2 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 16 files changed, 4573 insertions(+), 4 deletions(-)
+ 15 files changed, 4784 insertions(+), 4 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests
@@ -271,19 +282,6 @@ index 0000000000..c04abf9449
 +++ b/scripts/systemtap/script.d/qemu_kvm.stp
 @@ -0,0 +1 @@
 +probe qemu.kvm.simpletrace.handle_qmp_command,qemu.kvm.simpletrace.monitor_protocol_*,qemu.kvm.simpletrace.migrate_set_state {}
-diff --git a/tests/check-block.sh b/tests/check-block.sh
-index 5de2c1ba0b..6af743f441 100755
---- a/tests/check-block.sh
-+++ b/tests/check-block.sh
-@@ -22,6 +22,8 @@ if [ -z "$(find . -name 'qemu-system-*' -print)" ]; then
-     skip "No qemu-system binary available ==> Not running the qemu-iotests."
- fi
- 
-+exit 0
-+
- cd tests/qemu-iotests
- 
- # QEMU_CHECK_BLOCK_AUTO is used to disable some unstable sub-tests
 diff --git a/ui/vnc-auth-sasl.c b/ui/vnc-auth-sasl.c
 index 47fdae5b21..2a950caa2a 100644
 --- a/ui/vnc-auth-sasl.c
@@ -298,5 +296,5 @@ index 47fdae5b21..2a950caa2a 100644
      if (saslErr != SASL_OK) {
          error_setg(errp, "Failed to initialize SASL auth: %s",
 -- 
-2.31.1
+2.39.1
 

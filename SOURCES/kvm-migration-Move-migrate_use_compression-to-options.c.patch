@@ -1,0 +1,183 @@
+From ae183bfc9d7b001d3c4929556b095a76203bc08d Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:03:48 +0100
+Subject: [PATCH 25/56] migration: Move migrate_use_compression() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [24/50] 126b865f51bd4a1ae3a46411fdcd59033bfc5376 (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to migrate_compress()
+to be consistent with all other capabilities.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit a7a94d14358dd7b445e20c2f26218ff987747642)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 11 +----------
+ migration/migration.h |  1 -
+ migration/options.c   |  9 +++++++++
+ migration/options.h   |  1 +
+ migration/ram.c       | 16 ++++++++--------
+ 5 files changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 59ee0ef82b..c6e32555a8 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1133,7 +1133,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+         info->xbzrle_cache->overflow = xbzrle_counters.overflow;
+     }
+ 
+-    if (migrate_use_compression()) {
++    if (migrate_compress()) {
+         info->compression = g_malloc0(sizeof(*info->compression));
+         info->compression->pages = compression_counters.pages;
+         info->compression->busy = compression_counters.busy;
+@@ -2522,15 +2522,6 @@ bool migrate_postcopy(void)
+     return migrate_postcopy_ram() || migrate_dirty_bitmaps();
+ }
+ 
+-bool migrate_use_compression(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->capabilities[MIGRATION_CAPABILITY_COMPRESS];
+-}
+-
+ int migrate_compress_level(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 42f0c68b6f..77aa91c840 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -471,7 +471,6 @@ bool migrate_use_return_path(void);
+ 
+ uint64_t ram_get_total_transferred_pages(void);
+ 
+-bool migrate_use_compression(void);
+ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
+diff --git a/migration/options.c b/migration/options.c
+index bd33c5da0a..fa7a13d3dc 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -39,6 +39,15 @@ bool migrate_colo(void)
+     return s->capabilities[MIGRATION_CAPABILITY_X_COLO];
+ }
+ 
++bool migrate_compress(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_COMPRESS];
++}
++
+ bool migrate_dirty_bitmaps(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index 2a0ee61ff8..da2193fd94 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -19,6 +19,7 @@
+ bool migrate_auto_converge(void);
+ bool migrate_background_snapshot(void);
+ bool migrate_colo(void);
++bool migrate_compress(void);
+ bool migrate_dirty_bitmaps(void);
+ bool migrate_ignore_shared(void);
+ bool migrate_late_block_activate(void);
+diff --git a/migration/ram.c b/migration/ram.c
+index 912ccd89fa..d050d0c5fd 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -586,7 +586,7 @@ static void compress_threads_save_cleanup(void)
+ {
+     int i, thread_count;
+ 
+-    if (!migrate_use_compression() || !comp_param) {
++    if (!migrate_compress() || !comp_param) {
+         return;
+     }
+ 
+@@ -625,7 +625,7 @@ static int compress_threads_save_setup(void)
+ {
+     int i, thread_count;
+ 
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         return 0;
+     }
+     thread_count = migrate_compress_threads();
+@@ -1155,7 +1155,7 @@ static void migration_update_rates(RAMState *rs, int64_t end_time)
+         rs->xbzrle_bytes_prev = xbzrle_counters.bytes;
+     }
+ 
+-    if (migrate_use_compression()) {
++    if (migrate_compress()) {
+         compression_counters.busy_rate = (double)(compression_counters.busy -
+             rs->compress_thread_busy_prev) / page_count;
+         rs->compress_thread_busy_prev = compression_counters.busy;
+@@ -2270,7 +2270,7 @@ int ram_save_queue_pages(const char *rbname, ram_addr_t start, ram_addr_t len)
+ 
+ static bool save_page_use_compression(RAMState *rs)
+ {
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         return false;
+     }
+ 
+@@ -3734,7 +3734,7 @@ static int wait_for_decompress_done(void)
+ {
+     int idx, thread_count;
+ 
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         return 0;
+     }
+ 
+@@ -3753,7 +3753,7 @@ static void compress_threads_load_cleanup(void)
+ {
+     int i, thread_count;
+ 
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         return;
+     }
+     thread_count = migrate_decompress_threads();
+@@ -3794,7 +3794,7 @@ static int compress_threads_load_setup(QEMUFile *f)
+ {
+     int i, thread_count;
+ 
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         return 0;
+     }
+ 
+@@ -4260,7 +4260,7 @@ static int ram_load_precopy(QEMUFile *f)
+     int flags = 0, ret = 0, invalid_flags = 0, len = 0, i = 0;
+     /* ADVISE is earlier, it shows the source has the postcopy capability on */
+     bool postcopy_advised = migration_incoming_postcopy_advised();
+-    if (!migrate_use_compression()) {
++    if (!migrate_compress()) {
+         invalid_flags |= RAM_SAVE_FLAG_COMPRESS_PAGE;
+     }
+ 
+-- 
+2.39.1
+

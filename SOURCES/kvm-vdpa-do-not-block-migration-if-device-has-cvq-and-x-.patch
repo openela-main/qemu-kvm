@@ -1,0 +1,61 @@
+From 74c2f378bdf278a03c02ae48948b00b4431a3fd6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 2 Jun 2023 16:38:52 +0200
+Subject: [PATCH 6/9] vdpa: do not block migration if device has cvq and
+ x-svq=on
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 190: vdpa: do not block migration if device has cvq and x-svq=on
+RH-Jira: RHEL-573
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Commit: [1/1] b0e2ec3c9e5c17252cf6a043fe1374ddc3c37de7 (eperezmartin/qemu-kvm)
+
+It was a mistake to forbid in all cases, as SVQ is already able to send
+all the CVQ messages before start forwarding data vqs.  It actually
+caused a regression, making impossible to migrate device previously
+migratable.
+
+Fixes: 36e4647247f2 ("vdpa: add vhost_vdpa_net_valid_svq_features")
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Message-Id: <20230602143854.1879091-2-eperezma@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+(cherry picked from commit 8bc0049eadafb984d305c847cedff550b58e5fc0)
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+---
+ net/vhost-vdpa.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 8c8900f0f4..1ae839da34 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -844,13 +844,16 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+         s->vhost_vdpa.shadow_vq_ops_opaque = s;
+ 
+         /*
+-         * TODO: We cannot migrate devices with CVQ as there is no way to set
+-         * the device state (MAC, MQ, etc) before starting the datapath.
++         * TODO: We cannot migrate devices with CVQ and no x-svq enabled as
++         * there is no way to set the device state (MAC, MQ, etc) before
++         * starting the datapath.
+          *
+          * Migration blocker ownership now belongs to s->vhost_vdpa.
+          */
+-        error_setg(&s->vhost_vdpa.migration_blocker,
+-                   "net vdpa cannot migrate with CVQ feature");
++        if (!svq) {
++            error_setg(&s->vhost_vdpa.migration_blocker,
++                       "net vdpa cannot migrate with CVQ feature");
++        }
+     }
+     ret = vhost_vdpa_add(nc, (void *)&s->vhost_vdpa, queue_pair_index, nvqs);
+     if (ret) {
+-- 
+2.39.3
+

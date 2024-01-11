@@ -1,4 +1,4 @@
-From 0935624ccdddc286d6eeeb0c1b70d78983c21aa2 Mon Sep 17 00:00:00 2001
+From 510291040cb280e1f68b793a84ec0f7d1c88aafa Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 19 Oct 2018 13:10:31 +0200
 Subject: Add x86_64 machine types
@@ -12,6 +12,9 @@ Rebase notes (6.1.0):
 
 Rebase notes (7.0.0):
 - Reset alias for all machine-types except latest one
+
+Rebase notes (8.0.0-rc1):
+- remove legacy_no_rng_seed usage (removed upstream)
 
 Merged patches (6.1.0):
 - 59c284ad3b x86: Add x86 rhel8.5 machine types
@@ -39,24 +42,26 @@ Merged patches (7.1.0 rc0):
 
 Merged patches (7.2.0 rc0):
 - 0be2889fa2 Introduce upstream 7.0 compat changes (only applicable parts)
+
+Merged patches (8.0.0-rc1):
+- f33ca8aed4 x86: rhel 9.2.0 machine type
 ---
- hw/i386/pc.c               | 147 ++++++++++++++++++++++-
- hw/i386/pc_piix.c          |  86 +++++++++++++-
- hw/i386/pc_q35.c           | 234 ++++++++++++++++++++++++++++++++++++-
- hw/s390x/s390-virtio-ccw.c |   1 +
+ hw/i386/pc.c               | 147 +++++++++++++++++++++-
+ hw/i386/pc_piix.c          |  86 ++++++++++++-
+ hw/i386/pc_q35.c           | 252 ++++++++++++++++++++++++++++++++++++-
  include/hw/boards.h        |   2 +
- include/hw/i386/pc.h       |  27 +++++
+ include/hw/i386/pc.h       |  27 ++++
  target/i386/cpu.c          |  21 ++++
  target/i386/kvm/kvm-cpu.c  |   1 +
  target/i386/kvm/kvm.c      |   4 +
  tests/qtest/pvpanic-test.c |   5 +-
- 10 files changed, 521 insertions(+), 7 deletions(-)
+ 9 files changed, 538 insertions(+), 7 deletions(-)
 
 diff --git a/hw/i386/pc.c b/hw/i386/pc.c
-index 546b703cb4..c7b1350e64 100644
+index 1489abf010..8abb1f872e 100644
 --- a/hw/i386/pc.c
 +++ b/hw/i386/pc.c
-@@ -393,6 +393,149 @@ GlobalProperty pc_compat_1_4[] = {
+@@ -407,6 +407,149 @@ GlobalProperty pc_compat_1_4[] = {
  };
  const size_t pc_compat_1_4_len = G_N_ELEMENTS(pc_compat_1_4);
  
@@ -206,7 +211,7 @@ index 546b703cb4..c7b1350e64 100644
  GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled)
  {
      GSIState *s;
-@@ -1907,6 +2050,7 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+@@ -1944,6 +2087,7 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
      pcmc->pvh_enabled = true;
      pcmc->kvmclock_create_always = true;
      assert(!mc->get_hotplug_handler);
@@ -214,7 +219,7 @@ index 546b703cb4..c7b1350e64 100644
      mc->get_hotplug_handler = pc_get_hotplug_handler;
      mc->hotplug_allowed = pc_hotplug_allowed;
      mc->cpu_index_to_instance_props = x86_cpu_index_to_props;
-@@ -1917,7 +2061,8 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+@@ -1954,7 +2098,8 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
      mc->has_hotpluggable_cpus = true;
      mc->default_boot_order = "cad";
      mc->block_default_type = IF_IDE;
@@ -225,10 +230,10 @@ index 546b703cb4..c7b1350e64 100644
      mc->wakeup = pc_machine_wakeup;
      hc->pre_plug = pc_machine_device_pre_plug_cb;
 diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index 0985ff67d2..173a1fd10b 100644
+index 14a794081e..3e330fd36f 100644
 --- a/hw/i386/pc_piix.c
 +++ b/hw/i386/pc_piix.c
-@@ -53,6 +53,7 @@
+@@ -54,6 +54,7 @@
  #include "qapi/error.h"
  #include "qemu/error-report.h"
  #include "sysemu/xen.h"
@@ -236,7 +241,7 @@ index 0985ff67d2..173a1fd10b 100644
  #ifdef CONFIG_XEN
  #include <xen/hvm/hvm_info_table.h>
  #include "hw/xen/xen_pt.h"
-@@ -184,8 +185,8 @@ static void pc_init1(MachineState *machine,
+@@ -198,8 +199,8 @@ static void pc_init1(MachineState *machine,
      if (pcmc->smbios_defaults) {
          MachineClass *mc = MACHINE_GET_CLASS(machine);
          /* These values are guest ABI, do not change */
@@ -247,7 +252,7 @@ index 0985ff67d2..173a1fd10b 100644
                              pcmc->smbios_uuid_encoded,
                              pcmc->smbios_stream_product,
                              pcmc->smbios_stream_version,
-@@ -334,6 +335,7 @@ static void pc_init1(MachineState *machine,
+@@ -351,6 +352,7 @@ static void pc_init1(MachineState *machine,
   * hw_compat_*, pc_compat_*, or * pc_*_machine_options().
   */
  
@@ -255,7 +260,7 @@ index 0985ff67d2..173a1fd10b 100644
  static void pc_compat_2_3_fn(MachineState *machine)
  {
      X86MachineState *x86ms = X86_MACHINE(machine);
-@@ -896,3 +898,83 @@ static void xenfv_3_1_machine_options(MachineClass *m)
+@@ -899,3 +901,83 @@ static void xenfv_3_1_machine_options(MachineClass *m)
  DEFINE_PC_MACHINE(xenfv, "xenfv-3.1", pc_xen_hvm_init,
                    xenfv_3_1_machine_options);
  #endif
@@ -304,7 +309,7 @@ index 0985ff67d2..173a1fd10b 100644
 +    pcmc->kvmclock_create_always = false;
 +    /* From pc_i440fx_5_1_machine_options() */
 +    pcmc->pci_root_uid = 1;
-+    pcmc->legacy_no_rng_seed = true;
++    pcmc->enforce_amd_1tb_hole = false;
 +    compat_props_add(m->compat_props, hw_compat_rhel_9_1,
 +                     hw_compat_rhel_9_1_len);
 +    compat_props_add(m->compat_props, hw_compat_rhel_9_0,
@@ -340,10 +345,10 @@ index 0985ff67d2..173a1fd10b 100644
 +DEFINE_PC_MACHINE(rhel760, "pc-i440fx-rhel7.6.0", pc_init_rhel760,
 +                  pc_machine_rhel760_options);
 diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index ea582254e3..97c3630021 100644
+index dc0ba5f9e7..98601bb76f 100644
 --- a/hw/i386/pc_q35.c
 +++ b/hw/i386/pc_q35.c
-@@ -198,8 +198,8 @@ static void pc_q35_init(MachineState *machine)
+@@ -199,8 +199,8 @@ static void pc_q35_init(MachineState *machine)
  
      if (pcmc->smbios_defaults) {
          /* These values are guest ABI, do not change */
@@ -354,7 +359,7 @@ index ea582254e3..97c3630021 100644
                              pcmc->smbios_uuid_encoded,
                              pcmc->smbios_stream_product,
                              pcmc->smbios_stream_version,
-@@ -352,6 +352,7 @@ static void pc_q35_init(MachineState *machine)
+@@ -354,6 +354,7 @@ static void pc_q35_init(MachineState *machine)
      DEFINE_PC_MACHINE(suffix, name, pc_init_##suffix, optionfn)
  
  
@@ -362,7 +367,7 @@ index ea582254e3..97c3630021 100644
  static void pc_q35_machine_options(MachineClass *m)
  {
      PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
-@@ -666,3 +667,232 @@ static void pc_q35_2_4_machine_options(MachineClass *m)
+@@ -663,3 +664,250 @@ static void pc_q35_2_4_machine_options(MachineClass *m)
  
  DEFINE_Q35_MACHINE(v2_4, "pc-q35-2.4", NULL,
                     pc_q35_2_4_machine_options);
@@ -391,6 +396,23 @@ index ea582254e3..97c3630021 100644
 +    compat_props_add(m->compat_props, pc_rhel_compat, pc_rhel_compat_len);
 +}
 +
++static void pc_q35_init_rhel920(MachineState *machine)
++{
++    pc_q35_init(machine);
++}
++
++static void pc_q35_machine_rhel920_options(MachineClass *m)
++{
++    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
++    pc_q35_machine_rhel_options(m);
++    m->desc = "RHEL-9.2.0 PC (Q35 + ICH9, 2009)";
++    pcmc->smbios_stream_product = "RHEL";
++    pcmc->smbios_stream_version = "9.2.0";
++}
++
++DEFINE_PC_MACHINE(q35_rhel920, "pc-q35-rhel9.2.0", pc_q35_init_rhel920,
++                  pc_q35_machine_rhel920_options);
++
 +static void pc_q35_init_rhel900(MachineState *machine)
 +{
 +    pc_q35_init(machine);
@@ -399,11 +421,12 @@ index ea582254e3..97c3630021 100644
 +static void pc_q35_machine_rhel900_options(MachineClass *m)
 +{
 +    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
-+    pc_q35_machine_rhel_options(m);
++    pc_q35_machine_rhel920_options(m);
 +    m->desc = "RHEL-9.0.0 PC (Q35 + ICH9, 2009)";
++    m->alias = NULL;
 +    pcmc->smbios_stream_product = "RHEL";
 +    pcmc->smbios_stream_version = "9.0.0";
-+    pcmc->legacy_no_rng_seed = true;
++    pcmc->enforce_amd_1tb_hole = false;
 +    compat_props_add(m->compat_props, hw_compat_rhel_9_1,
 +                     hw_compat_rhel_9_1_len);
 +    compat_props_add(m->compat_props, hw_compat_rhel_9_0,
@@ -595,23 +618,11 @@ index ea582254e3..97c3630021 100644
 +
 +DEFINE_PC_MACHINE(q35_rhel760, "pc-q35-rhel7.6.0", pc_q35_init_rhel760,
 +                  pc_q35_machine_rhel760_options);
-diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
-index 8d5221fbb1..ba640e3d9e 100644
---- a/hw/s390x/s390-virtio-ccw.c
-+++ b/hw/s390x/s390-virtio-ccw.c
-@@ -1213,6 +1213,7 @@ static void ccw_machine_rhel860_instance_options(MachineState *machine)
- static void ccw_machine_rhel860_class_options(MachineClass *mc)
- {
-     ccw_machine_rhel900_class_options(mc);
-+    compat_props_add(mc->compat_props, hw_compat_rhel_8_6, hw_compat_rhel_8_6_len);
- 
-     /* All RHEL machines for prior major releases are deprecated */
-     mc->deprecation_reason = rhel_old_machine_deprecation;
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index 2209d4e416..fd75f551b1 100644
+index c5a965d27f..5e7446ee40 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -266,6 +266,8 @@ struct MachineClass {
+@@ -268,6 +268,8 @@ struct MachineClass {
      strList *allowed_dynamic_sysbus_devices;
      bool auto_enable_numa_with_memhp;
      bool auto_enable_numa_with_memdev;
@@ -621,12 +632,12 @@ index 2209d4e416..fd75f551b1 100644
      bool smbus_no_migration_support;
      bool nvdimm_supported;
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index 3754eaa97d..4266fe2fdb 100644
+index 908a275736..4376f64a47 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
-@@ -293,6 +293,33 @@ extern const size_t pc_compat_1_5_len;
- extern GlobalProperty pc_compat_1_4[];
- extern const size_t pc_compat_1_4_len;
+@@ -293,6 +293,33 @@ extern const size_t pc_compat_1_4_len;
+ 
+ int pc_machine_kvm_type(MachineState *machine, const char *vm_type);
  
 +extern GlobalProperty pc_rhel_compat[];
 +extern const size_t pc_rhel_compat_len;
@@ -659,10 +670,10 @@ index 3754eaa97d..4266fe2fdb 100644
      static void pc_machine_##suffix##_class_init(ObjectClass *oc, void *data) \
      { \
 diff --git a/target/i386/cpu.c b/target/i386/cpu.c
-index 22b681ca37..f7c526cbe6 100644
+index 6576287e5b..0ef2bf1b93 100644
 --- a/target/i386/cpu.c
 +++ b/target/i386/cpu.c
-@@ -1832,9 +1832,13 @@ static const CPUCaches epyc_milan_cache_info = {
+@@ -1834,9 +1834,13 @@ static const CPUCaches epyc_milan_cache_info = {
   *  PT in VMX operation
   */
  
@@ -676,7 +687,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_AMD,
          .family = 15,
-@@ -1855,6 +1859,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -1857,6 +1861,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "phenom",
@@ -684,7 +695,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 5,
          .vendor = CPUID_VENDOR_AMD,
          .family = 16,
-@@ -1887,6 +1892,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -1889,6 +1894,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "core2duo",
@@ -692,7 +703,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 10,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -1929,6 +1935,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -1931,6 +1937,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "kvm64",
@@ -700,7 +711,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 15,
-@@ -1970,6 +1977,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -1972,6 +1979,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "qemu32",
@@ -708,7 +719,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 4,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -1984,6 +1992,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -1986,6 +1994,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "kvm32",
@@ -716,7 +727,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 5,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 15,
-@@ -2014,6 +2023,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2016,6 +2025,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "coreduo",
@@ -724,7 +735,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 10,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2047,6 +2057,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2049,6 +2059,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "486",
@@ -732,7 +743,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 1,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 4,
-@@ -2059,6 +2070,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2061,6 +2072,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "pentium",
@@ -740,7 +751,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 1,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 5,
-@@ -2071,6 +2083,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2073,6 +2085,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "pentium2",
@@ -748,7 +759,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 2,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2083,6 +2096,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2085,6 +2098,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "pentium3",
@@ -756,7 +767,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 3,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2095,6 +2109,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2097,6 +2111,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "athlon",
@@ -764,7 +775,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 2,
          .vendor = CPUID_VENDOR_AMD,
          .family = 6,
-@@ -2110,6 +2125,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2112,6 +2127,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "n270",
@@ -772,7 +783,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 10,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2135,6 +2151,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2137,6 +2153,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Conroe",
@@ -780,7 +791,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 10,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2175,6 +2192,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -2177,6 +2194,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Penryn",
@@ -788,7 +799,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 10,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -3762,6 +3780,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3893,6 +3911,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Opteron_G1",
@@ -796,7 +807,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 5,
          .vendor = CPUID_VENDOR_AMD,
          .family = 15,
-@@ -3782,6 +3801,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3913,6 +3932,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Opteron_G2",
@@ -804,7 +815,7 @@ index 22b681ca37..f7c526cbe6 100644
          .level = 5,
          .vendor = CPUID_VENDOR_AMD,
          .family = 15,
-@@ -3804,6 +3824,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3935,6 +3955,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Opteron_G3",
@@ -825,10 +836,10 @@ index 7237378a7d..7b8a3d5af0 100644
  };
  
 diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
-index a213209379..81526a1575 100644
+index de531842f6..8d82304609 100644
 --- a/target/i386/kvm/kvm.c
 +++ b/target/i386/kvm/kvm.c
-@@ -3707,6 +3707,7 @@ static int kvm_get_msrs(X86CPU *cpu)
+@@ -3822,6 +3822,7 @@ static int kvm_get_msrs(X86CPU *cpu)
      struct kvm_msr_entry *msrs = cpu->kvm_msr_buf->entries;
      int ret, i;
      uint64_t mtrr_top_bits;
@@ -836,7 +847,7 @@ index a213209379..81526a1575 100644
  
      kvm_msr_buf_reset(cpu);
  
-@@ -4062,6 +4063,9 @@ static int kvm_get_msrs(X86CPU *cpu)
+@@ -4177,6 +4178,9 @@ static int kvm_get_msrs(X86CPU *cpu)
              break;
          case MSR_KVM_ASYNC_PF_EN:
              env->async_pf_en_msr = msrs[i].data;
@@ -847,7 +858,7 @@ index a213209379..81526a1575 100644
          case MSR_KVM_ASYNC_PF_INT:
              env->async_pf_int_msr = msrs[i].data;
 diff --git a/tests/qtest/pvpanic-test.c b/tests/qtest/pvpanic-test.c
-index bc7b7dfc39..96e6dee3a1 100644
+index 78f1cf8186..ac954c9b06 100644
 --- a/tests/qtest/pvpanic-test.c
 +++ b/tests/qtest/pvpanic-test.c
 @@ -17,7 +17,7 @@ static void test_panic_nopause(void)
@@ -870,5 +881,5 @@ index bc7b7dfc39..96e6dee3a1 100644
      val = qtest_inb(qts, 0x505);
      g_assert_cmpuint(val, ==, 3);
 -- 
-2.31.1
+2.39.1
 

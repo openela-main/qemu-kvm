@@ -1,0 +1,57 @@
+From 40866640d15e6a8c9f6af7e437edc1ec1e17ba34 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 10/21] bcm2835_property: disable reentrancy detection for
+ iomem
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 165: memory: prevent dma-reentracy issues
+RH-Jira: RHEL-516
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/13] 128ebc85e228674af66553af82fba70eb87960e6 (jmaloy/jmaloy-qemu-kvm-2)
+
+Jira: https://issues.redhat.com/browse/RHEL-516
+Upstream: Merged
+CVE: CVE-2023-2680
+
+commit 985c4a4e547afb9573b6bd6843d20eb2c3d1d1cd
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Thu Apr 27 17:10:11 2023 -0400
+
+    bcm2835_property: disable reentrancy detection for iomem
+
+    As the code is designed for re-entrant calls from bcm2835_property to
+    bcm2835_mbox and back into bcm2835_property, mark iomem as
+    reentrancy-safe.
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Message-Id: <20230427211013.2994127-7-alxndr@bu.edu>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/misc/bcm2835_property.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/misc/bcm2835_property.c b/hw/misc/bcm2835_property.c
+index 890ae7bae5..de056ea2df 100644
+--- a/hw/misc/bcm2835_property.c
++++ b/hw/misc/bcm2835_property.c
+@@ -382,6 +382,13 @@ static void bcm2835_property_init(Object *obj)
+ 
+     memory_region_init_io(&s->iomem, OBJECT(s), &bcm2835_property_ops, s,
+                           TYPE_BCM2835_PROPERTY, 0x10);
++
++    /*
++     * bcm2835_property_ops call into bcm2835_mbox, which in-turn reads from
++     * iomem. As such, mark iomem as re-entracy safe.
++     */
++    s->iomem.disable_reentrancy_guard = true;
++
+     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->iomem);
+     sysbus_init_irq(SYS_BUS_DEVICE(s), &s->mbox_irq);
+ }
+-- 
+2.39.3
+

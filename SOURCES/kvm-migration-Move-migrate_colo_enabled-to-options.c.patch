@@ -1,0 +1,136 @@
+From 13da9060fa2dfc666cd6f4b9bc85b7cee0fef45e Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:00:16 +0100
+Subject: [PATCH 24/56] migration: Move migrate_colo_enabled() to options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [23/50] 4809b1091edee38bd222af41b6313133705785c7 (peterx/qemu-kvm)
+
+Once that we are there, we rename the function to migrate_colo() to be
+consistent with all other capabilities.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 5e8046445575dc5879e63c5d07af893d174813d0)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 16 +++++-----------
+ migration/migration.h |  1 -
+ migration/options.c   |  6 ++++++
+ migration/options.h   |  1 +
+ 4 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 66ea55be06..59ee0ef82b 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2411,7 +2411,7 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+     }
+ 
+     if (blk || blk_inc) {
+-        if (migrate_colo_enabled()) {
++        if (migrate_colo()) {
+             error_setg(errp, "No disk migration is required in COLO mode");
+             return false;
+         }
+@@ -3304,7 +3304,7 @@ static void migration_completion(MigrationState *s)
+                  * have done so in order to remember to reactivate
+                  * them if migration fails or is cancelled.
+                  */
+-                s->block_inactive = !migrate_colo_enabled();
++                s->block_inactive = !migrate_colo();
+                 qemu_file_set_rate_limit(s->to_dst_file, INT64_MAX);
+                 ret = qemu_savevm_state_complete_precopy(s->to_dst_file, false,
+                                                          s->block_inactive);
+@@ -3357,7 +3357,7 @@ static void migration_completion(MigrationState *s)
+         goto fail;
+     }
+ 
+-    if (migrate_colo_enabled() && s->state == MIGRATION_STATUS_ACTIVE) {
++    if (migrate_colo() && s->state == MIGRATION_STATUS_ACTIVE) {
+         /* COLO does not support postcopy */
+         migrate_set_state(&s->state, MIGRATION_STATUS_ACTIVE,
+                           MIGRATION_STATUS_COLO);
+@@ -3435,12 +3435,6 @@ fail:
+                       MIGRATION_STATUS_FAILED);
+ }
+ 
+-bool migrate_colo_enabled(void)
+-{
+-    MigrationState *s = migrate_get_current();
+-    return s->capabilities[MIGRATION_CAPABILITY_X_COLO];
+-}
+-
+ typedef enum MigThrError {
+     /* No error detected */
+     MIG_THR_ERR_NONE = 0,
+@@ -3771,7 +3765,7 @@ static void migration_iteration_finish(MigrationState *s)
+         runstate_set(RUN_STATE_POSTMIGRATE);
+         break;
+     case MIGRATION_STATUS_COLO:
+-        if (!migrate_colo_enabled()) {
++        if (!migrate_colo()) {
+             error_report("%s: critical error: calling COLO code without "
+                          "COLO enabled", __func__);
+         }
+@@ -3967,7 +3961,7 @@ static void *migration_thread(void *opaque)
+         qemu_savevm_send_postcopy_advise(s->to_dst_file);
+     }
+ 
+-    if (migrate_colo_enabled()) {
++    if (migrate_colo()) {
+         /* Notify migration destination that we enable COLO */
+         qemu_savevm_send_colo_enable(s->to_dst_file);
+     }
+diff --git a/migration/migration.h b/migration/migration.h
+index a25fed6ef0..42f0c68b6f 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -463,7 +463,6 @@ bool migrate_use_zero_copy_send(void);
+ int migrate_use_tls(void);
+ int migrate_use_xbzrle(void);
+ uint64_t migrate_xbzrle_cache_size(void);
+-bool migrate_colo_enabled(void);
+ 
+ bool migrate_use_block(void);
+ bool migrate_use_block_incremental(void);
+diff --git a/migration/options.c b/migration/options.c
+index 88a9a45913..bd33c5da0a 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -33,6 +33,12 @@ bool migrate_background_snapshot(void)
+     return s->capabilities[MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT];
+ }
+ 
++bool migrate_colo(void)
++{
++    MigrationState *s = migrate_get_current();
++    return s->capabilities[MIGRATION_CAPABILITY_X_COLO];
++}
++
+ bool migrate_dirty_bitmaps(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index 0dfa0af245..2a0ee61ff8 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -18,6 +18,7 @@
+ 
+ bool migrate_auto_converge(void);
+ bool migrate_background_snapshot(void);
++bool migrate_colo(void);
+ bool migrate_dirty_bitmaps(void);
+ bool migrate_ignore_shared(void);
+ bool migrate_late_block_activate(void);
+-- 
+2.39.1
+

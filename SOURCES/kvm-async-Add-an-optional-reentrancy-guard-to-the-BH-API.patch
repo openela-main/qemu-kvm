@@ -1,0 +1,231 @@
+From f6db359f543723e2eb840653d35004af357ea5ac Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 9 May 2023 10:29:03 -0400
+Subject: [PATCH 06/21] async: Add an optional reentrancy guard to the BH API
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 165: memory: prevent dma-reentracy issues
+RH-Jira: RHEL-516
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/13] 009a9a68c1c25b9ad0cd9bc0d73b3e07bee2a19d (jmaloy/jmaloy-qemu-kvm-2)
+
+Jira: https://issues.redhat.com/browse/RHEL-516
+Upstream: Merged
+CVE: CVE-2023-2680
+
+commit 9c86c97f12c060bf7484dd931f38634e166a81f0
+Author: Alexander Bulekov <alxndr@bu.edu>
+Date:   Thu Apr 27 17:10:07 2023 -0400
+
+    async: Add an optional reentrancy guard to the BH API
+
+    Devices can pass their MemoryReentrancyGuard (from their DeviceState),
+    when creating new BHes. Then, the async API will toggle the guard
+    before/after calling the BH call-back. This prevents bh->mmio reentrancy
+    issues.
+
+    Signed-off-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Darren Kenny <darren.kenny@oracle.com>
+    Message-Id: <20230427211013.2994127-3-alxndr@bu.edu>
+    [thuth: Fix "line over 90 characters" checkpatch.pl error]
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ docs/devel/multiple-iothreads.txt |  7 +++++++
+ include/block/aio.h               | 18 ++++++++++++++++--
+ include/qemu/main-loop.h          |  7 +++++--
+ tests/unit/ptimer-test-stubs.c    |  3 ++-
+ util/async.c                      | 18 +++++++++++++++++-
+ util/main-loop.c                  |  6 ++++--
+ util/trace-events                 |  1 +
+ 7 files changed, 52 insertions(+), 8 deletions(-)
+
+diff --git a/docs/devel/multiple-iothreads.txt b/docs/devel/multiple-iothreads.txt
+index 343120f2ef..a3e949f6b3 100644
+--- a/docs/devel/multiple-iothreads.txt
++++ b/docs/devel/multiple-iothreads.txt
+@@ -61,6 +61,7 @@ There are several old APIs that use the main loop AioContext:
+  * LEGACY qemu_aio_set_event_notifier() - monitor an event notifier
+  * LEGACY timer_new_ms() - create a timer
+  * LEGACY qemu_bh_new() - create a BH
++ * LEGACY qemu_bh_new_guarded() - create a BH with a device re-entrancy guard
+  * LEGACY qemu_aio_wait() - run an event loop iteration
+ 
+ Since they implicitly work on the main loop they cannot be used in code that
+@@ -72,8 +73,14 @@ Instead, use the AioContext functions directly (see include/block/aio.h):
+  * aio_set_event_notifier() - monitor an event notifier
+  * aio_timer_new() - create a timer
+  * aio_bh_new() - create a BH
++ * aio_bh_new_guarded() - create a BH with a device re-entrancy guard
+  * aio_poll() - run an event loop iteration
+ 
++The qemu_bh_new_guarded/aio_bh_new_guarded APIs accept a "MemReentrancyGuard"
++argument, which is used to check for and prevent re-entrancy problems. For
++BHs associated with devices, the reentrancy-guard is contained in the
++corresponding DeviceState and named "mem_reentrancy_guard".
++
+ The AioContext can be obtained from the IOThread using
+ iothread_get_aio_context() or for the main loop using qemu_get_aio_context().
+ Code that takes an AioContext argument works both in IOThreads or the main
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 543717f294..db6f23c619 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -23,6 +23,8 @@
+ #include "qemu/thread.h"
+ #include "qemu/timer.h"
+ #include "block/graph-lock.h"
++#include "hw/qdev-core.h"
++
+ 
+ typedef struct BlockAIOCB BlockAIOCB;
+ typedef void BlockCompletionFunc(void *opaque, int ret);
+@@ -331,9 +333,11 @@ void aio_bh_schedule_oneshot_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+  * is opaque and must be allocated prior to its use.
+  *
+  * @name: A human-readable identifier for debugging purposes.
++ * @reentrancy_guard: A guard set when entering a cb to prevent
++ * device-reentrancy issues
+  */
+ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+-                        const char *name);
++                        const char *name, MemReentrancyGuard *reentrancy_guard);
+ 
+ /**
+  * aio_bh_new: Allocate a new bottom half structure
+@@ -342,7 +346,17 @@ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+  * string.
+  */
+ #define aio_bh_new(ctx, cb, opaque) \
+-    aio_bh_new_full((ctx), (cb), (opaque), (stringify(cb)))
++    aio_bh_new_full((ctx), (cb), (opaque), (stringify(cb)), NULL)
++
++/**
++ * aio_bh_new_guarded: Allocate a new bottom half structure with a
++ * reentrancy_guard
++ *
++ * A convenience wrapper for aio_bh_new_full() that uses the cb as the name
++ * string.
++ */
++#define aio_bh_new_guarded(ctx, cb, opaque, guard) \
++    aio_bh_new_full((ctx), (cb), (opaque), (stringify(cb)), guard)
+ 
+ /**
+  * aio_notify: Force processing of pending events.
+diff --git a/include/qemu/main-loop.h b/include/qemu/main-loop.h
+index b3e54e00bc..68e70e61aa 100644
+--- a/include/qemu/main-loop.h
++++ b/include/qemu/main-loop.h
+@@ -387,9 +387,12 @@ void qemu_cond_timedwait_iothread(QemuCond *cond, int ms);
+ 
+ /* internal interfaces */
+ 
++#define qemu_bh_new_guarded(cb, opaque, guard) \
++    qemu_bh_new_full((cb), (opaque), (stringify(cb)), guard)
+ #define qemu_bh_new(cb, opaque) \
+-    qemu_bh_new_full((cb), (opaque), (stringify(cb)))
+-QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name);
++    qemu_bh_new_full((cb), (opaque), (stringify(cb)), NULL)
++QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name,
++                         MemReentrancyGuard *reentrancy_guard);
+ void qemu_bh_schedule_idle(QEMUBH *bh);
+ 
+ enum {
+diff --git a/tests/unit/ptimer-test-stubs.c b/tests/unit/ptimer-test-stubs.c
+index f2bfcede93..8c9407c560 100644
+--- a/tests/unit/ptimer-test-stubs.c
++++ b/tests/unit/ptimer-test-stubs.c
+@@ -107,7 +107,8 @@ int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask)
+     return deadline;
+ }
+ 
+-QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name)
++QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name,
++                         MemReentrancyGuard *reentrancy_guard)
+ {
+     QEMUBH *bh = g_new(QEMUBH, 1);
+ 
+diff --git a/util/async.c b/util/async.c
+index 21016a1ac7..a9b528c370 100644
+--- a/util/async.c
++++ b/util/async.c
+@@ -65,6 +65,7 @@ struct QEMUBH {
+     void *opaque;
+     QSLIST_ENTRY(QEMUBH) next;
+     unsigned flags;
++    MemReentrancyGuard *reentrancy_guard;
+ };
+ 
+ /* Called concurrently from any thread */
+@@ -137,7 +138,7 @@ void aio_bh_schedule_oneshot_full(AioContext *ctx, QEMUBHFunc *cb,
+ }
+ 
+ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+-                        const char *name)
++                        const char *name, MemReentrancyGuard *reentrancy_guard)
+ {
+     QEMUBH *bh;
+     bh = g_new(QEMUBH, 1);
+@@ -146,13 +147,28 @@ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+         .cb = cb,
+         .opaque = opaque,
+         .name = name,
++        .reentrancy_guard = reentrancy_guard,
+     };
+     return bh;
+ }
+ 
+ void aio_bh_call(QEMUBH *bh)
+ {
++    bool last_engaged_in_io = false;
++
++    if (bh->reentrancy_guard) {
++        last_engaged_in_io = bh->reentrancy_guard->engaged_in_io;
++        if (bh->reentrancy_guard->engaged_in_io) {
++            trace_reentrant_aio(bh->ctx, bh->name);
++        }
++        bh->reentrancy_guard->engaged_in_io = true;
++    }
++
+     bh->cb(bh->opaque);
++
++    if (bh->reentrancy_guard) {
++        bh->reentrancy_guard->engaged_in_io = last_engaged_in_io;
++    }
+ }
+ 
+ /* Multiple occurrences of aio_bh_poll cannot be called concurrently. */
+diff --git a/util/main-loop.c b/util/main-loop.c
+index e180c85145..7022f02ef8 100644
+--- a/util/main-loop.c
++++ b/util/main-loop.c
+@@ -605,9 +605,11 @@ void main_loop_wait(int nonblocking)
+ 
+ /* Functions to operate on the main QEMU AioContext.  */
+ 
+-QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name)
++QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name,
++                         MemReentrancyGuard *reentrancy_guard)
+ {
+-    return aio_bh_new_full(qemu_aio_context, cb, opaque, name);
++    return aio_bh_new_full(qemu_aio_context, cb, opaque, name,
++                           reentrancy_guard);
+ }
+ 
+ /*
+diff --git a/util/trace-events b/util/trace-events
+index 16f78d8fe5..3f7e766683 100644
+--- a/util/trace-events
++++ b/util/trace-events
+@@ -11,6 +11,7 @@ poll_remove(void *ctx, void *node, int fd) "ctx %p node %p fd %d"
+ # async.c
+ aio_co_schedule(void *ctx, void *co) "ctx %p co %p"
+ aio_co_schedule_bh_cb(void *ctx, void *co) "ctx %p co %p"
++reentrant_aio(void *ctx, const char *name) "ctx %p name %s"
+ 
+ # thread-pool.c
+ thread_pool_submit(void *pool, void *req, void *opaque) "pool %p req %p opaque %p"
+-- 
+2.39.3
+

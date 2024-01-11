@@ -1,0 +1,145 @@
+From 760a2f284f6d4cd3cd3b1685411bbca21c4ad233 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Tue, 27 Jun 2023 20:20:09 +1000
+Subject: [PATCH 1/6] numa: Validate cluster and NUMA node boundary if required
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 175: hw/arm: Validate CPU cluster and NUMA node boundary for RHEL machines
+RH-Bugzilla: 2171363
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/3] 24580064b9a0076ec4d9a916839d85135ac48cd9
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2171363
+
+For some architectures like ARM64, multiple CPUs in one cluster can be
+associated with different NUMA nodes, which is irregular configuration
+because we shouldn't have this in baremetal environment. The irregular
+configuration causes Linux guest to misbehave, as the following warning
+messages indicate.
+
+  -smp 6,maxcpus=6,sockets=2,clusters=1,cores=3,threads=1 \
+  -numa node,nodeid=0,cpus=0-1,memdev=ram0                \
+  -numa node,nodeid=1,cpus=2-3,memdev=ram1                \
+  -numa node,nodeid=2,cpus=4-5,memdev=ram2                \
+
+  ------------[ cut here ]------------
+  WARNING: CPU: 0 PID: 1 at kernel/sched/topology.c:2271 build_sched_domains+0x284/0x910
+  Modules linked in:
+  CPU: 0 PID: 1 Comm: swapper/0 Not tainted 5.14.0-268.el9.aarch64 #1
+  pstate: 00400005 (nzcv daif +PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+  pc : build_sched_domains+0x284/0x910
+  lr : build_sched_domains+0x184/0x910
+  sp : ffff80000804bd50
+  x29: ffff80000804bd50 x28: 0000000000000002 x27: 0000000000000000
+  x26: ffff800009cf9a80 x25: 0000000000000000 x24: ffff800009cbf840
+  x23: ffff000080325000 x22: ffff0000005df800 x21: ffff80000a4ce508
+  x20: 0000000000000000 x19: ffff000080324440 x18: 0000000000000014
+  x17: 00000000388925c0 x16: 000000005386a066 x15: 000000009c10cc2e
+  x14: 00000000000001c0 x13: 0000000000000001 x12: ffff00007fffb1a0
+  x11: ffff00007fffb180 x10: ffff80000a4ce508 x9 : 0000000000000041
+  x8 : ffff80000a4ce500 x7 : ffff80000a4cf920 x6 : 0000000000000001
+  x5 : 0000000000000001 x4 : 0000000000000007 x3 : 0000000000000002
+  x2 : 0000000000001000 x1 : ffff80000a4cf928 x0 : 0000000000000001
+  Call trace:
+   build_sched_domains+0x284/0x910
+   sched_init_domains+0xac/0xe0
+   sched_init_smp+0x48/0xc8
+   kernel_init_freeable+0x140/0x1ac
+   kernel_init+0x28/0x140
+   ret_from_fork+0x10/0x20
+
+Improve the situation to warn when multiple CPUs in one cluster have
+been associated with different NUMA nodes. However, one NUMA node is
+allowed to be associated with different clusters.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Acked-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Acked-by: Igor Mammedov <imammedo@redhat.com>
+Message-Id: <20230509002739.18388-2-gshan@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a494fdb715832000ee9047a549a35aacfea8175e)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/core/machine.c   | 42 ++++++++++++++++++++++++++++++++++++++++++
+ include/hw/boards.h |  1 +
+ 2 files changed, 43 insertions(+)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index c28702b690..5abdc8c39b 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -1496,6 +1496,45 @@ static void machine_numa_finish_cpu_init(MachineState *machine)
+     g_string_free(s, true);
+ }
+ 
++static void validate_cpu_cluster_to_numa_boundary(MachineState *ms)
++{
++    MachineClass *mc = MACHINE_GET_CLASS(ms);
++    NumaState *state = ms->numa_state;
++    const CPUArchIdList *possible_cpus = mc->possible_cpu_arch_ids(ms);
++    const CPUArchId *cpus = possible_cpus->cpus;
++    int i, j;
++
++    if (state->num_nodes <= 1 || possible_cpus->len <= 1) {
++        return;
++    }
++
++    /*
++     * The Linux scheduling domain can't be parsed when the multiple CPUs
++     * in one cluster have been associated with different NUMA nodes. However,
++     * it's fine to associate one NUMA node with CPUs in different clusters.
++     */
++    for (i = 0; i < possible_cpus->len; i++) {
++        for (j = i + 1; j < possible_cpus->len; j++) {
++            if (cpus[i].props.has_socket_id &&
++                cpus[i].props.has_cluster_id &&
++                cpus[i].props.has_node_id &&
++                cpus[j].props.has_socket_id &&
++                cpus[j].props.has_cluster_id &&
++                cpus[j].props.has_node_id &&
++                cpus[i].props.socket_id == cpus[j].props.socket_id &&
++                cpus[i].props.cluster_id == cpus[j].props.cluster_id &&
++                cpus[i].props.node_id != cpus[j].props.node_id) {
++                warn_report("CPU-%d and CPU-%d in socket-%" PRId64 "-cluster-%" PRId64
++                             " have been associated with node-%" PRId64 " and node-%" PRId64
++                             " respectively. It can cause OSes like Linux to"
++                             " misbehave", i, j, cpus[i].props.socket_id,
++                             cpus[i].props.cluster_id, cpus[i].props.node_id,
++                             cpus[j].props.node_id);
++            }
++        }
++    }
++}
++
+ MemoryRegion *machine_consume_memdev(MachineState *machine,
+                                      HostMemoryBackend *backend)
+ {
+@@ -1581,6 +1620,9 @@ void machine_run_board_init(MachineState *machine, const char *mem_path, Error *
+         numa_complete_configuration(machine);
+         if (machine->numa_state->num_nodes) {
+             machine_numa_finish_cpu_init(machine);
++            if (machine_class->cpu_cluster_has_numa_boundary) {
++                validate_cpu_cluster_to_numa_boundary(machine);
++            }
+         }
+     }
+ 
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 5f08bd7550..3628671228 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -275,6 +275,7 @@ struct MachineClass {
+     bool nvdimm_supported;
+     bool numa_mem_supported;
+     bool auto_enable_numa;
++    bool cpu_cluster_has_numa_boundary;
+     SMPCompatProps smp_props;
+     const char *default_ram_id;
+ 
+-- 
+2.39.3
+

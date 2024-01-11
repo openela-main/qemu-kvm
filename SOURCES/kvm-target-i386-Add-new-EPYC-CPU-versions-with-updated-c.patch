@@ -1,0 +1,192 @@
+From 92f0b5d0c7a841a21cabbc6efc1d7baf0e5a3e0f Mon Sep 17 00:00:00 2001
+From: Bandan Das <bsd@redhat.com>
+Date: Wed, 9 Aug 2023 12:26:12 -0400
+Subject: [PATCH 2/7] target/i386: Add new EPYC CPU versions with updated
+ cache_info
+
+RH-Author: Bandan Das <None>
+RH-MergeRequest: 198: Add EPYC-Genoa CPU model in qemu
+RH-Bugzilla: 2094913
+RH-Acked-by: Wei Huang <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/7] 71a2fd907636733f86729bc9328600f6f9306eaf (bdas1/qemu-kvm)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2094913
+
+commit d7c72735f618a7ee27ee109d8b1468193734606a
+Author: Michael Roth <michael.roth@amd.com>
+Date:   Thu May 4 15:53:07 2023 -0500
+
+    target/i386: Add new EPYC CPU versions with updated cache_info
+
+    Introduce new EPYC cpu versions: EPYC-v4 and EPYC-Rome-v3.
+    The only difference vs. older models is an updated cache_info with
+    the 'complex_indexing' bit unset, since this bit is not currently
+    defined for AMD and may cause problems should it be used for
+    something else in the future. Setting this bit will also cause
+    CPUID validation failures when running SEV-SNP guests.
+
+    Signed-off-by: Michael Roth <michael.roth@amd.com>
+    Signed-off-by: Babu Moger <babu.moger@amd.com>
+    Acked-by: Michael S. Tsirkin <mst@redhat.com>
+    Message-Id: <20230504205313.225073-3-babu.moger@amd.com>
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Bandan Das <bsd@redhat.com>
+---
+ target/i386/cpu.c | 118 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 118 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 3558c92ed0..8aa7eb611c 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1707,6 +1707,56 @@ static const CPUCaches epyc_cache_info = {
+     },
+ };
+ 
++static CPUCaches epyc_v4_cache_info = {
++    .l1d_cache = &(CPUCacheInfo) {
++        .type = DATA_CACHE,
++        .level = 1,
++        .size = 32 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 64,
++        .lines_per_tag = 1,
++        .self_init = 1,
++        .no_invd_sharing = true,
++    },
++    .l1i_cache = &(CPUCacheInfo) {
++        .type = INSTRUCTION_CACHE,
++        .level = 1,
++        .size = 64 * KiB,
++        .line_size = 64,
++        .associativity = 4,
++        .partitions = 1,
++        .sets = 256,
++        .lines_per_tag = 1,
++        .self_init = 1,
++        .no_invd_sharing = true,
++    },
++    .l2_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 2,
++        .size = 512 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 1024,
++        .lines_per_tag = 1,
++    },
++    .l3_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 3,
++        .size = 8 * MiB,
++        .line_size = 64,
++        .associativity = 16,
++        .partitions = 1,
++        .sets = 8192,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .inclusive = true,
++        .complex_indexing = false,
++    },
++};
++
+ static const CPUCaches epyc_rome_cache_info = {
+     .l1d_cache = &(CPUCacheInfo) {
+         .type = DATA_CACHE,
+@@ -1757,6 +1807,56 @@ static const CPUCaches epyc_rome_cache_info = {
+     },
+ };
+ 
++static const CPUCaches epyc_rome_v3_cache_info = {
++    .l1d_cache = &(CPUCacheInfo) {
++        .type = DATA_CACHE,
++        .level = 1,
++        .size = 32 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 64,
++        .lines_per_tag = 1,
++        .self_init = 1,
++        .no_invd_sharing = true,
++    },
++    .l1i_cache = &(CPUCacheInfo) {
++        .type = INSTRUCTION_CACHE,
++        .level = 1,
++        .size = 32 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 64,
++        .lines_per_tag = 1,
++        .self_init = 1,
++        .no_invd_sharing = true,
++    },
++    .l2_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 2,
++        .size = 512 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 1024,
++        .lines_per_tag = 1,
++    },
++    .l3_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 3,
++        .size = 16 * MiB,
++        .line_size = 64,
++        .associativity = 16,
++        .partitions = 1,
++        .sets = 16384,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .inclusive = true,
++        .complex_indexing = false,
++    },
++};
++
+ static const CPUCaches epyc_milan_cache_info = {
+     .l1d_cache = &(CPUCacheInfo) {
+         .type = DATA_CACHE,
+@@ -4112,6 +4212,15 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+                     { /* end of list */ }
+                 }
+             },
++            {
++                .version = 4,
++                .props = (PropValue[]) {
++                    { "model-id",
++                      "AMD EPYC-v4 Processor" },
++                    { /* end of list */ }
++                },
++                .cache_info = &epyc_v4_cache_info
++            },
+             { /* end of list */ }
+         }
+     },
+@@ -4231,6 +4340,15 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+                     { /* end of list */ }
+                 }
+             },
++            {
++                .version = 3,
++                .props = (PropValue[]) {
++                    { "model-id",
++                      "AMD EPYC-Rome-v3 Processor" },
++                    { /* end of list */ }
++                },
++                .cache_info = &epyc_rome_v3_cache_info
++            },
+             { /* end of list */ }
+         }
+     },
+-- 
+2.39.3
+

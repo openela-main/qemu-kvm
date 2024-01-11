@@ -1,0 +1,125 @@
+From 223eef8363c9ba58514b2d4f93e5ff015d111ff2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 29/37] vfio/migration: Return bool type for
+ vfio_migration_realize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [27/28] d5aea3ea4c53e4573076cbacbbe3134f9f0f9e53 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit d4a2af747d5a
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Mon Jul 3 15:15:10 2023 +0800
+
+    vfio/migration: Return bool type for vfio_migration_realize()
+
+    Make vfio_migration_realize() adhere to the convention of other realize()
+    callbacks(like qdev_realize) by returning bool instead of int.
+
+    Suggested-by: Cédric Le Goater <clg@redhat.com>
+    Suggested-by: Joao Martins <joao.m.martins@oracle.com>
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/migration.c           | 15 ++++++++++-----
+ hw/vfio/pci.c                 |  3 +--
+ include/hw/vfio/vfio-common.h |  2 +-
+ 3 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/hw/vfio/migration.c b/hw/vfio/migration.c
+index e3954570c8..2674f4bc47 100644
+--- a/hw/vfio/migration.c
++++ b/hw/vfio/migration.c
+@@ -846,7 +846,12 @@ void vfio_reset_bytes_transferred(void)
+     bytes_transferred = 0;
+ }
+ 
+-int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
++/*
++ * Return true when either migration initialized or blocker registered.
++ * Currently only return false when adding blocker fails which will
++ * de-register vfio device.
++ */
++bool vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+ {
+     Error *err = NULL;
+     int ret;
+@@ -854,7 +859,7 @@ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+     if (vbasedev->enable_migration == ON_OFF_AUTO_OFF) {
+         error_setg(&err, "%s: Migration is disabled for VFIO device",
+                    vbasedev->name);
+-        return vfio_block_migration(vbasedev, err, errp);
++        return !vfio_block_migration(vbasedev, err, errp);
+     }
+ 
+     ret = vfio_migration_init(vbasedev);
+@@ -869,7 +874,7 @@ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+                        vbasedev->name, ret, strerror(-ret));
+         }
+ 
+-        return vfio_block_migration(vbasedev, err, errp);
++        return !vfio_block_migration(vbasedev, err, errp);
+     }
+ 
+     if (!vbasedev->dirty_pages_supported) {
+@@ -896,7 +901,7 @@ int vfio_migration_realize(VFIODevice *vbasedev, Error **errp)
+     }
+ 
+     trace_vfio_migration_realize(vbasedev->name);
+-    return 0;
++    return true;
+ 
+ add_blocker:
+     ret = vfio_block_migration(vbasedev, err, errp);
+@@ -904,7 +909,7 @@ out_deinit:
+     if (ret) {
+         vfio_migration_deinit(vbasedev);
+     }
+-    return ret;
++    return !ret;
+ }
+ 
+ void vfio_migration_exit(VFIODevice *vbasedev)
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index a60b868c38..ba40ca8784 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3231,8 +3231,7 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+     }
+ 
+     if (!pdev->failover_pair_id) {
+-        ret = vfio_migration_realize(vbasedev, errp);
+-        if (ret) {
++        if (!vfio_migration_realize(vbasedev, errp)) {
+             goto out_deregister;
+         }
+     }
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 45167c8a8a..da43d27352 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -252,7 +252,7 @@ int vfio_spapr_create_window(VFIOContainer *container,
+ int vfio_spapr_remove_window(VFIOContainer *container,
+                              hwaddr offset_within_address_space);
+ 
+-int vfio_migration_realize(VFIODevice *vbasedev, Error **errp);
++bool vfio_migration_realize(VFIODevice *vbasedev, Error **errp);
+ void vfio_migration_exit(VFIODevice *vbasedev);
+ 
+ #endif /* HW_VFIO_VFIO_COMMON_H */
+-- 
+2.39.3
+

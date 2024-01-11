@@ -1,0 +1,54 @@
+From 816c20b23546d31316c9ca450db8a6668ac6216c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 25/37] vfio/pci: Disable INTx in vfio_realize error path
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [23/28] 2fde4bad00c4286e6bbe24947c2bfd6468fc0ff3 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit adee0da0368f
+Author: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date:   Mon Jul 3 15:15:06 2023 +0800
+
+    vfio/pci: Disable INTx in vfio_realize error path
+
+    When vfio realize fails, INTx isn't disabled if it has been enabled.
+    This may confuse host side with unhandled interrupt report.
+
+    Fixes: c5478fea27ac ("vfio/pci: Respond to KVM irqchip change notifier")
+    Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+    Reviewed-by: Joao Martins <joao.m.martins@oracle.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 87bd440504..2d059832a4 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3244,6 +3244,9 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+     return;
+ 
+ out_deregister:
++    if (vdev->interrupt == VFIO_INT_INTx) {
++        vfio_intx_disable(vdev);
++    }
+     pci_device_set_intx_routing_notifier(&vdev->pdev, NULL);
+     if (vdev->irqchip_change_notifier.notify) {
+         kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
+-- 
+2.39.3
+

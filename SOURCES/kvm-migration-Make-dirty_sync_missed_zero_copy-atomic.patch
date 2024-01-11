@@ -1,0 +1,92 @@
+From e9ff20d7f7e6c2354f3696e8bca265e535eeb801 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 11 Apr 2023 17:33:56 +0200
+Subject: [PATCH 11/56] migration: Make dirty_sync_missed_zero_copy atomic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [10/50] 041230abb087db0e7ffae02b4f85772490b805a0 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 4291823694fd8507831d26e2558d9cd0030841f7)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 2 +-
+ migration/multifd.c   | 2 +-
+ migration/ram.c       | 5 -----
+ migration/ram.h       | 4 +---
+ 4 files changed, 3 insertions(+), 10 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index ca68808b5c..645fb4b3c5 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1150,7 +1150,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+     info->ram->mbps = s->mbps;
+     info->ram->dirty_sync_count = ram_counters.dirty_sync_count;
+     info->ram->dirty_sync_missed_zero_copy =
+-            ram_counters.dirty_sync_missed_zero_copy;
++        stat64_get(&ram_counters.dirty_sync_missed_zero_copy);
+     info->ram->postcopy_requests = ram_counters.postcopy_requests;
+     info->ram->page_size = page_size;
+     info->ram->multifd_bytes = stat64_get(&ram_counters.multifd_bytes);
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 1c992abf53..903df2117b 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -576,7 +576,7 @@ static int multifd_zero_copy_flush(QIOChannel *c)
+         return -1;
+     }
+     if (ret == 1) {
+-        dirty_sync_missed_zero_copy();
++        stat64_add(&ram_counters.dirty_sync_missed_zero_copy, 1);
+     }
+ 
+     return ret;
+diff --git a/migration/ram.c b/migration/ram.c
+index 71320ed27a..93e0a48af4 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -472,11 +472,6 @@ void ram_transferred_add(uint64_t bytes)
+     stat64_add(&ram_counters.transferred, bytes);
+ }
+ 
+-void dirty_sync_missed_zero_copy(void)
+-{
+-    ram_counters.dirty_sync_missed_zero_copy++;
+-}
+-
+ struct MigrationOps {
+     int (*ram_save_target_page)(RAMState *rs, PageSearchStatus *pss);
+ };
+diff --git a/migration/ram.h b/migration/ram.h
+index ed70391317..2170c55e67 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -43,7 +43,7 @@
+ typedef struct {
+     int64_t dirty_pages_rate;
+     int64_t dirty_sync_count;
+-    uint64_t dirty_sync_missed_zero_copy;
++    Stat64 dirty_sync_missed_zero_copy;
+     uint64_t downtime_bytes;
+     Stat64 duplicate;
+     Stat64 multifd_bytes;
+@@ -114,6 +114,4 @@ void ram_write_tracking_prepare(void);
+ int ram_write_tracking_start(void);
+ void ram_write_tracking_stop(void);
+ 
+-void dirty_sync_missed_zero_copy(void);
+-
+ #endif
+-- 
+2.39.1
+

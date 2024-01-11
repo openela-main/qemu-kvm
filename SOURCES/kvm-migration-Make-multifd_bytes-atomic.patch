@@ -1,0 +1,99 @@
+From bfcc4bc8f60b541d545f1ea27b1ff156d8092d33 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 23 Nov 2022 20:36:56 +0100
+Subject: [PATCH 10/56] migration: Make multifd_bytes atomic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [9/50] c2bc6b173770a0ea81c3f9d850c583c651647070 (peterx/qemu-kvm)
+
+In the spirit of:
+
+commit 394d323bc3451e4d07f13341cb8817fac8dfbadd
+Author: Peter Xu <peterx@redhat.com>
+Date:   Tue Oct 11 17:55:51 2022 -0400
+
+    migration: Use atomic ops properly for page accountings
+
+Reviewed-by: David Edmondson <david.edmondson@oracle.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit cf671116facf4e29d91fce9c9ffb535385ffac81)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 4 ++--
+ migration/multifd.c   | 4 ++--
+ migration/ram.h       | 2 +-
+ 3 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index a91704d35c..ca68808b5c 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1153,7 +1153,7 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+             ram_counters.dirty_sync_missed_zero_copy;
+     info->ram->postcopy_requests = ram_counters.postcopy_requests;
+     info->ram->page_size = page_size;
+-    info->ram->multifd_bytes = ram_counters.multifd_bytes;
++    info->ram->multifd_bytes = stat64_get(&ram_counters.multifd_bytes);
+     info->ram->pages_per_second = s->pages_per_second;
+     info->ram->precopy_bytes = ram_counters.precopy_bytes;
+     info->ram->downtime_bytes = ram_counters.downtime_bytes;
+@@ -3780,7 +3780,7 @@ static MigThrError migration_detect_error(MigrationState *s)
+ static uint64_t migration_total_bytes(MigrationState *s)
+ {
+     return qemu_file_total_transferred(s->to_dst_file) +
+-        ram_counters.multifd_bytes;
++        stat64_get(&ram_counters.multifd_bytes);
+ }
+ 
+ static void migration_calculate_complete(MigrationState *s)
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 6ef3a27938..1c992abf53 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -432,9 +432,9 @@ static int multifd_send_pages(QEMUFile *f)
+     p->pages = pages;
+     transferred = ((uint64_t) pages->num) * p->page_size + p->packet_len;
+     qemu_file_acct_rate_limit(f, transferred);
+-    ram_counters.multifd_bytes += transferred;
+     qemu_mutex_unlock(&p->mutex);
+     stat64_add(&ram_counters.transferred, transferred);
++    stat64_add(&ram_counters.multifd_bytes, transferred);
+     qemu_sem_post(&p->sem);
+ 
+     return 1;
+@@ -627,9 +627,9 @@ int multifd_send_sync_main(QEMUFile *f)
+         p->flags |= MULTIFD_FLAG_SYNC;
+         p->pending_job++;
+         qemu_file_acct_rate_limit(f, p->packet_len);
+-        ram_counters.multifd_bytes += p->packet_len;
+         qemu_mutex_unlock(&p->mutex);
+         stat64_add(&ram_counters.transferred, p->packet_len);
++        stat64_add(&ram_counters.multifd_bytes, p->packet_len);
+         qemu_sem_post(&p->sem);
+     }
+     for (i = 0; i < migrate_multifd_channels(); i++) {
+diff --git a/migration/ram.h b/migration/ram.h
+index 7c026b5242..ed70391317 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -46,7 +46,7 @@ typedef struct {
+     uint64_t dirty_sync_missed_zero_copy;
+     uint64_t downtime_bytes;
+     Stat64 duplicate;
+-    uint64_t multifd_bytes;
++    Stat64 multifd_bytes;
+     Stat64 normal;
+     Stat64 postcopy_bytes;
+     int64_t postcopy_requests;
+-- 
+2.39.1
+

@@ -1,0 +1,110 @@
+From dd38230a0a375fb8427fa106ff79562e56c51b6c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:57 +0200
+Subject: [PATCH 18/37] hw/vfio/pci-quirks: Support alternate offset for
+ GPUDirect Cliques
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [16/28] 9befb7c9adaeb58e9d0b49686cf54b751c742832 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit f6b30c1984f7
+Author: Alex Williamson <alex.williamson@redhat.com>
+Date:   Thu Jun 8 12:05:07 2023 -0600
+
+    hw/vfio/pci-quirks: Support alternate offset for GPUDirect Cliques
+
+    NVIDIA Turing and newer GPUs implement the MSI-X capability at the offset
+    previously reserved for use by hypervisors to implement the GPUDirect
+    Cliques capability.  A revised specification provides an alternate
+    location.  Add a config space walk to the quirk to check for conflicts,
+    allowing us to fall back to the new location or generate an error at the
+    quirk setup rather than when the real conflicting capability is added
+    should there be no available location.
+
+    Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/pci-quirks.c | 41 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci-quirks.c b/hw/vfio/pci-quirks.c
+index f0147a050a..0ed2fcd531 100644
+--- a/hw/vfio/pci-quirks.c
++++ b/hw/vfio/pci-quirks.c
+@@ -1490,6 +1490,9 @@ void vfio_setup_resetfn_quirk(VFIOPCIDevice *vdev)
+  * +---------------------------------+---------------------------------+
+  *
+  * https://lists.gnu.org/archive/html/qemu-devel/2017-08/pdfUda5iEpgOS.pdf
++ *
++ * Specification for Turning and later GPU architectures:
++ * https://lists.gnu.org/archive/html/qemu-devel/2023-06/pdf142OR4O4c2.pdf
+  */
+ static void get_nv_gpudirect_clique_id(Object *obj, Visitor *v,
+                                        const char *name, void *opaque,
+@@ -1530,7 +1533,9 @@ const PropertyInfo qdev_prop_nv_gpudirect_clique = {
+ static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+ {
+     PCIDevice *pdev = &vdev->pdev;
+-    int ret, pos = 0xC8;
++    int ret, pos;
++    bool c8_conflict = false, d4_conflict = false;
++    uint8_t tmp;
+ 
+     if (vdev->nv_gpudirect_clique == 0xFF) {
+         return 0;
+@@ -1547,6 +1552,40 @@ static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+         return -EINVAL;
+     }
+ 
++    /*
++     * Per the updated specification above, it's recommended to use offset
++     * D4h for Turing and later GPU architectures due to a conflict of the
++     * MSI-X capability at C8h.  We don't know how to determine the GPU
++     * architecture, instead we walk the capability chain to mark conflicts
++     * and choose one or error based on the result.
++     *
++     * NB. Cap list head in pdev->config is already cleared, read from device.
++     */
++    ret = pread(vdev->vbasedev.fd, &tmp, 1,
++                vdev->config_offset + PCI_CAPABILITY_LIST);
++    if (ret != 1 || !tmp) {
++        error_setg(errp, "NVIDIA GPUDirect Clique ID: error getting cap list");
++        return -EINVAL;
++    }
++
++    do {
++        if (tmp == 0xC8) {
++            c8_conflict = true;
++        } else if (tmp == 0xD4) {
++            d4_conflict = true;
++        }
++        tmp = pdev->config[tmp + PCI_CAP_LIST_NEXT];
++    } while (tmp);
++
++    if (!c8_conflict) {
++        pos = 0xC8;
++    } else if (!d4_conflict) {
++        pos = 0xD4;
++    } else {
++        error_setg(errp, "NVIDIA GPUDirect Clique ID: invalid config space");
++        return -EINVAL;
++    }
++
+     ret = pci_add_capability(pdev, PCI_CAP_ID_VNDR, pos, 8, errp);
+     if (ret < 0) {
+         error_prepend(errp, "Failed to add NVIDIA GPUDirect cap: ");
+-- 
+2.39.3
+

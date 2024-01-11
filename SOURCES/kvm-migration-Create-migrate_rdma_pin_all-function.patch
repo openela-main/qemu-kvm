@@ -1,0 +1,95 @@
+From e4ef0f2cee6cdf2cf4bd225ac9e610f41d66dfcb Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 22:41:55 +0100
+Subject: [PATCH 32/56] migration: Create migrate_rdma_pin_all() function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [31/50] 206d96d47d9ee73ddc89dd01186560bf62ea5295 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+
+---
+
+Fixed missing space after comma (fabiano)
+
+(cherry picked from commit 17cba690cdd42108369fafe6b07bff09872fbea6)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/options.c | 7 +++++++
+ migration/options.h | 1 +
+ migration/rdma.c    | 6 +++---
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/migration/options.c b/migration/options.c
+index 2003e413da..9c9b8e5863 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -138,6 +138,13 @@ bool migrate_postcopy_ram(void)
+     return s->capabilities[MIGRATION_CAPABILITY_POSTCOPY_RAM];
+ }
+ 
++bool migrate_rdma_pin_all(void)
++{
++    MigrationState *s = migrate_get_current();
++
++    return s->capabilities[MIGRATION_CAPABILITY_RDMA_PIN_ALL];
++}
++
+ bool migrate_release_ram(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index 316efd1063..25c002b37a 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -30,6 +30,7 @@ bool migrate_pause_before_switchover(void);
+ bool migrate_postcopy_blocktime(void);
+ bool migrate_postcopy_preempt(void);
+ bool migrate_postcopy_ram(void);
++bool migrate_rdma_pin_all(void);
+ bool migrate_release_ram(void);
+ bool migrate_return_path(void);
+ bool migrate_validate_uuid(void);
+diff --git a/migration/rdma.c b/migration/rdma.c
+index bf55e2f163..0af5e944f0 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -35,6 +35,7 @@
+ #include <rdma/rdma_cma.h>
+ #include "trace.h"
+ #include "qom/object.h"
++#include "options.h"
+ #include <poll.h>
+ 
+ /*
+@@ -4178,8 +4179,7 @@ void rdma_start_outgoing_migration(void *opaque,
+         goto err;
+     }
+ 
+-    ret = qemu_rdma_source_init(rdma,
+-        s->capabilities[MIGRATION_CAPABILITY_RDMA_PIN_ALL], errp);
++    ret = qemu_rdma_source_init(rdma, migrate_rdma_pin_all(), errp);
+ 
+     if (ret) {
+         goto err;
+@@ -4201,7 +4201,7 @@ void rdma_start_outgoing_migration(void *opaque,
+         }
+ 
+         ret = qemu_rdma_source_init(rdma_return_path,
+-            s->capabilities[MIGRATION_CAPABILITY_RDMA_PIN_ALL], errp);
++                                    migrate_rdma_pin_all(), errp);
+ 
+         if (ret) {
+             goto return_path_err;
+-- 
+2.39.1
+

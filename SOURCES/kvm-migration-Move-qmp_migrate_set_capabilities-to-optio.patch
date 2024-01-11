@@ -1,0 +1,100 @@
+From d967ec22cdb20e0a846f050a2bc7bd4caa87940d Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 23:18:02 +0100
+Subject: [PATCH 35/56] migration: Move qmp_migrate_set_capabilities() to
+ options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [34/50] 16b62ca7e06c58d71389c449dc19c11939dd0882 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 45c1de13f09b1fd4ea26f54e6da12aae52f34cb8)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 26 --------------------------
+ migration/options.c   | 26 ++++++++++++++++++++++++++
+ 2 files changed, 26 insertions(+), 26 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 3dc8ee4875..369cd91796 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1222,32 +1222,6 @@ MigrationInfo *qmp_query_migrate(Error **errp)
+     return info;
+ }
+ 
+-void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+-                                  Error **errp)
+-{
+-    MigrationState *s = migrate_get_current();
+-    MigrationCapabilityStatusList *cap;
+-    bool new_caps[MIGRATION_CAPABILITY__MAX];
+-
+-    if (migration_is_running(s->state)) {
+-        error_setg(errp, QERR_MIGRATION_ACTIVE);
+-        return;
+-    }
+-
+-    memcpy(new_caps, s->capabilities, sizeof(new_caps));
+-    for (cap = params; cap; cap = cap->next) {
+-        new_caps[cap->value->capability] = cap->value->state;
+-    }
+-
+-    if (!migrate_caps_check(s->capabilities, new_caps, errp)) {
+-        return;
+-    }
+-
+-    for (cap = params; cap; cap = cap->next) {
+-        s->capabilities[cap->value->capability] = cap->value->state;
+-    }
+-}
+-
+ /*
+  * Check whether the parameters are valid. Error will be put into errp
+  * (if provided). Return true if valid, otherwise false.
+diff --git a/migration/options.c b/migration/options.c
+index ff621bdeb3..4cbe77e35a 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -413,3 +413,29 @@ MigrationCapabilityStatusList *qmp_query_migrate_capabilities(Error **errp)
+ 
+     return head;
+ }
++
++void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
++                                  Error **errp)
++{
++    MigrationState *s = migrate_get_current();
++    MigrationCapabilityStatusList *cap;
++    bool new_caps[MIGRATION_CAPABILITY__MAX];
++
++    if (migration_is_running(s->state)) {
++        error_setg(errp, QERR_MIGRATION_ACTIVE);
++        return;
++    }
++
++    memcpy(new_caps, s->capabilities, sizeof(new_caps));
++    for (cap = params; cap; cap = cap->next) {
++        new_caps[cap->value->capability] = cap->value->state;
++    }
++
++    if (!migrate_caps_check(s->capabilities, new_caps, errp)) {
++        return;
++    }
++
++    for (cap = params; cap; cap = cap->next) {
++        s->capabilities[cap->value->capability] = cap->value->state;
++    }
++}
+-- 
+2.39.1
+

@@ -1,0 +1,100 @@
+From 00cc3c3598828588619a7b3696819060bddaddb8 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Wed, 1 Mar 2023 23:15:59 +0100
+Subject: [PATCH 34/56] migration: Move qmp_query_migrate_capabilities() to
+ options.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [33/50] dbfa8f1e7aa7e000b4622ce2da12d7d418710f19 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 4d0c6b695bf5252402ebf967f83baebfd2f4b91e)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 22 ----------------------
+ migration/options.c   | 23 +++++++++++++++++++++++
+ 2 files changed, 23 insertions(+), 22 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index d9e30ca918..3dc8ee4875 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -886,28 +886,6 @@ void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value)
+     migrate_send_rp_message(mis, MIG_RP_MSG_RESUME_ACK, sizeof(buf), &buf);
+ }
+ 
+-MigrationCapabilityStatusList *qmp_query_migrate_capabilities(Error **errp)
+-{
+-    MigrationCapabilityStatusList *head = NULL, **tail = &head;
+-    MigrationCapabilityStatus *caps;
+-    MigrationState *s = migrate_get_current();
+-    int i;
+-
+-    for (i = 0; i < MIGRATION_CAPABILITY__MAX; i++) {
+-#ifndef CONFIG_LIVE_BLOCK_MIGRATION
+-        if (i == MIGRATION_CAPABILITY_BLOCK) {
+-            continue;
+-        }
+-#endif
+-        caps = g_malloc0(sizeof(*caps));
+-        caps->capability = i;
+-        caps->state = s->capabilities[i];
+-        QAPI_LIST_APPEND(tail, caps);
+-    }
+-
+-    return head;
+-}
+-
+ MigrationParameters *qmp_query_migrate_parameters(Error **errp)
+ {
+     MigrationParameters *params;
+diff --git a/migration/options.c b/migration/options.c
+index 367c930f46..ff621bdeb3 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -13,6 +13,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "qapi/error.h"
++#include "qapi/qapi-commands-migration.h"
+ #include "sysemu/runstate.h"
+ #include "migration.h"
+ #include "ram.h"
+@@ -390,3 +391,25 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
+ 
+     return true;
+ }
++
++MigrationCapabilityStatusList *qmp_query_migrate_capabilities(Error **errp)
++{
++    MigrationCapabilityStatusList *head = NULL, **tail = &head;
++    MigrationCapabilityStatus *caps;
++    MigrationState *s = migrate_get_current();
++    int i;
++
++    for (i = 0; i < MIGRATION_CAPABILITY__MAX; i++) {
++#ifndef CONFIG_LIVE_BLOCK_MIGRATION
++        if (i == MIGRATION_CAPABILITY_BLOCK) {
++            continue;
++        }
++#endif
++        caps = g_malloc0(sizeof(*caps));
++        caps->capability = i;
++        caps->state = s->capabilities[i];
++        QAPI_LIST_APPEND(tail, caps);
++    }
++
++    return head;
++}
+-- 
+2.39.1
+

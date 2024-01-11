@@ -1,0 +1,69 @@
+From e6ff4536a5e5f5bbfda370ecb525d0e066c3ab1c Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 11 Apr 2023 18:04:59 +0200
+Subject: [PATCH 15/56] migration: Make postcopy_requests atomic
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [14/50] d15c6052b77e7ded7bf34c66caa11bf86b75f2e8 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 3c764f9b2bc3e5eb5ed93ab45c2de6d599fef00f)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 3 ++-
+ migration/ram.c       | 2 +-
+ migration/ram.h       | 2 +-
+ 3 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 8fca751050..39501a0ed8 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1152,7 +1152,8 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
+         stat64_get(&ram_counters.dirty_sync_count);
+     info->ram->dirty_sync_missed_zero_copy =
+         stat64_get(&ram_counters.dirty_sync_missed_zero_copy);
+-    info->ram->postcopy_requests = ram_counters.postcopy_requests;
++    info->ram->postcopy_requests =
++        stat64_get(&ram_counters.postcopy_requests);
+     info->ram->page_size = page_size;
+     info->ram->multifd_bytes = stat64_get(&ram_counters.multifd_bytes);
+     info->ram->pages_per_second = s->pages_per_second;
+diff --git a/migration/ram.c b/migration/ram.c
+index 3c13136559..fe69ecaef4 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -2169,7 +2169,7 @@ int ram_save_queue_pages(const char *rbname, ram_addr_t start, ram_addr_t len)
+     RAMBlock *ramblock;
+     RAMState *rs = ram_state;
+ 
+-    ram_counters.postcopy_requests++;
++    stat64_add(&ram_counters.postcopy_requests, 1);
+     RCU_READ_LOCK_GUARD();
+ 
+     if (!rbname) {
+diff --git a/migration/ram.h b/migration/ram.h
+index 8c0d07c43a..afa68521d7 100644
+--- a/migration/ram.h
++++ b/migration/ram.h
+@@ -49,7 +49,7 @@ typedef struct {
+     Stat64 multifd_bytes;
+     Stat64 normal;
+     Stat64 postcopy_bytes;
+-    int64_t postcopy_requests;
++    Stat64 postcopy_requests;
+     Stat64 precopy_bytes;
+     int64_t remaining;
+     Stat64 transferred;
+-- 
+2.39.1
+

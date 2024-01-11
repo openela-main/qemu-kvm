@@ -1,0 +1,132 @@
+From 2c9e6892369ff99decd4030642b8dcf3875e9ebf Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 9 May 2023 15:41:33 +0200
+Subject: [PATCH 55/56] iotests: Test resizing image attached to an iothread
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 164: block: Fix hangs in qmp_block_resize()
+RH-Bugzilla: 2185688
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [4/4] 8d31752d1e6e8c6a422d68d9cb2251fbc34b7aef (kmwolf/centos-qemu-kvm)
+
+This tests that trying to resize an image with QMP block_resize doesn't
+hang or otherwise fail when the image is attached to a device running in
+an iothread.
+
+This is a regression test for the recent fix that changed
+qmp_block_resize, which is a coroutine based QMP handler, to avoid
+calling no_coroutine_fns directly.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-Id: <20230509134133.373408-1-kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e113362e4cdfdcfe1d497e569527f70a0021333a)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/tests/iothreads-resize     | 71 +++++++++++++++++++
+ tests/qemu-iotests/tests/iothreads-resize.out | 11 +++
+ 2 files changed, 82 insertions(+)
+ create mode 100755 tests/qemu-iotests/tests/iothreads-resize
+ create mode 100644 tests/qemu-iotests/tests/iothreads-resize.out
+
+diff --git a/tests/qemu-iotests/tests/iothreads-resize b/tests/qemu-iotests/tests/iothreads-resize
+new file mode 100755
+index 0000000000..36e4598c62
+--- /dev/null
++++ b/tests/qemu-iotests/tests/iothreads-resize
+@@ -0,0 +1,71 @@
++#!/usr/bin/env bash
++# group: rw auto quick
++#
++# Test resizing an image that is attached to a separate iothread
++#
++# Copyright (C) 2023 Red Hat, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++
++# creator
++owner=kwolf@redhat.com
++
++seq=`basename $0`
++echo "QA output created by $seq"
++
++status=1 # failure is the default!
++
++_cleanup()
++{
++    _cleanup_test_img
++}
++trap "_cleanup; exit \$status" 0 1 2 3 15
++
++# get standard environment, filters and checks
++cd ..
++. ./common.rc
++. ./common.filter
++
++# Resizing images is only supported by a few block drivers
++_supported_fmt raw qcow2 qed
++_supported_proto file
++_require_devices virtio-scsi-pci
++
++size=64M
++_make_test_img $size
++
++qmp() {
++cat <<EOF
++{"execute":"qmp_capabilities"}
++{'execute': 'block_resize',
++ 'arguments': {'node-name': 'img', 'size': 134217728}}
++{"execute":"quit"}
++EOF
++}
++
++qmp | $QEMU -S -display none \
++    -drive if=none,format=$IMGFMT,file="$TEST_IMG",node-name=img \
++    -object iothread,id=t0 \
++    -device virtio-scsi-pci,iothread=t0 \
++    -device scsi-hd,drive=none0 \
++    -qmp stdio \
++    | _filter_qmp
++
++_img_info | _filter_img_info
++
++# success, all done
++echo "*** done"
++rm -f $seq.full
++status=0
+diff --git a/tests/qemu-iotests/tests/iothreads-resize.out b/tests/qemu-iotests/tests/iothreads-resize.out
+new file mode 100644
+index 0000000000..2ca5a9d964
+--- /dev/null
++++ b/tests/qemu-iotests/tests/iothreads-resize.out
+@@ -0,0 +1,11 @@
++QA output created by iothreads-resize
++Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864
++QMP_VERSION
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
++image: TEST_DIR/t.IMGFMT
++file format: IMGFMT
++virtual size: 128 MiB (134217728 bytes)
++*** done
+-- 
+2.39.1
+

@@ -1,0 +1,51 @@
+From 46d5b861a39b7d0d3222162e6b7707526c131230 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Fri, 24 Mar 2023 13:28:15 +0100
+Subject: [PATCH 7/7] vdpa: remove net cvq migration blocker
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [7/7] 9542e305c7ea3a47e0f1fe0629281238b0bb2111 (eperezmartin/qemu-kvm)
+
+Now that we have add migration blockers if the device does not support
+all the needed features, remove the general blocker applied to all net
+devices with CVQ.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+---
+ net/vhost-vdpa.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index 47b87bf80d..6e03db4afa 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -941,18 +941,6 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
+         s->vhost_vdpa.shadow_vq_ops = &vhost_vdpa_net_svq_ops;
+         s->vhost_vdpa.shadow_vq_ops_opaque = s;
+         s->cvq_isolated = cvq_isolated;
+-
+-        /*
+-         * TODO: We cannot migrate devices with CVQ and no x-svq enabled as
+-         * there is no way to set the device state (MAC, MQ, etc) before
+-         * starting the datapath.
+-         *
+-         * Migration blocker ownership now belongs to s->vhost_vdpa.
+-         */
+-        if (!svq) {
+-            error_setg(&s->vhost_vdpa.migration_blocker,
+-                       "net vdpa cannot migrate with CVQ feature");
+-        }
+     }
+     ret = vhost_vdpa_add(nc, (void *)&s->vhost_vdpa, queue_pair_index, nvqs);
+     if (ret) {
+-- 
+2.39.3
+

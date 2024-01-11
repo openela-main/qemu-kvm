@@ -1,0 +1,68 @@
+From 76208f7824d5139ac8d86140b0e01031b67638cc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 12 Jul 2023 17:46:56 +0200
+Subject: [PATCH 04/37] vfio/migration: Skip log_sync during migration SETUP
+ state
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 179: vfio: live migration support
+RH-Bugzilla: 2192818
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/28] 4c340992b472ac4627b57705f4e971f14bbb0846 (clegoate/qemu-kvm-c9s)
+
+Bugzilla: https://bugzilla.redhat.com/2192818
+
+commit ff180c6bd7a8
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Mon Apr 3 16:00:00 2023 +0300
+
+    vfio/migration: Skip log_sync during migration SETUP state
+
+    Currently, VFIO log_sync can be issued while migration is in SETUP
+    state. However, doing this log_sync is at best redundant and at worst
+    can fail.
+
+    Redundant -- all RAM is marked dirty in migration SETUP state and is
+    transferred only after migration is set to ACTIVE state, so doing
+    log_sync during migration SETUP is pointless.
+
+    Can fail -- there is a time window, between setting migration state to
+    SETUP and starting dirty tracking by RAM save_live_setup handler, during
+    which dirty tracking is still not started. Any VFIO log_sync call that
+    is issued during this time window will fail. For example, this error can
+    be triggered by migrating a VM when a GUI is active, which constantly
+    calls log_sync.
+
+    Fix it by skipping VFIO log_sync while migration is in SETUP state.
+
+    Fixes: 758b96b61d5c ("vfio/migrate: Move switch of dirty tracking into vfio_memory_listener")
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Link: https://lore.kernel.org/r/20230403130000.6422-1-avihaih@nvidia.com
+    Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/common.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 4d01ea3515..78358ede27 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -478,7 +478,8 @@ static bool vfio_devices_all_dirty_tracking(VFIOContainer *container)
+     VFIODevice *vbasedev;
+     MigrationState *ms = migrate_get_current();
+ 
+-    if (!migration_is_setup_or_active(ms->state)) {
++    if (ms->state != MIGRATION_STATUS_ACTIVE &&
++        ms->state != MIGRATION_STATUS_DEVICE) {
+         return false;
+     }
+ 
+-- 
+2.39.3
+

@@ -1,0 +1,46 @@
+From 726662aee0bc295f6931b7aba1bd68f033e949aa Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Eugenio=20P=C3=A9rez?= <eperezma@redhat.com>
+Date: Thu, 10 Aug 2023 16:08:18 +0200
+Subject: [PATCH 3/7] vdpa: use first queue SVQ state for CVQ default
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eugenio Pérez <eperezma@redhat.com>
+RH-MergeRequest: 199: CVQ migration support
+RH-Jira: RHEL-923
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Commit: [3/7] 5c98f11b5080552a62c8e37ff2c23339455b7b86 (eperezmartin/qemu-kvm)
+
+Previous to this patch the only way CVQ would be shadowed is if it does
+support to isolate CVQ group or if all vqs were shadowed from the
+beginning.  The second condition was checked at the beginning, and no
+more configuration was done.
+
+After this series we need to check if data queues are shadowed because
+they are in the middle of the migration.  As checking if they are
+shadowed already covers the previous case, let's just mimic it.
+
+Signed-off-by: Eugenio Pérez <eperezma@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+---
+ net/vhost-vdpa.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/net/vhost-vdpa.c b/net/vhost-vdpa.c
+index ce17e4416a..29d3fd3ca6 100644
+--- a/net/vhost-vdpa.c
++++ b/net/vhost-vdpa.c
+@@ -494,7 +494,7 @@ static int vhost_vdpa_net_cvq_start(NetClientState *nc)
+ 
+     s0 = vhost_vdpa_net_first_nc_vdpa(s);
+     v->shadow_data = s0->vhost_vdpa.shadow_vqs_enabled;
+-    v->shadow_vqs_enabled = s->always_svq;
++    v->shadow_vqs_enabled = s0->vhost_vdpa.shadow_vqs_enabled;
+     s->vhost_vdpa.address_space_id = VHOST_VDPA_GUEST_PA_ASID;
+ 
+     if (s->vhost_vdpa.shadow_data) {
+-- 
+2.39.3
+

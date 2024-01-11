@@ -1,0 +1,75 @@
+From 27862b9d31da6447b60f185cdad95764018c6bc6 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 00:59:13 +0100
+Subject: [PATCH 40/56] migration: Create migrate_throttle_trigger_threshold()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [39/50] b8af9080c49be3d38bd2784d61289be89c03db3e (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit 6499efdb16e5c1288b4c8390d3bf68b313329b8b)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/options.c | 9 +++++++++
+ migration/options.h | 1 +
+ migration/ram.c     | 3 +--
+ 3 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/migration/options.c b/migration/options.c
+index 2b6d88b4b9..b9f3815f7e 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -554,6 +554,15 @@ int migrate_multifd_zstd_level(void)
+     return s->parameters.multifd_zstd_level;
+ }
+ 
++uint8_t migrate_throttle_trigger_threshold(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.throttle_trigger_threshold;
++}
++
+ uint64_t migrate_xbzrle_cache_size(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index 96d5a8e6e4..aa54443353 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -55,6 +55,7 @@ int migrate_multifd_channels(void);
+ MultiFDCompression migrate_multifd_compression(void);
+ int migrate_multifd_zlib_level(void);
+ int migrate_multifd_zstd_level(void);
++uint8_t migrate_throttle_trigger_threshold(void);
+ uint64_t migrate_xbzrle_cache_size(void);
+ 
+ #endif
+diff --git a/migration/ram.c b/migration/ram.c
+index 4576d0d849..e82cee97c3 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -1178,8 +1178,7 @@ static void migration_update_rates(RAMState *rs, int64_t end_time)
+ 
+ static void migration_trigger_throttle(RAMState *rs)
+ {
+-    MigrationState *s = migrate_get_current();
+-    uint64_t threshold = s->parameters.throttle_trigger_threshold;
++    uint64_t threshold = migrate_throttle_trigger_threshold();
+     uint64_t bytes_xfer_period =
+         stat64_get(&ram_counters.transferred) - rs->bytes_xfer_prev;
+     uint64_t bytes_dirty_period = rs->num_dirty_pages_period * TARGET_PAGE_SIZE;
+-- 
+2.39.1
+

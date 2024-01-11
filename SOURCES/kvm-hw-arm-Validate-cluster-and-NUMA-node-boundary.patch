@@ -1,0 +1,60 @@
+From 7b57aec372fc238cbaafe86557f9fb4b560895b1 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Tue, 27 Jun 2023 20:20:09 +1000
+Subject: [PATCH 2/6] hw/arm: Validate cluster and NUMA node boundary
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 175: hw/arm: Validate CPU cluster and NUMA node boundary for RHEL machines
+RH-Bugzilla: 2171363
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [2/3] fcac7ea85d9f73613989903c642fc1bf6c51946b
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2171363
+
+There are two ARM machines where NUMA is aware: 'virt' and 'sbsa-ref'.
+Both of them are required to follow cluster-NUMA-node boundary. To
+enable the validation to warn about the irregular configuration where
+multiple CPUs in one cluster have been associated with different NUMA
+nodes.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Acked-by: Igor Mammedov <imammedo@redhat.com>
+Message-Id: <20230509002739.18388-3-gshan@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit fecff672351ace5e39adf7dbcf7a8ee748b201cb)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/sbsa-ref.c | 2 ++
+ hw/arm/virt.c     | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/hw/arm/sbsa-ref.c b/hw/arm/sbsa-ref.c
+index 0b93558dde..efb380e7c8 100644
+--- a/hw/arm/sbsa-ref.c
++++ b/hw/arm/sbsa-ref.c
+@@ -864,6 +864,8 @@ static void sbsa_ref_class_init(ObjectClass *oc, void *data)
+     mc->possible_cpu_arch_ids = sbsa_ref_possible_cpu_arch_ids;
+     mc->cpu_index_to_instance_props = sbsa_ref_cpu_index_to_props;
+     mc->get_default_cpu_node_id = sbsa_ref_get_default_cpu_node_id;
++    /* platform instead of architectural choice */
++    mc->cpu_cluster_has_numa_boundary = true;
+ }
+ 
+ static const TypeInfo sbsa_ref_info = {
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 9be53e9355..df6a0231bc 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3083,6 +3083,8 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+     mc->smp_props.clusters_supported = true;
+     mc->auto_enable_numa_with_memhp = true;
+     mc->auto_enable_numa_with_memdev = true;
++    /* platform instead of architectural choice */
++    mc->cpu_cluster_has_numa_boundary = true;
+     mc->default_ram_id = "mach-virt.ram";
+ 
+     object_class_property_add(oc, "acpi", "OnOffAuto",
+-- 
+2.39.3
+

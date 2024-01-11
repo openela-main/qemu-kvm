@@ -1,0 +1,186 @@
+From d831672c4f1d41d863823584173452b89e754e26 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 11 Sep 2023 16:10:19 +0200
+Subject: [PATCH 3/4] migration: Add .save_prepare() handler to struct
+ SaveVMHandlers
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 318: VFIO migration: fix a QEMU crash when postcopy is enabled
+RH-Bugzilla: 2229868
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [3/4] b3154a736764ae4430561d7f5c298ab4c6ef9e01
+
+Bugzilla: https://bugzilla.redhat.com/2229868
+
+commit 08fc4cb51774f763dcc6fd74637aa9e00eb6a0ba
+Author: Avihai Horon <avihaih@nvidia.com>
+Date:   Wed Sep 6 18:08:51 2023 +0300
+
+    migration: Add .save_prepare() handler to struct SaveVMHandlers
+
+    Add a new .save_prepare() handler to struct SaveVMHandlers. This handler
+    is called early, even before migration starts, and can be used by
+    devices to perform early checks.
+
+    Refactor migrate_init() to be able to return errors and call
+    .save_prepare() from there.
+
+    Suggested-by: Peter Xu <peterx@redhat.com>
+    Signed-off-by: Avihai Horon <avihaih@nvidia.com>
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Cédric Le Goater <clg@redhat.com>
+
+Conflicts:
+    - migration/migration.c
+      context change in migrate_init() due to missing commit
+      aff3f6606d14 ("migration: Rename ram_counters to mig_stats")
+      context change in migrate_prepare() due to missing commit
+      87c22901094a ("migration: Move migrate_set_block_incremental()
+      to options.c")
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/migration/register.h |  5 +++++
+ migration/migration.c        | 15 +++++++++++++--
+ migration/migration.h        |  2 +-
+ migration/savevm.c           | 29 ++++++++++++++++++++++++++++-
+ migration/savevm.h           |  1 +
+ 5 files changed, 48 insertions(+), 4 deletions(-)
+
+diff --git a/include/migration/register.h b/include/migration/register.h
+index 90914f32f5..2b12c6adec 100644
+--- a/include/migration/register.h
++++ b/include/migration/register.h
+@@ -20,6 +20,11 @@ typedef struct SaveVMHandlers {
+     /* This runs inside the iothread lock.  */
+     SaveStateHandler *save_state;
+ 
++    /*
++     * save_prepare is called early, even before migration starts, and can be
++     * used to perform early checks.
++     */
++    int (*save_prepare)(void *opaque, Error **errp);
+     void (*save_cleanup)(void *opaque);
+     int (*save_live_complete_postcopy)(QEMUFile *f, void *opaque);
+     int (*save_live_complete_precopy)(QEMUFile *f, void *opaque);
+diff --git a/migration/migration.c b/migration/migration.c
+index a85c8936d9..cdaa757e23 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1389,8 +1389,15 @@ bool migration_is_active(MigrationState *s)
+             s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE);
+ }
+ 
+-void migrate_init(MigrationState *s)
++int migrate_init(MigrationState *s, Error **errp)
+ {
++    int ret;
++
++    ret = qemu_savevm_state_prepare(errp);
++    if (ret) {
++        return ret;
++    }
++
+     /*
+      * Reinitialise all migration state, except
+      * parameters/capabilities that the user set, and
+@@ -1429,6 +1436,8 @@ void migrate_init(MigrationState *s)
+     memset(&ram_counters, 0, sizeof(ram_counters));
+     memset(&compression_counters, 0, sizeof(compression_counters));
+     migration_reset_vfio_bytes_transferred();
++
++    return 0;
+ }
+ 
+ int migrate_add_blocker_internal(Error *reason, Error **errp)
+@@ -1638,7 +1647,9 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
+         migrate_set_block_incremental(s, true);
+     }
+ 
+-    migrate_init(s);
++    if (migrate_init(s, errp)) {
++        return false;
++    }
+ 
+     return true;
+ }
+diff --git a/migration/migration.h b/migration/migration.h
+index c5b98485e3..cfbe7c390d 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -465,7 +465,7 @@ void migrate_fd_connect(MigrationState *s, Error *error_in);
+ bool migration_is_setup_or_active(int state);
+ bool migration_is_running(int state);
+ 
+-void migrate_init(MigrationState *s);
++int migrate_init(MigrationState *s, Error **errp);
+ bool migration_is_blocked(Error **errp);
+ /* True if outgoing migration has entered postcopy phase */
+ bool migration_in_postcopy(void);
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 13c1a9afa1..2913563d6e 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1231,6 +1231,30 @@ bool qemu_savevm_state_guest_unplug_pending(void)
+     return false;
+ }
+ 
++int qemu_savevm_state_prepare(Error **errp)
++{
++    SaveStateEntry *se;
++    int ret;
++
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
++        if (!se->ops || !se->ops->save_prepare) {
++            continue;
++        }
++        if (se->ops->is_active) {
++            if (!se->ops->is_active(se->opaque)) {
++                continue;
++            }
++        }
++
++        ret = se->ops->save_prepare(se->opaque, errp);
++        if (ret < 0) {
++            return ret;
++        }
++    }
++
++    return 0;
++}
++
+ void qemu_savevm_state_setup(QEMUFile *f)
+ {
+     MigrationState *ms = migrate_get_current();
+@@ -1617,7 +1641,10 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
+         return -EINVAL;
+     }
+ 
+-    migrate_init(ms);
++    ret = migrate_init(ms, errp);
++    if (ret) {
++        return ret;
++    }
+     ms->to_dst_file = f;
+ 
+     qemu_mutex_unlock_iothread();
+diff --git a/migration/savevm.h b/migration/savevm.h
+index e894bbc143..74669733dd 100644
+--- a/migration/savevm.h
++++ b/migration/savevm.h
+@@ -31,6 +31,7 @@
+ 
+ bool qemu_savevm_state_blocked(Error **errp);
+ void qemu_savevm_non_migratable_list(strList **reasons);
++int qemu_savevm_state_prepare(Error **errp);
+ void qemu_savevm_state_setup(QEMUFile *f);
+ bool qemu_savevm_state_guest_unplug_pending(void);
+ int qemu_savevm_state_resume_prepare(MigrationState *s);
+-- 
+2.39.3
+

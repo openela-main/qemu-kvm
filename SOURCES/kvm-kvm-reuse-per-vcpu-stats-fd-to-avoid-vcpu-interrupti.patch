@@ -1,15 +1,20 @@
-From 6319eaee8c2206c4eca858a11ed7c9b7a2f3dff9 Mon Sep 17 00:00:00 2001
+From a5857fb12fcad46e27c415fe82ce13c0cb5d09c7 Mon Sep 17 00:00:00 2001
 From: Marcelo Tosatti <mtosatti@redhat.com>
-Date: Thu, 29 Jun 2023 15:13:57 -0300
-Subject: [PATCH] kvm: reuse per-vcpu stats fd to avoid vcpu interruption
+Date: Thu, 29 Jun 2023 14:48:32 -0300
+Subject: [PATCH 5/6] kvm: reuse per-vcpu stats fd to avoid vcpu interruption
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 RH-Author: Marcelo Tosatti <None>
-RH-MergeRequest: 290: kvm: reuse per-vcpu stats fd to avoid vcpu interruption
-RH-Bugzilla: 2221219
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/1] cf6c3188e26c6eae99b48db1f75837e11d1e4489
+RH-MergeRequest: 177: kvm: reuse per-vcpu stats fd to avoid vcpu interruption
+RH-Bugzilla: 2218644
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Commit: [1/1] 4ec72385a9047888121485f49bacb1aff84f7018 (mtosatti/qemu-kvm)
 
-Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2214884
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=2218644
 Commit: 3b6f485275ae95a81eec589d2773b86ca9ddec4d
 
 A regression has been detected in latency testing of KVM guests.
@@ -32,7 +37,7 @@ Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
  2 files changed, 16 insertions(+), 15 deletions(-)
 
 diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
-index 39ed30ab59..c86a6798c6 100644
+index cf3a88d90e..fa7ca46c66 100644
 --- a/accel/kvm/kvm-all.c
 +++ b/accel/kvm/kvm-all.c
 @@ -450,6 +450,8 @@ int kvm_init_vcpu(CPUState *cpu, Error **errp)
@@ -44,7 +49,7 @@ index 39ed30ab59..c86a6798c6 100644
  err:
      return ret;
  }
-@@ -3950,7 +3952,7 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
+@@ -3959,7 +3961,7 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
  
      /* Read stats header */
      kvm_stats_header = &descriptors->kvm_stats_header;
@@ -53,7 +58,7 @@ index 39ed30ab59..c86a6798c6 100644
      if (ret != sizeof(*kvm_stats_header)) {
          error_setg(errp, "KVM stats: failed to read stats header: "
                     "expected %zu actual %zu",
-@@ -3981,7 +3983,8 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
+@@ -3990,7 +3992,8 @@ static StatsDescriptors *find_stats_descriptors(StatsTarget target, int stats_fd
  }
  
  static void query_stats(StatsResultList **result, StatsTarget target,
@@ -63,7 +68,7 @@ index 39ed30ab59..c86a6798c6 100644
  {
      struct kvm_stats_desc *kvm_stats_desc;
      struct kvm_stats_header *kvm_stats_header;
-@@ -4039,7 +4042,7 @@ static void query_stats(StatsResultList **result, StatsTarget target,
+@@ -4048,7 +4051,7 @@ static void query_stats(StatsResultList **result, StatsTarget target,
          break;
      case STATS_TARGET_VCPU:
          add_stats_entry(result, STATS_PROVIDER_KVM,
@@ -72,7 +77,7 @@ index 39ed30ab59..c86a6798c6 100644
                          stats_list);
          break;
      default:
-@@ -4076,10 +4079,9 @@ static void query_stats_schema(StatsSchemaList **result, StatsTarget target,
+@@ -4085,10 +4088,9 @@ static void query_stats_schema(StatsSchemaList **result, StatsTarget target,
      add_stats_schema(result, STATS_PROVIDER_KVM, target, stats_list);
  }
  
@@ -85,7 +90,7 @@ index 39ed30ab59..c86a6798c6 100644
      Error *local_err = NULL;
  
      if (stats_fd == -1) {
-@@ -4088,14 +4090,13 @@ static void query_stats_vcpu(CPUState *cpu, run_on_cpu_data data)
+@@ -4097,14 +4099,13 @@ static void query_stats_vcpu(CPUState *cpu, run_on_cpu_data data)
          return;
      }
      query_stats(kvm_stats_args->result.stats, STATS_TARGET_VCPU,
@@ -104,7 +109,7 @@ index 39ed30ab59..c86a6798c6 100644
      Error *local_err = NULL;
  
      if (stats_fd == -1) {
-@@ -4105,7 +4106,6 @@ static void query_stats_schema_vcpu(CPUState *cpu, run_on_cpu_data data)
+@@ -4114,7 +4115,6 @@ static void query_stats_schema_vcpu(CPUState *cpu, run_on_cpu_data data)
      }
      query_stats_schema(kvm_stats_args->result.schema, STATS_TARGET_VCPU, stats_fd,
                         kvm_stats_args->errp);
@@ -112,7 +117,7 @@ index 39ed30ab59..c86a6798c6 100644
  }
  
  static void query_stats_cb(StatsResultList **result, StatsTarget target,
-@@ -4123,7 +4123,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
+@@ -4132,7 +4132,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
              error_setg_errno(errp, errno, "KVM stats: ioctl failed");
              return;
          }
@@ -121,7 +126,7 @@ index 39ed30ab59..c86a6798c6 100644
          close(stats_fd);
          break;
      }
-@@ -4137,7 +4137,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
+@@ -4146,7 +4146,7 @@ static void query_stats_cb(StatsResultList **result, StatsTarget target,
              if (!apply_str_list_filter(cpu->parent_obj.canonical_path, targets)) {
                  continue;
              }
@@ -130,7 +135,7 @@ index 39ed30ab59..c86a6798c6 100644
          }
          break;
      }
-@@ -4163,6 +4163,6 @@ void query_stats_schemas_cb(StatsSchemaList **result, Error **errp)
+@@ -4172,6 +4172,6 @@ void query_stats_schemas_cb(StatsSchemaList **result, Error **errp)
      if (first_cpu) {
          stats_args.result.schema = result;
          stats_args.errp = errp;
@@ -139,10 +144,10 @@ index 39ed30ab59..c86a6798c6 100644
      }
  }
 diff --git a/include/hw/core/cpu.h b/include/hw/core/cpu.h
-index 2417597236..362f22ca06 100644
+index 397fd3ac68..ae96be07e7 100644
 --- a/include/hw/core/cpu.h
 +++ b/include/hw/core/cpu.h
-@@ -397,6 +397,7 @@ struct CPUState {
+@@ -399,6 +399,7 @@ struct CPUState {
      struct kvm_dirty_gfn *kvm_dirty_gfns;
      uint32_t kvm_fetch_index;
      uint64_t dirty_pages;

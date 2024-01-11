@@ -1,0 +1,317 @@
+From d5ea4c82c44a59ac70313eb1eac77999ca5fde36 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 00:39:03 +0100
+Subject: [PATCH 37/56] migration: Move parameters functions to option.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [36/50] 2540921028025504723e762c0a1d2f295ac5a6d1 (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 1dfc4b9e19bcf1ad41a1be9ac82db35b9647c3c1)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c    | 91 ---------------------------------------
+ migration/migration.h    | 11 -----
+ migration/multifd-zlib.c |  1 +
+ migration/multifd-zstd.c |  1 +
+ migration/options.c      | 93 ++++++++++++++++++++++++++++++++++++++++
+ migration/options.h      | 13 ++++++
+ 6 files changed, 108 insertions(+), 102 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 880a51210e..7f2e770deb 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2264,79 +2264,6 @@ bool migrate_postcopy(void)
+     return migrate_postcopy_ram() || migrate_dirty_bitmaps();
+ }
+ 
+-int migrate_compress_level(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.compress_level;
+-}
+-
+-int migrate_compress_threads(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.compress_threads;
+-}
+-
+-int migrate_compress_wait_thread(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.compress_wait_thread;
+-}
+-
+-int migrate_decompress_threads(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.decompress_threads;
+-}
+-
+-int migrate_multifd_channels(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.multifd_channels;
+-}
+-
+-MultiFDCompression migrate_multifd_compression(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    assert(s->parameters.multifd_compression < MULTIFD_COMPRESSION__MAX);
+-    return s->parameters.multifd_compression;
+-}
+-
+-int migrate_multifd_zlib_level(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.multifd_zlib_level;
+-}
+-
+-int migrate_multifd_zstd_level(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.multifd_zstd_level;
+-}
+-
+ int migrate_use_tls(void)
+ {
+     MigrationState *s;
+@@ -2346,24 +2273,6 @@ int migrate_use_tls(void)
+     return s->parameters.tls_creds && *s->parameters.tls_creds;
+ }
+ 
+-uint64_t migrate_xbzrle_cache_size(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.xbzrle_cache_size;
+-}
+-
+-static int64_t migrate_max_postcopy_bandwidth(void)
+-{
+-    MigrationState *s;
+-
+-    s = migrate_get_current();
+-
+-    return s->parameters.max_postcopy_bandwidth;
+-}
+-
+ bool migrate_use_block_incremental(void)
+ {
+     MigrationState *s;
+diff --git a/migration/migration.h b/migration/migration.h
+index 24184622a8..8451e5f2fe 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -449,24 +449,13 @@ MigrationState *migrate_get_current(void);
+ 
+ bool migrate_postcopy(void);
+ 
+-int migrate_multifd_channels(void);
+-MultiFDCompression migrate_multifd_compression(void);
+-int migrate_multifd_zlib_level(void);
+-int migrate_multifd_zstd_level(void);
+-
+ int migrate_use_tls(void);
+-uint64_t migrate_xbzrle_cache_size(void);
+ 
+ bool migrate_use_block_incremental(void);
+ int migrate_max_cpu_throttle(void);
+ 
+ uint64_t ram_get_total_transferred_pages(void);
+ 
+-int migrate_compress_level(void);
+-int migrate_compress_threads(void);
+-int migrate_compress_wait_thread(void);
+-int migrate_decompress_threads(void);
+-
+ /* Sending on the return path - generic and then for each message type */
+ void migrate_send_rp_shut(MigrationIncomingState *mis,
+                           uint32_t value);
+diff --git a/migration/multifd-zlib.c b/migration/multifd-zlib.c
+index 37770248e1..81701250ad 100644
+--- a/migration/multifd-zlib.c
++++ b/migration/multifd-zlib.c
+@@ -18,6 +18,7 @@
+ #include "qapi/error.h"
+ #include "migration.h"
+ #include "trace.h"
++#include "options.h"
+ #include "multifd.h"
+ 
+ struct zlib_data {
+diff --git a/migration/multifd-zstd.c b/migration/multifd-zstd.c
+index f4a8e1ed1f..d1d29e76cc 100644
+--- a/migration/multifd-zstd.c
++++ b/migration/multifd-zstd.c
+@@ -18,6 +18,7 @@
+ #include "qapi/error.h"
+ #include "migration.h"
+ #include "trace.h"
++#include "options.h"
+ #include "multifd.h"
+ 
+ struct zstd_data {
+diff --git a/migration/options.c b/migration/options.c
+index f3b2d6e482..8d15be858c 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -460,3 +460,96 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+         s->capabilities[cap->value->capability] = cap->value->state;
+     }
+ }
++
++/* parameters */
++
++int migrate_compress_level(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.compress_level;
++}
++
++int migrate_compress_threads(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.compress_threads;
++}
++
++int migrate_compress_wait_thread(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.compress_wait_thread;
++}
++
++int migrate_decompress_threads(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.decompress_threads;
++}
++
++int64_t migrate_max_postcopy_bandwidth(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.max_postcopy_bandwidth;
++}
++
++int migrate_multifd_channels(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.multifd_channels;
++}
++
++MultiFDCompression migrate_multifd_compression(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    assert(s->parameters.multifd_compression < MULTIFD_COMPRESSION__MAX);
++    return s->parameters.multifd_compression;
++}
++
++int migrate_multifd_zlib_level(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.multifd_zlib_level;
++}
++
++int migrate_multifd_zstd_level(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.multifd_zstd_level;
++}
++
++uint64_t migrate_xbzrle_cache_size(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.xbzrle_cache_size;
++}
+diff --git a/migration/options.h b/migration/options.h
+index 5979e4ff90..b24ee92283 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -43,4 +43,17 @@ bool migrate_zero_copy_send(void);
+ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp);
+ bool migrate_cap_set(int cap, bool value, Error **errp);
+ 
++/* parameters */
++
++int migrate_compress_level(void);
++int migrate_compress_threads(void);
++int migrate_compress_wait_thread(void);
++int migrate_decompress_threads(void);
++int64_t migrate_max_postcopy_bandwidth(void);
++int migrate_multifd_channels(void);
++MultiFDCompression migrate_multifd_compression(void);
++int migrate_multifd_zlib_level(void);
++int migrate_multifd_zstd_level(void);
++uint64_t migrate_xbzrle_cache_size(void);
++
+ #endif
+-- 
+2.39.1
+

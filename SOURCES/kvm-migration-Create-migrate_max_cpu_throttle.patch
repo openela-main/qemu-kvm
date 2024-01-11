@@ -1,0 +1,88 @@
+From f0d4e34b00f66d2336b755a34a1ba226571641c4 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 01:13:01 +0100
+Subject: [PATCH 42/56] migration: Create migrate_max_cpu_throttle()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [41/50] fc7537c06d8e1f53d7bb552661f6ddb0133a978d (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit 24155bd0520035d5148c0af5b925932c4d8064a8)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.h | 2 --
+ migration/options.c   | 9 +++++++++
+ migration/options.h   | 1 +
+ migration/ram.c       | 2 +-
+ 4 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/migration/migration.h b/migration/migration.h
+index 86051af132..3ae938b19c 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -451,8 +451,6 @@ bool migrate_postcopy(void);
+ 
+ int migrate_use_tls(void);
+ 
+-int migrate_max_cpu_throttle(void);
+-
+ uint64_t ram_get_total_transferred_pages(void);
+ 
+ /* Sending on the return path - generic and then for each message type */
+diff --git a/migration/options.c b/migration/options.c
+index 0e102e5700..2cb04fbbd1 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -517,6 +517,15 @@ int migrate_decompress_threads(void)
+     return s->parameters.decompress_threads;
+ }
+ 
++uint8_t migrate_max_cpu_throttle(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->parameters.max_cpu_throttle;
++}
++
+ int64_t migrate_max_postcopy_bandwidth(void)
+ {
+     MigrationState *s;
+diff --git a/migration/options.h b/migration/options.h
+index adc2879bbb..72b1a320b7 100644
+--- a/migration/options.h
++++ b/migration/options.h
+@@ -51,6 +51,7 @@ int migrate_compress_level(void);
+ int migrate_compress_threads(void);
+ int migrate_compress_wait_thread(void);
+ int migrate_decompress_threads(void);
++uint8_t migrate_max_cpu_throttle(void);
+ int64_t migrate_max_postcopy_bandwidth(void);
+ int migrate_multifd_channels(void);
+ MultiFDCompression migrate_multifd_compression(void);
+diff --git a/migration/ram.c b/migration/ram.c
+index e82cee97c3..5c786513ef 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -715,7 +715,7 @@ static void mig_throttle_guest_down(uint64_t bytes_dirty_period,
+     uint64_t pct_initial = s->parameters.cpu_throttle_initial;
+     uint64_t pct_increment = s->parameters.cpu_throttle_increment;
+     bool pct_tailslow = s->parameters.cpu_throttle_tailslow;
+-    int pct_max = s->parameters.max_cpu_throttle;
++    int pct_max = migrate_max_cpu_throttle();
+ 
+     uint64_t throttle_now = cpu_throttle_get_percentage();
+     uint64_t cpu_now, cpu_ideal, throttle_inc;
+-- 
+2.39.1
+

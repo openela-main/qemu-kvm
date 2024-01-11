@@ -1,0 +1,40 @@
+From 8d203baa6cbd1f371e308c2c9d59a5ca7d29dca8 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Thu, 2 Mar 2023 10:55:30 +0100
+Subject: [PATCH 38/56] migration: Use migrate_max_postcopy_bandwidth()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Peter Xu <peterx@redhat.com>
+RH-MergeRequest: 162: migration: Pretty failures for postcopy on unsupported memory types
+RH-Bugzilla: 2057267
+RH-Acked-by: Leonardo Brás <leobras@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [37/50] d62948e9ee40a85ed9b460a583c3b0e43cd5d47f (peterx/qemu-kvm)
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 5390adec03a7d8bc6bcf5887f726b0ddaeb90681)
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ migration/migration.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 7f2e770deb..78bca9a93f 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -3799,7 +3799,7 @@ void migrate_fd_connect(MigrationState *s, Error *error_in)
+ 
+     if (resume) {
+         /* This is a resumed migration */
+-        rate_limit = s->parameters.max_postcopy_bandwidth /
++        rate_limit = migrate_max_postcopy_bandwidth() /
+             XFER_LIMIT_RATIO;
+     } else {
+         /* This is a fresh new migration */
+-- 
+2.39.1
+

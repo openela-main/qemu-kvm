@@ -1,0 +1,87 @@
+From 2732b6c5ef249d3ec9affca66768cc2fc476ff7c Mon Sep 17 00:00:00 2001
+From: Leonardo Bras <leobras@redhat.com>
+Date: Thu, 6 Jul 2023 01:55:47 -0300
+Subject: [PATCH 11/12] pcie: Add hotplug detect state register to cmask
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Leonardo Brás <leobras@redhat.com>
+RH-MergeRequest: 188: pcie: Add hotplug detect state register to cmask
+RH-Bugzilla: 2215819
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: quintela1 <quintela@redhat.com>
+RH-Commit: [1/1] a125fa337711bddbc957c399044393e82272b143 (LeoBras/centos-qemu-kvm)
+
+When trying to migrate a machine type pc-q35-6.0 or lower, with this
+cmdline options,
+
+-device driver=pcie-root-port,port=18,chassis=19,id=pcie-root-port18,bus=pcie.0,addr=0x12 \
+-device driver=nec-usb-xhci,p2=4,p3=4,id=nex-usb-xhci0,bus=pcie-root-port18,addr=0x12.0x1
+
+the following bug happens after all ram pages were sent:
+
+qemu-kvm: get_pci_config_device: Bad config data: i=0x6e read: 0 device: 40 cmask: ff wmask: 0 w1cmask:19
+qemu-kvm: Failed to load PCIDevice:config
+qemu-kvm: Failed to load pcie-root-port:parent_obj.parent_obj.parent_obj
+qemu-kvm: error while loading state for instance 0x0 of device '0000:00:12.0/pcie-root-port'
+qemu-kvm: load of migration failed: Invalid argument
+
+This happens on pc-q35-6.0 or lower because of:
+{ "ICH9-LPC", ACPI_PM_PROP_ACPI_PCIHP_BRIDGE, "off" }
+
+In this scenario, hotplug_handler_plug() calls pcie_cap_slot_plug_cb(),
+which sets dev->config byte 0x6e with bit PCI_EXP_SLTSTA_PDS to signal PCI
+hotplug for the guest. After a while the guest will deal with this hotplug
+and qemu will clear the above bit.
+
+Then, during migration, get_pci_config_device() will compare the
+configs of both the freshly created device and the one that is being
+received via migration, which will differ due to the PCI_EXP_SLTSTA_PDS bit
+and cause the bug to reproduce.
+
+To avoid this fake incompatibility, there are tree fields in PCIDevice that
+can help:
+
+- wmask: Used to implement R/W bytes, and
+- w1cmask: Used to implement RW1C(Write 1 to Clear) bytes
+- cmask: Used to enable config checks on load.
+
+According to PCI Express® Base Specification Revision 5.0 Version 1.0,
+table 7-27 (Slot Status Register) bit 6, the "Presence Detect State" is
+listed as RO (read-only), so it only makes sense to make use of the cmask
+field.
+
+So, clear PCI_EXP_SLTSTA_PDS bit on cmask, so the fake incompatibility on
+get_pci_config_device() does not abort the migration.
+
+Buglink: https://bugzilla.redhat.com/show_bug.cgi?id=2215819
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+Message-Id: <20230706045546.593605-3-leobras@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 625b370c45f4acd155ee625d61c0057d770a5b5e)
+Signed-off-by: Leonardo Bras <leobras@redhat.com>
+---
+ hw/pci/pcie.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/pci/pcie.c b/hw/pci/pcie.c
+index b8c24cf45f..8bc4a4ee57 100644
+--- a/hw/pci/pcie.c
++++ b/hw/pci/pcie.c
+@@ -659,6 +659,10 @@ void pcie_cap_slot_init(PCIDevice *dev, PCIESlot *s)
+     pci_word_test_and_set_mask(dev->w1cmask + pos + PCI_EXP_SLTSTA,
+                                PCI_EXP_HP_EV_SUPPORTED);
+ 
++    /* Avoid migration abortion when this device hot-removed by guest */
++    pci_word_test_and_clear_mask(dev->cmask + pos + PCI_EXP_SLTSTA,
++                                 PCI_EXP_SLTSTA_PDS);
++
+     dev->exp.hpev_notified = false;
+ 
+     qbus_set_hotplug_handler(BUS(pci_bridge_get_sec_bus(PCI_BRIDGE(dev))),
+-- 
+2.39.3
+
