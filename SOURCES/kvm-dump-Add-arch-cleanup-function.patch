@@ -1,0 +1,69 @@
+From fcae66b573ba4b4ddaea9a067703f3292c4e7e87 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Thu, 23 Nov 2023 14:42:00 +0100
+Subject: [PATCH 4/5] dump: Add arch cleanup function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 328: Fix problem that secure execution guest remains in "paused" state after failed dump [8.9.z]
+RH-Jira: RHEL-17253
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [2/3] 4e9640c7dd37155fec6fb6747d212b9862da53ee
+
+JIRA: https://issues.redhat.com/browse/RHEL-17253
+
+commit e72629e5149aba6f44122ea6d2a803ef136a0c6b
+Author: Janosch Frank <frankja@linux.ibm.com>
+Date:   Thu Nov 9 12:04:42 2023 +0000
+
+    dump: Add arch cleanup function
+
+    Some architectures (s390x) need to cleanup after a failed dump to be
+    able to continue to run the vm. Add a cleanup function pointer and
+    call it if it's set.
+
+    Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Message-ID: <20231109120443.185979-3-frankja@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ dump/dump.c                | 4 ++++
+ include/sysemu/dump-arch.h | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 5dee060b73..93edb89547 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -100,6 +100,10 @@ uint64_t cpu_to_dump64(DumpState *s, uint64_t val)
+ 
+ static int dump_cleanup(DumpState *s)
+ {
++    if (s->dump_info.arch_cleanup_fn) {
++        s->dump_info.arch_cleanup_fn(s);
++    }
++
+     guest_phys_blocks_free(&s->guest_phys_blocks);
+     memory_mapping_list_free(&s->list);
+     close(s->fd);
+diff --git a/include/sysemu/dump-arch.h b/include/sysemu/dump-arch.h
+index 59bbc9be38..743916e46c 100644
+--- a/include/sysemu/dump-arch.h
++++ b/include/sysemu/dump-arch.h
+@@ -24,6 +24,7 @@ typedef struct ArchDumpInfo {
+     void (*arch_sections_add_fn)(DumpState *s);
+     uint64_t (*arch_sections_write_hdr_fn)(DumpState *s, uint8_t *buff);
+     int (*arch_sections_write_fn)(DumpState *s, uint8_t *buff);
++    void (*arch_cleanup_fn)(DumpState *s);
+ } ArchDumpInfo;
+ 
+ struct GuestPhysBlockList; /* memory_mapping.h */
+-- 
+2.41.0
+

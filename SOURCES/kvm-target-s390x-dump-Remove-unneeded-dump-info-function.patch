@@ -1,0 +1,56 @@
+From fc235f783f58aec7460fcb6d23e8373596b85c97 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Thu, 23 Nov 2023 14:42:00 +0100
+Subject: [PATCH 3/5] target/s390x/dump: Remove unneeded dump info function
+ pointer init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 328: Fix problem that secure execution guest remains in "paused" state after failed dump [8.9.z]
+RH-Jira: RHEL-17253
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [1/3] 458e457a8257e685acb91eb68b6ff6b9aa0a4f4d
+
+JIRA: https://issues.redhat.com/browse/RHEL-17253
+
+commit 816644b1219900875f47d7adf9bfb283f1b29aa0
+Author: Janosch Frank <frankja@linux.ibm.com>
+Date:   Thu Nov 9 12:04:41 2023 +0000
+
+    target/s390x/dump: Remove unneeded dump info function pointer init
+
+    dump_state_prepare() now sets the function pointers to NULL so we only
+    need to touch them if we're going to use them.
+
+    Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Message-ID: <20231109120443.185979-2-frankja@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ target/s390x/arch_dump.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/target/s390x/arch_dump.c b/target/s390x/arch_dump.c
+index a7c44ba49d..7cdd4b7167 100644
+--- a/target/s390x/arch_dump.c
++++ b/target/s390x/arch_dump.c
+@@ -454,10 +454,6 @@ int cpu_get_dump_info(ArchDumpInfo *info,
+         info->arch_sections_add_fn = *arch_sections_add;
+         info->arch_sections_write_hdr_fn = *arch_sections_write_hdr;
+         info->arch_sections_write_fn = *arch_sections_write;
+-    } else {
+-        info->arch_sections_add_fn = NULL;
+-        info->arch_sections_write_hdr_fn = NULL;
+-        info->arch_sections_write_fn = NULL;
+     }
+     return 0;
+ }
+-- 
+2.41.0
+

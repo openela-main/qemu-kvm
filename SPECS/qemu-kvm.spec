@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 40%{?rcrel}%{?dist}.1
+Release: 40%{?rcrel}%{?dist}.2
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -787,6 +787,16 @@ Patch312: kvm-acpi-fix-acpi_index-migration.patch
 Patch313: kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch
 # For RHEL-7339 - CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.9.0]
 Patch314: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
+# For RHEL-16095 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z]
+Patch315: kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch
+# For RHEL-16095 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z]
+Patch316: kvm-net-Update-MemReentrancyGuard-for-NIC.patch
+# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
+Patch317: kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch
+# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
+Patch318: kvm-dump-Add-arch-cleanup-function.patch
+# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
+Patch319: kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -1956,6 +1966,17 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Wed Nov 29 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-40.el8_9.2
+- kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch [RHEL-16095]
+- kvm-net-Update-MemReentrancyGuard-for-NIC.patch [RHEL-16095]
+- kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch [RHEL-17253]
+- kvm-dump-Add-arch-cleanup-function.patch [RHEL-17253]
+- kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch [RHEL-17253]
+- Resolves: RHEL-16095
+  (CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z])
+- Resolves: RHEL-17253
+  (RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z])
+
 * Wed Sep 27 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-40.el8_9.1
 - kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [RHEL-7339]
 - Resolves: RHEL-7339
