@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 8.0.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.1
+Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.3
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -558,6 +558,12 @@ Patch197: kvm-migration-Add-.save_prepare-handler-to-struct-SaveVM.patch
 Patch198: kvm-vfio-migration-Block-VFIO-migration-with-postcopy-mi.patch
 # For RHEL-4453 - qemu-kvm crashed when migrating guest with failover vf [rhel-9.3.0.z]
 Patch199: kvm-virtio-Drop-out-of-coroutine-context-in-virtio_load.patch
+# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
+Patch200: kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch
+# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
+Patch201: kvm-dump-Add-arch-cleanup-function.patch
+# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
+Patch202: kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1619,6 +1625,13 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Fri Dec 05 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-16.el9_3.3
+- kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch [RHEL-16997]
+- kvm-dump-Add-arch-cleanup-function.patch [RHEL-16997]
+- kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch [RHEL-16997]
+- Resolves: RHEL-16997
+  (RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z])
+
 * Mon Oct 09 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-16.el9_3.1
 - kvm-virtio-Drop-out-of-coroutine-context-in-virtio_load.patch [RHEL-4453]
 - Resolves: RHEL-4453

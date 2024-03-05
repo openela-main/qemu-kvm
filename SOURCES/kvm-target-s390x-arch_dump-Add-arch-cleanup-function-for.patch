@@ -1,0 +1,84 @@
+From a84f9954b3f3607d34661b221a72677d81743a5b Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 21 Nov 2023 16:36:26 +0100
+Subject: [PATCH 3/3] target/s390x/arch_dump: Add arch cleanup function for PV
+ dumps
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 325: Fix problem that secure execution guest remains in "paused" state after dump failure
+RH-Jira: RHEL-16997
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/3] 0b3a9a6e992a615d96e7e9978a6b849b17ca69b6
+
+JIRA: https://issues.redhat.com/browse/RHEL-16997
+
+commit d12a91e0baafce7b1cbacff7cf9339eeb0011732
+Author: Janosch Frank <frankja@linux.ibm.com>
+Date:   Thu Nov 9 12:04:43 2023 +0000
+
+    target/s390x/arch_dump: Add arch cleanup function for PV dumps
+
+    PV dumps block vcpu runs until dump end is reached. If there's an
+    error between PV dump init and PV dump end the vm will never be able
+    to run again. One example of such an error is insufficient disk space
+    for the dump file.
+
+    Let's add a cleanup function that tries to do a dump end. The dump
+    completion data is discarded but there's no point in writing it to a
+    file anyway if there's a possibility that other PV dump data is
+    missing.
+
+    Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Reviewed-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Message-ID: <20231109120443.185979-4-frankja@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ target/s390x/arch_dump.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/target/s390x/arch_dump.c b/target/s390x/arch_dump.c
+index f6af8f780a..de0b3d7d84 100644
+--- a/target/s390x/arch_dump.c
++++ b/target/s390x/arch_dump.c
+@@ -433,6 +433,22 @@ static int arch_sections_write(DumpState *s, uint8_t *buff)
+     return 0;
+ }
+ 
++static void arch_cleanup(DumpState *s)
++{
++    g_autofree uint8_t *buff = NULL;
++    int rc;
++
++    if (!pv_dump_initialized) {
++        return;
++    }
++
++    buff = g_malloc(kvm_s390_pv_dmp_get_size_completion_data());
++    rc = kvm_s390_dump_completion_data(buff);
++    if (!rc) {
++            pv_dump_initialized = false;
++    }
++}
++
+ int cpu_get_dump_info(ArchDumpInfo *info,
+                       const struct GuestPhysBlockList *guest_phys_blocks)
+ {
+@@ -448,6 +464,7 @@ int cpu_get_dump_info(ArchDumpInfo *info,
+         info->arch_sections_add_fn = *arch_sections_add;
+         info->arch_sections_write_hdr_fn = *arch_sections_write_hdr;
+         info->arch_sections_write_fn = *arch_sections_write;
++        info->arch_cleanup_fn = *arch_cleanup;
+     }
+     return 0;
+ }
+-- 
+2.39.3
+
