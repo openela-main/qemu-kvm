@@ -1,0 +1,215 @@
+From e94700896dd8fcea149d9719eccde6f485440be2 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:08 +0800
+Subject: [PATCH 029/101] vfio/iommufd: Enable pci hot reset through iommufd
+ cdev interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [28/67] ca1ae970138ee4a6f4b3b49817e775f3159f4c97 (eauger1/centos-qemu-kvm)
+
+Implement the newly introduced pci_hot_reset callback named
+iommufd_cdev_pci_hot_reset to do iommufd specific check and
+reset operation.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 96d6f85ff012abd7aaa35b1a2bc48b8640c898d9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c    | 150 +++++++++++++++++++++++++++++++++++++++++++
+ hw/vfio/trace-events |   1 +
+ 2 files changed, 151 insertions(+)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 01b448e840..6e53e013ef 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -24,6 +24,7 @@
+ #include "sysemu/reset.h"
+ #include "qemu/cutils.h"
+ #include "qemu/chardev_open.h"
++#include "pci.h"
+ 
+ static int iommufd_cdev_map(VFIOContainerBase *bcontainer, hwaddr iova,
+                             ram_addr_t size, void *vaddr, bool readonly)
+@@ -468,9 +469,158 @@ static void iommufd_cdev_detach(VFIODevice *vbasedev)
+     close(vbasedev->fd);
+ }
+ 
++static VFIODevice *iommufd_cdev_pci_find_by_devid(__u32 devid)
++{
++    VFIODevice *vbasedev_iter;
++
++    QLIST_FOREACH(vbasedev_iter, &vfio_device_list, global_next) {
++        if (vbasedev_iter->bcontainer->ops != &vfio_iommufd_ops) {
++            continue;
++        }
++        if (devid == vbasedev_iter->devid) {
++            return vbasedev_iter;
++        }
++    }
++    return NULL;
++}
++
++static VFIOPCIDevice *
++iommufd_cdev_dep_get_realized_vpdev(struct vfio_pci_dependent_device *dep_dev,
++                                    VFIODevice *reset_dev)
++{
++    VFIODevice *vbasedev_tmp;
++
++    if (dep_dev->devid == reset_dev->devid ||
++        dep_dev->devid == VFIO_PCI_DEVID_OWNED) {
++        return NULL;
++    }
++
++    vbasedev_tmp = iommufd_cdev_pci_find_by_devid(dep_dev->devid);
++    if (!vbasedev_tmp || !vbasedev_tmp->dev->realized ||
++        vbasedev_tmp->type != VFIO_DEVICE_TYPE_PCI) {
++        return NULL;
++    }
++
++    return container_of(vbasedev_tmp, VFIOPCIDevice, vbasedev);
++}
++
++static int iommufd_cdev_pci_hot_reset(VFIODevice *vbasedev, bool single)
++{
++    VFIOPCIDevice *vdev = container_of(vbasedev, VFIOPCIDevice, vbasedev);
++    struct vfio_pci_hot_reset_info *info = NULL;
++    struct vfio_pci_dependent_device *devices;
++    struct vfio_pci_hot_reset *reset;
++    int ret, i;
++    bool multi = false;
++
++    trace_vfio_pci_hot_reset(vdev->vbasedev.name, single ? "one" : "multi");
++
++    if (!single) {
++        vfio_pci_pre_reset(vdev);
++    }
++    vdev->vbasedev.needs_reset = false;
++
++    ret = vfio_pci_get_pci_hot_reset_info(vdev, &info);
++
++    if (ret) {
++        goto out_single;
++    }
++
++    assert(info->flags & VFIO_PCI_HOT_RESET_FLAG_DEV_ID);
++
++    devices = &info->devices[0];
++
++    if (!(info->flags & VFIO_PCI_HOT_RESET_FLAG_DEV_ID_OWNED)) {
++        if (!vdev->has_pm_reset) {
++            for (i = 0; i < info->count; i++) {
++                if (devices[i].devid == VFIO_PCI_DEVID_NOT_OWNED) {
++                    error_report("vfio: Cannot reset device %s, "
++                                 "depends on device %04x:%02x:%02x.%x "
++                                 "which is not owned.",
++                                 vdev->vbasedev.name, devices[i].segment,
++                                 devices[i].bus, PCI_SLOT(devices[i].devfn),
++                                 PCI_FUNC(devices[i].devfn));
++                }
++            }
++        }
++        ret = -EPERM;
++        goto out_single;
++    }
++
++    trace_vfio_pci_hot_reset_has_dep_devices(vdev->vbasedev.name);
++
++    for (i = 0; i < info->count; i++) {
++        VFIOPCIDevice *tmp;
++
++        trace_iommufd_cdev_pci_hot_reset_dep_devices(devices[i].segment,
++                                                     devices[i].bus,
++                                                     PCI_SLOT(devices[i].devfn),
++                                                     PCI_FUNC(devices[i].devfn),
++                                                     devices[i].devid);
++
++        /*
++         * If a VFIO cdev device is resettable, all the dependent devices
++         * are either bound to same iommufd or within same iommu_groups as
++         * one of the iommufd bound devices.
++         */
++        assert(devices[i].devid != VFIO_PCI_DEVID_NOT_OWNED);
++
++        tmp = iommufd_cdev_dep_get_realized_vpdev(&devices[i], &vdev->vbasedev);
++        if (!tmp) {
++            continue;
++        }
++
++        if (single) {
++            ret = -EINVAL;
++            goto out_single;
++        }
++        vfio_pci_pre_reset(tmp);
++        tmp->vbasedev.needs_reset = false;
++        multi = true;
++    }
++
++    if (!single && !multi) {
++        ret = -EINVAL;
++        goto out_single;
++    }
++
++    /* Use zero length array for hot reset with iommufd backend */
++    reset = g_malloc0(sizeof(*reset));
++    reset->argsz = sizeof(*reset);
++
++     /* Bus reset! */
++    ret = ioctl(vdev->vbasedev.fd, VFIO_DEVICE_PCI_HOT_RESET, reset);
++    g_free(reset);
++    if (ret) {
++        ret = -errno;
++    }
++
++    trace_vfio_pci_hot_reset_result(vdev->vbasedev.name,
++                                    ret ? strerror(errno) : "Success");
++
++    /* Re-enable INTx on affected devices */
++    for (i = 0; i < info->count; i++) {
++        VFIOPCIDevice *tmp;
++
++        tmp = iommufd_cdev_dep_get_realized_vpdev(&devices[i], &vdev->vbasedev);
++        if (!tmp) {
++            continue;
++        }
++        vfio_pci_post_reset(tmp);
++    }
++out_single:
++    if (!single) {
++        vfio_pci_post_reset(vdev);
++    }
++    g_free(info);
++
++    return ret;
++}
++
+ const VFIOIOMMUOps vfio_iommufd_ops = {
+     .dma_map = iommufd_cdev_map,
+     .dma_unmap = iommufd_cdev_unmap,
+     .attach_device = iommufd_cdev_attach,
+     .detach_device = iommufd_cdev_detach,
++    .pci_hot_reset = iommufd_cdev_pci_hot_reset,
+ };
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index 3340c93af0..8fdde54456 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -174,3 +174,4 @@ iommufd_cdev_detach_ioas_hwpt(int iommufd, const char *name) " [iommufd=%d] Succ
+ iommufd_cdev_fail_attach_existing_container(const char *msg) " %s"
+ iommufd_cdev_alloc_ioas(int iommufd, int ioas_id) " [iommufd=%d] new IOMMUFD container with ioasid=%d"
+ iommufd_cdev_device_info(char *name, int devfd, int num_irqs, int num_regions, int flags) " %s (%d) num_irqs=%d num_regions=%d flags=%d"
++iommufd_cdev_pci_hot_reset_dep_devices(int domain, int bus, int slot, int function, int dev_id) "\t%04x:%02x:%02x.%x devid %d"
+-- 
+2.39.3
+

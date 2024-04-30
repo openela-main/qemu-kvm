@@ -1,0 +1,133 @@
+From 2b76d95ec07aba6d96070ee90c5015c1676be091 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Tue, 13 Feb 2024 16:25:54 +0100
+Subject: [PATCH 10/20] smbios: don't check type4 structures in legacy mode
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [8/18] c1f8409ea0d916f333c9373535bf21b521c62855
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+    legacy mode doesn't support structures of type 2 and more,
+    and CLI has a check for '-smbios type' option, however it's
+    still possible to sneak in type4 as a blob with '-smbios file'
+    option. However doing the later makes SMBIOS tables broken
+    since SeaBIOS doesn't expect that.
+
+    Rather than trying to add support for type4 to legacy code
+    (both QEMU and SeaBIOS), simplify smbios_get_table_legacy()
+    by dropping not relevant check in legacy code and error out
+    on type4 blob.
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Reviewed-by: Ani Sinha <anisinha@redhat.com>
+    Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+
+Conflicts: include/hw/firmware/smbios.h
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+ Please enter the commit message for your changes. Lines starting
+---
+ hw/i386/fw_cfg.c             |  3 +--
+ hw/smbios/smbios.c           | 18 ++++++++++++++----
+ include/hw/firmware/smbios.h |  2 +-
+ 3 files changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index bb7149c4c3..a25793a68f 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -73,8 +73,7 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg)
+     smbios_set_cpuid(cpu->env.cpuid_version, cpu->env.features[FEAT_1_EDX]);
+ 
+     if (pcmc->smbios_legacy_mode) {
+-        smbios_tables = smbios_get_table_legacy(ms->smp.cpus,
+-                                                &smbios_tables_len);
++        smbios_tables = smbios_get_table_legacy(&smbios_tables_len);
+         fw_cfg_add_bytes(fw_cfg, FW_CFG_SMBIOS_ENTRIES,
+                          smbios_tables, smbios_tables_len);
+         return;
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index d8d68716d4..441517cf24 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -530,14 +530,17 @@ opts_init(smbios_register_config);
+  */
+ #define SMBIOS_21_MAX_TABLES_LEN 0xffff
+ 
+-static void smbios_validate_table(uint32_t expected_t4_count)
++static void smbios_check_type4_count(uint32_t expected_t4_count)
+ {
+     if (smbios_type4_count && smbios_type4_count != expected_t4_count) {
+         error_report("Expected %d SMBIOS Type 4 tables, got %d instead",
+                      expected_t4_count, smbios_type4_count);
+         exit(1);
+     }
++}
+ 
++static void smbios_validate_table(void)
++{
+     if (smbios_ep_type == SMBIOS_ENTRY_POINT_TYPE_32 &&
+         smbios_tables_len > SMBIOS_21_MAX_TABLES_LEN) {
+         error_report("SMBIOS 2.1 table length %zu exceeds %d",
+@@ -622,7 +625,7 @@ static void smbios_build_type_1_fields(void)
+     }
+ }
+ 
+-uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length)
++uint8_t *smbios_get_table_legacy(size_t *length)
+ {
+     int i;
+     size_t usr_offset;
+@@ -635,6 +638,12 @@ uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length)
+         exit(1);
+     }
+ 
++    if (test_bit(4, have_binfile_bitmap)) {
++        error_report("can't process table for smbios "
++                     "type 4 on machine versions < 2.1!");
++        exit(1);
++    }
++
+     g_free(smbios_entries);
+     smbios_entries_len = sizeof(uint16_t);
+     smbios_entries = g_malloc0(smbios_entries_len);
+@@ -661,7 +670,7 @@ uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length)
+ 
+     smbios_build_type_0_fields();
+     smbios_build_type_1_fields();
+-    smbios_validate_table(expected_t4_count);
++    smbios_validate_table();
+     *length = smbios_entries_len;
+     return smbios_entries;
+ }
+@@ -1319,7 +1328,8 @@ void smbios_get_tables(MachineState *ms,
+     smbios_build_type_41_table(errp);
+     smbios_build_type_127_table();
+ 
+-    smbios_validate_table(ms->smp.sockets);
++    smbios_check_type4_count(ms->smp.sockets);
++    smbios_validate_table();
+     smbios_entry_point_setup();
+ 
+     /* return tables blob and entry point (anchor), and their sizes */
+diff --git a/include/hw/firmware/smbios.h b/include/hw/firmware/smbios.h
+index b9fc9a0f42..d55018e5e3 100644
+--- a/include/hw/firmware/smbios.h
++++ b/include/hw/firmware/smbios.h
+@@ -315,7 +315,7 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
+                          SmbiosEntryPointType ep_type,
+                          const char *stream_product,
+                          const char *stream_version);
+-uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length);
++uint8_t *smbios_get_table_legacy(size_t *length);
+ void smbios_get_tables(MachineState *ms,
+                        const struct smbios_phys_mem_area *mem_array,
+                        const unsigned int mem_array_size,
+-- 
+2.39.3
+

@@ -1,0 +1,173 @@
+From c2d7633ead6e19d4b6af5552ca907ae071b8734b Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:19:58 -0500
+Subject: [PATCH 081/101] virtio-scsi: replace AioContext lock with tmf_bh_lock
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [12/26] 8fb375bfd72a491d47321c78078577071a4e90fb (kmwolf/centos-qemu-kvm)
+
+Protect the Task Management Function BH state with a lock. The TMF BH
+runs in the main loop thread. An IOThread might process a TMF at the
+same time as the TMF BH is running. Therefore tmf_bh_list and tmf_bh
+must be protected by a lock.
+
+Run TMF request completion in the IOThread using aio_wait_bh_oneshot().
+This avoids more locking to protect the virtqueue and SCSI layer state.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20231205182011.1976568-2-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/virtio-scsi.c           | 62 ++++++++++++++++++++++-----------
+ include/hw/virtio/virtio-scsi.h |  3 +-
+ 2 files changed, 43 insertions(+), 22 deletions(-)
+
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index 9c751bf296..4f8d35facc 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -123,6 +123,30 @@ static void virtio_scsi_complete_req(VirtIOSCSIReq *req)
+     virtio_scsi_free_req(req);
+ }
+ 
++static void virtio_scsi_complete_req_bh(void *opaque)
++{
++    VirtIOSCSIReq *req = opaque;
++
++    virtio_scsi_complete_req(req);
++}
++
++/*
++ * Called from virtio_scsi_do_one_tmf_bh() in main loop thread. The main loop
++ * thread cannot touch the virtqueue since that could race with an IOThread.
++ */
++static void virtio_scsi_complete_req_from_main_loop(VirtIOSCSIReq *req)
++{
++    VirtIOSCSI *s = req->dev;
++
++    if (!s->ctx || s->ctx == qemu_get_aio_context()) {
++        /* No need to schedule a BH when there is no IOThread */
++        virtio_scsi_complete_req(req);
++    } else {
++        /* Run request completion in the IOThread */
++        aio_wait_bh_oneshot(s->ctx, virtio_scsi_complete_req_bh, req);
++    }
++}
++
+ static void virtio_scsi_bad_req(VirtIOSCSIReq *req)
+ {
+     virtio_error(VIRTIO_DEVICE(req->dev), "wrong size for virtio-scsi headers");
+@@ -338,10 +362,7 @@ static void virtio_scsi_do_one_tmf_bh(VirtIOSCSIReq *req)
+ 
+ out:
+     object_unref(OBJECT(d));
+-
+-    virtio_scsi_acquire(s);
+-    virtio_scsi_complete_req(req);
+-    virtio_scsi_release(s);
++    virtio_scsi_complete_req_from_main_loop(req);
+ }
+ 
+ /* Some TMFs must be processed from the main loop thread */
+@@ -354,18 +375,16 @@ static void virtio_scsi_do_tmf_bh(void *opaque)
+ 
+     GLOBAL_STATE_CODE();
+ 
+-    virtio_scsi_acquire(s);
++    WITH_QEMU_LOCK_GUARD(&s->tmf_bh_lock) {
++        QTAILQ_FOREACH_SAFE(req, &s->tmf_bh_list, next, tmp) {
++            QTAILQ_REMOVE(&s->tmf_bh_list, req, next);
++            QTAILQ_INSERT_TAIL(&reqs, req, next);
++        }
+ 
+-    QTAILQ_FOREACH_SAFE(req, &s->tmf_bh_list, next, tmp) {
+-        QTAILQ_REMOVE(&s->tmf_bh_list, req, next);
+-        QTAILQ_INSERT_TAIL(&reqs, req, next);
++        qemu_bh_delete(s->tmf_bh);
++        s->tmf_bh = NULL;
+     }
+ 
+-    qemu_bh_delete(s->tmf_bh);
+-    s->tmf_bh = NULL;
+-
+-    virtio_scsi_release(s);
+-
+     QTAILQ_FOREACH_SAFE(req, &reqs, next, tmp) {
+         QTAILQ_REMOVE(&reqs, req, next);
+         virtio_scsi_do_one_tmf_bh(req);
+@@ -379,8 +398,7 @@ static void virtio_scsi_reset_tmf_bh(VirtIOSCSI *s)
+ 
+     GLOBAL_STATE_CODE();
+ 
+-    virtio_scsi_acquire(s);
+-
++    /* Called after ioeventfd has been stopped, so tmf_bh_lock is not needed */
+     if (s->tmf_bh) {
+         qemu_bh_delete(s->tmf_bh);
+         s->tmf_bh = NULL;
+@@ -393,19 +411,19 @@ static void virtio_scsi_reset_tmf_bh(VirtIOSCSI *s)
+         req->resp.tmf.response = VIRTIO_SCSI_S_TARGET_FAILURE;
+         virtio_scsi_complete_req(req);
+     }
+-
+-    virtio_scsi_release(s);
+ }
+ 
+ static void virtio_scsi_defer_tmf_to_bh(VirtIOSCSIReq *req)
+ {
+     VirtIOSCSI *s = req->dev;
+ 
+-    QTAILQ_INSERT_TAIL(&s->tmf_bh_list, req, next);
++    WITH_QEMU_LOCK_GUARD(&s->tmf_bh_lock) {
++        QTAILQ_INSERT_TAIL(&s->tmf_bh_list, req, next);
+ 
+-    if (!s->tmf_bh) {
+-        s->tmf_bh = qemu_bh_new(virtio_scsi_do_tmf_bh, s);
+-        qemu_bh_schedule(s->tmf_bh);
++        if (!s->tmf_bh) {
++            s->tmf_bh = qemu_bh_new(virtio_scsi_do_tmf_bh, s);
++            qemu_bh_schedule(s->tmf_bh);
++        }
+     }
+ }
+ 
+@@ -1235,6 +1253,7 @@ static void virtio_scsi_device_realize(DeviceState *dev, Error **errp)
+     Error *err = NULL;
+ 
+     QTAILQ_INIT(&s->tmf_bh_list);
++    qemu_mutex_init(&s->tmf_bh_lock);
+ 
+     virtio_scsi_common_realize(dev,
+                                virtio_scsi_handle_ctrl,
+@@ -1277,6 +1296,7 @@ static void virtio_scsi_device_unrealize(DeviceState *dev)
+ 
+     qbus_set_hotplug_handler(BUS(&s->bus), NULL);
+     virtio_scsi_common_unrealize(dev);
++    qemu_mutex_destroy(&s->tmf_bh_lock);
+ }
+ 
+ static Property virtio_scsi_properties[] = {
+diff --git a/include/hw/virtio/virtio-scsi.h b/include/hw/virtio/virtio-scsi.h
+index 779568ab5d..da8cb928d9 100644
+--- a/include/hw/virtio/virtio-scsi.h
++++ b/include/hw/virtio/virtio-scsi.h
+@@ -85,8 +85,9 @@ struct VirtIOSCSI {
+ 
+     /*
+      * TMFs deferred to main loop BH. These fields are protected by
+-     * virtio_scsi_acquire().
++     * tmf_bh_lock.
+      */
++    QemuMutex tmf_bh_lock;
+     QEMUBH *tmf_bh;
+     QTAILQ_HEAD(, VirtIOSCSIReq) tmf_bh_list;
+ 
+-- 
+2.39.3
+

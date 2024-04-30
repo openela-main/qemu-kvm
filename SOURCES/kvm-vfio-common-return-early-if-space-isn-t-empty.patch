@@ -1,0 +1,55 @@
+From e9476ee64edd81fafd409fb3ceaad80668446bff Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:02 +0800
+Subject: [PATCH 023/101] vfio/common: return early if space isn't empty
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [22/67] 239c21ae7cddc8efabc041b9c7774f15b4964631 (eauger1/centos-qemu-kvm)
+
+This is a trivial optimization. If there is active container in space,
+vfio_reset_handler will never be unregistered. So revert the check of
+space->containers and return early.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 1eae5b7bd3ddd03b5591e9122b011c6520064a5a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 572ae7c934..934f4f5446 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -1462,10 +1462,13 @@ VFIOAddressSpace *vfio_get_address_space(AddressSpace *as)
+ 
+ void vfio_put_address_space(VFIOAddressSpace *space)
+ {
+-    if (QLIST_EMPTY(&space->containers)) {
+-        QLIST_REMOVE(space, list);
+-        g_free(space);
++    if (!QLIST_EMPTY(&space->containers)) {
++        return;
+     }
++
++    QLIST_REMOVE(space, list);
++    g_free(space);
++
+     if (QLIST_EMPTY(&vfio_address_spaces)) {
+         qemu_unregister_reset(vfio_reset_handler, NULL);
+     }
+-- 
+2.39.3
+

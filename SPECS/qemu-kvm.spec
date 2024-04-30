@@ -58,7 +58,7 @@
     %global tools_only 1
 %endif
 
-%ifnarch %{ix86} x86_64
+%ifnarch %{ix86} x86_64 aarch64
     %global have_usbredir 0
 %endif
 
@@ -148,8 +148,8 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
-Version: 8.0.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.3
+Version: 8.2.0
+Release: 11%{?rcrel}%{?dist}%{?cc_suffix}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -186,384 +186,430 @@ Patch0012: 0012-vfio-cap-number-of-devices-that-can-be-assigned.patch
 Patch0013: 0013-Add-support-statement-to-help-output.patch
 Patch0014: 0014-Use-qemu-kvm-in-documentation-instead-of-qemu-system.patch
 Patch0015: 0015-qcow2-Deprecation-warning-when-opening-v2-images-rw.patch
-Patch0016: 0016-qga-linux-add-usb-support-to-guest-get-fsinfo.patch
-Patch0017: 0017-Add-RHEL-9.2.0-compat-structure.patch
-Patch0018: 0018-redhat-hw-i386-pc-Update-x86-machine-type-compatibil.patch
-Patch0019: 0019-Disable-unwanted-new-devices.patch
-# For bz#2087047 - Disk detach is unsuccessful while the guest is still booting
-Patch20: kvm-acpi-pcihp-allow-repeating-hot-unplug-requests.patch
-# For bz#1934134 - ACPI table limits warning when booting guest with 512 VCPUs
-Patch21: kvm-hw-acpi-limit-warning-on-acpi-table-size-to-pc-machi.patch
-# For bz#1934134 - ACPI table limits warning when booting guest with 512 VCPUs
-Patch22: kvm-hw-acpi-Mark-acpi-blobs-as-resizable-on-RHEL-pc-mach.patch
-# For bz#2058982 - Qemu core dump if cut off nfs storage during migration
-Patch23: kvm-migration-Handle-block-device-inactivation-failures-.patch
-# For bz#2058982 - Qemu core dump if cut off nfs storage during migration
-Patch24: kvm-migration-Minor-control-flow-simplification.patch
-# For bz#2058982 - Qemu core dump if cut off nfs storage during migration
-Patch25: kvm-migration-Attempt-disk-reactivation-in-more-failure-.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch26: kvm-util-mmap-alloc-qemu_fd_getfs.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch27: kvm-vl.c-Create-late-backends-before-migration-object.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch28: kvm-migration-postcopy-Detect-file-system-on-dest-host.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch29: kvm-migration-mark-mixed-functions-that-can-suspend.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch30: kvm-postcopy-ram-do-not-use-qatomic_mb_read.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch31: kvm-migration-remove-extra-whitespace-character-for-code.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch32: kvm-migration-Merge-ram_counters-and-ram_atomic_counters.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch33: kvm-migration-Update-atomic-stats-out-of-the-mutex.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch34: kvm-migration-Make-multifd_bytes-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch35: kvm-migration-Make-dirty_sync_missed_zero_copy-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch36: kvm-migration-Make-precopy_bytes-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch37: kvm-migration-Make-downtime_bytes-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch38: kvm-migration-Make-dirty_sync_count-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch39: kvm-migration-Make-postcopy_requests-atomic.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch40: kvm-migration-Rename-duplicate-to-zero_pages.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch41: kvm-migration-Rename-normal-to-normal_pages.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch42: kvm-migration-rename-enabled_capabilities-to-capabilitie.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch43: kvm-migration-Pass-migrate_caps_check-the-old-and-new-ca.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch44: kvm-migration-move-migration_global_dump-to-migration-hm.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch45: kvm-spice-move-client_migrate_info-command-to-ui.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch46: kvm-migration-Create-migrate_cap_set.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch47: kvm-migration-Create-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch48: kvm-migration-Move-migrate_colo_enabled-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch49: kvm-migration-Move-migrate_use_compression-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch50: kvm-migration-Move-migrate_use_events-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch51: kvm-migration-Move-migrate_use_multifd-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch52: kvm-migration-Move-migrate_use_zero_copy_send-to-options.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch53: kvm-migration-Move-migrate_use_xbzrle-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch54: kvm-migration-Move-migrate_use_block-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch55: kvm-migration-Move-migrate_use_return-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch56: kvm-migration-Create-migrate_rdma_pin_all-function.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch57: kvm-migration-Move-migrate_caps_check-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch58: kvm-migration-Move-qmp_query_migrate_capabilities-to-opt.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch59: kvm-migration-Move-qmp_migrate_set_capabilities-to-optio.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch60: kvm-migration-Move-migrate_cap_set-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch61: kvm-migration-Move-parameters-functions-to-option.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch62: kvm-migration-Use-migrate_max_postcopy_bandwidth.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch63: kvm-migration-Move-migrate_use_block_incremental-to-opti.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch64: kvm-migration-Create-migrate_throttle_trigger_threshold.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch65: kvm-migration-Create-migrate_checkpoint_delay.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch66: kvm-migration-Create-migrate_max_cpu_throttle.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch67: kvm-migration-Move-migrate_announce_params-to-option.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch68: kvm-migration-Create-migrate_cpu_throttle_initial-to-opt.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch69: kvm-migration-Create-migrate_cpu_throttle_increment-func.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch70: kvm-migration-Create-migrate_cpu_throttle_tailslow-funct.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch71: kvm-migration-Move-migrate_postcopy-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch72: kvm-migration-Create-migrate_max_bandwidth-function.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch73: kvm-migration-Move-migrate_use_tls-to-options.c.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch74: kvm-migration-Move-qmp_migrate_set_parameters-to-options.patch
-# For bz#2057267 - Migration with postcopy fail when vm set with shared memory
-Patch75: kvm-migration-Allow-postcopy_ram_supported_by_host-to-re.patch
-# For bz#2185688 - [qemu-kvm] no response with QMP command block_resize
-Patch76: kvm-block-bdrv-blk_co_unref-for-calls-in-coroutine-conte.patch
-# For bz#2185688 - [qemu-kvm] no response with QMP command block_resize
-Patch77: kvm-block-Don-t-call-no_coroutine_fns-in-qmp_block_resiz.patch
-# For bz#2185688 - [qemu-kvm] no response with QMP command block_resize
-Patch78: kvm-iotests-Use-alternative-CPU-type-that-is-not-depreca.patch
-# For bz#2185688 - [qemu-kvm] no response with QMP command block_resize
-Patch79: kvm-iotests-Test-resizing-image-attached-to-an-iothread.patch
-# For bz#2186725 - Qemu hang when commit during fio running(iothread enable)
-Patch80: kvm-block-compile-out-assert_bdrv_graph_readable-by-defa.patch
-# For bz#2186725 - Qemu hang when commit during fio running(iothread enable)
-Patch81: kvm-graph-lock-Disable-locking-for-now.patch
-# For bz#2186725 - Qemu hang when commit during fio running(iothread enable)
-Patch82: kvm-nbd-server-Fix-drained_poll-to-wake-coroutine-in-rig.patch
-# For bz#2186725 - Qemu hang when commit during fio running(iothread enable)
-Patch83: kvm-iotests-Test-commit-with-iothreads-and-ongoing-I-O.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch84: kvm-memory-prevent-dma-reentracy-issues.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch85: kvm-async-Add-an-optional-reentrancy-guard-to-the-BH-API.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch86: kvm-checkpatch-add-qemu_bh_new-aio_bh_new-checks.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch87: kvm-hw-replace-most-qemu_bh_new-calls-with-qemu_bh_new_g.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch88: kvm-lsi53c895a-disable-reentrancy-detection-for-script-R.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch89: kvm-bcm2835_property-disable-reentrancy-detection-for-io.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch90: kvm-raven-disable-reentrancy-detection-for-iomem.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch91: kvm-apic-disable-reentrancy-detection-for-apic-msi.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch92: kvm-async-avoid-use-after-free-on-re-entrancy-guard.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch93: kvm-loongarch-mark-loongarch_ipi_iocsr-re-entrnacy-safe.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch94: kvm-memory-stricter-checks-prior-to-unsetting-engaged_in.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch95: kvm-lsi53c895a-disable-reentrancy-detection-for-MMIO-reg.patch
-# For RHEL-516 - CVE-2023-2680 qemu-kvm: QEMU: hcd-ehci: DMA reentrancy issue (incomplete fix for CVE-2021-3750) [rhel-9]
-Patch96: kvm-hw-scsi-lsi53c895a-Fix-reentrancy-issues-in-the-LSI-.patch
-# For bz#2189423 - Failed to migrate VM from rhel 9.3 to rhel 9.2
-Patch97: kvm-hw-pci-Disable-PCI_ERR_UNCOR_MASK-register-for-machi.patch
-# For bz#2196289 - Fix number of ready channels on multifd
-Patch98: kvm-multifd-Fix-the-number-of-channels-ready.patch
-# For bz#2168500 - [IBM 9.3 FEAT] KVM: Improve memory reclaiming for z15 Secure Execution guests - qemu part
-Patch99: kvm-util-async-teardown-wire-up-query-command-line-optio.patch
-# For bz#2168500 - [IBM 9.3 FEAT] KVM: Improve memory reclaiming for z15 Secure Execution guests - qemu part
-Patch100: kvm-s390x-pv-Fix-spurious-warning-with-asynchronous-tear.patch
-# For bz#2216201 - [qemu-kvm]VM reports vulnerabilty to mmio_stale_data on patched host with microcode
-Patch101: kvm-target-i386-add-support-for-FLUSH_L1D-feature.patch
-# For bz#2216201 - [qemu-kvm]VM reports vulnerabilty to mmio_stale_data on patched host with microcode
-Patch102: kvm-target-i386-add-support-for-FB_CLEAR-feature.patch
-# For bz#2180076 - [qemu-kvm] support fd passing for libblkio QEMU BlockDrivers
-Patch103: kvm-block-blkio-use-qemu_open-to-support-fd-passing-for-.patch
-# For bz#2180076 - [qemu-kvm] support fd passing for libblkio QEMU BlockDrivers
-Patch104: kvm-qapi-add-fdset-feature-for-BlockdevOptionsVirtioBlkV.patch
-# For bz#2171363 - [aarch64] Kernel hits Call trace with irregular CPU-to-NUMA association
-Patch105: kvm-numa-Validate-cluster-and-NUMA-node-boundary-if-requ.patch
-# For bz#2171363 - [aarch64] Kernel hits Call trace with irregular CPU-to-NUMA association
-Patch106: kvm-hw-arm-Validate-cluster-and-NUMA-node-boundary.patch
-# For bz#2171363 - [aarch64] Kernel hits Call trace with irregular CPU-to-NUMA association
-Patch107: kvm-hw-arm-virt-Validate-cluster-and-NUMA-node-boundary-.patch
-# For RHEL-330 - [virtual network][qemu-kvm-8.0.0-rc1]qemu core dump: qemu-kvm: ../softmmu/memory.c:2592: void memory_region_del_eventfd(MemoryRegion *, hwaddr, unsigned int, _Bool, uint64_t, EventNotifier *): Assertion `i != mr->ioeventfd_nb' failed
-Patch108: kvm-vhost-fix-vhost_dev_enable_notifiers-error-case.patch
-# For bz#2218644 - query-stats QMP command interrupts vcpus, the Max Latencies could be more than 100us (rhel 9.3.0 clone)
-Patch109: kvm-kvm-reuse-per-vcpu-stats-fd-to-avoid-vcpu-interrupti.patch
-# For bz#2128929 - [rhel9.2] hotplug/hotunplug mlx vdpa device to the occupied addr port, then qemu core dump occurs after shutdown guest
-Patch110: kvm-vhost-vdpa-do-not-cleanup-the-vdpa-vhost-net-structu.patch
-# For bz#2211609 - With virtio-iommu and vfio-pci, qemu reports "warning: virtio-iommu page mask 0xfffffffffffff000 does not match 0x40201000"
-# For bz#2211634 - [aarch64] With virtio-iommu and vfio-pci, qemu coredump when host using kernel-64k package
-Patch111: kvm-virtio-iommu-Fix-64kB-host-page-size-VFIO-device-ass.patch
-# For bz#2211609 - With virtio-iommu and vfio-pci, qemu reports "warning: virtio-iommu page mask 0xfffffffffffff000 does not match 0x40201000"
-# For bz#2211634 - [aarch64] With virtio-iommu and vfio-pci, qemu coredump when host using kernel-64k package
-Patch112: kvm-virtio-iommu-Rework-the-traces-in-virtio_iommu_set_p.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch113: kvm-vfio-pci-add-support-for-VF-token.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch114: kvm-vfio-migration-Skip-log_sync-during-migration-SETUP-.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch115: kvm-vfio-pci-Static-Resizable-BAR-capability.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch116: kvm-vfio-pci-Fix-a-use-after-free-issue.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch117: kvm-util-vfio-helpers-Use-g_file_read_link.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch118: kvm-migration-Make-all-functions-check-have-the-same-for.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch119: kvm-migration-Move-migration_properties-to-options.c.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch120: kvm-migration-Add-switchover-ack-capability.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch121: kvm-migration-Implement-switchover-ack-logic.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch122: kvm-migration-Enable-switchover-ack-capability.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch123: kvm-vfio-migration-Refactor-vfio_save_block-to-return-sa.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch124: kvm-vfio-migration-Store-VFIO-migration-flags-in-VFIOMig.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch125: kvm-vfio-migration-Add-VFIO-migration-pre-copy-support.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch126: kvm-vfio-migration-Add-support-for-switchover-ack-capabi.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch127: kvm-vfio-Implement-a-common-device-info-helper.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch128: kvm-hw-vfio-pci-quirks-Support-alternate-offset-for-GPUD.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch129: kvm-vfio-pci-Call-vfio_prepare_kvm_msi_virq_batch-in-MSI.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch130: kvm-vfio-migration-Reset-bytes_transferred-properly.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch131: kvm-vfio-migration-Make-VFIO-migration-non-experimental.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch132: kvm-vfio-pci-Fix-a-segfault-in-vfio_realize.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch133: kvm-vfio-pci-Free-leaked-timer-in-vfio_realize-error-pat.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch134: kvm-hw-vfio-pci-quirks-Sanitize-capability-pointer.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch135: kvm-vfio-pci-Disable-INTx-in-vfio_realize-error-path.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch136: kvm-vfio-migration-Change-vIOMMU-blocker-from-global-to-.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch137: kvm-vfio-migration-Free-resources-when-vfio_migration_re.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch138: kvm-vfio-migration-Remove-print-of-Migration-disabled.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch139: kvm-vfio-migration-Return-bool-type-for-vfio_migration_r.patch
-# For bz#2192818 - [VFIO LM] Live migration
-Patch140: kvm-vfio-Fix-null-pointer-dereference-bug-in-vfio_bars_f.patch
-# For bz#2220866 - Misaligned symbol for s390-ccw image during qemu-kvm build
-Patch141: kvm-pc-bios-s390-ccw-Makefile-Use-z-noexecstack-to-silen.patch
-# For bz#2220866 - Misaligned symbol for s390-ccw image during qemu-kvm build
-Patch142: kvm-pc-bios-s390-ccw-Fix-indentation-in-start.S.patch
-# For bz#2220866 - Misaligned symbol for s390-ccw image during qemu-kvm build
-Patch143: kvm-pc-bios-s390-ccw-Provide-space-for-initial-stack-fra.patch
-# For bz#2220866 - Misaligned symbol for s390-ccw image during qemu-kvm build
-Patch144: kvm-pc-bios-s390-ccw-Don-t-use-__bss_start-with-the-larl.patch
-# For bz#2222579 - PNG screendump doesn't save screen correctly
-Patch145: kvm-ui-Fix-pixel-colour-channel-order-for-PNG-screenshot.patch
-# For bz#2213317 - Enable libblkio-based block drivers in QEMU
-Patch146: kvm-block-blkio-fix-module_block.py-parsing.patch
-# For bz#2176702 - [RHEL9][virtio-scsi] scsi-hd cannot hot-plug successfully after hot-plug it repeatly
-Patch147: kvm-scsi-fetch-unit-attention-when-creating-the-request.patch
-# For bz#2176702 - [RHEL9][virtio-scsi] scsi-hd cannot hot-plug successfully after hot-plug it repeatly
-Patch148: kvm-scsi-cleanup-scsi_clear_unit_attention.patch
-# For bz#2176702 - [RHEL9][virtio-scsi] scsi-hd cannot hot-plug successfully after hot-plug it repeatly
-Patch149: kvm-scsi-clear-unit-attention-only-for-REPORT-LUNS-comma.patch
-# For RHEL-794 - Backport s390x fixes from QEMU 8.1
-Patch150: kvm-s390x-ap-Wire-up-the-device-request-notifier-interfa.patch
-# For bz#2196295 - Multifd flushes its channels 10 times per second
-Patch151: kvm-multifd-Create-property-multifd-flush-after-each-sec.patch
-# For bz#2196295 - Multifd flushes its channels 10 times per second
-Patch152: kvm-multifd-Protect-multifd_send_sync_main-calls.patch
-# For bz#2196295 - Multifd flushes its channels 10 times per second
-Patch153: kvm-multifd-Only-flush-once-each-full-round-of-memory.patch
-# For RHEL-582 - [passt][rhel 9.3] qemu core dump occurs when guest is shutdown after hotunplug/hotplug a passt interface
-Patch154: kvm-net-socket-prepare-to-cleanup-net_init_socket.patch
-# For RHEL-582 - [passt][rhel 9.3] qemu core dump occurs when guest is shutdown after hotunplug/hotplug a passt interface
-Patch155: kvm-net-socket-move-fd-type-checking-to-its-own-function.patch
-# For RHEL-582 - [passt][rhel 9.3] qemu core dump occurs when guest is shutdown after hotunplug/hotplug a passt interface
-Patch156: kvm-net-socket-remove-net_init_socket.patch
-# For bz#2215819 - Migration test failed while guest with PCIe devices
-Patch157: kvm-pcie-Add-hotplug-detect-state-register-to-cmask.patch
-# For bz#2174676 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk [RHEL9]
-Patch158: kvm-util-iov-Make-qiov_slice-public.patch
-# For bz#2174676 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk [RHEL9]
-Patch159: kvm-block-Collapse-padded-I-O-vecs-exceeding-IOV_MAX.patch
-# For bz#2174676 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk [RHEL9]
-Patch160: kvm-util-iov-Remove-qemu_iovec_init_extended.patch
-# For bz#2174676 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk [RHEL9]
-Patch161: kvm-iotests-iov-padding-New-test.patch
-# For bz#2174676 - Guest hit EXT4-fs error on host 4K disk  when repeatedly hot-plug/unplug running IO disk [RHEL9]
-Patch162: kvm-block-Fix-pad_request-s-request-restriction.patch
-# For RHEL-573 - [mlx vhost_vdpa][rhel 9.3]live migration fail with "net vdpa cannot migrate with CVQ feature"
-Patch163: kvm-vdpa-do-not-block-migration-if-device-has-cvq-and-x-.patch
-# For bz#2040509 - [RFE]:Add support for changing "tx_queue_size" to a setable value
-Patch164: kvm-virtio-net-correctly-report-maximum-tx_queue_size-va.patch
-# For bz#2223691 - [machine type 9.2]Failed to migrate VM from RHEL 9.3 to RHEL 9.2
-Patch165: kvm-hw-pci-Disable-PCI_ERR_UNCOR_MASK-reg-for-machine-ty.patch
-# For bz#2141965 - [TPM][vhost-vdpa][rhel9.2]Boot a guest with "vhost-vdpa + TPM emulator", qemu output: qemu-kvm: vhost_vdpa_listener_region_add received unaligned region
-Patch166: kvm-vhost-vdpa-mute-unaligned-memory-error-report.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch167: kvm-block-blkio-enable-the-completion-eventfd.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch168: kvm-block-blkio-do-not-use-open-flags-in-qemu_open.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch169: kvm-block-blkio-move-blkio_connect-in-the-drivers-functi.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch170: kvm-block-blkio-retry-blkio_connect-if-it-fails-using-fd.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch171: kvm-block-blkio-fall-back-on-using-path-when-fd-setting-.patch
-# For bz#2225354 - [vdpa-blk] The new driver virtio-blk-vhost-user not work in VM booting
-# For bz#2225439 - [vdpa-blk] read-only=on option not work on driver virtio-blk-vhost-vdpa
-Patch172: kvm-block-blkio-use-blkio_set_int-fd-to-check-fd-support.patch
-# For bz#2229133 - Backport some virtio-iommu and smmu fixes
-Patch173: kvm-hw-virtio-iommu-Fix-potential-OOB-access-in-virtio_i.patch
-# For bz#2229133 - Backport some virtio-iommu and smmu fixes
-Patch174: kvm-virtio-iommu-Standardize-granule-extraction-and-form.patch
-# For bz#2229133 - Backport some virtio-iommu and smmu fixes
-Patch175: kvm-hw-arm-smmu-Handle-big-endian-hosts-correctly.patch
-# For bz#2214839 - [AMDSERVER 9.3 Bug] Qemu SEV reduced-phys-bits fixes
-Patch176: kvm-qapi-i386-sev-Change-the-reduced-phys-bits-value-fro.patch
-# For bz#2214839 - [AMDSERVER 9.3 Bug] Qemu SEV reduced-phys-bits fixes
-Patch177: kvm-qemu-options.hx-Update-the-reduced-phys-bits-documen.patch
-# For bz#2214839 - [AMDSERVER 9.3 Bug] Qemu SEV reduced-phys-bits fixes
-Patch178: kvm-i386-sev-Update-checks-and-information-related-to-re.patch
-# For bz#2214839 - [AMDSERVER 9.3 Bug] Qemu SEV reduced-phys-bits fixes
-Patch179: kvm-i386-cpu-Update-how-the-EBX-register-of-CPUID-0x8000.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch180: kvm-target-i386-allow-versioned-CPUs-to-specify-new-cach.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch181: kvm-target-i386-Add-new-EPYC-CPU-versions-with-updated-c.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch182: kvm-target-i386-Add-a-couple-of-feature-bits-in-8000_000.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch183: kvm-target-i386-Add-feature-bits-for-CPUID_Fn80000021_EA.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch184: kvm-target-i386-Add-missing-feature-bits-in-EPYC-Milan-m.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch185: kvm-target-i386-Add-VNMI-and-automatic-IBRS-feature-bits.patch
-# For bz#2094913 - Add EPYC-Genoa CPU model in qemu
-Patch186: kvm-target-i386-Add-EPYC-Genoa-model-to-support-Zen-4-pr.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch187: kvm-vdpa-return-errno-in-vhost_vdpa_get_vring_group-erro.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch188: kvm-vdpa-move-CVQ-isolation-check-to-net_init_vhost_vdpa.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch189: kvm-vdpa-use-first-queue-SVQ-state-for-CVQ-default.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch190: kvm-vdpa-export-vhost_vdpa_set_vring_ready.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch191: kvm-vdpa-rename-vhost_vdpa_net_load-to-vhost_vdpa_net_cv.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch192: kvm-vdpa-move-vhost_vdpa_set_vring_ready-to-the-caller.patch
-# For RHEL-923 - vhost shadow virtqueue: state restore through CVQ
-Patch193: kvm-vdpa-remove-net-cvq-migration-blocker.patch
-# For bz#2216504 - CVE-2023-3354 qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-9.3.0]
-Patch194: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
-# For bz#2229868 - [vfio migration]Disable postcopy for VM with migratable vfio device
-Patch195: kvm-migration-Add-migration-prefix-to-functions-in-targe.patch
-# For bz#2229868 - [vfio migration]Disable postcopy for VM with migratable vfio device
-Patch196: kvm-migration-Move-more-initializations-to-migrate_init.patch
-# For bz#2229868 - [vfio migration]Disable postcopy for VM with migratable vfio device
-Patch197: kvm-migration-Add-.save_prepare-handler-to-struct-SaveVM.patch
-# For bz#2229868 - [vfio migration]Disable postcopy for VM with migratable vfio device
-Patch198: kvm-vfio-migration-Block-VFIO-migration-with-postcopy-mi.patch
-# For RHEL-4453 - qemu-kvm crashed when migrating guest with failover vf [rhel-9.3.0.z]
-Patch199: kvm-virtio-Drop-out-of-coroutine-context-in-virtio_load.patch
-# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
-Patch200: kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch
-# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
-Patch201: kvm-dump-Add-arch-cleanup-function.patch
-# For RHEL-16997 - RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z]
-Patch202: kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch
+Patch0016: 0016-Introduce-RHEL-9.4.0-qemu-kvm-machine-type-for-aarch.patch
+# For RHEL-17168 - Introduce virt-rhel9.4.0 arm-virt machine type [aarch64]
+Patch17: kvm-hw-arm-virt-Fix-compats.patch
+# For RHEL-19738 - Enable properties allowing to disable high memory regions
+Patch18: kvm-hw-arm-virt-Add-properties-to-disable-high-memory-re.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch19: kvm-vfio-Introduce-base-object-for-VFIOContainer-and-tar.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch20: kvm-vfio-container-Introduce-a-empty-VFIOIOMMUOps.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch21: kvm-vfio-container-Switch-to-dma_map-unmap-API.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch22: kvm-vfio-common-Introduce-vfio_container_init-destroy-he.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch23: kvm-vfio-common-Move-giommu_list-in-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch24: kvm-vfio-container-Move-space-field-to-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch25: kvm-vfio-container-Switch-to-IOMMU-BE-set_dirty_page_tra.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch26: kvm-vfio-container-Move-per-container-device-list-in-bas.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch27: kvm-vfio-container-Convert-functions-to-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch28: kvm-vfio-container-Move-pgsizes-and-dma_max_mappings-to-.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch29: kvm-vfio-container-Move-vrdl_list-to-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch30: kvm-vfio-container-Move-listener-to-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch31: kvm-vfio-container-Move-dirty_pgsizes-and-max_dirty_bitm.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch32: kvm-vfio-container-Move-iova_ranges-to-base-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch33: kvm-vfio-container-Implement-attach-detach_device.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch34: kvm-vfio-spapr-Introduce-spapr-backend-and-target-interf.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch35: kvm-vfio-spapr-switch-to-spapr-IOMMU-BE-add-del_section_.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch36: kvm-vfio-spapr-Move-prereg_listener-into-spapr-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch37: kvm-vfio-spapr-Move-hostwin_list-into-spapr-container.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch38: kvm-backends-iommufd-Introduce-the-iommufd-object.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch39: kvm-util-char_dev-Add-open_cdev.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch40: kvm-vfio-common-return-early-if-space-isn-t-empty.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch41: kvm-vfio-iommufd-Implement-the-iommufd-backend.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch42: kvm-vfio-iommufd-Relax-assert-check-for-iommufd-backend.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch43: kvm-vfio-iommufd-Add-support-for-iova_ranges-and-pgsizes.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch44: kvm-vfio-pci-Extract-out-a-helper-vfio_pci_get_pci_hot_r.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch45: kvm-vfio-pci-Introduce-a-vfio-pci-hot-reset-interface.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch46: kvm-vfio-iommufd-Enable-pci-hot-reset-through-iommufd-cd.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch47: kvm-vfio-pci-Allow-the-selection-of-a-given-iommu-backen.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch48: kvm-vfio-pci-Make-vfio-cdev-pre-openable-by-passing-a-fi.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch49: kvm-vfio-platform-Allow-the-selection-of-a-given-iommu-b.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch50: kvm-vfio-platform-Make-vfio-cdev-pre-openable-by-passing.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch51: kvm-vfio-ap-Allow-the-selection-of-a-given-iommu-backend.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch52: kvm-vfio-ap-Make-vfio-cdev-pre-openable-by-passing-a-fil.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch53: kvm-vfio-ccw-Allow-the-selection-of-a-given-iommu-backen.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch54: kvm-vfio-ccw-Make-vfio-cdev-pre-openable-by-passing-a-fi.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch55: kvm-vfio-Make-VFIOContainerBase-poiner-parameter-const-i.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch56: kvm-hw-arm-Activate-IOMMUFD-for-virt-machines.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch57: kvm-kconfig-Activate-IOMMUFD-for-s390x-machines.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch58: kvm-hw-i386-Activate-IOMMUFD-for-q35-machines.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch59: kvm-vfio-pci-Move-VFIODevice-initializations-in-vfio_ins.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch60: kvm-vfio-platform-Move-VFIODevice-initializations-in-vfi.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch61: kvm-vfio-ap-Move-VFIODevice-initializations-in-vfio_ap_i.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch62: kvm-vfio-ccw-Move-VFIODevice-initializations-in-vfio_ccw.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch63: kvm-vfio-Introduce-a-helper-function-to-initialize-VFIOD.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch64: kvm-docs-devel-Add-VFIO-iommufd-backend-documentation.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch65: kvm-hw-ppc-Kconfig-Imply-VFIO_PCI.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch66: kvm-vfio-spapr-Extend-VFIOIOMMUOps-with-a-release-handle.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch67: kvm-vfio-container-Introduce-vfio_legacy_setup-for-furth.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch68: kvm-vfio-container-Initialize-VFIOIOMMUOps-under-vfio_in.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch69: kvm-vfio-container-Introduce-a-VFIOIOMMU-QOM-interface.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch70: kvm-vfio-container-Introduce-a-VFIOIOMMU-legacy-QOM-inte.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch71: kvm-vfio-container-Intoduce-a-new-VFIOIOMMUClass-setup-h.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch72: kvm-vfio-spapr-Introduce-a-sPAPR-VFIOIOMMU-QOM-interface.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch73: kvm-vfio-iommufd-Introduce-a-VFIOIOMMU-iommufd-QOM-inter.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch74: kvm-vfio-spapr-Only-compile-sPAPR-IOMMU-support-when-nee.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch75: kvm-vfio-iommufd-Remove-CONFIG_IOMMUFD-usage.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch76: kvm-vfio-container-Replace-basename-with-g_path_get_base.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch77: kvm-hw-vfio-fix-iteration-over-global-VFIODevice-list.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch78: kvm-vfio-iommufd-Remove-the-use-of-stat-to-check-file-ex.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch79: kvm-vfio-container-Rename-vfio_init_container-to-vfio_se.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch80: kvm-vfio-migration-Add-helper-function-to-set-state-or-r.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch81: kvm-backends-iommufd-Remove-check-on-number-of-backend-u.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch82: kvm-backends-iommufd-Remove-mutex.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch83: kvm-Compile-IOMMUFD-object-on-aarch64.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch84: kvm-Compile-IOMMUFD-on-s390x.patch
+# For RHEL-19302 - NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend
+# For RHEL-21057 - Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6
+Patch85: kvm-Compile-IOMMUFD-on-x86_64.patch
+# For RHEL-18212 - [RHEL9][Secure-execution][s390x] The error message is not clear when boot up a SE guest with wrong encryption
+Patch86: kvm-target-s390x-kvm-pv-Provide-some-more-useful-informa.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch87: kvm-nbd-server-avoid-per-NBDRequest-nbd_client_get-put.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch88: kvm-nbd-server-only-traverse-NBDExport-clients-from-main.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch89: kvm-nbd-server-introduce-NBDClient-lock-to-protect-field.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch90: kvm-block-file-posix-set-up-Linux-AIO-and-io_uring-in-th.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch91: kvm-virtio-blk-add-lock-to-protect-s-rq.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch92: kvm-virtio-blk-don-t-lock-AioContext-in-the-completion-c.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch93: kvm-virtio-blk-don-t-lock-AioContext-in-the-submission-c.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch94: kvm-scsi-only-access-SCSIDevice-requests-from-one-thread.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch95: kvm-virtio-scsi-don-t-lock-AioContext-around-virtio_queu.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch96: kvm-scsi-don-t-lock-AioContext-in-I-O-code-path.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch97: kvm-dma-helpers-don-t-lock-AioContext-in-dma_blk_cb.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch98: kvm-virtio-scsi-replace-AioContext-lock-with-tmf_bh_lock.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch99: kvm-scsi-assert-that-callbacks-run-in-the-correct-AioCon.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch100: kvm-tests-remove-aio_context_acquire-tests.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch101: kvm-aio-make-aio_context_acquire-aio_context_release-a-n.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch102: kvm-graph-lock-remove-AioContext-locking.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch103: kvm-block-remove-AioContext-locking.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch104: kvm-block-remove-bdrv_co_lock.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch105: kvm-scsi-remove-AioContext-locking.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch106: kvm-aio-wait-draw-equivalence-between-AIO_WAIT_WHILE-and.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch107: kvm-aio-remove-aio_context_acquire-aio_context_release-A.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch108: kvm-docs-remove-AioContext-lock-from-IOThread-docs.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch109: kvm-scsi-remove-outdated-AioContext-lock-comment.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch110: kvm-job-remove-outdated-AioContext-locking-comments.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch111: kvm-block-remove-outdated-AioContext-locking-comments.patch
+# For RHEL-15965 -  [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize)
+Patch112: kvm-block-coroutine-wrapper-use-qemu_get_current_aio_con.patch
+# For RHEL-21169 - [s390x] VM fails to start with ISM passed through QEMU 8.2
+Patch113: kvm-s390x-pci-avoid-double-enable-disable-of-aif.patch
+# For RHEL-21169 - [s390x] VM fails to start with ISM passed through QEMU 8.2
+Patch114: kvm-s390x-pci-refresh-fh-before-disabling-aif.patch
+# For RHEL-21169 - [s390x] VM fails to start with ISM passed through QEMU 8.2
+Patch115: kvm-s390x-pci-drive-ISM-reset-from-subsystem-reset.patch
+# For RHEL-21570 - Critical performance degradation for input devices in virtio vnc session
+Patch116: kvm-include-ui-rect.h-fix-qemu_rect_init-mis-assignment.patch
+# For RHEL-7565 - qemu crashed when migrate guest with blob resources enabled
+Patch117: kvm-virtio-gpu-block-migration-of-VMs-with-blob-true.patch
+# For RHEL-21293 - [emulated igb] Failed to set up TRIGGER eventfd signaling for interrupt INTX-0: VFIO_DEVICE_SET_IRQS failure: Invalid argument
+Patch118: kvm-vfio-pci-Clear-MSI-X-IRQ-index-always.patch
+# For RHEL-20341 - memory-device size alignment check invalid in QEMU 8.2
+Patch119: kvm-hv-balloon-use-get_min_alignment-to-express-32-GiB-a.patch
+# For RHEL-20341 - memory-device size alignment check invalid in QEMU 8.2
+Patch120: kvm-memory-device-reintroduce-memory-region-size-check.patch
+# For RHEL-24593 - qemu crash blk_get_aio_context(BlockBackend *): Assertion `ctx == blk->ctx' when repeatedly hotplug/unplug disk
+Patch121: kvm-block-backend-Allow-concurrent-context-changes.patch
+# For RHEL-24593 - qemu crash blk_get_aio_context(BlockBackend *): Assertion `ctx == blk->ctx' when repeatedly hotplug/unplug disk
+Patch122: kvm-scsi-Await-request-purging.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch123: kvm-string-output-visitor-show-structs-as-omitted.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch124: kvm-string-output-visitor-Fix-pseudo-struct-handling.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch125: kvm-qdev-properties-alias-all-object-class-properties.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch126: kvm-qdev-add-IOThreadVirtQueueMappingList-property-type.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch127: kvm-virtio-blk-add-iothread-vq-mapping-parameter.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch128: kvm-virtio-blk-Fix-potential-nullpointer-read-access-in-.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch129: kvm-iotests-add-filter_qmp_generated_node_ids.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch130: kvm-iotests-port-141-to-Python-for-reliable-QMP-testing.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch131: kvm-monitor-only-run-coroutine-commands-in-qemu_aio_cont.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch132: kvm-virtio-blk-move-dataplane-code-into-virtio-blk.c.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch133: kvm-virtio-blk-rename-dataplane-create-destroy-functions.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch134: kvm-virtio-blk-rename-dataplane-to-ioeventfd.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch135: kvm-virtio-blk-restart-s-rq-reqs-in-vq-AioContexts.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch136: kvm-virtio-blk-tolerate-failure-to-set-BlockBackend-AioC.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch137: kvm-virtio-blk-always-set-ioeventfd-during-startup.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch138: kvm-tests-unit-Bump-test-replication-timeout-to-60-secon.patch
+# For RHEL-17369 - [nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.
+# For RHEL-20764 - [qemu-kvm] Enable qemu multiqueue block layer support
+# For RHEL-7356 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9]
+Patch139: kvm-iotests-iothreads-stream-Use-the-right-TimeoutError.patch
+# For RHEL-24045 - QEMU: default-enable dynamically using multiple memslots for virtio-mem
+Patch140: kvm-virtio-mem-default-enable-dynamic-memslots.patch
+# For RHEL-3934 - [qemu-kvm] Failed on repeatedly hotplug/unplug  disk iothread enabled  
+Patch141: kvm-virtio-scsi-Attach-event-vq-notifier-with-no_poll.patch
+# For RHEL-3934 - [qemu-kvm] Failed on repeatedly hotplug/unplug  disk iothread enabled  
+Patch142: kvm-virtio-Re-enable-notifications-after-drain.patch
+# For RHEL-3934 - [qemu-kvm] Failed on repeatedly hotplug/unplug  disk iothread enabled  
+Patch143: kvm-virtio-blk-Use-ioeventfd_attach-in-start_ioeventfd.patch
+# For RHEL-15394 - virtio-blk: qemu hang on "no response on QMP query-status" when write data to disk without enough space
+Patch144: kvm-virtio-blk-avoid-using-ioeventfd-state-in-irqfd-cond.patch
+# For RHEL-24988 - Mark virt-rhel9.{0,2}.0 machine types as deprecated
+Patch145: kvm-hw-arm-virt-deprecate-virt-rhel9.-0-2-.0-machine-typ.patch
+# For RHEL-17068 - Check/fix machine type compatibility for qemu-kvm 8.2.0 [x86_64]
+Patch146: kvm-x86-rhel-9.2.0-machine-type-compat-fix.patch
+# For RHEL-26049 - When max vcpu is greater than or equal to 246, qemu unable to init event notifier
+Patch147: kvm-qemu_init-increase-NOFILE-soft-limit-on-POSIX.patch
+# For RHEL-24614 - [RHEL9][chardev][s390x] qemu hit core dump while using TLS server from host to guest
+Patch148: kvm-chardev-char-socket-Fix-TLS-io-channels-sending-too-.patch
+# For RHEL-19629 - CVE-2023-6683 qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-9]
+Patch149: kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch
+# For RHEL-19629 - CVE-2023-6683 qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-9]
+Patch150: kvm-ui-clipboard-add-asserts-for-update-and-request.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch151: kvm-hw-i386-pc-Defer-smbios_set_defaults-to-machine_done.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch152: kvm-Implement-base-of-SMBIOS-type-9-descriptor.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch153: kvm-Implement-SMBIOS-type-9-v2.6.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch154: kvm-smbios-cleanup-smbios_get_tables-from-legacy-handlin.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch155: kvm-smbios-get-rid-of-smbios_smp_sockets-global.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch156: kvm-smbios-get-rid-of-smbios_legacy-global.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch157: kvm-smbios-avoid-mangling-user-provided-tables.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch158: kvm-smbios-don-t-check-type4-structures-in-legacy-mode.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch159: kvm-smbios-add-smbios_add_usr_blob_size-helper.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch160: kvm-smbios-rename-expose-structures-bitmaps-used-by-both.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch161: kvm-smbios-build-legacy-mode-code-only-for-pc-machine.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch162: kvm-smbios-handle-errors-consistently.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch163: kvm-smbios-get-rid-of-global-smbios_ep_type.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch164: kvm-smbios-clear-smbios_type4_count-before-building-tabl.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch165: kvm-smbios-extend-smbios-entry-point-type-with-auto-valu.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch166: kvm-smbios-in-case-of-entry-point-is-auto-try-to-build-v.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch167: kvm-smbios-error-out-when-building-type-4-table-is-not-p.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch168: kvm-pc-q35-set-SMBIOS-entry-point-type-to-auto-by-defaul.patch
+# For RHEL-28125 - RHEL9.4 - KVM : Live migration of guest with multiple qcow devices remains incomplete.
+Patch169: kvm-mirror-Don-t-call-job_pause_point-under-graph-lock.patch
+# For RHEL-28125 - RHEL9.4 - KVM : Live migration of guest with multiple qcow devices remains incomplete.
+Patch170: kvm-nbd-server-Fix-race-in-draining-the-export.patch
+# For RHEL-28125 - RHEL9.4 - KVM : Live migration of guest with multiple qcow devices remains incomplete.
+Patch171: kvm-iotests-Add-test-for-reset-AioContext-switches-with-.patch
+# For RHEL-21705 - pc-q35-rhel9.4.0 does not provide proper computer information
+Patch172: kvm-pc-smbios-fixup-manufacturer-product-version-to-matc.patch
+# For RHEL-24614 - [RHEL9][chardev] qemu hit core dump while using TLS server from host to guest
+Patch173: kvm-chardev-lower-priority-of-the-HUP-GSource-in-socket-.patch
+# For RHEL-24614 - [RHEL9][chardev] qemu hit core dump while using TLS server from host to guest
+Patch174: kvm-Revert-chardev-char-socket-Fix-TLS-io-channels-sendi.patch
+# For RHEL-24614 - [RHEL9][chardev] qemu hit core dump while using TLS server from host to guest
+Patch175: kvm-Revert-chardev-use-a-child-source-for-qio-input-sour.patch
+# For RHEL-28947 - Qemu crashing with "failed to set up stack guard page: Cannot allocate memory"
+Patch176: kvm-coroutine-cap-per-thread-local-pool-size.patch
+# For RHEL-28947 - Qemu crashing with "failed to set up stack guard page: Cannot allocate memory"
+Patch177: kvm-coroutine-reserve-5-000-mappings.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -576,6 +622,7 @@ BuildRequires: gcc
 BuildRequires: meson >= %{meson_version}
 BuildRequires: ninja-build
 BuildRequires: zlib-devel
+BuildRequires: libzstd-devel
 BuildRequires: glib2-devel
 BuildRequires: gnutls-devel
 BuildRequires: cyrus-sasl-devel
@@ -729,8 +776,8 @@ Summary: %{name} documentation
 %package -n qemu-pr-helper
 Summary: qemu-pr-helper utility for %{name}
 %description -n qemu-pr-helper
-This package provides the qemu-pr-helper utility that is required for certain 
-SCSI features. 
+This package provides the qemu-pr-helper utility that is required for certain
+SCSI features.
 
 
 %package -n qemu-img
@@ -869,7 +916,7 @@ Summary: QEMU usbredir support
 Requires: %{name}-common%{?_isa} = %{epoch}:%{version}-%{release}
 Requires: usbredir >= 0.7.1
 Provides: %{name}-hw-usbredir
-Obsoletes: %{name}-hw-usbredir <= %{epoch}:%{version} 
+Obsoletes: %{name}-hw-usbredir <= %{epoch}:%{version}
 
 %description device-usb-redirect
 This package provides usbredir support.
@@ -933,6 +980,7 @@ ulimit -n 10240
   --disable-debug-tcg              \\\
   --disable-dmg                    \\\
   --disable-docs                   \\\
+  --disable-download               \\\
   --disable-dsound                 \\\
   --disable-fdt                    \\\
   --disable-fuse                   \\\
@@ -945,7 +993,6 @@ ulimit -n 10240
   --disable-gtk                    \\\
   --disable-guest-agent            \\\
   --disable-guest-agent-msi        \\\
-  --disable-hax                    \\\
   --disable-hvf                    \\\
   --disable-iconv                  \\\
   --disable-jack                   \\\
@@ -982,6 +1029,7 @@ ulimit -n 10240
   --disable-pa                     \\\
   --disable-parallels              \\\
   --disable-pie                    \\\
+  --disable-plugins                \\\
   --disable-pvrdma                 \\\
   --disable-qcow1                  \\\
   --disable-qed                    \\\
@@ -1036,7 +1084,6 @@ ulimit -n 10240
   --disable-xen-pci-passthrough    \\\
   --disable-xkbcommon              \\\
   --disable-zstd                   \\\
-  --with-git-submodules=ignore     \\\
   --without-default-devices
 
 
@@ -1057,10 +1104,8 @@ run_configure() {
         --with-pkgversion="%{name}-%{version}-%{release}" \
         --with-suffix="%{name}" \
         --firmwarepath=%{firmwaredirs} \
-        --meson="%{__meson}" \
         --enable-trace-backends=dtrace \
         --with-coroutine=ucontext \
-        --with-git=git \
         --tls-priority=@QEMU,SYSTEM \
         %{disable_everything} \
         --with-devices-%{kvm_target}=%{kvm_target}-rh-devices \
@@ -1151,6 +1196,7 @@ run_configure \
   --enable-werror \
 %endif
   --enable-xkbcommon \
+  --enable-zstd \
 %if %{have_safe_stack}
   --enable-safe-stack \
 %endif
@@ -1301,7 +1347,7 @@ mkdir -p %{buildroot}%{_datadir}/%{name}/tracetool/format
 install -m 0644 -t %{buildroot}%{_datadir}/%{name}/tracetool/format scripts/tracetool/format/*.py
 
 mkdir -p %{buildroot}%{qemudocdir}
-install -p -m 0644 -t %{buildroot}%{qemudocdir} README.rst README.systemtap COPYING COPYING.LIB LICENSE docs/interop/qmp-spec.txt
+install -p -m 0644 -t %{buildroot}%{qemudocdir} README.rst README.systemtap COPYING COPYING.LIB LICENSE
 
 # Rename man page
 pushd %{buildroot}%{_mandir}/man1/
@@ -1625,30 +1671,308 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
-* Fri Dec 05 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-16.el9_3.3
-- kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch [RHEL-16997]
-- kvm-dump-Add-arch-cleanup-function.patch [RHEL-16997]
-- kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch [RHEL-16997]
-- Resolves: RHEL-16997
-  (RHEL9.3 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-9.3.0.z])
+* Tue Mar 26 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11
+- kvm-coroutine-cap-per-thread-local-pool-size.patch [RHEL-28947]
+- kvm-coroutine-reserve-5-000-mappings.patch [RHEL-28947]
+- Resolves: RHEL-28947
+  (Qemu crashing with "failed to set up stack guard page: Cannot allocate memory")
 
-* Mon Oct 09 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-16.el9_3.1
-- kvm-virtio-Drop-out-of-coroutine-context-in-virtio_load.patch [RHEL-4453]
-- Resolves: RHEL-4453
-  (qemu-kvm crashed when migrating guest with failover vf [rhel-9.3.0.z])
+* Thu Mar 21 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-10
+- kvm-chardev-lower-priority-of-the-HUP-GSource-in-socket-.patch [RHEL-24614]
+- kvm-Revert-chardev-char-socket-Fix-TLS-io-channels-sendi.patch [RHEL-24614]
+- kvm-Revert-chardev-use-a-child-source-for-qio-input-sour.patch [RHEL-24614]
+- Resolves: RHEL-24614
+  ([RHEL9][chardev] qemu hit core dump while using TLS server from host to guest)
 
-* Mon Sep 18 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-16.el9_3
-- kvm-migration-Add-migration-prefix-to-functions-in-targe.patch [bz#2229868]
-- kvm-migration-Move-more-initializations-to-migrate_init.patch [bz#2229868]
-- kvm-migration-Add-.save_prepare-handler-to-struct-SaveVM.patch [bz#2229868]
-- kvm-vfio-migration-Block-VFIO-migration-with-postcopy-mi.patch [bz#2229868]
-- Resolves: bz#2229868
-  ([vfio migration]Disable postcopy for VM with migratable vfio device)
+* Wed Mar 20 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-9
+- kvm-mirror-Don-t-call-job_pause_point-under-graph-lock.patch [RHEL-28125]
+- kvm-nbd-server-Fix-race-in-draining-the-export.patch [RHEL-28125]
+- kvm-iotests-Add-test-for-reset-AioContext-switches-with-.patch [RHEL-28125]
+- kvm-pc-smbios-fixup-manufacturer-product-version-to-matc.patch [RHEL-21705]
+- Resolves: RHEL-28125
+  (RHEL9.4 - KVM : Live migration of guest with multiple qcow devices remains incomplete.)
+- Resolves: RHEL-21705
+  (pc-q35-rhel9.4.0 does not provide proper computer information)
 
-* Fri Sep 15 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-15.el9_3
-- kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [bz#2216504]
-- Resolves: bz#2216504
-  (CVE-2023-3354 qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-9.3.0])
+* Mon Mar 18 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-8
+- kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch [RHEL-19629]
+- kvm-ui-clipboard-add-asserts-for-update-and-request.patch [RHEL-19629]
+- kvm-hw-i386-pc-Defer-smbios_set_defaults-to-machine_done.patch [RHEL-21705]
+- kvm-Implement-base-of-SMBIOS-type-9-descriptor.patch [RHEL-21705]
+- kvm-Implement-SMBIOS-type-9-v2.6.patch [RHEL-21705]
+- kvm-smbios-cleanup-smbios_get_tables-from-legacy-handlin.patch [RHEL-21705]
+- kvm-smbios-get-rid-of-smbios_smp_sockets-global.patch [RHEL-21705]
+- kvm-smbios-get-rid-of-smbios_legacy-global.patch [RHEL-21705]
+- kvm-smbios-avoid-mangling-user-provided-tables.patch [RHEL-21705]
+- kvm-smbios-don-t-check-type4-structures-in-legacy-mode.patch [RHEL-21705]
+- kvm-smbios-add-smbios_add_usr_blob_size-helper.patch [RHEL-21705]
+- kvm-smbios-rename-expose-structures-bitmaps-used-by-both.patch [RHEL-21705]
+- kvm-smbios-build-legacy-mode-code-only-for-pc-machine.patch [RHEL-21705]
+- kvm-smbios-handle-errors-consistently.patch [RHEL-21705]
+- kvm-smbios-get-rid-of-global-smbios_ep_type.patch [RHEL-21705]
+- kvm-smbios-clear-smbios_type4_count-before-building-tabl.patch [RHEL-21705]
+- kvm-smbios-extend-smbios-entry-point-type-with-auto-valu.patch [RHEL-21705]
+- kvm-smbios-in-case-of-entry-point-is-auto-try-to-build-v.patch [RHEL-21705]
+- kvm-smbios-error-out-when-building-type-4-table-is-not-p.patch [RHEL-21705]
+- kvm-pc-q35-set-SMBIOS-entry-point-type-to-auto-by-defaul.patch [RHEL-21705]
+- Resolves: RHEL-19629
+  (CVE-2023-6683 qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-9])
+- Resolves: RHEL-21705
+  (pc-q35-rhel9.4.0 does not provide proper computer information)
+
+* Fri Mar 08 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-7
+- kvm-qemu_init-increase-NOFILE-soft-limit-on-POSIX.patch [RHEL-26049]
+- kvm-chardev-char-socket-Fix-TLS-io-channels-sending-too-.patch [RHEL-24614]
+- Resolves: RHEL-26049
+  (When max vcpu is greater than or equal to 246, qemu unable to init event notifier)
+- Resolves: RHEL-24614
+  ([RHEL9][chardev][s390x] qemu hit core dump while using TLS server from host to guest)
+
+* Mon Feb 19 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-6
+- kvm-virtio-scsi-Attach-event-vq-notifier-with-no_poll.patch [RHEL-3934]
+- kvm-virtio-Re-enable-notifications-after-drain.patch [RHEL-3934]
+- kvm-virtio-blk-Use-ioeventfd_attach-in-start_ioeventfd.patch [RHEL-3934]
+- kvm-virtio-blk-avoid-using-ioeventfd-state-in-irqfd-cond.patch [RHEL-15394]
+- kvm-hw-arm-virt-deprecate-virt-rhel9.-0-2-.0-machine-typ.patch [RHEL-24988]
+- Resolves: RHEL-3934
+  ([qemu-kvm] Failed on repeatedly hotplug/unplug  disk iothread enabled  )
+- Resolves: RHEL-15394
+  (virtio-blk: qemu hang on "no response on QMP query-status" when write data to disk without enough space)
+- Resolves: RHEL-24988
+  (Mark virt-rhel9.{0,2}.0 machine types as deprecated)
+
+* Mon Feb 12 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-5
+- kvm-hv-balloon-use-get_min_alignment-to-express-32-GiB-a.patch [RHEL-20341]
+- kvm-memory-device-reintroduce-memory-region-size-check.patch [RHEL-20341]
+- kvm-block-backend-Allow-concurrent-context-changes.patch [RHEL-24593]
+- kvm-scsi-Await-request-purging.patch [RHEL-24593]
+- kvm-string-output-visitor-show-structs-as-omitted.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-string-output-visitor-Fix-pseudo-struct-handling.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-qdev-properties-alias-all-object-class-properties.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-qdev-add-IOThreadVirtQueueMappingList-property-type.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-add-iothread-vq-mapping-parameter.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-Fix-potential-nullpointer-read-access-in-.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-iotests-add-filter_qmp_generated_node_ids.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-iotests-port-141-to-Python-for-reliable-QMP-testing.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-monitor-only-run-coroutine-commands-in-qemu_aio_cont.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-move-dataplane-code-into-virtio-blk.c.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-rename-dataplane-create-destroy-functions.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-rename-dataplane-to-ioeventfd.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-restart-s-rq-reqs-in-vq-AioContexts.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-tolerate-failure-to-set-BlockBackend-AioC.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-blk-always-set-ioeventfd-during-startup.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-tests-unit-Bump-test-replication-timeout-to-60-secon.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-iotests-iothreads-stream-Use-the-right-TimeoutError.patch [RHEL-17369 RHEL-20764 RHEL-7356]
+- kvm-virtio-mem-default-enable-dynamic-memslots.patch [RHEL-24045]
+- Resolves: RHEL-20341
+  (memory-device size alignment check invalid in QEMU 8.2)
+- Resolves: RHEL-24593
+  (qemu crash blk_get_aio_context(BlockBackend *): Assertion `ctx == blk->ctx' when repeatedly hotplug/unplug disk)
+- Resolves: RHEL-17369
+  ([nfv virt][rt][post-copy migration] qemu-kvm: ../block/qcow2.c:5263: ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *, Error **): Assertion `false' failed.)
+- Resolves: RHEL-20764
+  ([qemu-kvm] Enable qemu multiqueue block layer support)
+- Resolves: RHEL-7356
+  ([qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-9])
+- Resolves: RHEL-24045
+  (QEMU: default-enable dynamically using multiple memslots for virtio-mem)
+
+* Tue Jan 30 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-4
+- kvm-vfio-pci-Clear-MSI-X-IRQ-index-always.patch [RHEL-21293]
+- Resolves: RHEL-21293
+  ([emulated igb] Failed to set up TRIGGER eventfd signaling for interrupt INTX-0: VFIO_DEVICE_SET_IRQS failure: Invalid argument)
+
+* Wed Jan 24 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-3
+- kvm-hw-arm-virt-Add-properties-to-disable-high-memory-re.patch [RHEL-19738]
+- kvm-vfio-Introduce-base-object-for-VFIOContainer-and-tar.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Introduce-a-empty-VFIOIOMMUOps.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Switch-to-dma_map-unmap-API.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-common-Introduce-vfio_container_init-destroy-he.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-common-Move-giommu_list-in-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-space-field-to-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Switch-to-IOMMU-BE-set_dirty_page_tra.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-per-container-device-list-in-bas.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Convert-functions-to-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-pgsizes-and-dma_max_mappings-to-.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-vrdl_list-to-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-listener-to-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-dirty_pgsizes-and-max_dirty_bitm.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Move-iova_ranges-to-base-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Implement-attach-detach_device.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Introduce-spapr-backend-and-target-interf.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-switch-to-spapr-IOMMU-BE-add-del_section_.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Move-prereg_listener-into-spapr-container.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Move-hostwin_list-into-spapr-container.patch [RHEL-19302 RHEL-21057]
+- kvm-backends-iommufd-Introduce-the-iommufd-object.patch [RHEL-19302 RHEL-21057]
+- kvm-util-char_dev-Add-open_cdev.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-common-return-early-if-space-isn-t-empty.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Implement-the-iommufd-backend.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Relax-assert-check-for-iommufd-backend.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Add-support-for-iova_ranges-and-pgsizes.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-pci-Extract-out-a-helper-vfio_pci_get_pci_hot_r.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-pci-Introduce-a-vfio-pci-hot-reset-interface.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Enable-pci-hot-reset-through-iommufd-cd.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-pci-Allow-the-selection-of-a-given-iommu-backen.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-pci-Make-vfio-cdev-pre-openable-by-passing-a-fi.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-platform-Allow-the-selection-of-a-given-iommu-b.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-platform-Make-vfio-cdev-pre-openable-by-passing.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ap-Allow-the-selection-of-a-given-iommu-backend.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ap-Make-vfio-cdev-pre-openable-by-passing-a-fil.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ccw-Allow-the-selection-of-a-given-iommu-backen.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ccw-Make-vfio-cdev-pre-openable-by-passing-a-fi.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-Make-VFIOContainerBase-poiner-parameter-const-i.patch [RHEL-19302 RHEL-21057]
+- kvm-hw-arm-Activate-IOMMUFD-for-virt-machines.patch [RHEL-19302 RHEL-21057]
+- kvm-kconfig-Activate-IOMMUFD-for-s390x-machines.patch [RHEL-19302 RHEL-21057]
+- kvm-hw-i386-Activate-IOMMUFD-for-q35-machines.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-pci-Move-VFIODevice-initializations-in-vfio_ins.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-platform-Move-VFIODevice-initializations-in-vfi.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ap-Move-VFIODevice-initializations-in-vfio_ap_i.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-ccw-Move-VFIODevice-initializations-in-vfio_ccw.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-Introduce-a-helper-function-to-initialize-VFIOD.patch [RHEL-19302 RHEL-21057]
+- kvm-docs-devel-Add-VFIO-iommufd-backend-documentation.patch [RHEL-19302 RHEL-21057]
+- kvm-hw-ppc-Kconfig-Imply-VFIO_PCI.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Extend-VFIOIOMMUOps-with-a-release-handle.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Introduce-vfio_legacy_setup-for-furth.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Initialize-VFIOIOMMUOps-under-vfio_in.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Introduce-a-VFIOIOMMU-QOM-interface.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Introduce-a-VFIOIOMMU-legacy-QOM-inte.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Intoduce-a-new-VFIOIOMMUClass-setup-h.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Introduce-a-sPAPR-VFIOIOMMU-QOM-interface.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Introduce-a-VFIOIOMMU-iommufd-QOM-inter.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-spapr-Only-compile-sPAPR-IOMMU-support-when-nee.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Remove-CONFIG_IOMMUFD-usage.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Replace-basename-with-g_path_get_base.patch [RHEL-19302 RHEL-21057]
+- kvm-hw-vfio-fix-iteration-over-global-VFIODevice-list.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-iommufd-Remove-the-use-of-stat-to-check-file-ex.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-container-Rename-vfio_init_container-to-vfio_se.patch [RHEL-19302 RHEL-21057]
+- kvm-vfio-migration-Add-helper-function-to-set-state-or-r.patch [RHEL-19302 RHEL-21057]
+- kvm-backends-iommufd-Remove-check-on-number-of-backend-u.patch [RHEL-19302 RHEL-21057]
+- kvm-backends-iommufd-Remove-mutex.patch [RHEL-19302 RHEL-21057]
+- kvm-Compile-IOMMUFD-object-on-aarch64.patch [RHEL-19302 RHEL-21057]
+- kvm-Compile-IOMMUFD-on-s390x.patch [RHEL-19302 RHEL-21057]
+- kvm-Compile-IOMMUFD-on-x86_64.patch [RHEL-19302 RHEL-21057]
+- kvm-target-s390x-kvm-pv-Provide-some-more-useful-informa.patch [RHEL-18212]
+- kvm-nbd-server-avoid-per-NBDRequest-nbd_client_get-put.patch [RHEL-15965]
+- kvm-nbd-server-only-traverse-NBDExport-clients-from-main.patch [RHEL-15965]
+- kvm-nbd-server-introduce-NBDClient-lock-to-protect-field.patch [RHEL-15965]
+- kvm-block-file-posix-set-up-Linux-AIO-and-io_uring-in-th.patch [RHEL-15965]
+- kvm-virtio-blk-add-lock-to-protect-s-rq.patch [RHEL-15965]
+- kvm-virtio-blk-don-t-lock-AioContext-in-the-completion-c.patch [RHEL-15965]
+- kvm-virtio-blk-don-t-lock-AioContext-in-the-submission-c.patch [RHEL-15965]
+- kvm-scsi-only-access-SCSIDevice-requests-from-one-thread.patch [RHEL-15965]
+- kvm-virtio-scsi-don-t-lock-AioContext-around-virtio_queu.patch [RHEL-15965]
+- kvm-scsi-don-t-lock-AioContext-in-I-O-code-path.patch [RHEL-15965]
+- kvm-dma-helpers-don-t-lock-AioContext-in-dma_blk_cb.patch [RHEL-15965]
+- kvm-virtio-scsi-replace-AioContext-lock-with-tmf_bh_lock.patch [RHEL-15965]
+- kvm-scsi-assert-that-callbacks-run-in-the-correct-AioCon.patch [RHEL-15965]
+- kvm-tests-remove-aio_context_acquire-tests.patch [RHEL-15965]
+- kvm-aio-make-aio_context_acquire-aio_context_release-a-n.patch [RHEL-15965]
+- kvm-graph-lock-remove-AioContext-locking.patch [RHEL-15965]
+- kvm-block-remove-AioContext-locking.patch [RHEL-15965]
+- kvm-block-remove-bdrv_co_lock.patch [RHEL-15965]
+- kvm-scsi-remove-AioContext-locking.patch [RHEL-15965]
+- kvm-aio-wait-draw-equivalence-between-AIO_WAIT_WHILE-and.patch [RHEL-15965]
+- kvm-aio-remove-aio_context_acquire-aio_context_release-A.patch [RHEL-15965]
+- kvm-docs-remove-AioContext-lock-from-IOThread-docs.patch [RHEL-15965]
+- kvm-scsi-remove-outdated-AioContext-lock-comment.patch [RHEL-15965]
+- kvm-job-remove-outdated-AioContext-locking-comments.patch [RHEL-15965]
+- kvm-block-remove-outdated-AioContext-locking-comments.patch [RHEL-15965]
+- kvm-block-coroutine-wrapper-use-qemu_get_current_aio_con.patch [RHEL-15965]
+- kvm-s390x-pci-avoid-double-enable-disable-of-aif.patch [RHEL-21169]
+- kvm-s390x-pci-refresh-fh-before-disabling-aif.patch [RHEL-21169]
+- kvm-s390x-pci-drive-ISM-reset-from-subsystem-reset.patch [RHEL-21169]
+- kvm-include-ui-rect.h-fix-qemu_rect_init-mis-assignment.patch [RHEL-21570]
+- kvm-virtio-gpu-block-migration-of-VMs-with-blob-true.patch [RHEL-7565]
+- kvm-spec-Enable-zstd.patch [RHEL-7361]
+- Resolves: RHEL-19738
+  (Enable properties allowing to disable high memory regions)
+- Resolves: RHEL-19302
+  (NVIDIA:Grace-Hopper Backport QEMU IOMMUFD Backend)
+- Resolves: RHEL-21057
+  (Request backport of 9353b6da430f90e47f352dbf6dc31120c8914da6)
+- Resolves: RHEL-18212
+  ([RHEL9][Secure-execution][s390x] The error message is not clear when boot up a SE guest with wrong encryption)
+- Resolves: RHEL-15965
+  ( [qemu-kvm] Remove AioContext lock (no response with QMP command block_resize))
+- Resolves: RHEL-21169
+  ([s390x] VM fails to start with ISM passed through QEMU 8.2)
+- Resolves: RHEL-21570
+  (Critical performance degradation for input devices in virtio vnc session)
+- Resolves: RHEL-7565
+  (qemu crashed when migrate guest with blob resources enabled)
+- Resolves: RHEL-7361
+  ([qemu-kvm] Enable zstd support for qcow2 files)
+
+* Mon Jan 08 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-2
+- kvm-hw-arm-virt-Fix-compats.patch [RHEL-17168]
+- Resolves: RHEL-17168
+  (Introduce virt-rhel9.4.0 arm-virt machine type [aarch64])
+
+* Tue Jan 02 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-1
+- Rebase to QEMU 8.2.0 [RHEL-14111]
+- Fix machine type compatibility [RHEL-17067 RHEL-17068]
+- Add 9.4.0 machine type [RHEL-17168 RHEL-19117 RHEL-19119]
+- Resolves: RHEL-14111
+  (Rebase qemu-kvm to QEMU 8.2.0)
+- Resolves: RHEL-17067
+  (Check/fix machine type compatibility for qemu-kvm 8.2.0 [s390x])
+- Resolves: RHEL-17068
+  (Check/fix machine type compatibility for qemu-kvm 8.2.0 [x86_64])
+- Resolves: RHEL-17168
+  (Introduce virt-rhel9.4.0 arm-virt machine type [aarch64])
+- Resolves: RHEL-19117
+  (Introduce virt-rhel9.4.0 arm-virt machine type [x86_64])
+- Resolves: RHEL-19119
+  (Introduce virt-rhel9.4.0 arm-virt machine type [s390x])
+
+* Thu Nov 30 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.1.0-5
+- kvm-Preparation-for-using-allow-rpcs-list-in-guest-agent.patch [RHEL-955]
+- kvm-Use-allow-rpcs-instead-of-block-rpcs-in-guest-agent..patch [RHEL-955]
+- Resolves: RHEL-955
+  (Use allow-rpcs instead of block-rpcs in guest-agent.service)
+
+* Mon Nov 13 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.1.0-4
+- kvm-hw-scsi-scsi-disk-Disallow-block-sizes-smaller-than-.patch [RHEL-2828]
+- kvm-Enable-igb-on-x86_64.patch [RHEL-1308]
+- kvm-host-include-generic-host-atomic128-Fix-compilation-.patch [RHEL-12991]
+- kvm-Enable-qemu-kvm-device-usb-redirec-for-aarch64.patch [RHEL-7561]
+- Resolves: RHEL-2828
+  (CVE-2023-42467 qemu-kvm: qemu: denial of service due to division by zero [rhel-9])
+- Resolves: RHEL-1308
+  ([RFE] iGB: Add an emulated SR-IOV network card)
+- Resolves: RHEL-12991
+  (qemu-kvm fails to build on s390x with clang-17)
+- Resolves: RHEL-7561
+  (Missing the rpm package qemu-kvm-device-usb-redirect on Arm64 platform)
+
+* Mon Oct 16 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.1.0-3
+- kvm-migration-Fix-race-that-dest-preempt-thread-close-to.patch [RHEL-11219]
+- kvm-migration-Fix-possible-race-when-setting-rp_state.er.patch [RHEL-11219]
+- kvm-migration-Fix-possible-races-when-shutting-down-the-.patch [RHEL-11219]
+- kvm-migration-Fix-possible-race-when-shutting-down-to_ds.patch [RHEL-11219]
+- kvm-migration-Remove-redundant-cleanup-of-postcopy_qemuf.patch [RHEL-11219]
+- kvm-migration-Consolidate-return-path-closing-code.patch [RHEL-11219]
+- kvm-migration-Replace-the-return-path-retry-logic.patch [RHEL-11219]
+- kvm-migration-Move-return-path-cleanup-to-main-migration.patch [RHEL-11219]
+- kvm-file-posix-Clear-bs-bl.zoned-on-error.patch [RHEL-7360]
+- kvm-file-posix-Check-bs-bl.zoned-for-zone-info.patch [RHEL-7360]
+- kvm-file-posix-Fix-zone-update-in-I-O-error-path.patch [RHEL-7360]
+- kvm-file-posix-Simplify-raw_co_prw-s-out-zone-code.patch [RHEL-7360]
+- kvm-tests-file-io-error-New-test.patch [RHEL-7360]
+- Resolves: RHEL-11219
+  (migration tests failing for RHEL 9.4 sometimes)
+- Resolves: RHEL-7360
+  (Qemu Core Dumped When Writing Larger Size Than The Size of A Data Disk)
+
+* Mon Oct 02 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.1.0-2
+- kvm-virtio-Drop-out-of-coroutine-context-in-virtio_load.patch [RHEL-832]
+- Resolves: RHEL-832
+  (qemu-kvm crashed when migrating guest with failover vf)
+
+* Mon Sep 04 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.1.0-1
+- Rebase to QEMU 8.1 [RHEL-870]
+- Resolves: RHEL-870
+  (Rebase qemu-kvm to QEMU 8.1.0)
 
 * Thu Aug 24 2023 Miroslav Rezanina <mrezanin@redhat.com> - 8.0.0-13
 - kvm-vdpa-return-errno-in-vhost_vdpa_get_vring_group-erro.patch [RHEL-923]

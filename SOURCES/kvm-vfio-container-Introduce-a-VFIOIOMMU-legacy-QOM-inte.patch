@@ -1,0 +1,168 @@
+From 58927bf236541b9423f855eca1970f7a3cf864a9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:20 +0100
+Subject: [PATCH 053/101] vfio/container: Introduce a VFIOIOMMU legacy QOM
+ interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [52/67] a81f39d13305e84699313e17ae64d10ff4b09067 (eauger1/centos-qemu-kvm)
+
+Convert the legacy VFIOIOMMUOps struct to the new VFIOIOMMU QOM
+interface. The set of of operations for this backend can be referenced
+with a literal typename instead of a C struct. This will simplify
+support of multiple backends.
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 9812feefab3a4ff95a6cfd73aecb120b406bc98c)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c                      |  6 ++-
+ hw/vfio/container.c                   | 58 ++++++++++++++++++++++-----
+ include/hw/vfio/vfio-common.h         |  1 -
+ include/hw/vfio/vfio-container-base.h |  1 +
+ 4 files changed, 55 insertions(+), 11 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 49dab41566..2329d0efc8 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -1503,13 +1503,17 @@ retry:
+ int vfio_attach_device(char *name, VFIODevice *vbasedev,
+                        AddressSpace *as, Error **errp)
+ {
+-    const VFIOIOMMUClass *ops = &vfio_legacy_ops;
++    const VFIOIOMMUClass *ops =
++        VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_LEGACY));
+ 
+ #ifdef CONFIG_IOMMUFD
+     if (vbasedev->iommufd) {
+         ops = &vfio_iommufd_ops;
+     }
+ #endif
++
++    assert(ops);
++
+     return ops->attach_device(name, vbasedev, as, errp);
+ }
+ 
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index f4a0434a52..220e838a91 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -369,10 +369,30 @@ static int vfio_get_iommu_type(VFIOContainer *container,
+     return -EINVAL;
+ }
+ 
++/*
++ * vfio_get_iommu_ops - get a VFIOIOMMUClass associated with a type
++ */
++static const VFIOIOMMUClass *vfio_get_iommu_class(int iommu_type, Error **errp)
++{
++    ObjectClass *klass = NULL;
++
++    switch (iommu_type) {
++    case VFIO_TYPE1v2_IOMMU:
++    case VFIO_TYPE1_IOMMU:
++        klass = object_class_by_name(TYPE_VFIO_IOMMU_LEGACY);
++        break;
++    default:
++        g_assert_not_reached();
++    };
++
++    return VFIO_IOMMU_CLASS(klass);
++}
++
+ static int vfio_init_container(VFIOContainer *container, int group_fd,
+                                VFIOAddressSpace *space, Error **errp)
+ {
+     int iommu_type, ret;
++    const VFIOIOMMUClass *vioc;
+ 
+     iommu_type = vfio_get_iommu_type(container, errp);
+     if (iommu_type < 0) {
+@@ -401,7 +421,14 @@ static int vfio_init_container(VFIOContainer *container, int group_fd,
+     }
+ 
+     container->iommu_type = iommu_type;
+-    vfio_container_init(&container->bcontainer, space, &vfio_legacy_ops);
++
++    vioc = vfio_get_iommu_class(iommu_type, errp);
++    if (!vioc) {
++        error_setg(errp, "No available IOMMU models");
++        return -EINVAL;
++    }
++
++    vfio_container_init(&container->bcontainer, space, vioc);
+     return 0;
+ }
+ 
+@@ -1098,12 +1125,25 @@ out_single:
+     return ret;
+ }
+ 
+-const VFIOIOMMUOps vfio_legacy_ops = {
+-    .dma_map = vfio_legacy_dma_map,
+-    .dma_unmap = vfio_legacy_dma_unmap,
+-    .attach_device = vfio_legacy_attach_device,
+-    .detach_device = vfio_legacy_detach_device,
+-    .set_dirty_page_tracking = vfio_legacy_set_dirty_page_tracking,
+-    .query_dirty_bitmap = vfio_legacy_query_dirty_bitmap,
+-    .pci_hot_reset = vfio_legacy_pci_hot_reset,
++static void vfio_iommu_legacy_class_init(ObjectClass *klass, void *data)
++{
++    VFIOIOMMUClass *vioc = VFIO_IOMMU_CLASS(klass);
++
++    vioc->dma_map = vfio_legacy_dma_map;
++    vioc->dma_unmap = vfio_legacy_dma_unmap;
++    vioc->attach_device = vfio_legacy_attach_device;
++    vioc->detach_device = vfio_legacy_detach_device;
++    vioc->set_dirty_page_tracking = vfio_legacy_set_dirty_page_tracking;
++    vioc->query_dirty_bitmap = vfio_legacy_query_dirty_bitmap;
++    vioc->pci_hot_reset = vfio_legacy_pci_hot_reset;
+ };
++
++static const TypeInfo types[] = {
++    {
++        .name = TYPE_VFIO_IOMMU_LEGACY,
++        .parent = TYPE_VFIO_IOMMU,
++        .class_init = vfio_iommu_legacy_class_init,
++    },
++};
++
++DEFINE_TYPES(types)
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index b8aa8a5495..14c497b6b0 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -210,7 +210,6 @@ typedef QLIST_HEAD(VFIOGroupList, VFIOGroup) VFIOGroupList;
+ typedef QLIST_HEAD(VFIODeviceList, VFIODevice) VFIODeviceList;
+ extern VFIOGroupList vfio_group_list;
+ extern VFIODeviceList vfio_device_list;
+-extern const VFIOIOMMUOps vfio_legacy_ops;
+ extern const VFIOIOMMUOps vfio_iommufd_ops;
+ extern const MemoryListener vfio_memory_listener;
+ extern int vfio_kvm_device_fd;
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index d6147b4aee..c60370fc5e 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -94,6 +94,7 @@ void vfio_container_destroy(VFIOContainerBase *bcontainer);
+ 
+ 
+ #define TYPE_VFIO_IOMMU "vfio-iommu"
++#define TYPE_VFIO_IOMMU_LEGACY TYPE_VFIO_IOMMU "-legacy"
+ 
+ /*
+  * VFIOContainerBase is not an abstract QOM object because it felt
+-- 
+2.39.3
+

@@ -1,0 +1,47 @@
+From 376df80fbba5a9bb0ec43cad083cde9de59128d7 Mon Sep 17 00:00:00 2001
+From: Stefan Weil via <qemu-trivial@nongnu.org>
+Date: Sun, 24 Dec 2023 12:43:14 +0100
+Subject: [PATCH 10/22] virtio-blk: Fix potential nullpointer read access in
+ virtio_blk_data_plane_destroy
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [6/17] 460005fc7719b2e1dd577dfe75d18537ab2b8d06 (stefanha/centos-stream-qemu-kvm)
+
+Fixes: CID 1532828
+Fixes: b6948ab01d ("virtio-blk: add iothread-vq-mapping parameter")
+Signed-off-by: Stefan Weil <sw@weilnetz.de>
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+(cherry picked from commit d819fc9516a4ec71e37a6c9edfcd285b7f98c2dc)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/block/dataplane/virtio-blk.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/block/dataplane/virtio-blk.c b/hw/block/dataplane/virtio-blk.c
+index 6debd4401e..97a302cf49 100644
+--- a/hw/block/dataplane/virtio-blk.c
++++ b/hw/block/dataplane/virtio-blk.c
+@@ -152,7 +152,7 @@ bool virtio_blk_data_plane_create(VirtIODevice *vdev, VirtIOBlkConf *conf,
+ void virtio_blk_data_plane_destroy(VirtIOBlockDataPlane *s)
+ {
+     VirtIOBlock *vblk;
+-    VirtIOBlkConf *conf = s->conf;
++    VirtIOBlkConf *conf;
+ 
+     if (!s) {
+         return;
+@@ -160,6 +160,7 @@ void virtio_blk_data_plane_destroy(VirtIOBlockDataPlane *s)
+ 
+     vblk = VIRTIO_BLK(s->vdev);
+     assert(!vblk->dataplane_started);
++    conf = s->conf;
+ 
+     if (conf->iothread_vq_mapping_list) {
+         IOThreadVirtQueueMappingList *node;
+-- 
+2.39.3
+

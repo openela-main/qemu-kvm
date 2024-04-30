@@ -1,0 +1,46 @@
+From bbe64d706b3cb8b10ecd22bd71cf76b21eea257f Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 25 Jan 2024 17:58:03 +0100
+Subject: [PATCH 20/22] tests/unit: Bump test-replication timeout to 60 seconds
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [16/17] 200768aedee44d10aa8d199b92a9c17a9002fc3f (stefanha/centos-stream-qemu-kvm)
+
+We're seeing timeouts for this test on CI runs (specifically for
+ubuntu-20.04-s390x-all). It doesn't fail consistently, but even the
+successful runs take about 27 or 28 seconds, which is not very far from
+the 30 seconds timeout.
+
+Bump the timeout a bit to make failure less likely even on this CI host.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20240125165803.48373-1-kwolf@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 63b18312d14ac984acaf13c7c55d9baa2d61496e)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ tests/unit/meson.build | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tests/unit/meson.build b/tests/unit/meson.build
+index a05d471090..28db6adea8 100644
+--- a/tests/unit/meson.build
++++ b/tests/unit/meson.build
+@@ -173,7 +173,8 @@ test_env.set('G_TEST_BUILDDIR', meson.current_build_dir())
+ 
+ slow_tests = {
+   'test-crypto-tlscredsx509': 45,
+-  'test-crypto-tlssession': 45
++  'test-crypto-tlssession': 45,
++  'test-replication': 60,
+ }
+ 
+ foreach test_name, extra: tests
+-- 
+2.39.3
+

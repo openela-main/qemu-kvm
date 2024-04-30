@@ -1,0 +1,37 @@
+From 363d6aedc82314a70bdfbe9fa23b7e8fdda50138 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Thu, 11 Jan 2024 12:26:19 -0500
+Subject: [PATCH 066/101] Compile IOMMUFD object on aarch64
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [65/67] 9358030fdd499c5fe122dee3bb4f114966fac9c2 (eauger1/centos-qemu-kvm)
+
+Upstream: RHEL only
+
+Compiles the IOMMUFD object on aarch64 to be able to use
+the IOMMUFD VFIO backend.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ configs/devices/aarch64-softmmu/aarch64-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+index aec1831199..b0191d3c69 100644
+--- a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
++++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+@@ -39,3 +39,4 @@ CONFIG_PXB=y
+ CONFIG_VHOST_VSOCK=y
+ CONFIG_VHOST_USER_VSOCK=y
+ CONFIG_VHOST_USER_FS=y
++CONFIG_IOMMUFD=y
+-- 
+2.39.3
+

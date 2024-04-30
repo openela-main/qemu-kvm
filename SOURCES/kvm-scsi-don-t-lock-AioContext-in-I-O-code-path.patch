@@ -1,0 +1,245 @@
+From d1d384bd24a7aeb527f4abd8a0958146544ef9bb Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Mon, 4 Dec 2023 11:42:58 -0500
+Subject: [PATCH 079/101] scsi: don't lock AioContext in I/O code path
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [10/26] b5814cec94af5c254e300646d8783672b085bac3 (kmwolf/centos-qemu-kvm)
+
+blk_aio_*() doesn't require the AioContext lock and the SCSI subsystem's
+internal state also does not anymore.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Acked-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20231204164259.1515217-4-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-disk.c    | 23 -----------------------
+ hw/scsi/scsi-generic.c | 20 +++-----------------
+ 2 files changed, 3 insertions(+), 40 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 6691f5edb8..2c1bbb3530 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -273,8 +273,6 @@ static void scsi_aio_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -286,7 +284,6 @@ static void scsi_aio_complete(void *opaque, int ret)
+     scsi_req_complete(&r->req, GOOD);
+ 
+ done:
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+     scsi_req_unref(&r->req);
+ }
+ 
+@@ -394,8 +391,6 @@ static void scsi_read_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -406,7 +401,6 @@ static void scsi_read_complete(void *opaque, int ret)
+         trace_scsi_disk_read_complete(r->req.tag, r->qiov.size);
+     }
+     scsi_read_complete_noio(r, ret);
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ /* Actually issue a read to the block device.  */
+@@ -448,8 +442,6 @@ static void scsi_do_read_cb(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert (r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -459,7 +451,6 @@ static void scsi_do_read_cb(void *opaque, int ret)
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     }
+     scsi_do_read(opaque, ret);
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ /* Read more data from scsi device into buffer.  */
+@@ -533,8 +524,6 @@ static void scsi_write_complete(void * opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert (r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -544,7 +533,6 @@ static void scsi_write_complete(void * opaque, int ret)
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     }
+     scsi_write_complete_noio(r, ret);
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ static void scsi_write_data(SCSIRequest *req)
+@@ -1742,8 +1730,6 @@ static void scsi_unmap_complete(void *opaque, int ret)
+     SCSIDiskReq *r = data->r;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -1754,7 +1740,6 @@ static void scsi_unmap_complete(void *opaque, int ret)
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+         scsi_unmap_complete_noio(data, ret);
+     }
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ static void scsi_disk_emulate_unmap(SCSIDiskReq *r, uint8_t *inbuf)
+@@ -1822,8 +1807,6 @@ static void scsi_write_same_complete(void *opaque, int ret)
+     SCSIDiskReq *r = data->r;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->qdev.conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -1847,7 +1830,6 @@ static void scsi_write_same_complete(void *opaque, int ret)
+                                        data->sector << BDRV_SECTOR_BITS,
+                                        &data->qiov, 0,
+                                        scsi_write_same_complete, data);
+-        aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+         return;
+     }
+ 
+@@ -1857,7 +1839,6 @@ done:
+     scsi_req_unref(&r->req);
+     qemu_vfree(data->iov.iov_base);
+     g_free(data);
+-    aio_context_release(blk_get_aio_context(s->qdev.conf.blk));
+ }
+ 
+ static void scsi_disk_emulate_write_same(SCSIDiskReq *r, uint8_t *inbuf)
+@@ -2810,7 +2791,6 @@ static void scsi_block_sgio_complete(void *opaque, int ret)
+ {
+     SCSIBlockReq *req = (SCSIBlockReq *)opaque;
+     SCSIDiskReq *r = &req->req;
+-    SCSIDevice *s = r->req.dev;
+     sg_io_hdr_t *io_hdr = &req->io_header;
+ 
+     if (ret == 0) {
+@@ -2827,13 +2807,10 @@ static void scsi_block_sgio_complete(void *opaque, int ret)
+         }
+ 
+         if (ret > 0) {
+-            aio_context_acquire(blk_get_aio_context(s->conf.blk));
+             if (scsi_handle_rw_error(r, ret, true)) {
+-                aio_context_release(blk_get_aio_context(s->conf.blk));
+                 scsi_req_unref(&r->req);
+                 return;
+             }
+-            aio_context_release(blk_get_aio_context(s->conf.blk));
+ 
+             /* Ignore error.  */
+             ret = 0;
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 2417f0ad84..b7b04e1d63 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -109,15 +109,11 @@ done:
+ static void scsi_command_complete(void *opaque, int ret)
+ {
+     SCSIGenericReq *r = (SCSIGenericReq *)opaque;
+-    SCSIDevice *s = r->req.dev;
+-
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+ 
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+     scsi_command_complete_noio(r, ret);
+-    aio_context_release(blk_get_aio_context(s->conf.blk));
+ }
+ 
+ static int execute_command(BlockBackend *blk,
+@@ -274,14 +270,12 @@ static void scsi_read_complete(void * opaque, int ret)
+     SCSIDevice *s = r->req.dev;
+     int len;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+     if (ret || r->req.io_canceled) {
+         scsi_command_complete_noio(r, ret);
+-        goto done;
++        return;
+     }
+ 
+     len = r->io_header.dxfer_len - r->io_header.resid;
+@@ -320,7 +314,7 @@ static void scsi_read_complete(void * opaque, int ret)
+         r->io_header.status != GOOD ||
+         len == 0) {
+         scsi_command_complete_noio(r, 0);
+-        goto done;
++        return;
+     }
+ 
+     /* Snoop READ CAPACITY output to set the blocksize.  */
+@@ -356,9 +350,6 @@ static void scsi_read_complete(void * opaque, int ret)
+ req_complete:
+     scsi_req_data(&r->req, len);
+     scsi_req_unref(&r->req);
+-
+-done:
+-    aio_context_release(blk_get_aio_context(s->conf.blk));
+ }
+ 
+ /* Read more data from scsi device into buffer.  */
+@@ -391,14 +382,12 @@ static void scsi_write_complete(void * opaque, int ret)
+ 
+     trace_scsi_generic_write_complete(ret);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.blk));
+-
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+     if (ret || r->req.io_canceled) {
+         scsi_command_complete_noio(r, ret);
+-        goto done;
++        return;
+     }
+ 
+     if (r->req.cmd.buf[0] == MODE_SELECT && r->req.cmd.buf[4] == 12 &&
+@@ -408,9 +397,6 @@ static void scsi_write_complete(void * opaque, int ret)
+     }
+ 
+     scsi_command_complete_noio(r, ret);
+-
+-done:
+-    aio_context_release(blk_get_aio_context(s->conf.blk));
+ }
+ 
+ /* Write data to a scsi device.  Returns nonzero on failure.
+-- 
+2.39.3
+

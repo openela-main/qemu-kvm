@@ -1,0 +1,134 @@
+From 1536f1ec00ddc1729854b381cc0d54814bb6c19f Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 29 Dec 2023 15:04:55 +0100
+Subject: [PATCH 07/20] smbios: get rid of smbios_smp_sockets global
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [5/18] f59bfeb547b7febcf1de2b6179af006e7fa0bccd
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+    it makes smbios_validate_table() independent from
+    smbios_smp_sockets global, which in turn lets
+    smbios_get_tables() avoid using not related legacy code.
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Reviewed-by: Ani Sinha <anisinha@redhat.com>
+    Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+
+Conflicts:
+   include/hw/firmware/smbios.h due to down-stream
+   (d9ff466c980d Machine type related general changes)
+    adding custom stream_product/stream_version
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/i386/fw_cfg.c             |  2 +-
+ hw/smbios/smbios.c           | 22 +++++++++-------------
+ include/hw/firmware/smbios.h |  2 +-
+ 3 files changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index ed72b1442d..79ff7f7225 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -72,7 +72,7 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg)
+     /* tell smbios about cpuid version and features */
+     smbios_set_cpuid(cpu->env.cpuid_version, cpu->env.features[FEAT_1_EDX]);
+ 
+-    smbios_tables = smbios_get_table_legacy(ms, &smbios_tables_len);
++    smbios_tables = smbios_get_table_legacy(ms->smp.cpus, &smbios_tables_len);
+     if (smbios_tables) {
+         fw_cfg_add_bytes(fw_cfg, FW_CFG_SMBIOS_ENTRIES,
+                          smbios_tables, smbios_tables_len);
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index b13e40bae2..8129d396d1 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -73,7 +73,7 @@ static SmbiosEntryPoint ep;
+ static int smbios_type4_count = 0;
+ static bool smbios_immutable;
+ static bool smbios_have_defaults;
+-static uint32_t smbios_cpuid_version, smbios_cpuid_features, smbios_smp_sockets;
++static uint32_t smbios_cpuid_version, smbios_cpuid_features;
+ 
+ static DECLARE_BITMAP(have_binfile_bitmap, SMBIOS_MAX_TYPE+1);
+ static DECLARE_BITMAP(have_fields_bitmap, SMBIOS_MAX_TYPE+1);
+@@ -524,14 +524,11 @@ opts_init(smbios_register_config);
+  */
+ #define SMBIOS_21_MAX_TABLES_LEN 0xffff
+ 
+-static void smbios_validate_table(MachineState *ms)
++static void smbios_validate_table(uint32_t expected_t4_count)
+ {
+-    uint32_t expect_t4_count = smbios_legacy ?
+-                                        ms->smp.cpus : smbios_smp_sockets;
+-
+-    if (smbios_type4_count && smbios_type4_count != expect_t4_count) {
++    if (smbios_type4_count && smbios_type4_count != expected_t4_count) {
+         error_report("Expected %d SMBIOS Type 4 tables, got %d instead",
+-                     expect_t4_count, smbios_type4_count);
++                     expected_t4_count, smbios_type4_count);
+         exit(1);
+     }
+ 
+@@ -619,7 +616,7 @@ static void smbios_build_type_1_fields(void)
+     }
+ }
+ 
+-uint8_t *smbios_get_table_legacy(MachineState *ms, size_t *length)
++uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length)
+ {
+     if (!smbios_legacy) {
+         *length = 0;
+@@ -629,7 +626,7 @@ uint8_t *smbios_get_table_legacy(MachineState *ms, size_t *length)
+     if (!smbios_immutable) {
+         smbios_build_type_0_fields();
+         smbios_build_type_1_fields();
+-        smbios_validate_table(ms);
++        smbios_validate_table(expected_t4_count);
+         smbios_immutable = true;
+     }
+     *length = smbios_entries_len;
+@@ -1250,10 +1247,9 @@ void smbios_get_tables(MachineState *ms,
+         smbios_build_type_2_table();
+         smbios_build_type_3_table();
+ 
+-        smbios_smp_sockets = ms->smp.sockets;
+-        assert(smbios_smp_sockets >= 1);
++        assert(ms->smp.sockets >= 1);
+ 
+-        for (i = 0; i < smbios_smp_sockets; i++) {
++        for (i = 0; i < ms->smp.sockets; i++) {
+             smbios_build_type_4_table(ms, i);
+         }
+ 
+@@ -1299,7 +1295,7 @@ void smbios_get_tables(MachineState *ms,
+         smbios_build_type_41_table(errp);
+         smbios_build_type_127_table();
+ 
+-        smbios_validate_table(ms);
++        smbios_validate_table(ms->smp.sockets);
+         smbios_entry_point_setup();
+         smbios_immutable = true;
+     }
+diff --git a/include/hw/firmware/smbios.h b/include/hw/firmware/smbios.h
+index f8dd07fe4c..95ec64ce2c 100644
+--- a/include/hw/firmware/smbios.h
++++ b/include/hw/firmware/smbios.h
+@@ -315,7 +315,7 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
+                          const char *stream_product,
+                          const char *stream_version,
+                          SmbiosEntryPointType ep_type);
+-uint8_t *smbios_get_table_legacy(MachineState *ms, size_t *length);
++uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length);
+ void smbios_get_tables(MachineState *ms,
+                        const struct smbios_phys_mem_area *mem_array,
+                        const unsigned int mem_array_size,
+-- 
+2.39.3
+

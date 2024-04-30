@@ -1,0 +1,61 @@
+From 0aa65dc3acba481f7064df936ab49e3bceb1d5bd Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 20 Mar 2024 14:12:32 -0400
+Subject: [PATCH 2/2] coroutine: reserve 5,000 mappings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 234: coroutine: cap per-thread local pool size
+RH-Jira: RHEL-28947
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [2/2] 78560c2b947471111cc16c313d6f38db42860a1c (stefanha/centos-stream-qemu-kvm)
+
+Daniel P. Berrangé <berrange@redhat.com> pointed out that the coroutine
+pool size heuristic is very conservative. Instead of halving
+max_map_count, he suggested reserving 5,000 mappings for non-coroutine
+users based on observations of guests he has access to.
+
+Fixes: 86a637e48104 ("coroutine: cap per-thread local pool size")
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Message-id: 20240320181232.1464819-1-stefanha@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 9352f80cd926fe2dde7c89b93ee33bb0356ff40e)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ util/qemu-coroutine.c | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/util/qemu-coroutine.c b/util/qemu-coroutine.c
+index 2790959eaf..eb4eebefdf 100644
+--- a/util/qemu-coroutine.c
++++ b/util/qemu-coroutine.c
+@@ -377,12 +377,17 @@ static unsigned int get_global_pool_hard_max_size(void)
+                             NULL) &&
+         qemu_strtoi(contents, NULL, 10, &max_map_count) == 0) {
+         /*
+-         * This is a conservative upper bound that avoids exceeding
+-         * max_map_count. Leave half for non-coroutine users like library
+-         * dependencies, vhost-user, etc. Each coroutine takes up 2 VMAs so
+-         * halve the amount again.
++         * This is an upper bound that avoids exceeding max_map_count. Leave a
++         * fixed amount for non-coroutine users like library dependencies,
++         * vhost-user, etc. Each coroutine takes up 2 VMAs so halve the
++         * remaining amount.
+          */
+-        return max_map_count / 4;
++        if (max_map_count > 5000) {
++            return (max_map_count - 5000) / 2;
++        } else {
++            /* Disable the global pool but threads still have local pools */
++            return 0;
++        }
+     }
+ #endif
+ 
+-- 
+2.39.3
+

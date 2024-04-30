@@ -1,0 +1,150 @@
+From 645ed97633935712edcc2c56f252738b38f15e3a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:22 +0100
+Subject: [PATCH 055/101] vfio/spapr: Introduce a sPAPR VFIOIOMMU QOM interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [54/67] 2ceac3c07d71790dc3852fbbbd4084a7affb9373 (eauger1/centos-qemu-kvm)
+
+Move vfio_spapr_container_setup() to a VFIOIOMMUClass::setup handler
+and convert the sPAPR VFIOIOMMUOps struct to a QOM interface. The
+sPAPR QOM interface inherits from the legacy QOM interface because
+because both have the same basic needs. The sPAPR interface is then
+extended with the handlers specific to the sPAPR IOMMU.
+
+This allows reuse and provides better abstraction of the backends. It
+will be useful to avoid compiling the sPAPR IOMMU backend on targets
+not supporting it.
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit f221f641a2fe69c2ca3857759551470664b0bec8)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container.c                   | 18 +++++--------
+ hw/vfio/spapr.c                       | 39 ++++++++++++++++-----------
+ include/hw/vfio/vfio-container-base.h |  1 +
+ 3 files changed, 31 insertions(+), 27 deletions(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index c22bdd3216..688cf23bab 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -381,6 +381,10 @@ static const VFIOIOMMUClass *vfio_get_iommu_class(int iommu_type, Error **errp)
+     case VFIO_TYPE1_IOMMU:
+         klass = object_class_by_name(TYPE_VFIO_IOMMU_LEGACY);
+         break;
++    case VFIO_SPAPR_TCE_v2_IOMMU:
++    case VFIO_SPAPR_TCE_IOMMU:
++        klass = object_class_by_name(TYPE_VFIO_IOMMU_SPAPR);
++        break;
+     default:
+         g_assert_not_reached();
+     };
+@@ -623,19 +627,9 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+         goto free_container_exit;
+     }
+ 
+-    switch (container->iommu_type) {
+-    case VFIO_TYPE1v2_IOMMU:
+-    case VFIO_TYPE1_IOMMU:
+-        ret = vfio_legacy_setup(bcontainer, errp);
+-        break;
+-    case VFIO_SPAPR_TCE_v2_IOMMU:
+-    case VFIO_SPAPR_TCE_IOMMU:
+-        ret = vfio_spapr_container_init(container, errp);
+-        break;
+-    default:
+-        g_assert_not_reached();
+-    }
++    assert(bcontainer->ops->setup);
+ 
++    ret = bcontainer->ops->setup(bcontainer, errp);
+     if (ret) {
+         goto enable_discards_exit;
+     }
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index 44617dfc6b..0d949bb728 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -458,20 +458,11 @@ static void vfio_spapr_container_release(VFIOContainerBase *bcontainer)
+     }
+ }
+ 
+-static VFIOIOMMUOps vfio_iommu_spapr_ops;
+-
+-static void setup_spapr_ops(VFIOContainerBase *bcontainer)
+-{
+-    vfio_iommu_spapr_ops = *bcontainer->ops;
+-    vfio_iommu_spapr_ops.add_window = vfio_spapr_container_add_section_window;
+-    vfio_iommu_spapr_ops.del_window = vfio_spapr_container_del_section_window;
+-    vfio_iommu_spapr_ops.release = vfio_spapr_container_release;
+-    bcontainer->ops = &vfio_iommu_spapr_ops;
+-}
+-
+-int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
++static int vfio_spapr_container_setup(VFIOContainerBase *bcontainer,
++                                      Error **errp)
+ {
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
++                                            bcontainer);
+     VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+                                                   container);
+     struct vfio_iommu_spapr_tce_info info;
+@@ -536,8 +527,6 @@ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+                           0x1000);
+     }
+ 
+-    setup_spapr_ops(bcontainer);
+-
+     return 0;
+ 
+ listener_unregister_exit:
+@@ -546,3 +535,23 @@ listener_unregister_exit:
+     }
+     return ret;
+ }
++
++static void vfio_iommu_spapr_class_init(ObjectClass *klass, void *data)
++{
++    VFIOIOMMUClass *vioc = VFIO_IOMMU_CLASS(klass);
++
++    vioc->add_window = vfio_spapr_container_add_section_window;
++    vioc->del_window = vfio_spapr_container_del_section_window;
++    vioc->release = vfio_spapr_container_release;
++    vioc->setup = vfio_spapr_container_setup;
++};
++
++static const TypeInfo types[] = {
++    {
++        .name = TYPE_VFIO_IOMMU_SPAPR,
++        .parent = TYPE_VFIO_IOMMU_LEGACY,
++        .class_init = vfio_iommu_spapr_class_init,
++    },
++};
++
++DEFINE_TYPES(types)
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index ce8b1fba88..9e21d7811f 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -95,6 +95,7 @@ void vfio_container_destroy(VFIOContainerBase *bcontainer);
+ 
+ #define TYPE_VFIO_IOMMU "vfio-iommu"
+ #define TYPE_VFIO_IOMMU_LEGACY TYPE_VFIO_IOMMU "-legacy"
++#define TYPE_VFIO_IOMMU_SPAPR TYPE_VFIO_IOMMU "-spapr"
+ 
+ /*
+  * VFIOContainerBase is not an abstract QOM object because it felt
+-- 
+2.39.3
+

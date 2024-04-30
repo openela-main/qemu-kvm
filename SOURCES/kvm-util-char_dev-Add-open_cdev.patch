@@ -1,0 +1,175 @@
+From de167878ec4ca159cc6def5134c91c5fe9b5ab96 Mon Sep 17 00:00:00 2001
+From: Yi Liu <yi.l.liu@intel.com>
+Date: Tue, 21 Nov 2023 16:44:01 +0800
+Subject: [PATCH 022/101] util/char_dev: Add open_cdev()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [21/67] 72bf9ec3ccc9959626235bd270ec84caa4cee435 (eauger1/centos-qemu-kvm)
+
+/dev/vfio/devices/vfioX may not exist. In that case it is still possible
+to open /dev/char/$major:$minor instead. Add helper function to abstract
+the cdev open.
+
+Suggested-by: Jason Gunthorpe <jgg@nvidia.com>
+Signed-off-by: Yi Liu <yi.l.liu@intel.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d6b5c4c1b516a8176b74ec35a0af8cf89b04b6c1)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ MAINTAINERS                 |  2 +
+ include/qemu/chardev_open.h | 16 ++++++++
+ util/chardev_open.c         | 81 +++++++++++++++++++++++++++++++++++++
+ util/meson.build            |  1 +
+ 4 files changed, 100 insertions(+)
+ create mode 100644 include/qemu/chardev_open.h
+ create mode 100644 util/chardev_open.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index a5a446914a..ca70bb4e64 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -2174,6 +2174,8 @@ M: Zhenzhong Duan <zhenzhong.duan@intel.com>
+ S: Supported
+ F: backends/iommufd.c
+ F: include/sysemu/iommufd.h
++F: include/qemu/chardev_open.h
++F: util/chardev_open.c
+ 
+ vhost
+ M: Michael S. Tsirkin <mst@redhat.com>
+diff --git a/include/qemu/chardev_open.h b/include/qemu/chardev_open.h
+new file mode 100644
+index 0000000000..64e8fcfdcb
+--- /dev/null
++++ b/include/qemu/chardev_open.h
+@@ -0,0 +1,16 @@
++/*
++ * QEMU Chardev Helper
++ *
++ * Copyright (C) 2023 Intel Corporation.
++ *
++ * Authors: Yi Liu <yi.l.liu@intel.com>
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2.  See
++ * the COPYING file in the top-level directory.
++ */
++
++#ifndef QEMU_CHARDEV_OPEN_H
++#define QEMU_CHARDEV_OPEN_H
++
++int open_cdev(const char *devpath, dev_t cdev);
++#endif
+diff --git a/util/chardev_open.c b/util/chardev_open.c
+new file mode 100644
+index 0000000000..f776429788
+--- /dev/null
++++ b/util/chardev_open.c
+@@ -0,0 +1,81 @@
++/*
++ * Copyright (c) 2019, Mellanox Technologies. All rights reserved.
++ * Copyright (C) 2023 Intel Corporation.
++ *
++ * This software is available to you under a choice of one of two
++ * licenses.  You may choose to be licensed under the terms of the GNU
++ * General Public License (GPL) Version 2, available from the file
++ * COPYING in the main directory of this source tree, or the
++ * OpenIB.org BSD license below:
++ *
++ *      Redistribution and use in source and binary forms, with or
++ *      without modification, are permitted provided that the following
++ *      conditions are met:
++ *
++ *      - Redistributions of source code must retain the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer.
++ *
++ *      - Redistributions in binary form must reproduce the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer in the documentation and/or other materials
++ *        provided with the distribution.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ *
++ * Authors: Yi Liu <yi.l.liu@intel.com>
++ *
++ * Copied from
++ * https://github.com/linux-rdma/rdma-core/blob/master/util/open_cdev.c
++ *
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/chardev_open.h"
++
++static int open_cdev_internal(const char *path, dev_t cdev)
++{
++    struct stat st;
++    int fd;
++
++    fd = qemu_open_old(path, O_RDWR);
++    if (fd == -1) {
++        return -1;
++    }
++    if (fstat(fd, &st) || !S_ISCHR(st.st_mode) ||
++        (cdev != 0 && st.st_rdev != cdev)) {
++        close(fd);
++        return -1;
++    }
++    return fd;
++}
++
++static int open_cdev_robust(dev_t cdev)
++{
++    g_autofree char *devpath = NULL;
++
++    /*
++     * This assumes that udev is being used and is creating the /dev/char/
++     * symlinks.
++     */
++    devpath = g_strdup_printf("/dev/char/%u:%u", major(cdev), minor(cdev));
++    return open_cdev_internal(devpath, cdev);
++}
++
++int open_cdev(const char *devpath, dev_t cdev)
++{
++    int fd;
++
++    fd = open_cdev_internal(devpath, cdev);
++    if (fd == -1 && cdev != 0) {
++        return open_cdev_robust(cdev);
++    }
++    return fd;
++}
+diff --git a/util/meson.build b/util/meson.build
+index c2322ef6e7..174c133368 100644
+--- a/util/meson.build
++++ b/util/meson.build
+@@ -108,6 +108,7 @@ if have_block
+     util_ss.add(files('filemonitor-stub.c'))
+   endif
+   util_ss.add(when: 'CONFIG_LINUX', if_true: files('vfio-helpers.c'))
++  util_ss.add(when: 'CONFIG_LINUX', if_true: files('chardev_open.c'))
+ endif
+ 
+ if cpu == 'aarch64'
+-- 
+2.39.3
+

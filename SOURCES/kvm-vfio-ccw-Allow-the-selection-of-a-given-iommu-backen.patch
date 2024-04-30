@@ -1,0 +1,79 @@
+From 732115c80eb0dd672925a0737e09643d8a889abd Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:15 +0800
+Subject: [PATCH 036/101] vfio/ccw: Allow the selection of a given iommu
+ backend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [35/67] 1701de023a9f3b3f0420689bf851e11aee88800d (eauger1/centos-qemu-kvm)
+
+Now we support two types of iommu backends, let's add the capability
+to select one of them. This depends on whether an iommufd object has
+been linked with the vfio-ccw device:
+
+If the user wants to use the legacy backend, it shall not
+link the vfio-ccw device with any iommufd object:
+
+ -device vfio-ccw,sysfsdev=/sys/bus/mdev/devices/XXX
+
+This is called the legacy mode/backend.
+
+If the user wants to use the iommufd backend (/dev/iommu) it
+shall pass an iommufd object id in the vfio-ccw device options:
+
+ -object iommufd,id=iommufd0
+ -device vfio-ccw,sysfsdev=/sys/bus/mdev/devices/XXX,iommufd=iommufd0
+
+Suggested-by: Alex Williamson <alex.williamson@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit e70f971a6c1230138843d7ab82267e4a5aaf6bda)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ccw.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/vfio/ccw.c b/hw/vfio/ccw.c
+index d857bb8d0f..d2d58bb677 100644
+--- a/hw/vfio/ccw.c
++++ b/hw/vfio/ccw.c
+@@ -15,12 +15,14 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include CONFIG_DEVICES /* CONFIG_IOMMUFD */
+ #include <linux/vfio.h>
+ #include <linux/vfio_ccw.h>
+ #include <sys/ioctl.h>
+ 
+ #include "qapi/error.h"
+ #include "hw/vfio/vfio-common.h"
++#include "sysemu/iommufd.h"
+ #include "hw/s390x/s390-ccw.h"
+ #include "hw/s390x/vfio-ccw.h"
+ #include "hw/qdev-properties.h"
+@@ -677,6 +679,10 @@ static void vfio_ccw_unrealize(DeviceState *dev)
+ static Property vfio_ccw_properties[] = {
+     DEFINE_PROP_STRING("sysfsdev", VFIOCCWDevice, vdev.sysfsdev),
+     DEFINE_PROP_BOOL("force-orb-pfch", VFIOCCWDevice, force_orb_pfch, false),
++#ifdef CONFIG_IOMMUFD
++    DEFINE_PROP_LINK("iommufd", VFIOCCWDevice, vdev.iommufd,
++                     TYPE_IOMMUFD_BACKEND, IOMMUFDBackend *),
++#endif
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+-- 
+2.39.3
+

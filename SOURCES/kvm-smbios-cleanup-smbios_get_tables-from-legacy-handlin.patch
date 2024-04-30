@@ -1,0 +1,65 @@
+From 07f6ef2d032cda3e746ac2477c0a9bc1ac636f45 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 29 Dec 2023 14:08:13 +0100
+Subject: [PATCH 06/20] smbios: cleanup smbios_get_tables() from legacy
+ handling
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [4/18] a5e09ce1df72293fecad863edd146a8c4b1a734f
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+smbios_get_tables() bails out right away if leagacy mode is enabled
+and won't generate any SMBIOS tables. At the same time x86 specific
+fw_cfg_build_smbios() will genarate legacy tables and then proceed
+to preparing temporary mem_array for useless call to
+smbios_get_tables() and then discard it.
+
+Drop legacy related check in smbios_get_tables() and return from
+fw_cfg_build_smbios() early if legacy tables where built without
+proceeding to non legacy part of the function.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Ani Sinha <anisinha@redhat.com>
+Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+---
+ hw/i386/fw_cfg.c   | 1 +
+ hw/smbios/smbios.c | 6 ------
+ 2 files changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index 6a5466faf0..ed72b1442d 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -76,6 +76,7 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg)
+     if (smbios_tables) {
+         fw_cfg_add_bytes(fw_cfg, FW_CFG_SMBIOS_ENTRIES,
+                          smbios_tables, smbios_tables_len);
++        return;
+     }
+ 
+     /* build the array of physical mem area from e820 table */
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index 074705fa4c..b13e40bae2 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -1244,12 +1244,6 @@ void smbios_get_tables(MachineState *ms,
+ {
+     unsigned i, dimm_cnt, offset;
+ 
+-    if (smbios_legacy) {
+-        *tables = *anchor = NULL;
+-        *tables_len = *anchor_len = 0;
+-        return;
+-    }
+-
+     if (!smbios_immutable) {
+         smbios_build_type_0_table();
+         smbios_build_type_1_table();
+-- 
+2.39.3
+

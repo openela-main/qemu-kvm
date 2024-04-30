@@ -1,0 +1,280 @@
+From 61d605433a5edfcc7fe836fd399106ed1e1907bb Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:20:05 -0500
+Subject: [PATCH 088/101] scsi: remove AioContext locking
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [19/26] 12a8e26670074a17dd2b0cfac06e0aea03b3068f (kmwolf/centos-qemu-kvm)
+
+The AioContext lock no longer has any effect. Remove it.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20231205182011.1976568-9-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-bus.c              |  2 --
+ hw/scsi/scsi-disk.c             | 31 +++++--------------------------
+ hw/scsi/virtio-scsi.c           | 18 ------------------
+ include/hw/virtio/virtio-scsi.h | 14 --------------
+ 4 files changed, 5 insertions(+), 60 deletions(-)
+
+diff --git a/hw/scsi/scsi-bus.c b/hw/scsi/scsi-bus.c
+index b649cdf555..5b08cbf60a 100644
+--- a/hw/scsi/scsi-bus.c
++++ b/hw/scsi/scsi-bus.c
+@@ -1732,9 +1732,7 @@ void scsi_device_purge_requests(SCSIDevice *sdev, SCSISense sense)
+ {
+     scsi_device_for_each_req_async(sdev, scsi_device_purge_one_req, NULL);
+ 
+-    aio_context_acquire(blk_get_aio_context(sdev->conf.blk));
+     blk_drain(sdev->conf.blk);
+-    aio_context_release(blk_get_aio_context(sdev->conf.blk));
+     scsi_device_set_ua(sdev, sense);
+ }
+ 
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index a5048e0aaf..61be3d395a 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -2339,14 +2339,10 @@ static void scsi_disk_reset(DeviceState *dev)
+ {
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev.qdev, dev);
+     uint64_t nb_sectors;
+-    AioContext *ctx;
+ 
+     scsi_device_purge_requests(&s->qdev, SENSE_CODE(RESET));
+ 
+-    ctx = blk_get_aio_context(s->qdev.conf.blk);
+-    aio_context_acquire(ctx);
+     blk_get_geometry(s->qdev.conf.blk, &nb_sectors);
+-    aio_context_release(ctx);
+ 
+     nb_sectors /= s->qdev.blocksize / BDRV_SECTOR_SIZE;
+     if (nb_sectors) {
+@@ -2545,15 +2541,13 @@ static void scsi_unrealize(SCSIDevice *dev)
+ static void scsi_hd_realize(SCSIDevice *dev, Error **errp)
+ {
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, dev);
+-    AioContext *ctx = NULL;
++
+     /* can happen for devices without drive. The error message for missing
+      * backend will be issued in scsi_realize
+      */
+     if (s->qdev.conf.blk) {
+-        ctx = blk_get_aio_context(s->qdev.conf.blk);
+-        aio_context_acquire(ctx);
+         if (!blkconf_blocksizes(&s->qdev.conf, errp)) {
+-            goto out;
++            return;
+         }
+     }
+     s->qdev.blocksize = s->qdev.conf.logical_block_size;
+@@ -2562,16 +2556,11 @@ static void scsi_hd_realize(SCSIDevice *dev, Error **errp)
+         s->product = g_strdup("QEMU HARDDISK");
+     }
+     scsi_realize(&s->qdev, errp);
+-out:
+-    if (ctx) {
+-        aio_context_release(ctx);
+-    }
+ }
+ 
+ static void scsi_cd_realize(SCSIDevice *dev, Error **errp)
+ {
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, dev);
+-    AioContext *ctx;
+     int ret;
+     uint32_t blocksize = 2048;
+ 
+@@ -2587,8 +2576,6 @@ static void scsi_cd_realize(SCSIDevice *dev, Error **errp)
+         blocksize = dev->conf.physical_block_size;
+     }
+ 
+-    ctx = blk_get_aio_context(dev->conf.blk);
+-    aio_context_acquire(ctx);
+     s->qdev.blocksize = blocksize;
+     s->qdev.type = TYPE_ROM;
+     s->features |= 1 << SCSI_DISK_F_REMOVABLE;
+@@ -2596,7 +2583,6 @@ static void scsi_cd_realize(SCSIDevice *dev, Error **errp)
+         s->product = g_strdup("QEMU CD-ROM");
+     }
+     scsi_realize(&s->qdev, errp);
+-    aio_context_release(ctx);
+ }
+ 
+ 
+@@ -2727,7 +2713,6 @@ static int get_device_type(SCSIDiskState *s)
+ static void scsi_block_realize(SCSIDevice *dev, Error **errp)
+ {
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, dev);
+-    AioContext *ctx;
+     int sg_version;
+     int rc;
+ 
+@@ -2742,9 +2727,6 @@ static void scsi_block_realize(SCSIDevice *dev, Error **errp)
+                           "be removed in a future version");
+     }
+ 
+-    ctx = blk_get_aio_context(s->qdev.conf.blk);
+-    aio_context_acquire(ctx);
+-
+     /* check we are using a driver managing SG_IO (version 3 and after) */
+     rc = blk_ioctl(s->qdev.conf.blk, SG_GET_VERSION_NUM, &sg_version);
+     if (rc < 0) {
+@@ -2752,18 +2734,18 @@ static void scsi_block_realize(SCSIDevice *dev, Error **errp)
+         if (rc != -EPERM) {
+             error_append_hint(errp, "Is this a SCSI device?\n");
+         }
+-        goto out;
++        return;
+     }
+     if (sg_version < 30000) {
+         error_setg(errp, "scsi generic interface too old");
+-        goto out;
++        return;
+     }
+ 
+     /* get device type from INQUIRY data */
+     rc = get_device_type(s);
+     if (rc < 0) {
+         error_setg(errp, "INQUIRY failed");
+-        goto out;
++        return;
+     }
+ 
+     /* Make a guess for the block size, we'll fix it when the guest sends.
+@@ -2783,9 +2765,6 @@ static void scsi_block_realize(SCSIDevice *dev, Error **errp)
+ 
+     scsi_realize(&s->qdev, errp);
+     scsi_generic_read_device_inquiry(&s->qdev);
+-
+-out:
+-    aio_context_release(ctx);
+ }
+ 
+ typedef struct SCSIBlockReq {
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index 4f8d35facc..ca365a70e9 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -642,9 +642,7 @@ static void virtio_scsi_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
+         return;
+     }
+ 
+-    virtio_scsi_acquire(s);
+     virtio_scsi_handle_ctrl_vq(s, vq);
+-    virtio_scsi_release(s);
+ }
+ 
+ static void virtio_scsi_complete_cmd_req(VirtIOSCSIReq *req)
+@@ -882,9 +880,7 @@ static void virtio_scsi_handle_cmd(VirtIODevice *vdev, VirtQueue *vq)
+         return;
+     }
+ 
+-    virtio_scsi_acquire(s);
+     virtio_scsi_handle_cmd_vq(s, vq);
+-    virtio_scsi_release(s);
+ }
+ 
+ static void virtio_scsi_get_config(VirtIODevice *vdev,
+@@ -1031,9 +1027,7 @@ static void virtio_scsi_handle_event(VirtIODevice *vdev, VirtQueue *vq)
+         return;
+     }
+ 
+-    virtio_scsi_acquire(s);
+     virtio_scsi_handle_event_vq(s, vq);
+-    virtio_scsi_release(s);
+ }
+ 
+ static void virtio_scsi_change(SCSIBus *bus, SCSIDevice *dev, SCSISense sense)
+@@ -1052,9 +1046,7 @@ static void virtio_scsi_change(SCSIBus *bus, SCSIDevice *dev, SCSISense sense)
+             },
+         };
+ 
+-        virtio_scsi_acquire(s);
+         virtio_scsi_push_event(s, &info);
+-        virtio_scsi_release(s);
+     }
+ }
+ 
+@@ -1071,17 +1063,13 @@ static void virtio_scsi_hotplug(HotplugHandler *hotplug_dev, DeviceState *dev,
+     VirtIODevice *vdev = VIRTIO_DEVICE(hotplug_dev);
+     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
+     SCSIDevice *sd = SCSI_DEVICE(dev);
+-    AioContext *old_context;
+     int ret;
+ 
+     if (s->ctx && !s->dataplane_fenced) {
+         if (blk_op_is_blocked(sd->conf.blk, BLOCK_OP_TYPE_DATAPLANE, errp)) {
+             return;
+         }
+-        old_context = blk_get_aio_context(sd->conf.blk);
+-        aio_context_acquire(old_context);
+         ret = blk_set_aio_context(sd->conf.blk, s->ctx, errp);
+-        aio_context_release(old_context);
+         if (ret < 0) {
+             return;
+         }
+@@ -1097,10 +1085,8 @@ static void virtio_scsi_hotplug(HotplugHandler *hotplug_dev, DeviceState *dev,
+             },
+         };
+ 
+-        virtio_scsi_acquire(s);
+         virtio_scsi_push_event(s, &info);
+         scsi_bus_set_ua(&s->bus, SENSE_CODE(REPORTED_LUNS_CHANGED));
+-        virtio_scsi_release(s);
+     }
+ }
+ 
+@@ -1122,17 +1108,13 @@ static void virtio_scsi_hotunplug(HotplugHandler *hotplug_dev, DeviceState *dev,
+     qdev_simple_device_unplug_cb(hotplug_dev, dev, errp);
+ 
+     if (s->ctx) {
+-        virtio_scsi_acquire(s);
+         /* If other users keep the BlockBackend in the iothread, that's ok */
+         blk_set_aio_context(sd->conf.blk, qemu_get_aio_context(), NULL);
+-        virtio_scsi_release(s);
+     }
+ 
+     if (virtio_vdev_has_feature(vdev, VIRTIO_SCSI_F_HOTPLUG)) {
+-        virtio_scsi_acquire(s);
+         virtio_scsi_push_event(s, &info);
+         scsi_bus_set_ua(&s->bus, SENSE_CODE(REPORTED_LUNS_CHANGED));
+-        virtio_scsi_release(s);
+     }
+ }
+ 
+diff --git a/include/hw/virtio/virtio-scsi.h b/include/hw/virtio/virtio-scsi.h
+index da8cb928d9..7f0573b1bf 100644
+--- a/include/hw/virtio/virtio-scsi.h
++++ b/include/hw/virtio/virtio-scsi.h
+@@ -101,20 +101,6 @@ struct VirtIOSCSI {
+     uint32_t host_features;
+ };
+ 
+-static inline void virtio_scsi_acquire(VirtIOSCSI *s)
+-{
+-    if (s->ctx) {
+-        aio_context_acquire(s->ctx);
+-    }
+-}
+-
+-static inline void virtio_scsi_release(VirtIOSCSI *s)
+-{
+-    if (s->ctx) {
+-        aio_context_release(s->ctx);
+-    }
+-}
+-
+ void virtio_scsi_common_realize(DeviceState *dev,
+                                 VirtIOHandleOutput ctrl,
+                                 VirtIOHandleOutput evt,
+-- 
+2.39.3
+

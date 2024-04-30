@@ -1,0 +1,167 @@
+From f1e82fe5076b4030d385dfa49b8284899386114d Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 20 Dec 2023 08:47:54 -0500
+Subject: [PATCH 08/22] qdev: add IOThreadVirtQueueMappingList property type
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [4/17] 817aa1339da8ed3814730473342ba045e66d5b51 (stefanha/centos-stream-qemu-kvm)
+
+virtio-blk and virtio-scsi devices will need a way to specify the
+mapping between IOThreads and virtqueues. At the moment all virtqueues
+are assigned to a single IOThread or the main loop. This single thread
+can be a CPU bottleneck, so it is necessary to allow finer-grained
+assignment to spread the load.
+
+Introduce DEFINE_PROP_IOTHREAD_VQ_MAPPING_LIST() so devices can take a
+parameter that maps virtqueues to IOThreads. The command-line syntax for
+this new property is as follows:
+
+  --device '{"driver":"foo","iothread-vq-mapping":[{"iothread":"iothread0","vqs":[0,1,2]},...]}'
+
+IOThreads are specified by name and virtqueues are specified by 0-based
+index.
+
+It will be common to simply assign virtqueues round-robin across a set
+of IOThreads. A convenient syntax that does not require specifying
+individual virtqueue indices is available:
+
+  --device '{"driver":"foo","iothread-vq-mapping":[{"iothread":"iothread0"},{"iothread":"iothread1"},...]}'
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231220134755.814917-4-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit cf03a152c5d749fd0083bfe540df9524f1d2ff1d)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/core/qdev-properties-system.c    | 46 +++++++++++++++++++++++++++++
+ include/hw/qdev-properties-system.h |  5 ++++
+ qapi/virtio.json                    | 29 ++++++++++++++++++
+ 3 files changed, 80 insertions(+)
+
+diff --git a/hw/core/qdev-properties-system.c b/hw/core/qdev-properties-system.c
+index 73cced4626..1a396521d5 100644
+--- a/hw/core/qdev-properties-system.c
++++ b/hw/core/qdev-properties-system.c
+@@ -18,6 +18,7 @@
+ #include "qapi/qapi-types-block.h"
+ #include "qapi/qapi-types-machine.h"
+ #include "qapi/qapi-types-migration.h"
++#include "qapi/qapi-visit-virtio.h"
+ #include "qapi/qmp/qerror.h"
+ #include "qemu/ctype.h"
+ #include "qemu/cutils.h"
+@@ -1160,3 +1161,48 @@ const PropertyInfo qdev_prop_cpus390entitlement = {
+     .set   = qdev_propinfo_set_enum,
+     .set_default_value = qdev_propinfo_set_default_value_enum,
+ };
++
++/* --- IOThreadVirtQueueMappingList --- */
++
++static void get_iothread_vq_mapping_list(Object *obj, Visitor *v,
++        const char *name, void *opaque, Error **errp)
++{
++    IOThreadVirtQueueMappingList **prop_ptr =
++        object_field_prop_ptr(obj, opaque);
++
++    visit_type_IOThreadVirtQueueMappingList(v, name, prop_ptr, errp);
++}
++
++static void set_iothread_vq_mapping_list(Object *obj, Visitor *v,
++        const char *name, void *opaque, Error **errp)
++{
++    IOThreadVirtQueueMappingList **prop_ptr =
++        object_field_prop_ptr(obj, opaque);
++    IOThreadVirtQueueMappingList *list;
++
++    if (!visit_type_IOThreadVirtQueueMappingList(v, name, &list, errp)) {
++        return;
++    }
++
++    qapi_free_IOThreadVirtQueueMappingList(*prop_ptr);
++    *prop_ptr = list;
++}
++
++static void release_iothread_vq_mapping_list(Object *obj,
++        const char *name, void *opaque)
++{
++    IOThreadVirtQueueMappingList **prop_ptr =
++        object_field_prop_ptr(obj, opaque);
++
++    qapi_free_IOThreadVirtQueueMappingList(*prop_ptr);
++    *prop_ptr = NULL;
++}
++
++const PropertyInfo qdev_prop_iothread_vq_mapping_list = {
++    .name = "IOThreadVirtQueueMappingList",
++    .description = "IOThread virtqueue mapping list [{\"iothread\":\"<id>\", "
++                   "\"vqs\":[1,2,3,...]},...]",
++    .get = get_iothread_vq_mapping_list,
++    .set = set_iothread_vq_mapping_list,
++    .release = release_iothread_vq_mapping_list,
++};
+diff --git a/include/hw/qdev-properties-system.h b/include/hw/qdev-properties-system.h
+index 91f7a2452d..06c359c190 100644
+--- a/include/hw/qdev-properties-system.h
++++ b/include/hw/qdev-properties-system.h
+@@ -24,6 +24,7 @@ extern const PropertyInfo qdev_prop_off_auto_pcibar;
+ extern const PropertyInfo qdev_prop_pcie_link_speed;
+ extern const PropertyInfo qdev_prop_pcie_link_width;
+ extern const PropertyInfo qdev_prop_cpus390entitlement;
++extern const PropertyInfo qdev_prop_iothread_vq_mapping_list;
+ 
+ #define DEFINE_PROP_PCI_DEVFN(_n, _s, _f, _d)                   \
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_pci_devfn, int32_t)
+@@ -82,4 +83,8 @@ extern const PropertyInfo qdev_prop_cpus390entitlement;
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_cpus390entitlement, \
+                        CpuS390Entitlement)
+ 
++#define DEFINE_PROP_IOTHREAD_VQ_MAPPING_LIST(_name, _state, _field) \
++    DEFINE_PROP(_name, _state, _field, qdev_prop_iothread_vq_mapping_list, \
++                IOThreadVirtQueueMappingList *)
++
+ #endif
+diff --git a/qapi/virtio.json b/qapi/virtio.json
+index e6dcee7b83..19c7c36e36 100644
+--- a/qapi/virtio.json
++++ b/qapi/virtio.json
+@@ -928,3 +928,32 @@
+   'data': { 'path': 'str', 'queue': 'uint16', '*index': 'uint16' },
+   'returns': 'VirtioQueueElement',
+   'features': [ 'unstable' ] }
++
++##
++# @IOThreadVirtQueueMapping:
++#
++# Describes the subset of virtqueues assigned to an IOThread.
++#
++# @iothread: the id of IOThread object
++#
++# @vqs: an optional array of virtqueue indices that will be handled by this
++#     IOThread.  When absent, virtqueues are assigned round-robin across all
++#     IOThreadVirtQueueMappings provided.  Either all IOThreadVirtQueueMappings
++#     must have @vqs or none of them must have it.
++#
++# Since: 9.0
++##
++
++{ 'struct': 'IOThreadVirtQueueMapping',
++  'data': { 'iothread': 'str', '*vqs': ['uint16'] } }
++
++##
++# @DummyVirtioForceArrays:
++#
++# Not used by QMP; hack to let us use IOThreadVirtQueueMappingList internally
++#
++# Since: 9.0
++##
++
++{ 'struct': 'DummyVirtioForceArrays',
++  'data': { 'unused-iothread-vq-mapping': ['IOThreadVirtQueueMapping'] } }
+-- 
+2.39.3
+

@@ -1,0 +1,81 @@
+From 6e4f68e9ba3fe75ca6f200f189f96bb402f0ee8e Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Wed, 24 Jan 2024 11:57:49 +0100
+Subject: [PATCH 02/20] ui/clipboard: add asserts for update and request
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 228: ui/clipboard: mark type as not available when there is no data
+RH-Jira: RHEL-19629
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Commit: [2/2] 176b4b835fd8aa226f2fa93fd334b9384080cf21 (jmaloy/jmaloy-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-19629
+CVE: CVE-2023-6683
+Upstream: Merged
+
+ui/clipboard: add asserts for update and request
+
+commit 9c416582611b7495bdddb4c5456c7acb64b78938
+Author: Fiona Ebner <f.ebner@proxmox.com>
+Date:   Wed Jan 24 11:57:49 2024 +0100
+
+    ui/clipboard: add asserts for update and request
+
+    Should an issue like CVE-2023-6683 ever appear again in the future,
+    it will be more obvious which assumption was violated.
+
+    Suggested-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Message-ID: <20240124105749.204610-2-f.ebner@proxmox.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ ui/clipboard.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/ui/clipboard.c b/ui/clipboard.c
+index b3f6fa3c9e..4264884a6c 100644
+--- a/ui/clipboard.c
++++ b/ui/clipboard.c
+@@ -65,12 +65,24 @@ bool qemu_clipboard_check_serial(QemuClipboardInfo *info, bool client)
+ 
+ void qemu_clipboard_update(QemuClipboardInfo *info)
+ {
++    uint32_t type;
+     QemuClipboardNotify notify = {
+         .type = QEMU_CLIPBOARD_UPDATE_INFO,
+         .info = info,
+     };
+     assert(info->selection < QEMU_CLIPBOARD_SELECTION__COUNT);
+ 
++    for (type = 0; type < QEMU_CLIPBOARD_TYPE__COUNT; type++) {
++        /*
++         * If data is missing, the clipboard owner's 'request' callback needs to
++         * be set. Otherwise, there is no way to get the clipboard data and
++         * qemu_clipboard_request() cannot be called.
++         */
++        if (info->types[type].available && !info->types[type].data) {
++            assert(info->owner && info->owner->request);
++        }
++    }
++
+     notifier_list_notify(&clipboard_notifiers, &notify);
+ 
+     if (cbinfo[info->selection] != info) {
+@@ -132,6 +144,8 @@ void qemu_clipboard_request(QemuClipboardInfo *info,
+         !info->owner)
+         return;
+ 
++    assert(info->owner->request);
++
+     info->types[type].requested = true;
+     info->owner->request(info, type);
+ }
+-- 
+2.39.3
+

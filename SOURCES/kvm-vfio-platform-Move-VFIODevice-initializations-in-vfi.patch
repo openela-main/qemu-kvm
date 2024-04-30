@@ -1,0 +1,64 @@
+From 2417020283532030f424fe07dfeb7477e6489640 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:22 +0800
+Subject: [PATCH 043/101] vfio/platform: Move VFIODevice initializations in
+ vfio_platform_instance_init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [42/67] 53a459b6246d7d7bdc7a62ac92f02f1e775a54a6 (eauger1/centos-qemu-kvm)
+
+Some of the VFIODevice initializations is in vfio_platform_realize,
+move all of them in vfio_platform_instance_init.
+
+No functional change intended.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit a0cf44c8d618578843a65ea7f6d3db8ce52185bc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/platform.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/hw/vfio/platform.c b/hw/vfio/platform.c
+index a97d9c6234..506eb8193f 100644
+--- a/hw/vfio/platform.c
++++ b/hw/vfio/platform.c
+@@ -581,10 +581,6 @@ static void vfio_platform_realize(DeviceState *dev, Error **errp)
+     VFIODevice *vbasedev = &vdev->vbasedev;
+     int i, ret;
+ 
+-    vbasedev->type = VFIO_DEVICE_TYPE_PLATFORM;
+-    vbasedev->dev = dev;
+-    vbasedev->ops = &vfio_platform_ops;
+-
+     qemu_mutex_init(&vdev->intp_mutex);
+ 
+     trace_vfio_platform_realize(vbasedev->sysfsdev ?
+@@ -659,8 +655,12 @@ static Property vfio_platform_dev_properties[] = {
+ static void vfio_platform_instance_init(Object *obj)
+ {
+     VFIOPlatformDevice *vdev = VFIO_PLATFORM_DEVICE(obj);
++    VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+-    vdev->vbasedev.fd = -1;
++    vbasedev->type = VFIO_DEVICE_TYPE_PLATFORM;
++    vbasedev->ops = &vfio_platform_ops;
++    vbasedev->dev = DEVICE(vdev);
++    vbasedev->fd = -1;
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+-- 
+2.39.3
+

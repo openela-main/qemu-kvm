@@ -1,0 +1,63 @@
+From 22730552442003e81c8c508c3e7ebacf647e4e75 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Fri, 19 Jan 2024 08:57:48 -0500
+Subject: [PATCH 19/22] virtio-blk: always set ioeventfd during startup
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [15/17] 5f7142aeaa54fda41bd5c4fd3222fd8e3e18f370 (stefanha/centos-stream-qemu-kvm)
+
+When starting ioeventfd it is common practice to set the event notifier
+so that the ioeventfd handler is triggered to run immediately. There may
+be no requests waiting to be processed, but the idea is that if a
+request snuck in then we guarantee that it will be detected.
+
+One scenario where self-triggering the ioeventfd is necessary is when
+virtio_blk_handle_output() is called from a vCPU thread before the
+VIRTIO Device Status transitions to DRIVER_OK. In that case we need to
+self-trigger the ioeventfd so that the kick handled by the vCPU thread
+causes the vq AioContext thread to take over handling the request(s).
+
+Fixes: b6948ab01df0 ("virtio-blk: add iothread-vq-mapping parameter")
+Reported-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240119135748.270944-7-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit d3f6f294aeadd5f88caf0155e4360808c95b3146)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/block/virtio-blk.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 81de06c9f6..0b9100b746 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -1809,14 +1809,14 @@ static int virtio_blk_start_ioeventfd(VirtIODevice *vdev)
+     smp_wmb(); /* paired with aio_notify_accept() on the read side */
+ 
+     /* Get this show started by hooking up our callbacks */
+-    if (!blk_in_drain(s->conf.conf.blk)) {
+-        for (i = 0; i < nvqs; i++) {
+-            VirtQueue *vq = virtio_get_queue(vdev, i);
+-            AioContext *ctx = s->vq_aio_context[i];
++    for (i = 0; i < nvqs; i++) {
++        VirtQueue *vq = virtio_get_queue(vdev, i);
++        AioContext *ctx = s->vq_aio_context[i];
+ 
+-            /* Kick right away to begin processing requests already in vring */
+-            event_notifier_set(virtio_queue_get_host_notifier(vq));
++        /* Kick right away to begin processing requests already in vring */
++        event_notifier_set(virtio_queue_get_host_notifier(vq));
+ 
++        if (!blk_in_drain(s->conf.conf.blk)) {
+             virtio_queue_aio_attach_host_notifier(vq, ctx);
+         }
+     }
+-- 
+2.39.3
+

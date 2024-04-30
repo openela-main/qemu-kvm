@@ -1,0 +1,71 @@
+From 49078bdfd4c116da3e920632ec6f7041f1b38015 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 22 Jan 2024 09:25:53 +0100
+Subject: [PATCH 097/101] s390x/pci: refresh fh before disabling aif
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 215: s390x: Fix reset ordering of passthrough ISM devices
+RH-Jira: RHEL-21169
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [2/3] 3523067909c41818dfc769abdb93930833416c11 (clegoate/qemu-kvm-c9s)
+
+JIRA: https://issues.redhat.com/browse/RHEL-21169
+
+commit 30e35258e25c75c9d799c34fd89afcafffb37084
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Thu Jan 18 13:51:50 2024 -0500
+
+    s390x/pci: refresh fh before disabling aif
+
+    Typically we refresh the host fh during CLP enable, however it's possible
+    that the device goes through multiple reset events before the guest
+    performs another CLP enable.  Let's handle this for now by refreshing the
+    host handle from vfio before disabling aif.
+
+    Fixes: 03451953c7 ("s390x/pci: reset ISM passthrough devices on shutdown and system reset")
+    Reported-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Message-ID: <20240118185151.265329-3-mjrosato@linux.ibm.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-kvm.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/s390x/s390-pci-kvm.c b/hw/s390x/s390-pci-kvm.c
+index 1ee510436c..9eef4fc3ec 100644
+--- a/hw/s390x/s390-pci-kvm.c
++++ b/hw/s390x/s390-pci-kvm.c
+@@ -18,6 +18,7 @@
+ #include "hw/s390x/s390-pci-bus.h"
+ #include "hw/s390x/s390-pci-kvm.h"
+ #include "hw/s390x/s390-pci-inst.h"
++#include "hw/s390x/s390-pci-vfio.h"
+ #include "cpu_models.h"
+ 
+ bool s390_pci_kvm_interp_allowed(void)
+@@ -64,6 +65,14 @@ int s390_pci_kvm_aif_disable(S390PCIBusDevice *pbdev)
+         return -EINVAL;
+     }
+ 
++    /*
++     * The device may have already been reset but we still want to relinquish
++     * the guest ISC, so always be sure to use an up-to-date host fh.
++     */
++    if (!s390_pci_get_host_fh(pbdev, &args.fh)) {
++        return -EPERM;
++    }
++
+     rc = kvm_vm_ioctl(kvm_state, KVM_S390_ZPCI_OP, &args);
+     if (rc == 0) {
+         pbdev->aif = false;
+-- 
+2.39.3
+

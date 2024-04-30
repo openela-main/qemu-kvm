@@ -1,0 +1,71 @@
+From e56f961fbe95a53a52c5eca00b4fca17d825e860 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:28 +0800
+Subject: [PATCH 003/101] vfio/container: Introduce a empty VFIOIOMMUOps
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [2/67] 0de0afffce42fa4a17f6d33a10b6162cdfbe8150 (eauger1/centos-qemu-kvm)
+
+This empty VFIOIOMMUOps named vfio_legacy_ops will hold all general
+IOMMU ops of legacy container.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d24668579184f4098779983724ec74cd3db62e10)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container.c           | 5 +++++
+ include/hw/vfio/vfio-common.h | 2 +-
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 242010036a..4bc43ddfa4 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -472,6 +472,7 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+                                   Error **errp)
+ {
+     VFIOContainer *container;
++    VFIOContainerBase *bcontainer;
+     int ret, fd;
+     VFIOAddressSpace *space;
+ 
+@@ -552,6 +553,8 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+     container->iova_ranges = NULL;
+     QLIST_INIT(&container->giommu_list);
+     QLIST_INIT(&container->vrdl_list);
++    bcontainer = &container->bcontainer;
++    bcontainer->ops = &vfio_legacy_ops;
+ 
+     ret = vfio_init_container(container, group->fd, errp);
+     if (ret) {
+@@ -933,3 +936,5 @@ void vfio_detach_device(VFIODevice *vbasedev)
+     vfio_put_base_device(vbasedev);
+     vfio_put_group(group);
+ }
++
++const VFIOIOMMUOps vfio_legacy_ops;
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 586d153c12..678161f207 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -255,7 +255,7 @@ typedef QLIST_HEAD(VFIOGroupList, VFIOGroup) VFIOGroupList;
+ typedef QLIST_HEAD(VFIODeviceList, VFIODevice) VFIODeviceList;
+ extern VFIOGroupList vfio_group_list;
+ extern VFIODeviceList vfio_device_list;
+-
++extern const VFIOIOMMUOps vfio_legacy_ops;
+ extern const MemoryListener vfio_memory_listener;
+ extern int vfio_kvm_device_fd;
+ 
+-- 
+2.39.3
+

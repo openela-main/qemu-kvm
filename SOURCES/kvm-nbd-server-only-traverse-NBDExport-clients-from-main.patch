@@ -1,0 +1,176 @@
+From 8b60d72532b6511b41d82d591fb4f509314ef15f Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 21 Dec 2023 14:24:51 -0500
+Subject: [PATCH 071/101] nbd/server: only traverse NBDExport->clients from
+ main loop thread
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/26] e7794a3a5c363c7508ee505c4ba03d9ef8862ca9 (kmwolf/centos-qemu-kvm)
+
+The NBD clients list is currently accessed from both the export
+AioContext and the main loop thread. When the AioContext lock is removed
+there will be nothing protecting the clients list.
+
+Adding a lock around the clients list is tricky because NBDClient
+structs are refcounted and may be freed from the export AioContext or
+the main loop thread. nbd_export_request_shutdown() -> client_close() ->
+nbd_client_put() is also tricky because the list lock would be held
+while indirectly dropping references to NDBClients.
+
+A simpler approach is to only allow nbd_client_put() and client_close()
+calls from the main loop thread. Then the NBD clients list is only
+accessed from the main loop thread and no fancy locking is needed.
+
+nbd_trip() just needs to reschedule itself in the main loop AioContext
+before calling nbd_client_put() and client_close(). This costs more CPU
+cycles per NBD request so add nbd_client_put_nonzero() to optimize the
+common case where more references to NBDClient remain.
+
+Note that nbd_client_get() can still be called from either thread, so
+make NBDClient->refcount atomic.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231221192452.1785567-6-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ nbd/server.c | 61 +++++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 51 insertions(+), 10 deletions(-)
+
+diff --git a/nbd/server.c b/nbd/server.c
+index 0b09ccc8dc..e91e2e0903 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -122,7 +122,7 @@ struct NBDMetaContexts {
+ };
+ 
+ struct NBDClient {
+-    int refcount;
++    int refcount; /* atomic */
+     void (*close_fn)(NBDClient *client, bool negotiated);
+ 
+     NBDExport *exp;
+@@ -1501,14 +1501,17 @@ static int coroutine_fn nbd_receive_request(NBDClient *client, NBDRequest *reque
+ 
+ #define MAX_NBD_REQUESTS 16
+ 
++/* Runs in export AioContext and main loop thread */
+ void nbd_client_get(NBDClient *client)
+ {
+-    client->refcount++;
++    qatomic_inc(&client->refcount);
+ }
+ 
+ void nbd_client_put(NBDClient *client)
+ {
+-    if (--client->refcount == 0) {
++    assert(qemu_in_main_thread());
++
++    if (qatomic_fetch_dec(&client->refcount) == 1) {
+         /* The last reference should be dropped by client->close,
+          * which is called by client_close.
+          */
+@@ -1529,8 +1532,35 @@ void nbd_client_put(NBDClient *client)
+     }
+ }
+ 
++/*
++ * Tries to release the reference to @client, but only if other references
++ * remain. This is an optimization for the common case where we want to avoid
++ * the expense of scheduling nbd_client_put() in the main loop thread.
++ *
++ * Returns true upon success or false if the reference was not released because
++ * it is the last reference.
++ */
++static bool nbd_client_put_nonzero(NBDClient *client)
++{
++    int old = qatomic_read(&client->refcount);
++    int expected;
++
++    do {
++        if (old == 1) {
++            return false;
++        }
++
++        expected = old;
++        old = qatomic_cmpxchg(&client->refcount, expected, expected - 1);
++    } while (old != expected);
++
++    return true;
++}
++
+ static void client_close(NBDClient *client, bool negotiated)
+ {
++    assert(qemu_in_main_thread());
++
+     if (client->closing) {
+         return;
+     }
+@@ -2933,15 +2963,20 @@ static coroutine_fn int nbd_handle_request(NBDClient *client,
+ static coroutine_fn void nbd_trip(void *opaque)
+ {
+     NBDClient *client = opaque;
+-    NBDRequestData *req;
++    NBDRequestData *req = NULL;
+     NBDRequest request = { 0 };    /* GCC thinks it can be used uninitialized */
+     int ret;
+     Error *local_err = NULL;
+ 
++    /*
++     * Note that nbd_client_put() and client_close() must be called from the
++     * main loop thread. Use aio_co_reschedule_self() to switch AioContext
++     * before calling these functions.
++     */
++
+     trace_nbd_trip();
+     if (client->closing) {
+-        nbd_client_put(client);
+-        return;
++        goto done;
+     }
+ 
+     if (client->quiescing) {
+@@ -2949,10 +2984,9 @@ static coroutine_fn void nbd_trip(void *opaque)
+          * We're switching between AIO contexts. Don't attempt to receive a new
+          * request and kick the main context which may be waiting for us.
+          */
+-        nbd_client_put(client);
+         client->recv_coroutine = NULL;
+         aio_wait_kick();
+-        return;
++        goto done;
+     }
+ 
+     req = nbd_request_get(client);
+@@ -3012,8 +3046,13 @@ static coroutine_fn void nbd_trip(void *opaque)
+ 
+     qio_channel_set_cork(client->ioc, false);
+ done:
+-    nbd_request_put(req);
+-    nbd_client_put(client);
++    if (req) {
++        nbd_request_put(req);
++    }
++    if (!nbd_client_put_nonzero(client)) {
++        aio_co_reschedule_self(qemu_get_aio_context());
++        nbd_client_put(client);
++    }
+     return;
+ 
+ disconnect:
+@@ -3021,6 +3060,8 @@ disconnect:
+         error_reportf_err(local_err, "Disconnect client, due to: ");
+     }
+     nbd_request_put(req);
++
++    aio_co_reschedule_self(qemu_get_aio_context());
+     client_close(client, true);
+     nbd_client_put(client);
+ }
+-- 
+2.39.3
+

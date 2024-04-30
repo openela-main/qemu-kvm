@@ -1,0 +1,85 @@
+From 2ef1c050722115247962e3cd4d8fcf73727e597e Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:24 +0800
+Subject: [PATCH 045/101] vfio/ccw: Move VFIODevice initializations in
+ vfio_ccw_instance_init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [44/67] 3345ed58f491aba8fd51bcc172af267ae53e6c8c (eauger1/centos-qemu-kvm)
+
+Some of the VFIODevice initializations is in vfio_ccw_realize,
+move all of them in vfio_ccw_instance_init.
+
+No functional change intended.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c12b55ad6f9d3b4792b590e9211bd7319e4a2d70)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ccw.c | 30 +++++++++++++++---------------
+ 1 file changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/hw/vfio/ccw.c b/hw/vfio/ccw.c
+index 2afdf17dbe..6305a4c1b8 100644
+--- a/hw/vfio/ccw.c
++++ b/hw/vfio/ccw.c
+@@ -594,20 +594,6 @@ static void vfio_ccw_realize(DeviceState *dev, Error **errp)
+         return;
+     }
+ 
+-    vbasedev->ops = &vfio_ccw_ops;
+-    vbasedev->type = VFIO_DEVICE_TYPE_CCW;
+-    vbasedev->dev = dev;
+-
+-    /*
+-     * All vfio-ccw devices are believed to operate in a way compatible with
+-     * discarding of memory in RAM blocks, ie. pages pinned in the host are
+-     * in the current working set of the guest driver and therefore never
+-     * overlap e.g., with pages available to the guest balloon driver.  This
+-     * needs to be set before vfio_get_device() for vfio common to handle
+-     * ram_block_discard_disable().
+-     */
+-    vbasedev->ram_block_discard_allowed = true;
+-
+     ret = vfio_attach_device(cdev->mdevid, vbasedev,
+                              &address_space_memory, errp);
+     if (ret) {
+@@ -695,8 +681,22 @@ static const VMStateDescription vfio_ccw_vmstate = {
+ static void vfio_ccw_instance_init(Object *obj)
+ {
+     VFIOCCWDevice *vcdev = VFIO_CCW(obj);
++    VFIODevice *vbasedev = &vcdev->vdev;
++
++    vbasedev->type = VFIO_DEVICE_TYPE_CCW;
++    vbasedev->ops = &vfio_ccw_ops;
++    vbasedev->dev = DEVICE(vcdev);
++    vbasedev->fd = -1;
+ 
+-    vcdev->vdev.fd = -1;
++    /*
++     * All vfio-ccw devices are believed to operate in a way compatible with
++     * discarding of memory in RAM blocks, ie. pages pinned in the host are
++     * in the current working set of the guest driver and therefore never
++     * overlap e.g., with pages available to the guest balloon driver.  This
++     * needs to be set before vfio_get_device() for vfio common to handle
++     * ram_block_discard_disable().
++     */
++    vbasedev->ram_block_discard_allowed = true;
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+-- 
+2.39.3
+

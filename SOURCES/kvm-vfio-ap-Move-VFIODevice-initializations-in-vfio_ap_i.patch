@@ -1,0 +1,81 @@
+From b8630ecb698e31311089ba4e224d5e2c08c8e665 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:23 +0800
+Subject: [PATCH 044/101] vfio/ap: Move VFIODevice initializations in
+ vfio_ap_instance_init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [43/67] 95a527f649b28c5c78903e99735107667e8468b1 (eauger1/centos-qemu-kvm)
+
+Some of the VFIODevice initializations is in vfio_ap_realize,
+move all of them in vfio_ap_instance_init.
+
+No functional change intended.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit cbbcc2f1706aa1a08637142744d2f5f6515ac93f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ap.c | 26 +++++++++++++-------------
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/hw/vfio/ap.c b/hw/vfio/ap.c
+index f180e4a32a..95fe7cd98b 100644
+--- a/hw/vfio/ap.c
++++ b/hw/vfio/ap.c
+@@ -164,18 +164,6 @@ static void vfio_ap_realize(DeviceState *dev, Error **errp)
+         return;
+     }
+ 
+-    vbasedev->ops = &vfio_ap_ops;
+-    vbasedev->type = VFIO_DEVICE_TYPE_AP;
+-    vbasedev->dev = dev;
+-
+-    /*
+-     * vfio-ap devices operate in a way compatible with discarding of
+-     * memory in RAM blocks, as no pages are pinned in the host.
+-     * This needs to be set before vfio_get_device() for vfio common to
+-     * handle ram_block_discard_disable().
+-     */
+-    vapdev->vdev.ram_block_discard_allowed = true;
+-
+     ret = vfio_attach_device(vbasedev->name, vbasedev,
+                              &address_space_memory, errp);
+     if (ret) {
+@@ -236,8 +224,20 @@ static const VMStateDescription vfio_ap_vmstate = {
+ static void vfio_ap_instance_init(Object *obj)
+ {
+     VFIOAPDevice *vapdev = VFIO_AP_DEVICE(obj);
++    VFIODevice *vbasedev = &vapdev->vdev;
+ 
+-    vapdev->vdev.fd = -1;
++    vbasedev->type = VFIO_DEVICE_TYPE_AP;
++    vbasedev->ops = &vfio_ap_ops;
++    vbasedev->dev = DEVICE(vapdev);
++    vbasedev->fd = -1;
++
++    /*
++     * vfio-ap devices operate in a way compatible with discarding of
++     * memory in RAM blocks, as no pages are pinned in the host.
++     * This needs to be set before vfio_get_device() for vfio common to
++     * handle ram_block_discard_disable().
++     */
++    vbasedev->ram_block_discard_allowed = true;
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+-- 
+2.39.3
+

@@ -1,0 +1,120 @@
+From 17e6dad3e43e173147c0ca33f6f1f4f317a77d0b Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:44 +0800
+Subject: [PATCH 019/101] vfio/spapr: Move prereg_listener into spapr container
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [18/67] dbea1b0b759e91b953271da92bba4ca6853bec82 (eauger1/centos-qemu-kvm)
+
+No functional changes intended.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 6ad359ec29af7f21dcb206c8edb26905a4925f80)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/spapr.c               | 24 ++++++++++++++++--------
+ include/hw/vfio/vfio-common.h |  1 -
+ 2 files changed, 16 insertions(+), 9 deletions(-)
+
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index 5be1911aad..68c3dd6c75 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -26,6 +26,7 @@
+ 
+ typedef struct VFIOSpaprContainer {
+     VFIOContainer container;
++    MemoryListener prereg_listener;
+ } VFIOSpaprContainer;
+ 
+ static bool vfio_prereg_listener_skipped_section(MemoryRegionSection *section)
+@@ -48,8 +49,9 @@ static void *vfio_prereg_gpa_to_vaddr(MemoryRegionSection *section, hwaddr gpa)
+ static void vfio_prereg_listener_region_add(MemoryListener *listener,
+                                             MemoryRegionSection *section)
+ {
+-    VFIOContainer *container = container_of(listener, VFIOContainer,
+-                                            prereg_listener);
++    VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
++                                                  prereg_listener);
++    VFIOContainer *container = &scontainer->container;
+     VFIOContainerBase *bcontainer = &container->bcontainer;
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+@@ -107,8 +109,9 @@ static void vfio_prereg_listener_region_add(MemoryListener *listener,
+ static void vfio_prereg_listener_region_del(MemoryListener *listener,
+                                             MemoryRegionSection *section)
+ {
+-    VFIOContainer *container = container_of(listener, VFIOContainer,
+-                                            prereg_listener);
++    VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
++                                                  prereg_listener);
++    VFIOContainer *container = &scontainer->container;
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+     int ret;
+@@ -445,6 +448,8 @@ static void setup_spapr_ops(VFIOContainerBase *bcontainer)
+ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+ {
+     VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
++                                                  container);
+     struct vfio_iommu_spapr_tce_info info;
+     bool v2 = container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU;
+     int ret, fd = container->fd;
+@@ -463,9 +468,9 @@ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+             return -errno;
+         }
+     } else {
+-        container->prereg_listener = vfio_prereg_listener;
++        scontainer->prereg_listener = vfio_prereg_listener;
+ 
+-        memory_listener_register(&container->prereg_listener,
++        memory_listener_register(&scontainer->prereg_listener,
+                                  &address_space_memory);
+         if (bcontainer->error) {
+             ret = -1;
+@@ -513,7 +518,7 @@ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+ 
+ listener_unregister_exit:
+     if (v2) {
+-        memory_listener_unregister(&container->prereg_listener);
++        memory_listener_unregister(&scontainer->prereg_listener);
+     }
+     return ret;
+ }
+@@ -523,7 +528,10 @@ void vfio_spapr_container_deinit(VFIOContainer *container)
+     VFIOHostDMAWindow *hostwin, *next;
+ 
+     if (container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU) {
+-        memory_listener_unregister(&container->prereg_listener);
++        VFIOSpaprContainer *scontainer = container_of(container,
++                                                      VFIOSpaprContainer,
++                                                      container);
++        memory_listener_unregister(&scontainer->prereg_listener);
+     }
+     QLIST_FOREACH_SAFE(hostwin, &container->hostwin_list, hostwin_next,
+                        next) {
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 055f679363..ed6148c058 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -78,7 +78,6 @@ struct VFIOGroup;
+ typedef struct VFIOContainer {
+     VFIOContainerBase bcontainer;
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+-    MemoryListener prereg_listener;
+     unsigned iommu_type;
+     QLIST_HEAD(, VFIOHostDMAWindow) hostwin_list;
+     QLIST_HEAD(, VFIOGroup) group_list;
+-- 
+2.39.3
+

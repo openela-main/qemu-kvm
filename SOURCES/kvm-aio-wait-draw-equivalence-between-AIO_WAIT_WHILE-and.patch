@@ -1,0 +1,81 @@
+From e1e2f3972065c4b5d6fcf37e0e1c4fb92a0d5260 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:20:06 -0500
+Subject: [PATCH 089/101] aio-wait: draw equivalence between AIO_WAIT_WHILE()
+ and AIO_WAIT_WHILE_UNLOCKED()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [20/26] 20e49777869714c99769263103f1b0c2c370cfcd (kmwolf/centos-qemu-kvm)
+
+Now that the AioContext lock no longer exists, AIO_WAIT_WHILE() and
+AIO_WAIT_WHILE_UNLOCKED() are equivalent.
+
+A future patch will get rid of AIO_WAIT_WHILE_UNLOCKED().
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20231205182011.1976568-10-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/block/aio-wait.h | 16 ++++------------
+ 1 file changed, 4 insertions(+), 12 deletions(-)
+
+diff --git a/include/block/aio-wait.h b/include/block/aio-wait.h
+index 5449b6d742..157f105916 100644
+--- a/include/block/aio-wait.h
++++ b/include/block/aio-wait.h
+@@ -63,9 +63,6 @@ extern AioWait global_aio_wait;
+  * @ctx: the aio context, or NULL if multiple aio contexts (for which the
+  *       caller does not hold a lock) are involved in the polling condition.
+  * @cond: wait while this conditional expression is true
+- * @unlock: whether to unlock and then lock again @ctx. This applies
+- * only when waiting for another AioContext from the main loop.
+- * Otherwise it's ignored.
+  *
+  * Wait while a condition is true.  Use this to implement synchronous
+  * operations that require event loop activity.
+@@ -78,7 +75,7 @@ extern AioWait global_aio_wait;
+  * wait on conditions between two IOThreads since that could lead to deadlock,
+  * go via the main loop instead.
+  */
+-#define AIO_WAIT_WHILE_INTERNAL(ctx, cond, unlock) ({              \
++#define AIO_WAIT_WHILE_INTERNAL(ctx, cond) ({                      \
+     bool waited_ = false;                                          \
+     AioWait *wait_ = &global_aio_wait;                             \
+     AioContext *ctx_ = (ctx);                                      \
+@@ -95,13 +92,7 @@ extern AioWait global_aio_wait;
+         assert(qemu_get_current_aio_context() ==                   \
+                qemu_get_aio_context());                            \
+         while ((cond)) {                                           \
+-            if (unlock && ctx_) {                                  \
+-                aio_context_release(ctx_);                         \
+-            }                                                      \
+             aio_poll(qemu_get_aio_context(), true);                \
+-            if (unlock && ctx_) {                                  \
+-                aio_context_acquire(ctx_);                         \
+-            }                                                      \
+             waited_ = true;                                        \
+         }                                                          \
+     }                                                              \
+@@ -109,10 +100,11 @@ extern AioWait global_aio_wait;
+     waited_; })
+ 
+ #define AIO_WAIT_WHILE(ctx, cond)                                  \
+-    AIO_WAIT_WHILE_INTERNAL(ctx, cond, true)
++    AIO_WAIT_WHILE_INTERNAL(ctx, cond)
+ 
++/* TODO replace this with AIO_WAIT_WHILE() in a future patch */
+ #define AIO_WAIT_WHILE_UNLOCKED(ctx, cond)                         \
+-    AIO_WAIT_WHILE_INTERNAL(ctx, cond, false)
++    AIO_WAIT_WHILE_INTERNAL(ctx, cond)
+ 
+ /**
+  * aio_wait_kick:
+-- 
+2.39.3
+

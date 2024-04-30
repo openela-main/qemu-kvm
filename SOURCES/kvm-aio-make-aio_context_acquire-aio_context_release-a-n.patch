@@ -1,0 +1,60 @@
+From 6b5cfed21e20b372090046a934387255ff4bda58 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:20:01 -0500
+Subject: [PATCH 084/101] aio: make aio_context_acquire()/aio_context_release()
+ a no-op
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [15/26] 723dcada900aaf08862e8221921be22506b561a8 (kmwolf/centos-qemu-kvm)
+
+aio_context_acquire()/aio_context_release() has been replaced by
+fine-grained locking to protect state shared by multiple threads. The
+AioContext lock still plays the role of balancing locking in
+AIO_WAIT_WHILE() and many functions in QEMU either require that the
+AioContext lock is held or not held for this reason. In other words, the
+AioContext lock is purely there for consistency with itself and serves
+no real purpose anymore.
+
+Stop actually acquiring/releasing the lock in
+aio_context_acquire()/aio_context_release() so that subsequent patches
+can remove callers across the codebase incrementally.
+
+I have performed "make check" and qemu-iotests stress tests across
+x86-64, ppc64le, and aarch64 to confirm that there are no failures as a
+result of eliminating the lock.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Acked-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20231205182011.1976568-5-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ util/async.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/util/async.c b/util/async.c
+index 8f90ddc304..04ee83d220 100644
+--- a/util/async.c
++++ b/util/async.c
+@@ -725,12 +725,12 @@ void aio_context_unref(AioContext *ctx)
+ 
+ void aio_context_acquire(AioContext *ctx)
+ {
+-    qemu_rec_mutex_lock(&ctx->lock);
++    /* TODO remove this function */
+ }
+ 
+ void aio_context_release(AioContext *ctx)
+ {
+-    qemu_rec_mutex_unlock(&ctx->lock);
++    /* TODO remove this function */
+ }
+ 
+ QEMU_DEFINE_STATIC_CO_TLS(AioContext *, my_aiocontext)
+-- 
+2.39.3
+

@@ -1,0 +1,67 @@
+From 2816f6ce20c496e21947f215112be34a5cb93606 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 14 Sep 2023 10:01:01 -0400
+Subject: [PATCH 076/101] virtio-blk: don't lock AioContext in the submission
+ code path
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [7/26] e0de2744cb319569ea008334e45ee5fc2ba9b6d7 (kmwolf/centos-qemu-kvm)
+
+There is no need to acquire the AioContext lock around blk_aio_*() or
+blk_get_geometry() anymore. I/O plugging (defer_call()) also does not
+require the AioContext lock anymore.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20230914140101.1065008-5-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/block/virtio-blk.c | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index f5315df042..e110f9718b 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -1111,7 +1111,6 @@ void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq)
+     MultiReqBuffer mrb = {};
+     bool suppress_notifications = virtio_queue_get_notification(vq);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->blk));
+     defer_call_begin();
+ 
+     do {
+@@ -1137,7 +1136,6 @@ void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq)
+     }
+ 
+     defer_call_end();
+-    aio_context_release(blk_get_aio_context(s->blk));
+ }
+ 
+ static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
+@@ -1168,7 +1166,6 @@ static void virtio_blk_dma_restart_bh(void *opaque)
+         s->rq = NULL;
+     }
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     while (req) {
+         VirtIOBlockReq *next = req->next;
+         if (virtio_blk_handle_request(req, &mrb)) {
+@@ -1192,8 +1189,6 @@ static void virtio_blk_dma_restart_bh(void *opaque)
+ 
+     /* Paired with inc in virtio_blk_dma_restart_cb() */
+     blk_dec_in_flight(s->conf.conf.blk);
+-
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+ }
+ 
+ static void virtio_blk_dma_restart_cb(void *opaque, bool running,
+-- 
+2.39.3
+

@@ -1,0 +1,56 @@
+From 6b36dc2a305af856af03aad2e315eea96a349153 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Thu, 21 Dec 2023 09:09:57 +0100
+Subject: [PATCH 061/101] vfio/iommufd: Remove the use of stat() to check file
+ existence
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [60/67] 485770e45c1a6399780939bfb8b01b615d9213c6 (eauger1/centos-qemu-kvm)
+
+Using stat() before opening a file or a directory can lead to a
+time-of-check to time-of-use (TOCTOU) filesystem race, which is
+reported by coverity as a Security best practices violations. The
+sequence could be replaced by open and fdopendir but it doesn't add
+much in this case. Simply use opendir to avoid the race.
+
+Fixes: CID 1531551
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Zhenzhong Duan <Zhenzhong.duan@intel.com>
+(cherry picked from commit 6ba254801f6bc7f3ef68a6414f1b107237c7eb26)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index d4c586e842..9bfddc1360 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -121,17 +121,11 @@ static int iommufd_cdev_getfd(const char *sysfs_path, Error **errp)
+     DIR *dir = NULL;
+     struct dirent *dent;
+     gchar *contents;
+-    struct stat st;
+     gsize length;
+     int major, minor;
+     dev_t vfio_devt;
+ 
+     path = g_strdup_printf("%s/vfio-dev", sysfs_path);
+-    if (stat(path, &st) < 0) {
+-        error_setg_errno(errp, errno, "no such host device");
+-        goto out_free_path;
+-    }
+-
+     dir = opendir(path);
+     if (!dir) {
+         error_setg_errno(errp, errno, "couldn't open directory %s", path);
+-- 
+2.39.3
+

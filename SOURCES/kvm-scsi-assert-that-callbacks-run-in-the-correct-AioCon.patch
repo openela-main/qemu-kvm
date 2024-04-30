@@ -1,0 +1,88 @@
+From cd08d22a0da022d99fe6cfddb7de680abf66c8be Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:19:59 -0500
+Subject: [PATCH 082/101] scsi: assert that callbacks run in the correct
+ AioContext
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [13/26] d2fd5065c3b72d9d2f4e37efee39fe12eba0f0a9 (kmwolf/centos-qemu-kvm)
+
+Since the removal of AioContext locking, the correctness of the code
+relies on running requests from a single AioContext at any given time.
+
+Add assertions that verify that callbacks are invoked in the correct
+AioContext.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231205182011.1976568-3-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-disk.c  | 14 ++++++++++++++
+ system/dma-helpers.c |  3 +++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 2c1bbb3530..a5048e0aaf 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -273,6 +273,10 @@ static void scsi_aio_complete(void *opaque, int ret)
+     SCSIDiskReq *r = (SCSIDiskReq *)opaque;
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+ 
++    /* The request must only run in the BlockBackend's AioContext */
++    assert(blk_get_aio_context(s->qdev.conf.blk) ==
++           qemu_get_current_aio_context());
++
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
+@@ -370,8 +374,13 @@ static void scsi_dma_complete(void *opaque, int ret)
+ 
+ static void scsi_read_complete_noio(SCSIDiskReq *r, int ret)
+ {
++    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+     uint32_t n;
+ 
++    /* The request must only run in the BlockBackend's AioContext */
++    assert(blk_get_aio_context(s->qdev.conf.blk) ==
++           qemu_get_current_aio_context());
++
+     assert(r->req.aiocb == NULL);
+     if (scsi_disk_req_check_error(r, ret, false)) {
+         goto done;
+@@ -496,8 +505,13 @@ static void scsi_read_data(SCSIRequest *req)
+ 
+ static void scsi_write_complete_noio(SCSIDiskReq *r, int ret)
+ {
++    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+     uint32_t n;
+ 
++    /* The request must only run in the BlockBackend's AioContext */
++    assert(blk_get_aio_context(s->qdev.conf.blk) ==
++           qemu_get_current_aio_context());
++
+     assert (r->req.aiocb == NULL);
+     if (scsi_disk_req_check_error(r, ret, false)) {
+         goto done;
+diff --git a/system/dma-helpers.c b/system/dma-helpers.c
+index 528117f256..9b221cf94e 100644
+--- a/system/dma-helpers.c
++++ b/system/dma-helpers.c
+@@ -119,6 +119,9 @@ static void dma_blk_cb(void *opaque, int ret)
+ 
+     trace_dma_blk_cb(dbs, ret);
+ 
++    /* DMAAIOCB is not thread-safe and must be accessed only from dbs->ctx */
++    assert(ctx == qemu_get_current_aio_context());
++
+     dbs->acb = NULL;
+     dbs->offset += dbs->iov.size;
+ 
+-- 
+2.39.3
+

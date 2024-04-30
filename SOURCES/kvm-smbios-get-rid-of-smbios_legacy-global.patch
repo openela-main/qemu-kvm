@@ -1,0 +1,198 @@
+From 0802fa7199c8085d018fc38dd4beaa5062d383d1 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 29 Dec 2023 15:37:29 +0100
+Subject: [PATCH 08/20] smbios: get rid of smbios_legacy global
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [6/18] 684dd1dca8d611c6de97b26ef8c1cda6ca509d54
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+    clean up smbios_set_defaults() which is reused by legacy
+    and non legacy machines from being aware of 'legacy' notion
+    and need to turn it off. And push legacy handling up to
+    PC machine code where it's relevant.
+
+    Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+    Reviewed-by: Ani Sinha <anisinha@redhat.com>
+    Acked-by: Daniel Henrique Barboza <dbarboza@ventanamicro.com>
+    Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+
+Conflicts: hw/arm/virt.c, hw/i386/fw_cfg.c, hw/loongarch/virt.c,
+           hw/smbios/smbios.c, include/hw/firmware/smbios.h
+    due to downstream specifc signature of smbios_set_defaults()
+PS:
+  while fixing conflicts move RHEL specific
+       smbios_stream_product/smbios_stream_version
+  at the end of arguments list
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/arm/virt.c                |  5 +++--
+ hw/i386/fw_cfg.c             | 11 +++++-----
+ hw/loongarch/virt.c          |  2 +-
+ hw/smbios/smbios.c           | 39 ++++++++++++++++--------------------
+ include/hw/firmware/smbios.h |  6 +++---
+ 5 files changed, 30 insertions(+), 33 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 943c563391..e5cfc19c08 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1694,8 +1694,9 @@ static void virt_build_smbios(VirtMachineState *vms)
+     }
+ 
+     smbios_set_defaults("QEMU", product,
+-                        vmc->smbios_old_sys_ver ? "1.0" : mc->name, false,
+-                        true, NULL, NULL, SMBIOS_ENTRY_POINT_TYPE_64);
++                        vmc->smbios_old_sys_ver ? "1.0" : mc->name,
++                        true, SMBIOS_ENTRY_POINT_TYPE_64,
++                        NULL, NULL);
+ 
+     /* build the array of physical mem area from base_memmap */
+     mem_array.address = vms->memmap[VIRT_MEM].base;
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index 79ff7f7225..bb7149c4c3 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -63,17 +63,18 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg)
+     if (pcmc->smbios_defaults) {
+         /* These values are guest ABI, do not change */
+         smbios_set_defaults("QEMU", mc->desc, mc->name,
+-                            pcmc->smbios_legacy_mode, pcmc->smbios_uuid_encoded,
++                            pcmc->smbios_uuid_encoded,
++                            pcms->smbios_entry_point_type,
+                             pcmc->smbios_stream_product,
+-                            pcmc->smbios_stream_version,
+-                            pcms->smbios_entry_point_type);
++                            pcmc->smbios_stream_version);
+     }
+ 
+     /* tell smbios about cpuid version and features */
+     smbios_set_cpuid(cpu->env.cpuid_version, cpu->env.features[FEAT_1_EDX]);
+ 
+-    smbios_tables = smbios_get_table_legacy(ms->smp.cpus, &smbios_tables_len);
+-    if (smbios_tables) {
++    if (pcmc->smbios_legacy_mode) {
++        smbios_tables = smbios_get_table_legacy(ms->smp.cpus,
++                                                &smbios_tables_len);
+         fw_cfg_add_bytes(fw_cfg, FW_CFG_SMBIOS_ENTRIES,
+                          smbios_tables, smbios_tables_len);
+         return;
+diff --git a/hw/loongarch/virt.c b/hw/loongarch/virt.c
+index 4b7dc67a2d..7358a023d3 100644
+--- a/hw/loongarch/virt.c
++++ b/hw/loongarch/virt.c
+@@ -320,7 +320,7 @@ static void virt_build_smbios(LoongArchMachineState *lams)
+         return;
+     }
+ 
+-    smbios_set_defaults("QEMU", product, mc->name, false,
++    smbios_set_defaults("QEMU", product, mc->name,
+                         true, SMBIOS_ENTRY_POINT_TYPE_64);
+ 
+     smbios_get_tables(ms, NULL, 0, &smbios_tables, &smbios_tables_len,
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index 8129d396d1..0c8c439859 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -54,7 +54,6 @@ struct smbios_table {
+ 
+ static uint8_t *smbios_entries;
+ static size_t smbios_entries_len;
+-static bool smbios_legacy = true;
+ static bool smbios_uuid_encoded = true;
+ /* end: legacy structures & constants for <= 2.0 machines */
+ 
+@@ -618,9 +617,16 @@ static void smbios_build_type_1_fields(void)
+ 
+ uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length)
+ {
+-    if (!smbios_legacy) {
+-        *length = 0;
+-        return NULL;
++    /* drop unwanted version of command-line file blob(s) */
++    g_free(smbios_tables);
++    smbios_tables = NULL;
++
++    /* also complain if fields were given for types > 1 */
++    if (find_next_bit(have_fields_bitmap,
++                      SMBIOS_MAX_TYPE + 1, 2) < SMBIOS_MAX_TYPE + 1) {
++        error_report("can't process fields for smbios "
++                     "types > 1 on machine versions < 2.1!");
++        exit(1);
+     }
+ 
+     if (!smbios_immutable) {
+@@ -1107,31 +1113,16 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
+     }
+ 
+ void smbios_set_defaults(const char *manufacturer, const char *product,
+-                         const char *version, bool legacy_mode,
++                         const char *version,
+                          bool uuid_encoded,
++                         SmbiosEntryPointType ep_type,
+                          const char *stream_product,
+-                         const char *stream_version,
+-                         SmbiosEntryPointType ep_type)
++                         const char *stream_version)
+ {
+     smbios_have_defaults = true;
+-    smbios_legacy = legacy_mode;
+     smbios_uuid_encoded = uuid_encoded;
+     smbios_ep_type = ep_type;
+ 
+-    /* drop unwanted version of command-line file blob(s) */
+-    if (smbios_legacy) {
+-        g_free(smbios_tables);
+-        /* in legacy mode, also complain if fields were given for types > 1 */
+-        if (find_next_bit(have_fields_bitmap,
+-                          SMBIOS_MAX_TYPE+1, 2) < SMBIOS_MAX_TYPE+1) {
+-            error_report("can't process fields for smbios "
+-                         "types > 1 on machine versions < 2.1!");
+-            exit(1);
+-        }
+-    } else {
+-        g_free(smbios_entries);
+-    }
+-
+     /*
+      * If @stream_product & @stream_version are non-NULL, then
+      * we're following rules for new Windows driver support.
+@@ -1241,6 +1232,10 @@ void smbios_get_tables(MachineState *ms,
+ {
+     unsigned i, dimm_cnt, offset;
+ 
++    /* drop unwanted (legacy) version of command-line file blob(s) */
++    g_free(smbios_entries);
++    smbios_entries = NULL;
++
+     if (!smbios_immutable) {
+         smbios_build_type_0_table();
+         smbios_build_type_1_table();
+diff --git a/include/hw/firmware/smbios.h b/include/hw/firmware/smbios.h
+index 95ec64ce2c..b9fc9a0f42 100644
+--- a/include/hw/firmware/smbios.h
++++ b/include/hw/firmware/smbios.h
+@@ -310,11 +310,11 @@ struct smbios_type_127 {
+ void smbios_entry_add(QemuOpts *opts, Error **errp);
+ void smbios_set_cpuid(uint32_t version, uint32_t features);
+ void smbios_set_defaults(const char *manufacturer, const char *product,
+-                         const char *version, bool legacy_mode,
++                         const char *version,
+                          bool uuid_encoded,
++                         SmbiosEntryPointType ep_type,
+                          const char *stream_product,
+-                         const char *stream_version,
+-                         SmbiosEntryPointType ep_type);
++                         const char *stream_version);
+ uint8_t *smbios_get_table_legacy(uint32_t expected_t4_count, size_t *length);
+ void smbios_get_tables(MachineState *ms,
+                        const struct smbios_phys_mem_area *mem_array,
+-- 
+2.39.3
+

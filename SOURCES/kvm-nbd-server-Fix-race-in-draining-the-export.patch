@@ -1,0 +1,95 @@
+From dc4dd11233522d8195782a2196aaae44bd924575 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 14 Mar 2024 17:58:24 +0100
+Subject: [PATCH 2/4] nbd/server: Fix race in draining the export
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 231: Fix deadlock and crash during storage migration
+RH-Jira: RHEL-28125
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/3] 036e1b171986099904dee468c59d77437e3d3d61 (kmwolf/centos-qemu-kvm)
+
+When draining an NBD export, nbd_drained_begin() first sets
+client->quiescing so that nbd_client_receive_next_request() won't start
+any new request coroutines. Then nbd_drained_poll() tries to makes sure
+that we wait for any existing request coroutines by checking that
+client->nb_requests has become 0.
+
+However, there is a small window between creating a new request
+coroutine and increasing client->nb_requests. If a coroutine is in this
+state, it won't be waited for and drain returns too early.
+
+In the context of switching to a different AioContext, this means that
+blk_aio_attached() will see client->recv_coroutine != NULL and fail its
+assertion.
+
+Fix this by increasing client->nb_requests immediately when starting the
+coroutine. Doing this after the checks if we should create a new
+coroutine is okay because client->lock is held.
+
+Cc: qemu-stable@nongnu.org
+Fixes: fd6afc501a01 ("nbd/server: Use drained block ops to quiesce the server")
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20240314165825.40261-2-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 9c707525cbb1dd1e56876e45c70c0c08f2876d41)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ nbd/server.c | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/nbd/server.c b/nbd/server.c
+index 941832f178..c3484cc1eb 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -3007,8 +3007,8 @@ static coroutine_fn int nbd_handle_request(NBDClient *client,
+ /* Owns a reference to the NBDClient passed as opaque.  */
+ static coroutine_fn void nbd_trip(void *opaque)
+ {
+-    NBDClient *client = opaque;
+-    NBDRequestData *req = NULL;
++    NBDRequestData *req = opaque;
++    NBDClient *client = req->client;
+     NBDRequest request = { 0 };    /* GCC thinks it can be used uninitialized */
+     int ret;
+     Error *local_err = NULL;
+@@ -3037,8 +3037,6 @@ static coroutine_fn void nbd_trip(void *opaque)
+         goto done;
+     }
+ 
+-    req = nbd_request_get(client);
+-
+     /*
+      * nbd_co_receive_request() returns -EAGAIN when nbd_drained_begin() has
+      * set client->quiescing but by the time we get back nbd_drained_end() may
+@@ -3112,9 +3110,7 @@ static coroutine_fn void nbd_trip(void *opaque)
+     }
+ 
+ done:
+-    if (req) {
+-        nbd_request_put(req);
+-    }
++    nbd_request_put(req);
+ 
+     qemu_mutex_unlock(&client->lock);
+ 
+@@ -3143,10 +3139,13 @@ disconnect:
+  */
+ static void nbd_client_receive_next_request(NBDClient *client)
+ {
++    NBDRequestData *req;
++
+     if (!client->recv_coroutine && client->nb_requests < MAX_NBD_REQUESTS &&
+         !client->quiescing) {
+         nbd_client_get(client);
+-        client->recv_coroutine = qemu_coroutine_create(nbd_trip, client);
++        req = nbd_request_get(client);
++        client->recv_coroutine = qemu_coroutine_create(nbd_trip, req);
+         aio_co_schedule(client->exp->common.ctx, client->recv_coroutine);
+     }
+ }
+-- 
+2.39.3
+

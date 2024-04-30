@@ -1,4 +1,4 @@
-From c13f8e21b32aa06b08847e88080f2fdea5084a9b Mon Sep 17 00:00:00 2001
+From d9ff466c980d219ebf230ea24becce294c196f1f Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 11 Jan 2019 09:54:45 +0100
 Subject: Machine type related general changes
@@ -19,9 +19,12 @@ Rebase notes (7.0.0):
 - Remove downstream changes leftovers in hw/rtc/mc146818rtc.c
 - Remove unnecessary change in hw/usb/hcd-uhci.c
 
-Rebase notes (7.1.0 rc0):
+Rebase notes (7.1.0):
 - Moved adding rhel_old_machine_deprecation variable from s390x to general machine types commit
 - Moved adding hw_compat_rhel_8_6 struct from x86_64 to general machine types commit
+
+Rebase notes (8.1.0):
+- Do not modify unused vga-isa.c
 
 Merged patches (6.1.0):
 - f2fb42a3c6 redhat: add missing entries in hw_compat_rhel_8_4
@@ -40,39 +43,45 @@ Merged patches (7.0.0):
 - ef5afcc86d Fix virtio-net-pci* "vectors" compat
 - 168f0d56e3 compat: Update hw_compat_rhel_8_5 with 6.2.0 RC2 changes
 
-Merged patches (7.1.0 rc0):
+Merged patches (7.1.0):
 - 38b89dc245 pc: Move s3/s4 suspend disabling to compat (only hw/acpi/piix4.c chunk)
 - 1d6439527a WRB: Introduce RHEL 9.0.0 hw compat structure (only hw/core/machine.c and include/hw/boards.h chunk)
 
-Merged patches (7.2.0 rc0):
+Merged patches (7.2.0):
 - 0be2889fa2 Introduce upstream 7.0 compat changes (only applicable parts)
 
-Merged patches (8.0.0-rc1):
+Merged patches (8.0.0):
 - 21ed34787b Addd 7.2 compat bits for RHEL 9.1 machine type
 - e5c8d5d603 virtio-rng-pci: fix migration compat for vectors
 - 5a5fa77059 virtio-rng-pci: fix transitional migration compat for vectors
+
+Merged patches (8.1.0):
+- bd5d81d286 Add RHEL 9.2.0 compat structure (general part)
+- 1165e24c6b hw/pci: Disable PCI_ERR_UNCOR_MASK reg for machine type <= pc-q35-rhel9.2.0
+
+Merged patches (8.2.0):
+- 4ee284aca9 Add machine types compat bits. (partial)
 ---
  hw/acpi/piix4.c              |   2 +-
  hw/arm/virt.c                |   2 +-
- hw/core/machine.c            | 229 +++++++++++++++++++++++++++++++++++
- hw/display/vga-isa.c         |   2 +-
+ hw/core/machine.c            | 267 +++++++++++++++++++++++++++++++++++
  hw/i386/pc_piix.c            |   2 +
  hw/i386/pc_q35.c             |   2 +
  hw/net/rtl8139.c             |   4 +-
- hw/smbios/smbios.c           |  46 ++++++-
+ hw/smbios/smbios.c           |  46 +++++-
  hw/timer/i8254_common.c      |   2 +-
- hw/usb/hcd-xhci-pci.c        |  59 ++++++---
+ hw/usb/hcd-xhci-pci.c        |  59 ++++++--
  hw/usb/hcd-xhci-pci.h        |   1 +
- include/hw/boards.h          |  31 +++++
+ include/hw/boards.h          |  40 ++++++
  include/hw/firmware/smbios.h |   5 +-
  include/hw/i386/pc.h         |   3 +
- 14 files changed, 367 insertions(+), 23 deletions(-)
+ 13 files changed, 413 insertions(+), 22 deletions(-)
 
 diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
-index 63d2113b86..a24b9aac92 100644
+index dd523d2e4c..5050c0ba97 100644
 --- a/hw/acpi/piix4.c
 +++ b/hw/acpi/piix4.c
-@@ -247,7 +247,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
+@@ -245,7 +245,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
  static const VMStateDescription vmstate_acpi = {
      .name = "piix4_pm",
      .version_id = 3,
@@ -82,10 +91,10 @@ index 63d2113b86..a24b9aac92 100644
      .fields = (VMStateField[]) {
          VMSTATE_PCI_DEVICE(parent_obj, PIIX4PMState),
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index ac626b3bef..4a6e89c7bc 100644
+index af9ea4dd1c..62f0f7d4d6 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -1629,7 +1629,7 @@ static void virt_build_smbios(VirtMachineState *vms)
+@@ -1638,7 +1638,7 @@ static void virt_build_smbios(VirtMachineState *vms)
  
      smbios_set_defaults("QEMU", product,
                          vmc->smbios_old_sys_ver ? "1.0" : mc->name, false,
@@ -95,10 +104,10 @@ index ac626b3bef..4a6e89c7bc 100644
      /* build the array of physical mem area from base_memmap */
      mem_array.address = vms->memmap[VIRT_MEM].base;
 diff --git a/hw/core/machine.c b/hw/core/machine.c
-index cd13b8b0a3..5aa567fad3 100644
+index 0c17398141..446601ee30 100644
 --- a/hw/core/machine.c
 +++ b/hw/core/machine.c
-@@ -46,6 +46,235 @@ GlobalProperty hw_compat_7_2[] = {
+@@ -57,6 +57,273 @@ GlobalProperty hw_compat_7_2[] = {
  };
  const size_t hw_compat_7_2_len = G_N_ELEMENTS(hw_compat_7_2);
  
@@ -107,6 +116,44 @@ index cd13b8b0a3..5aa567fad3 100644
 + */
 +const char *rhel_old_machine_deprecation =
 +    "machine types for previous major releases are deprecated";
++
++GlobalProperty hw_compat_rhel_9_4[] = {
++  /* hw_compat_rhel_9_4 from hw_compat_8_0 */
++    { TYPE_VIRTIO_NET, "host_uso", "off"},
++  /* hw_compat_rhel_9_4 from hw_compat_8_0 */
++    { TYPE_VIRTIO_NET, "guest_uso4", "off"},
++  /* hw_compat_rhel_9_4 from hw_compat_8_0 */
++    { TYPE_VIRTIO_NET, "guest_uso6", "off"},
++  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
++     { TYPE_PCI_BRIDGE, "x-pci-express-writeable-slt-bug", "true" },
++  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
++     { "ramfb", "x-migrate", "off" },
++  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
++     { "vfio-pci-nohotplug", "x-ramfb-migrate", "off" },
++  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
++     { "igb", "x-pcie-flr-init", "off" },
++};
++const size_t hw_compat_rhel_9_4_len = G_N_ELEMENTS(hw_compat_rhel_9_4);
++
++GlobalProperty hw_compat_rhel_9_3[] = {
++  /* hw_compat_rhel_9_3 from hw_compat_8_0 */
++  { "migration", "multifd-flush-after-each-section", "on"},
++  /* hw_compat_rhel_9_3 from hw_compat_8_0 */
++  { TYPE_PCI_DEVICE, "x-pcie-ari-nextfn-1", "on" },
++};
++const size_t hw_compat_rhel_9_3_len = G_N_ELEMENTS(hw_compat_rhel_9_3);
++
++GlobalProperty hw_compat_rhel_9_2[] = {
++  /* hw_compat_rhel_9_2 from hw_compat_7_2 */
++  { "e1000e", "migrate-timadj", "off" },
++  /* hw_compat_rhel_9_2 from hw_compat_7_2 */
++  { "virtio-mem", "x-early-migration", "false" },
++  /* hw_compat_rhel_9_2 from hw_compat_7_2 */
++  { "migration", "x-preempt-pre-7-2", "true" },
++  /* hw_compat_rhel_9_2 from hw_compat_7_2 */
++  { TYPE_PCI_DEVICE, "x-pcie-err-unc-mask", "off" },
++};
++const size_t hw_compat_rhel_9_2_len = G_N_ELEMENTS(hw_compat_rhel_9_2);
 +
 +/*
 + * Mostly the same as hw_compat_7_0
@@ -334,25 +381,12 @@ index cd13b8b0a3..5aa567fad3 100644
  GlobalProperty hw_compat_7_1[] = {
      { "virtio-device", "queue_reset", "false" },
      { "virtio-rng-pci", "vectors", "0" },
-diff --git a/hw/display/vga-isa.c b/hw/display/vga-isa.c
-index 2a5437d803..0db2c2b2a1 100644
---- a/hw/display/vga-isa.c
-+++ b/hw/display/vga-isa.c
-@@ -89,7 +89,7 @@ static void vga_isa_realizefn(DeviceState *dev, Error **errp)
- }
- 
- static Property vga_isa_properties[] = {
--    DEFINE_PROP_UINT32("vgamem_mb", ISAVGAState, state.vram_size_mb, 8),
-+    DEFINE_PROP_UINT32("vgamem_mb", ISAVGAState, state.vram_size_mb, 16),
-     DEFINE_PROP_END_OF_LIST(),
- };
- 
 diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index 30eedd62a3..14a794081e 100644
+index eace854335..2a9f465619 100644
 --- a/hw/i386/pc_piix.c
 +++ b/hw/i386/pc_piix.c
-@@ -201,6 +201,8 @@ static void pc_init1(MachineState *machine,
-         smbios_set_defaults("QEMU", "Standard PC (i440FX + PIIX, 1996)",
+@@ -238,6 +238,8 @@ static void pc_init1(MachineState *machine,
+         smbios_set_defaults("QEMU", mc->desc,
                              mc->name, pcmc->smbios_legacy_mode,
                              pcmc->smbios_uuid_encoded,
 +                            pcmc->smbios_stream_product,
@@ -361,11 +395,11 @@ index 30eedd62a3..14a794081e 100644
      }
  
 diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index 797ba347fd..dc0ba5f9e7 100644
+index 4f3e5412f6..912cb0c0dc 100644
 --- a/hw/i386/pc_q35.c
 +++ b/hw/i386/pc_q35.c
-@@ -202,6 +202,8 @@ static void pc_q35_init(MachineState *machine)
-         smbios_set_defaults("QEMU", "Standard PC (Q35 + ICH9, 2009)",
+@@ -206,6 +206,8 @@ static void pc_q35_init(MachineState *machine)
+         smbios_set_defaults("QEMU", mc->desc,
                              mc->name, pcmc->smbios_legacy_mode,
                              pcmc->smbios_uuid_encoded,
 +                            pcmc->smbios_stream_product,
@@ -374,10 +408,10 @@ index 797ba347fd..dc0ba5f9e7 100644
      }
  
 diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
-index 5a5aaf868d..3d473d5869 100644
+index 4af8c66266..7dc12907ab 100644
 --- a/hw/net/rtl8139.c
 +++ b/hw/net/rtl8139.c
-@@ -3178,7 +3178,7 @@ static int rtl8139_pre_save(void *opaque)
+@@ -3169,7 +3169,7 @@ static int rtl8139_pre_save(void *opaque)
  
  static const VMStateDescription vmstate_rtl8139 = {
      .name = "rtl8139",
@@ -386,7 +420,7 @@ index 5a5aaf868d..3d473d5869 100644
      .minimum_version_id = 3,
      .post_load = rtl8139_post_load,
      .pre_save  = rtl8139_pre_save,
-@@ -3259,7 +3259,9 @@ static const VMStateDescription vmstate_rtl8139 = {
+@@ -3250,7 +3250,9 @@ static const VMStateDescription vmstate_rtl8139 = {
          VMSTATE_UINT32(tally_counters.TxMCol, RTL8139State),
          VMSTATE_UINT64(tally_counters.RxOkPhy, RTL8139State),
          VMSTATE_UINT64(tally_counters.RxOkBrd, RTL8139State),
@@ -397,7 +431,7 @@ index 5a5aaf868d..3d473d5869 100644
          VMSTATE_UINT16(tally_counters.TxUndrn, RTL8139State),
  
 diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
-index d2007e70fb..319eae9e9d 100644
+index 2a90601ac5..7bde23e59d 100644
 --- a/hw/smbios/smbios.c
 +++ b/hw/smbios/smbios.c
 @@ -58,6 +58,9 @@ static bool smbios_legacy = true;
@@ -419,7 +453,7 @@ index d2007e70fb..319eae9e9d 100644
  
      SMBIOS_TABLE_SET_STR(2, manufacturer_str, type2.manufacturer);
      SMBIOS_TABLE_SET_STR(2, product_str, type2.product);
-@@ -980,7 +983,10 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
+@@ -985,7 +988,10 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
  
  void smbios_set_defaults(const char *manufacturer, const char *product,
                           const char *version, bool legacy_mode,
@@ -431,7 +465,7 @@ index d2007e70fb..319eae9e9d 100644
  {
      smbios_have_defaults = true;
      smbios_legacy = legacy_mode;
-@@ -1001,11 +1007,45 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
+@@ -1006,11 +1012,45 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
          g_free(smbios_entries);
      }
  
@@ -479,10 +513,10 @@ index d2007e70fb..319eae9e9d 100644
      SMBIOS_SET_DEFAULT(type3.manufacturer, manufacturer);
      SMBIOS_SET_DEFAULT(type3.version, version);
 diff --git a/hw/timer/i8254_common.c b/hw/timer/i8254_common.c
-index 050875b497..32935da46c 100644
+index b25da448c8..0331e84398 100644
 --- a/hw/timer/i8254_common.c
 +++ b/hw/timer/i8254_common.c
-@@ -231,7 +231,7 @@ static const VMStateDescription vmstate_pit_common = {
+@@ -229,7 +229,7 @@ static const VMStateDescription vmstate_pit_common = {
      .pre_save = pit_dispatch_pre_save,
      .post_load = pit_dispatch_post_load,
      .fields = (VMStateField[]) {
@@ -603,13 +637,22 @@ index 08f70ce97c..1be7527c1b 100644
  
  #endif
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index 6fbbfd56c8..c5a965d27f 100644
+index da85f86efb..4a21eddbf9 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -459,4 +459,35 @@ extern const size_t hw_compat_2_2_len;
+@@ -503,4 +503,44 @@ extern const size_t hw_compat_2_2_len;
  extern GlobalProperty hw_compat_2_1[];
  extern const size_t hw_compat_2_1_len;
  
++extern GlobalProperty hw_compat_rhel_9_4[];
++extern const size_t hw_compat_rhel_9_4_len;
++
++extern GlobalProperty hw_compat_rhel_9_3[];
++extern const size_t hw_compat_rhel_9_3_len;
++
++extern GlobalProperty hw_compat_rhel_9_2[];
++extern const size_t hw_compat_rhel_9_2_len;
++
 +extern GlobalProperty hw_compat_rhel_9_1[];
 +extern const size_t hw_compat_rhel_9_1_len;
 +
@@ -659,13 +702,13 @@ index 7f3259a630..d24b3ccd32 100644
  void smbios_get_tables(MachineState *ms,
                         const struct smbios_phys_mem_area *mem_array,
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index 8206d5405a..908a275736 100644
+index a10ceeabbf..037942d233 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
-@@ -111,6 +111,9 @@ struct PCMachineClass {
-     bool smbios_defaults;
+@@ -113,6 +113,9 @@ struct PCMachineClass {
      bool smbios_legacy_mode;
      bool smbios_uuid_encoded;
+     SmbiosEntryPointType default_smbios_ep_type;
 +    /* New fields needed for Windows HardwareID-6 matching */
 +    const char *smbios_stream_product;
 +    const char *smbios_stream_version;
@@ -673,5 +716,5 @@ index 8206d5405a..908a275736 100644
      /* RAM / address space compat: */
      bool gigabyte_align;
 -- 
-2.39.1
+2.39.3
 

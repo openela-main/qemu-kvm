@@ -1,0 +1,72 @@
+From 282cebc22987958d11efc76e4f6ddb9601e709d9 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Fri, 19 Jan 2024 08:57:47 -0500
+Subject: [PATCH 18/22] virtio-blk: tolerate failure to set BlockBackend
+ AioContext
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [14/17] edb113ce9fea0c1a88ae7b5d61c35c1981e6993f (stefanha/centos-stream-qemu-kvm)
+
+We no longer rely on setting the AioContext since the block layer
+IO_CODE APIs can be called from any thread. Now it's just a hint to help
+block jobs and other operations co-locate themselves in a thread with
+the guest I/O requests. Keep going if setting the AioContext fails.
+
+Suggested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240119135748.270944-6-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ea0736d7f84ead109a6b701427991828f97724c3)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/block/virtio-blk.c | 19 +++++--------------
+ 1 file changed, 5 insertions(+), 14 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index f48ce5cbb8..81de06c9f6 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -1786,11 +1786,14 @@ static int virtio_blk_start_ioeventfd(VirtIODevice *vdev)
+ 
+     memory_region_transaction_commit();
+ 
++    /*
++     * Try to change the AioContext so that block jobs and other operations can
++     * co-locate their activity in the same AioContext. If it fails, nevermind.
++     */
+     r = blk_set_aio_context(s->conf.conf.blk, s->vq_aio_context[0],
+                             &local_err);
+     if (r < 0) {
+-        error_report_err(local_err);
+-        goto fail_aio_context;
++        warn_report_err(local_err);
+     }
+ 
+     /*
+@@ -1819,18 +1822,6 @@ static int virtio_blk_start_ioeventfd(VirtIODevice *vdev)
+     }
+     return 0;
+ 
+-  fail_aio_context:
+-    memory_region_transaction_begin();
+-
+-    for (i = 0; i < nvqs; i++) {
+-        virtio_bus_set_host_notifier(VIRTIO_BUS(qbus), i, false);
+-    }
+-
+-    memory_region_transaction_commit();
+-
+-    for (i = 0; i < nvqs; i++) {
+-        virtio_bus_cleanup_host_notifier(VIRTIO_BUS(qbus), i);
+-    }
+   fail_host_notifiers:
+     k->set_guest_notifiers(qbus->parent, nvqs, false);
+   fail_guest_notifiers:
+-- 
+2.39.3
+

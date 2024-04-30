@@ -1,0 +1,186 @@
+From ea2e2368dcf4140be47288472f2c2a094358e0c7 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Thu, 8 Feb 2024 23:03:45 +0100
+Subject: [PATCH 03/20] hw/i386/pc: Defer smbios_set_defaults() to machine_done
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [1/18] 9d4c1d1a910fec7d310429d6fc0b10c798932db7
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+commit: a0204a5ed091dfe79aced7ec8f3ce1931fd25816
+Author: Bernhard Beschow <shentey@gmail.com>
+
+    Handling most of smbios data generation in the machine_done notifier is similar
+    to how the ARM virt machine handles it which also calls smbios_set_defaults()
+    there. The result is that all pc machines are freed from explicitly worrying
+    about smbios setup.
+
+    Signed-off-by: Bernhard Beschow <shentey@gmail.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Message-ID: <20240208220349.4948-6-shentey@gmail.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+
+Conflicts: hw/i386/pc_q35.c, hw/i386/pc_piix.c
+  due to missing 4d3457fef9 (w/i386/pc: Merge pc_guest_info_init() into pc_machine_initfn())
+  and different signature of smbios_set_defaults() downstream
+Fixup: hw/i386/fw_cfg.c to account for downstream changes smbios_set_defaults()
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/i386/fw_cfg.c     | 14 +++++++++++++-
+ hw/i386/fw_cfg.h     |  3 ++-
+ hw/i386/pc.c         |  2 +-
+ hw/i386/pc_piix.c    | 12 ------------
+ hw/i386/pc_q35.c     | 11 -----------
+ include/hw/i386/pc.h |  1 -
+ 6 files changed, 16 insertions(+), 27 deletions(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index 7362daa45a..6a5466faf0 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -48,15 +48,27 @@ const char *fw_cfg_arch_key_name(uint16_t key)
+     return NULL;
+ }
+ 
+-void fw_cfg_build_smbios(MachineState *ms, FWCfgState *fw_cfg)
++void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg)
+ {
+ #ifdef CONFIG_SMBIOS
+     uint8_t *smbios_tables, *smbios_anchor;
+     size_t smbios_tables_len, smbios_anchor_len;
+     struct smbios_phys_mem_area *mem_array;
+     unsigned i, array_count;
++    MachineState *ms = MACHINE(pcms);
++    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
++    MachineClass *mc = MACHINE_GET_CLASS(pcms);
+     X86CPU *cpu = X86_CPU(ms->possible_cpus->cpus[0].cpu);
+ 
++    if (pcmc->smbios_defaults) {
++        /* These values are guest ABI, do not change */
++        smbios_set_defaults("QEMU", mc->desc, mc->name,
++                            pcmc->smbios_legacy_mode, pcmc->smbios_uuid_encoded,
++                            pcmc->smbios_stream_product,
++                            pcmc->smbios_stream_version,
++                            pcms->smbios_entry_point_type);
++    }
++
+     /* tell smbios about cpuid version and features */
+     smbios_set_cpuid(cpu->env.cpuid_version, cpu->env.features[FEAT_1_EDX]);
+ 
+diff --git a/hw/i386/fw_cfg.h b/hw/i386/fw_cfg.h
+index 86ca7c1c0c..1e1de6b4a3 100644
+--- a/hw/i386/fw_cfg.h
++++ b/hw/i386/fw_cfg.h
+@@ -10,6 +10,7 @@
+ #define HW_I386_FW_CFG_H
+ 
+ #include "hw/boards.h"
++#include "hw/i386/pc.h"
+ #include "hw/nvram/fw_cfg.h"
+ 
+ #define FW_CFG_IO_BASE     0x510
+@@ -22,7 +23,7 @@
+ FWCfgState *fw_cfg_arch_create(MachineState *ms,
+                                uint16_t boot_cpus,
+                                uint16_t apic_id_limit);
+-void fw_cfg_build_smbios(MachineState *ms, FWCfgState *fw_cfg);
++void fw_cfg_build_smbios(PCMachineState *ms, FWCfgState *fw_cfg);
+ void fw_cfg_build_feature_control(MachineState *ms, FWCfgState *fw_cfg);
+ void fw_cfg_add_acpi_dsdt(Aml *scope, FWCfgState *fw_cfg);
+ 
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index a1faa9e92c..16de2a59e8 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -847,7 +847,7 @@ void pc_machine_done(Notifier *notifier, void *data)
+ 
+     acpi_setup();
+     if (x86ms->fw_cfg) {
+-        fw_cfg_build_smbios(MACHINE(pcms), x86ms->fw_cfg);
++        fw_cfg_build_smbios(pcms, x86ms->fw_cfg);
+         fw_cfg_build_feature_control(MACHINE(pcms), x86ms->fw_cfg);
+         /* update FW_CFG_NB_CPUS to account for -device added CPUs */
+         fw_cfg_modify_i16(x86ms->fw_cfg, FW_CFG_NB_CPUS, x86ms->boot_cpus);
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 09d02cc91f..7344b35cf1 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -36,7 +36,6 @@
+ #include "hw/rtc/mc146818rtc.h"
+ #include "hw/southbridge/piix.h"
+ #include "hw/display/ramfb.h"
+-#include "hw/firmware/smbios.h"
+ #include "hw/pci/pci.h"
+ #include "hw/pci/pci_ids.h"
+ #include "hw/usb.h"
+@@ -233,17 +232,6 @@ static void pc_init1(MachineState *machine,
+ 
+     pc_guest_info_init(pcms);
+ 
+-    if (pcmc->smbios_defaults) {
+-        MachineClass *mc = MACHINE_GET_CLASS(machine);
+-        /* These values are guest ABI, do not change */
+-        smbios_set_defaults("Red Hat", "KVM",
+-                            mc->desc, pcmc->smbios_legacy_mode,
+-                            pcmc->smbios_uuid_encoded,
+-                            pcmc->smbios_stream_product,
+-                            pcmc->smbios_stream_version,
+-                            pcms->smbios_entry_point_type);
+-    }
+-
+     /* allocate ram and load rom/bios */
+     if (!xen_enabled()) {
+         pc_memory_init(pcms, system_memory, rom_memory, hole64_size);
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index c6967e1846..9a22ff5dd6 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -45,7 +45,6 @@
+ #include "hw/i386/amd_iommu.h"
+ #include "hw/i386/intel_iommu.h"
+ #include "hw/display/ramfb.h"
+-#include "hw/firmware/smbios.h"
+ #include "hw/ide/pci.h"
+ #include "hw/ide/ahci.h"
+ #include "hw/intc/ioapic.h"
+@@ -201,16 +200,6 @@ static void pc_q35_init(MachineState *machine)
+ 
+     pc_guest_info_init(pcms);
+ 
+-    if (pcmc->smbios_defaults) {
+-        /* These values are guest ABI, do not change */
+-        smbios_set_defaults("Red Hat", "KVM",
+-                            mc->desc, pcmc->smbios_legacy_mode,
+-                            pcmc->smbios_uuid_encoded,
+-                            pcmc->smbios_stream_product,
+-                            pcmc->smbios_stream_version,
+-                            pcms->smbios_entry_point_type);
+-    }
+-
+     /* create pci host bus */
+     phb = OBJECT(qdev_new(TYPE_Q35_HOST_DEVICE));
+ 
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 37644ede7e..c286c10bc3 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -12,7 +12,6 @@
+ #include "hw/hotplug.h"
+ #include "qom/object.h"
+ #include "hw/i386/sgx-epc.h"
+-#include "hw/firmware/smbios.h"
+ #include "hw/cxl/cxl.h"
+ 
+ #define HPET_INTCAP "hpet-intcap"
+-- 
+2.39.3
+

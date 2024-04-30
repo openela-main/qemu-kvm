@@ -1,0 +1,85 @@
+From 4251aab5b2beb68d1800cd4a329361ff6f57c430 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 20 Dec 2023 08:47:52 -0500
+Subject: [PATCH 07/22] qdev-properties: alias all object class properties
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [3/17] bc5d0aafe4645dacf9277904a2b20760d6e676e1 (stefanha/centos-stream-qemu-kvm)
+
+qdev_alias_all_properties() aliases a DeviceState's qdev properties onto
+an Object. This is used for VirtioPCIProxy types so that --device
+virtio-blk-pci has properties of its embedded --device virtio-blk-device
+object.
+
+Currently this function is implemented using qdev properties. Change the
+function to use QOM object class properties instead. This works because
+qdev properties create QOM object class properties, but it also catches
+any QOM object class-only properties that have no qdev properties.
+
+This change ensures that properties of devices are shown with --device
+foo,\? even if they are QOM object class properties.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231220134755.814917-2-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 350147a871a545ab56b4a1062c8485635d9ffc24)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/core/qdev-properties.c    | 18 ++++++++++--------
+ include/hw/qdev-properties.h |  4 ++--
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/hw/core/qdev-properties.c b/hw/core/qdev-properties.c
+index 840006e953..7d6fa726fd 100644
+--- a/hw/core/qdev-properties.c
++++ b/hw/core/qdev-properties.c
+@@ -1076,16 +1076,18 @@ void device_class_set_props(DeviceClass *dc, Property *props)
+ void qdev_alias_all_properties(DeviceState *target, Object *source)
+ {
+     ObjectClass *class;
+-    Property *prop;
++    ObjectPropertyIterator iter;
++    ObjectProperty *prop;
+ 
+     class = object_get_class(OBJECT(target));
+-    do {
+-        DeviceClass *dc = DEVICE_CLASS(class);
+ 
+-        for (prop = dc->props_; prop && prop->name; prop++) {
+-            object_property_add_alias(source, prop->name,
+-                                      OBJECT(target), prop->name);
++    object_class_property_iter_init(&iter, class);
++    while ((prop = object_property_iter_next(&iter))) {
++        if (object_property_find(source, prop->name)) {
++            continue; /* skip duplicate properties */
+         }
+-        class = object_class_get_parent(class);
+-    } while (class != object_class_by_name(TYPE_DEVICE));
++
++        object_property_add_alias(source, prop->name,
++                                  OBJECT(target), prop->name);
++    }
+ }
+diff --git a/include/hw/qdev-properties.h b/include/hw/qdev-properties.h
+index 25743a29a0..09aa04ca1e 100644
+--- a/include/hw/qdev-properties.h
++++ b/include/hw/qdev-properties.h
+@@ -230,8 +230,8 @@ void qdev_property_add_static(DeviceState *dev, Property *prop);
+  * @target: Device which has properties to be aliased
+  * @source: Object to add alias properties to
+  *
+- * Add alias properties to the @source object for all qdev properties on
+- * the @target DeviceState.
++ * Add alias properties to the @source object for all properties on the @target
++ * DeviceState.
+  *
+  * This is useful when @target is an internal implementation object
+  * owned by @source, and you want to expose all the properties of that
+-- 
+2.39.3
+

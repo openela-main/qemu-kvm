@@ -1,0 +1,108 @@
+From 22664f4115d9b297ef4276e48f8ba0bc195ec99e Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:12 +0800
+Subject: [PATCH 033/101] vfio/platform: Make vfio cdev pre-openable by passing
+ a file handle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [32/67] 069867dce64b826e92dc2051405a4ded5261981f (eauger1/centos-qemu-kvm)
+
+This gives management tools like libvirt a chance to open the vfio
+cdev with privilege and pass FD to qemu. This way qemu never needs
+to have privilege to open a VFIO or iommu cdev node.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 3016e60f8f715d2058a48e4956be994482c5e218)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/platform.c | 32 ++++++++++++++++++++++++--------
+ 1 file changed, 24 insertions(+), 8 deletions(-)
+
+diff --git a/hw/vfio/platform.c b/hw/vfio/platform.c
+index 98ae4bc655..a97d9c6234 100644
+--- a/hw/vfio/platform.c
++++ b/hw/vfio/platform.c
+@@ -531,14 +531,13 @@ static VFIODeviceOps vfio_platform_ops = {
+  */
+ static int vfio_base_device_init(VFIODevice *vbasedev, Error **errp)
+ {
+-    struct stat st;
+     int ret;
+ 
+-    /* @sysfsdev takes precedence over @host */
+-    if (vbasedev->sysfsdev) {
++    /* @fd takes precedence over @sysfsdev which takes precedence over @host */
++    if (vbasedev->fd < 0 && vbasedev->sysfsdev) {
+         g_free(vbasedev->name);
+         vbasedev->name = g_path_get_basename(vbasedev->sysfsdev);
+-    } else {
++    } else if (vbasedev->fd < 0) {
+         if (!vbasedev->name || strchr(vbasedev->name, '/')) {
+             error_setg(errp, "wrong host device name");
+             return -EINVAL;
+@@ -548,10 +547,9 @@ static int vfio_base_device_init(VFIODevice *vbasedev, Error **errp)
+                                              vbasedev->name);
+     }
+ 
+-    if (stat(vbasedev->sysfsdev, &st) < 0) {
+-        error_setg_errno(errp, errno,
+-                         "failed to get the sysfs host device file status");
+-        return -errno;
++    ret = vfio_device_get_name(vbasedev, errp);
++    if (ret) {
++        return ret;
+     }
+ 
+     ret = vfio_attach_device(vbasedev->name, vbasedev,
+@@ -658,6 +656,20 @@ static Property vfio_platform_dev_properties[] = {
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
++static void vfio_platform_instance_init(Object *obj)
++{
++    VFIOPlatformDevice *vdev = VFIO_PLATFORM_DEVICE(obj);
++
++    vdev->vbasedev.fd = -1;
++}
++
++#ifdef CONFIG_IOMMUFD
++static void vfio_platform_set_fd(Object *obj, const char *str, Error **errp)
++{
++    vfio_device_set_fd(&VFIO_PLATFORM_DEVICE(obj)->vbasedev, str, errp);
++}
++#endif
++
+ static void vfio_platform_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+@@ -665,6 +677,9 @@ static void vfio_platform_class_init(ObjectClass *klass, void *data)
+ 
+     dc->realize = vfio_platform_realize;
+     device_class_set_props(dc, vfio_platform_dev_properties);
++#ifdef CONFIG_IOMMUFD
++    object_class_property_add_str(klass, "fd", NULL, vfio_platform_set_fd);
++#endif
+     dc->vmsd = &vfio_platform_vmstate;
+     dc->desc = "VFIO-based platform device assignment";
+     sbc->connect_irq_notifier = vfio_start_irqfd_injection;
+@@ -677,6 +692,7 @@ static const TypeInfo vfio_platform_dev_info = {
+     .name = TYPE_VFIO_PLATFORM,
+     .parent = TYPE_SYS_BUS_DEVICE,
+     .instance_size = sizeof(VFIOPlatformDevice),
++    .instance_init = vfio_platform_instance_init,
+     .class_init = vfio_platform_class_init,
+     .class_size = sizeof(VFIOPlatformDeviceClass),
+ };
+-- 
+2.39.3
+

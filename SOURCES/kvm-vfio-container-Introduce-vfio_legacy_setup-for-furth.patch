@@ -1,0 +1,118 @@
+From 6c7546756e979e4f5ba29ae51a21c63fa90492cf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:17 +0100
+Subject: [PATCH 050/101] vfio/container: Introduce vfio_legacy_setup() for
+ further cleanups
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [49/67] 3a621ba2605c98b7fbf7fd9f93a207f728f1202e (eauger1/centos-qemu-kvm)
+
+This will help subsequent patches to unify the initialization of type1
+and sPAPR IOMMU backends.
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d3764db87531cd53849ccee9b2f72aede90ccf5b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container.c | 63 +++++++++++++++++++++++++--------------------
+ 1 file changed, 35 insertions(+), 28 deletions(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 1e77a2929e..afcfe80488 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -474,6 +474,35 @@ static void vfio_get_iommu_info_migration(VFIOContainer *container,
+     }
+ }
+ 
++static int vfio_legacy_setup(VFIOContainerBase *bcontainer, Error **errp)
++{
++    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
++                                            bcontainer);
++    g_autofree struct vfio_iommu_type1_info *info = NULL;
++    int ret;
++
++    ret = vfio_get_iommu_info(container, &info);
++    if (ret) {
++        error_setg_errno(errp, -ret, "Failed to get VFIO IOMMU info");
++        return ret;
++    }
++
++    if (info->flags & VFIO_IOMMU_INFO_PGSIZES) {
++        bcontainer->pgsizes = info->iova_pgsizes;
++    } else {
++        bcontainer->pgsizes = qemu_real_host_page_size();
++    }
++
++    if (!vfio_get_info_dma_avail(info, &bcontainer->dma_max_mappings)) {
++        bcontainer->dma_max_mappings = 65535;
++    }
++
++    vfio_get_info_iova_range(info, bcontainer);
++
++    vfio_get_iommu_info_migration(container, info);
++    return 0;
++}
++
+ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+                                   Error **errp)
+ {
+@@ -570,40 +599,18 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+     switch (container->iommu_type) {
+     case VFIO_TYPE1v2_IOMMU:
+     case VFIO_TYPE1_IOMMU:
+-    {
+-        struct vfio_iommu_type1_info *info;
+-
+-        ret = vfio_get_iommu_info(container, &info);
+-        if (ret) {
+-            error_setg_errno(errp, -ret, "Failed to get VFIO IOMMU info");
+-            goto enable_discards_exit;
+-        }
+-
+-        if (info->flags & VFIO_IOMMU_INFO_PGSIZES) {
+-            bcontainer->pgsizes = info->iova_pgsizes;
+-        } else {
+-            bcontainer->pgsizes = qemu_real_host_page_size();
+-        }
+-
+-        if (!vfio_get_info_dma_avail(info, &bcontainer->dma_max_mappings)) {
+-            bcontainer->dma_max_mappings = 65535;
+-        }
+-
+-        vfio_get_info_iova_range(info, bcontainer);
+-
+-        vfio_get_iommu_info_migration(container, info);
+-        g_free(info);
++        ret = vfio_legacy_setup(bcontainer, errp);
+         break;
+-    }
+     case VFIO_SPAPR_TCE_v2_IOMMU:
+     case VFIO_SPAPR_TCE_IOMMU:
+-    {
+         ret = vfio_spapr_container_init(container, errp);
+-        if (ret) {
+-            goto enable_discards_exit;
+-        }
+         break;
++    default:
++        g_assert_not_reached();
+     }
++
++    if (ret) {
++        goto enable_discards_exit;
+     }
+ 
+     vfio_kvm_device_add_group(group);
+-- 
+2.39.3
+

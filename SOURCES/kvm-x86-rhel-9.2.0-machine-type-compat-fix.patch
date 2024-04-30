@@ -1,0 +1,48 @@
+From 2932c8de175fadeed4bb7c1024724cbabc53f6d5 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Mon, 19 Feb 2024 02:37:27 -0500
+Subject: [PATCH 6/6] x86: rhel 9.2.0 machine type compat fix
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 342: Draft: x86: rhel 9.2.0 machine type compat fix (RHEL)
+RH-Jira: RHEL-17068
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Commit: [23/23] 658dda965f34119de300eef26155f47b1b3fa7f1
+
+Fix up the compatibility for 9.2.0 and older.
+
+Signed-off-by: Sebastian Ott's avatarSebastian Ott <sebott@redhat.com>
+---
+ hw/i386/pc_piix.c | 2 ++
+ hw/i386/pc_q35.c  | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 44038391fb..09d02cc91f 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1023,6 +1023,8 @@ static void pc_machine_rhel760_options(MachineClass *m)
+     pcmc->enforce_amd_1tb_hole = false;
+     /* From pc_i440fx_8_0_machine_options() */
+     pcmc->default_smbios_ep_type = SMBIOS_ENTRY_POINT_TYPE_32;
++    /* From pc_i440fx_8_1_machine_options() */
++    pcmc->broken_32bit_mem_addr_check = true;
+     /* Introduced in QEMU 8.2 */
+     pcmc->default_south_bridge = TYPE_PIIX3_DEVICE;
+ 
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 6387df97c8..c6967e1846 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -759,6 +759,8 @@ static void pc_q35_machine_rhel920_options(MachineClass *m)
+ 
+     /* From pc_q35_8_0_machine_options() */
+     pcmc->default_smbios_ep_type = SMBIOS_ENTRY_POINT_TYPE_32;
++    /* From pc_q35_8_1_machine_options() */
++    pcmc->broken_32bit_mem_addr_check = true;
+ 
+     compat_props_add(m->compat_props, hw_compat_rhel_9_4,
+                      hw_compat_rhel_9_4_len);
+-- 
+2.39.3
+

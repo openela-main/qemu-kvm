@@ -1,0 +1,75 @@
+From 094941b2c3e66e078d93718933eb07e800a7dd60 Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Fri, 2 Feb 2024 16:31:58 +0100
+Subject: [PATCH 3/6] virtio-blk: Use ioeventfd_attach in start_ioeventfd
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 223: virtio: Re-enable notifications after drain
+RH-Jira: RHEL-3934
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/3] 96d6760d1b7b12df695b6825b15a2a3b8a79a74c (hreitz/qemu-kvm-c-9-s)
+
+Commit d3f6f294aeadd5f88caf0155e4360808c95b3146 ("virtio-blk: always set
+ioeventfd during startup") has made virtio_blk_start_ioeventfd() always
+kick the virtqueue (set the ioeventfd), regardless of whether the BB is
+drained.  That is no longer necessary, because attaching the host
+notifier will now set the ioeventfd, too; this happens either
+immediately right here in virtio_blk_start_ioeventfd(), or later when
+the drain ends, in virtio_blk_ioeventfd_attach().
+
+With event_notifier_set() removed, the code becomes the same as the one
+in virtio_blk_ioeventfd_attach(), so we can reuse that function.
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20240202153158.788922-4-hreitz@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 52bff01f64eec017ffb0d5903a0ee1d67ca7a548)
+---
+ hw/block/virtio-blk.c | 21 ++++++++++-----------
+ 1 file changed, 10 insertions(+), 11 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 0b9100b746..7fdeaf2d12 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -37,6 +37,8 @@
+ #include "hw/virtio/virtio-blk-common.h"
+ #include "qemu/coroutine.h"
+ 
++static void virtio_blk_ioeventfd_attach(VirtIOBlock *s);
++
+ static void virtio_blk_init_request(VirtIOBlock *s, VirtQueue *vq,
+                                     VirtIOBlockReq *req)
+ {
+@@ -1808,17 +1810,14 @@ static int virtio_blk_start_ioeventfd(VirtIODevice *vdev)
+     s->ioeventfd_started = true;
+     smp_wmb(); /* paired with aio_notify_accept() on the read side */
+ 
+-    /* Get this show started by hooking up our callbacks */
+-    for (i = 0; i < nvqs; i++) {
+-        VirtQueue *vq = virtio_get_queue(vdev, i);
+-        AioContext *ctx = s->vq_aio_context[i];
+-
+-        /* Kick right away to begin processing requests already in vring */
+-        event_notifier_set(virtio_queue_get_host_notifier(vq));
+-
+-        if (!blk_in_drain(s->conf.conf.blk)) {
+-            virtio_queue_aio_attach_host_notifier(vq, ctx);
+-        }
++    /*
++     * Get this show started by hooking up our callbacks.  If drained now,
++     * virtio_blk_drained_end() will do this later.
++     * Attaching the notifier also kicks the virtqueues, processing any requests
++     * they may already have.
++     */
++    if (!blk_in_drain(s->conf.conf.blk)) {
++        virtio_blk_ioeventfd_attach(s);
+     }
+     return 0;
+ 
+-- 
+2.39.3
+

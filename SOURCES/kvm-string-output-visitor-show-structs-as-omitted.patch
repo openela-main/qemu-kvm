@@ -1,0 +1,90 @@
+From fb2069be402ec1322834c555714f0e993778cc9d Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 12 Dec 2023 08:49:34 -0500
+Subject: [PATCH 05/22] string-output-visitor: show structs as "<omitted>"
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 219: virtio-blk: add iothread-vq-mapping parameter
+RH-Jira: RHEL-17369 RHEL-20764 RHEL-7356
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [1/17] 0c08e8237d28fbdbdbc7576d4c17d2eeeb413c2a (stefanha/centos-stream-qemu-kvm)
+
+StringOutputVisitor crashes when it visits a struct because
+->start_struct() is NULL.
+
+Show "<omitted>" instead of crashing. This is necessary because the
+virtio-blk-pci iothread-vq-mapping parameter that I'd like to introduce
+soon is a list of IOThreadMapping structs.
+
+This patch is a quick fix to solve the crash, but the long-term solution
+is replacing StringOutputVisitor with something that can handle the full
+gamut of values in QEMU.
+
+Cc: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231212134934.500289-1-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ff32bb53476539d352653f4ed56372dced73a388)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ include/qapi/string-output-visitor.h |  6 +++---
+ qapi/string-output-visitor.c         | 16 ++++++++++++++++
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/include/qapi/string-output-visitor.h b/include/qapi/string-output-visitor.h
+index 268dfe9986..b1ee473b30 100644
+--- a/include/qapi/string-output-visitor.h
++++ b/include/qapi/string-output-visitor.h
+@@ -26,9 +26,9 @@ typedef struct StringOutputVisitor StringOutputVisitor;
+  * If everything else succeeds, pass @result to visit_complete() to
+  * collect the result of the visit.
+  *
+- * The string output visitor does not implement support for visiting
+- * QAPI structs, alternates, null, or arbitrary QTypes.  It also
+- * requires a non-null list argument to visit_start_list().
++ * The string output visitor does not implement support for alternates, null,
++ * or arbitrary QTypes.  Struct fields are not shown.  It also requires a
++ * non-null list argument to visit_start_list().
+  */
+ Visitor *string_output_visitor_new(bool human, char **result);
+ 
+diff --git a/qapi/string-output-visitor.c b/qapi/string-output-visitor.c
+index c0cb72dbe4..f0c1dea89e 100644
+--- a/qapi/string-output-visitor.c
++++ b/qapi/string-output-visitor.c
+@@ -292,6 +292,20 @@ static bool print_type_null(Visitor *v, const char *name, QNull **obj,
+     return true;
+ }
+ 
++static bool start_struct(Visitor *v, const char *name, void **obj,
++                         size_t size, Error **errp)
++{
++    return true;
++}
++
++static void end_struct(Visitor *v, void **obj)
++{
++    StringOutputVisitor *sov = to_sov(v);
++
++    /* TODO actually print struct fields */
++    string_output_set(sov, g_strdup("<omitted>"));
++}
++
+ static bool
+ start_list(Visitor *v, const char *name, GenericList **list, size_t size,
+            Error **errp)
+@@ -379,6 +393,8 @@ Visitor *string_output_visitor_new(bool human, char **result)
+     v->visitor.type_str = print_type_str;
+     v->visitor.type_number = print_type_number;
+     v->visitor.type_null = print_type_null;
++    v->visitor.start_struct = start_struct;
++    v->visitor.end_struct = end_struct;
+     v->visitor.start_list = start_list;
+     v->visitor.next_list = next_list;
+     v->visitor.end_list = end_list;
+-- 
+2.39.3
+

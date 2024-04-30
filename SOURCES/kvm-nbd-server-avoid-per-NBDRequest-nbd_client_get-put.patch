@@ -1,0 +1,53 @@
+From cd7788a857a6099206c4063e3ef69cb9e4aebcbc Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 21 Dec 2023 14:24:50 -0500
+Subject: [PATCH 070/101] nbd/server: avoid per-NBDRequest nbd_client_get/put()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/26] 5acb090ac4adf4260cd9e9c5605a27012b2a33aa (kmwolf/centos-qemu-kvm)
+
+nbd_trip() processes a single NBD request from start to finish and holds
+an NBDClient reference throughout. NBDRequest does not outlive the scope
+of nbd_trip(). Therefore it is unnecessary to ref/unref NBDClient for
+each NBDRequest.
+
+Removing these nbd_client_get()/nbd_client_put() calls will make
+thread-safety easier in the commits that follow.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Message-ID: <20231221192452.1785567-5-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ nbd/server.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/nbd/server.c b/nbd/server.c
+index 895cf0a752..0b09ccc8dc 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -1557,7 +1557,6 @@ static NBDRequestData *nbd_request_get(NBDClient *client)
+     client->nb_requests++;
+ 
+     req = g_new0(NBDRequestData, 1);
+-    nbd_client_get(client);
+     req->client = client;
+     return req;
+ }
+@@ -1578,8 +1577,6 @@ static void nbd_request_put(NBDRequestData *req)
+     }
+ 
+     nbd_client_receive_next_request(client);
+-
+-    nbd_client_put(client);
+ }
+ 
+ static void blk_aio_attached(AioContext *ctx, void *opaque)
+-- 
+2.39.3
+

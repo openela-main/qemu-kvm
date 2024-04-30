@@ -1,0 +1,62 @@
+From 93cf5b82771f1d1e8182be168dae7a45d42069e9 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 4 Mar 2024 15:39:57 +0100
+Subject: [PATCH 11/20] smbios: add smbios_add_usr_blob_size() helper
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [9/18] 8c698fb9e186d2b1d2b7f75a74305f356450ad68
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+it will be used by follow up patch when legacy handling
+is moved out into a separate file.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Ani Sinha <anisinha@redhat.com>
+---
+ hw/smbios/smbios.c | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index 441517cf24..c48a290478 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -1426,6 +1426,14 @@ static bool save_opt_list(size_t *ndest, char ***dest, QemuOpts *opts,
+     return true;
+ }
+ 
++static void smbios_add_usr_blob_size(size_t size)
++{
++    if (!usr_blobs_sizes) {
++        usr_blobs_sizes = g_array_new(false, false, sizeof(size_t));
++    }
++    g_array_append_val(usr_blobs_sizes, size);
++}
++
+ void smbios_entry_add(QemuOpts *opts, Error **errp)
+ {
+     const char *val;
+@@ -1473,10 +1481,12 @@ void smbios_entry_add(QemuOpts *opts, Error **errp)
+             smbios_type4_count++;
+         }
+ 
+-        if (!usr_blobs_sizes) {
+-            usr_blobs_sizes = g_array_new(false, false, sizeof(size_t));
+-        }
+-        g_array_append_val(usr_blobs_sizes, size);
++        /*
++         * preserve blob size for legacy mode so it could build its
++         * blobs flavor from 'usr_blobs'
++         */
++        smbios_add_usr_blob_size(size);
++
+         usr_blobs_len += size;
+         if (size > usr_table_max) {
+             usr_table_max = size;
+-- 
+2.39.3
+

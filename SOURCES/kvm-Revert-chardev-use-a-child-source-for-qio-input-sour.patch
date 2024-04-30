@@ -1,0 +1,216 @@
+From ab5a33d57b48e35388928e388bb6e6479bc77651 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Mon, 18 Mar 2024 17:08:30 +0000
+Subject: [PATCH 3/3] Revert "chardev: use a child source for qio input source"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 233: Fix handling of TLS sessions in chardevs
+RH-Jira: RHEL-24614
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [3/3] b58e6c19c2b11d5d28db31cf1386226fb01d195e (berrange/centos-src-qemu)
+
+This reverts commit a7077b8e354d90fec26c2921aa2dea85b90dff90,
+and add comments to explain why child sources cannot be used.
+
+When a GSource is added as a child of another GSource, if its
+'prepare' function indicates readiness, then the parent's
+'prepare' function will never be run. The io_watch_poll_prepare
+absolutely *must* be run on every iteration of the main loop,
+to ensure that the chardev backend doesn't feed data to the
+frontend that it is unable to consume.
+
+At the time a7077b8e354d90fec26c2921aa2dea85b90dff90 was made,
+all the child GSource impls were relying on poll'ing an FD,
+so their 'prepare' functions would never indicate readiness
+ahead of poll() being invoked. So the buggy behaviour was
+not noticed and lay dormant.
+
+Relatively recently the QIOChannelTLS impl introduced a
+level 2 child GSource, which checks with GNUTLS whether it
+has cached any data that was decoded but not yet consumed:
+
+  commit ffda5db65aef42266a5053a4be34515106c4c7ee
+  Author: Antoine Damhet <antoine.damhet@shadow.tech>
+  Date:   Tue Nov 15 15:23:29 2022 +0100
+
+    io/channel-tls: fix handling of bigger read buffers
+
+    Since the TLS backend can read more data from the underlying QIOChannel
+    we introduce a minimal child GSource to notify if we still have more
+    data available to be read.
+
+    Signed-off-by: Antoine Damhet <antoine.damhet@shadow.tech>
+    Signed-off-by: Charles Frey <charles.frey@shadow.tech>
+    Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+With this, it is now quite common for the 'prepare' function
+on a QIOChannelTLS GSource to indicate immediate readiness,
+bypassing the parent GSource 'prepare' function. IOW, the
+critical 'io_watch_poll_prepare' is being skipped on some
+iterations of the main loop. As a result chardev frontend
+asserts are now being triggered as they are fed data they
+are not ready to consume.
+
+A reproducer is as follows:
+
+ * In terminal 1 run a GNUTLS *echo* server
+
+   $ gnutls-serv --echo \
+                 --x509cafile ca-cert.pem \
+                 --x509keyfile server-key.pem \
+		 --x509certfile server-cert.pem \
+		 -p 9000
+
+ * In terminal 2 run a QEMU guest
+
+   $ qemu-system-s390x \
+       -nodefaults \
+       -display none \
+       -object tls-creds-x509,id=tls0,dir=$PWD,endpoint=client \
+       -chardev socket,id=con0,host=localhost,port=9000,tls-creds=tls0 \
+       -device sclpconsole,chardev=con0 \
+       -hda Fedora-Cloud-Base-39-1.5.s390x.qcow2
+
+After the previous patch revert, but before this patch revert,
+this scenario will crash:
+
+  qemu-system-s390x: ../hw/char/sclpconsole.c:73: chr_read: Assertion
+  `size <= SIZE_BUFFER_VT220 - scon->iov_data_len' failed.
+
+This assert indicates that 'tcp_chr_read' was called without
+'tcp_chr_read_poll' having first been checked for ability to
+receive more data
+
+QEMU's use of a 'prepare' function to create/delete another
+GSource is rather a hack and not normally the kind of thing that
+is expected to be done by a GSource. There is no mechanism to
+force GLib to always run the 'prepare' function of a parent
+GSource. The best option is to simply not use the child source
+concept, and go back to the functional approach previously
+relied on.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Tested-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 038b4217884c6f297278bb1ec6f0463c6c8221de)
+---
+ chardev/char-io.c | 56 ++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 51 insertions(+), 5 deletions(-)
+
+diff --git a/chardev/char-io.c b/chardev/char-io.c
+index 4451128cba..dab77b112e 100644
+--- a/chardev/char-io.c
++++ b/chardev/char-io.c
+@@ -33,6 +33,7 @@ typedef struct IOWatchPoll {
+     IOCanReadHandler *fd_can_read;
+     GSourceFunc fd_read;
+     void *opaque;
++    GMainContext *context;
+ } IOWatchPoll;
+ 
+ static IOWatchPoll *io_watch_poll_from_source(GSource *source)
+@@ -50,28 +51,59 @@ static gboolean io_watch_poll_prepare(GSource *source,
+         return FALSE;
+     }
+ 
++    /*
++     * We do not register the QIOChannel watch as a child GSource.
++     * The 'prepare' function on the parent GSource will be
++     * skipped if a child GSource's 'prepare' function indicates
++     * readiness. We need this prepare function be guaranteed
++     * to run on *every* iteration of the main loop, because
++     * it is critical to ensure we remove the QIOChannel watch
++     * if 'fd_can_read' indicates the frontend cannot receive
++     * more data.
++     */
+     if (now_active) {
+         iwp->src = qio_channel_create_watch(
+             iwp->ioc, G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL);
+         g_source_set_callback(iwp->src, iwp->fd_read, iwp->opaque, NULL);
+-        g_source_add_child_source(source, iwp->src);
+-        g_source_unref(iwp->src);
++        g_source_attach(iwp->src, iwp->context);
+     } else {
+-        g_source_remove_child_source(source, iwp->src);
++        g_source_destroy(iwp->src);
++        g_source_unref(iwp->src);
+         iwp->src = NULL;
+     }
+     return FALSE;
+ }
+ 
++static gboolean io_watch_poll_check(GSource *source)
++{
++    return FALSE;
++}
++
+ static gboolean io_watch_poll_dispatch(GSource *source, GSourceFunc callback,
+                                        gpointer user_data)
+ {
+-    return G_SOURCE_CONTINUE;
++    abort();
++}
++
++static void io_watch_poll_finalize(GSource *source)
++{
++    /*
++     * Due to a glib bug, removing the last reference to a source
++     * inside a finalize callback causes recursive locking (and a
++     * deadlock).  This is not a problem inside other callbacks,
++     * including dispatch callbacks, so we call io_remove_watch_poll
++     * to remove this source.  At this point, iwp->src must
++     * be NULL, or we would leak it.
++     */
++    IOWatchPoll *iwp = io_watch_poll_from_source(source);
++    assert(iwp->src == NULL);
+ }
+ 
+ static GSourceFuncs io_watch_poll_funcs = {
+     .prepare = io_watch_poll_prepare,
++    .check = io_watch_poll_check,
+     .dispatch = io_watch_poll_dispatch,
++    .finalize = io_watch_poll_finalize,
+ };
+ 
+ GSource *io_add_watch_poll(Chardev *chr,
+@@ -91,6 +123,7 @@ GSource *io_add_watch_poll(Chardev *chr,
+     iwp->ioc = ioc;
+     iwp->fd_read = (GSourceFunc) fd_read;
+     iwp->src = NULL;
++    iwp->context = context;
+ 
+     name = g_strdup_printf("chardev-iowatch-%s", chr->label);
+     g_source_set_name((GSource *)iwp, name);
+@@ -101,10 +134,23 @@ GSource *io_add_watch_poll(Chardev *chr,
+     return (GSource *)iwp;
+ }
+ 
++static void io_remove_watch_poll(GSource *source)
++{
++    IOWatchPoll *iwp;
++
++    iwp = io_watch_poll_from_source(source);
++    if (iwp->src) {
++        g_source_destroy(iwp->src);
++        g_source_unref(iwp->src);
++        iwp->src = NULL;
++    }
++    g_source_destroy(&iwp->parent);
++}
++
+ void remove_fd_in_watch(Chardev *chr)
+ {
+     if (chr->gsource) {
+-        g_source_destroy(chr->gsource);
++        io_remove_watch_poll(chr->gsource);
+         chr->gsource = NULL;
+     }
+ }
+-- 
+2.39.3
+

@@ -1,0 +1,72 @@
+From bbb2d260e6f33380b9df28c74421055bd8dccda5 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 26 Feb 2024 12:59:33 +0100
+Subject: [PATCH 19/20] smbios: error out when building type 4 table is not
+ possible
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [17/18] 86b1c67bfbe9c0c14a190cd1204b6ccd1de1630f
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+If SMBIOS v2 version is requested but number of cores/threads
+are more than it's possible to describe with v2, error out
+instead of silently ignoring the fact and filling core/thread
+count with bogus values.
+
+This will help caller to decide if it should fallback to
+SMBIOSv3 when smbios-entry-point-type='auto'
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Ani Sinha <anisinha@redhat.com>
+Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+---
+ hw/smbios/smbios.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index 3d9dcb0d31..637aa952f5 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -655,7 +655,8 @@ static void smbios_build_type_3_table(void)
+ }
+ 
+ static void smbios_build_type_4_table(MachineState *ms, unsigned instance,
+-                                      SmbiosEntryPointType ep_type)
++                                      SmbiosEntryPointType ep_type,
++                                      Error **errp)
+ {
+     char sock_str[128];
+     size_t tbl_len = SMBIOS_TYPE_4_LEN_V28;
+@@ -709,6 +710,12 @@ static void smbios_build_type_4_table(MachineState *ms, unsigned instance,
+     if (tbl_len == SMBIOS_TYPE_4_LEN_V30) {
+         t->core_count2 = t->core_enabled2 = cpu_to_le16(cores_per_socket);
+         t->thread_count2 = cpu_to_le16(threads_per_socket);
++    } else if (t->core_count == 0xFF || t->thread_count == 0xFF) {
++        error_setg(errp, "SMBIOS 2.0 doesn't support number of processor "
++                         "cores/threads more than 255, use "
++                         "-machine smbios-entry-point-type=64 option to enable "
++                         "SMBIOS 3.0 support");
++        return;
+     }
+ 
+     SMBIOS_BUILD_TABLE_POST;
+@@ -1126,7 +1133,10 @@ static bool smbios_get_tables_ep(MachineState *ms,
+     assert(ms->smp.sockets >= 1);
+ 
+     for (i = 0; i < ms->smp.sockets; i++) {
+-        smbios_build_type_4_table(ms, i, ep_type);
++        smbios_build_type_4_table(ms, i, ep_type, errp);
++        if (*errp) {
++            goto err_exit;
++        }
+     }
+ 
+     smbios_build_type_8_table();
+-- 
+2.39.3
+

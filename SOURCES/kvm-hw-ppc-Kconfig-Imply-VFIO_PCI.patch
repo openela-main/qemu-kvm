@@ -1,0 +1,116 @@
+From 84f378c41832602dcf9bad6167b1f532c7c53e37 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 21 Nov 2023 15:03:55 +0100
+Subject: [PATCH 048/101] hw/ppc/Kconfig: Imply VFIO_PCI
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [47/67] c1a40cdab9bf62b16cb428d57a20b3e0eaa6de38 (eauger1/centos-qemu-kvm)
+
+When the legacy and iommufd backends were introduced, a set of common
+vfio-pci routines were exported in pci.c for both backends to use :
+
+  vfio_pci_pre_reset
+  vfio_pci_get_pci_hot_reset_info
+  vfio_pci_host_match
+  vfio_pci_post_reset
+
+This introduced a build failure on PPC when --without-default-devices
+is use because VFIO is always selected in ppc/Kconfig but VFIO_PCI is
+not.
+
+Use an 'imply VFIO_PCI' in ppc/Kconfig and bypass compilation of the
+VFIO EEH hooks routines defined in hw/ppc/spapr_pci_vfio.c with
+CONFIG_VFIO_PCI.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 4278df9d1d2383b738338c857406357660f11e42)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/ppc/Kconfig          |  2 +-
+ hw/ppc/spapr_pci_vfio.c | 36 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ppc/Kconfig b/hw/ppc/Kconfig
+index 56f0475a8e..44263a58c4 100644
+--- a/hw/ppc/Kconfig
++++ b/hw/ppc/Kconfig
+@@ -3,11 +3,11 @@ config PSERIES
+     imply PCI_DEVICES
+     imply TEST_DEVICES
+     imply VIRTIO_VGA
++    imply VFIO_PCI if LINUX   # needed by spapr_pci_vfio.c
+     select NVDIMM
+     select DIMM
+     select PCI
+     select SPAPR_VSCSI
+-    select VFIO if LINUX   # needed by spapr_pci_vfio.c
+     select XICS
+     select XIVE
+     select MSI_NONBROKEN
+diff --git a/hw/ppc/spapr_pci_vfio.c b/hw/ppc/spapr_pci_vfio.c
+index d1d07bec46..76b2a3487b 100644
+--- a/hw/ppc/spapr_pci_vfio.c
++++ b/hw/ppc/spapr_pci_vfio.c
+@@ -26,10 +26,12 @@
+ #include "hw/pci/pci_device.h"
+ #include "hw/vfio/vfio-common.h"
+ #include "qemu/error-report.h"
++#include CONFIG_DEVICES /* CONFIG_VFIO_PCI */
+ 
+ /*
+  * Interfaces for IBM EEH (Enhanced Error Handling)
+  */
++#ifdef CONFIG_VFIO_PCI
+ static bool vfio_eeh_container_ok(VFIOContainer *container)
+ {
+     /*
+@@ -314,3 +316,37 @@ int spapr_phb_vfio_eeh_configure(SpaprPhbState *sphb)
+ 
+     return RTAS_OUT_SUCCESS;
+ }
++
++#else
++
++bool spapr_phb_eeh_available(SpaprPhbState *sphb)
++{
++    return false;
++}
++
++void spapr_phb_vfio_reset(DeviceState *qdev)
++{
++}
++
++int spapr_phb_vfio_eeh_set_option(SpaprPhbState *sphb,
++                                  unsigned int addr, int option)
++{
++    return RTAS_OUT_NOT_SUPPORTED;
++}
++
++int spapr_phb_vfio_eeh_get_state(SpaprPhbState *sphb, int *state)
++{
++    return RTAS_OUT_NOT_SUPPORTED;
++}
++
++int spapr_phb_vfio_eeh_reset(SpaprPhbState *sphb, int option)
++{
++    return RTAS_OUT_NOT_SUPPORTED;
++}
++
++int spapr_phb_vfio_eeh_configure(SpaprPhbState *sphb)
++{
++    return RTAS_OUT_NOT_SUPPORTED;
++}
++
++#endif /* CONFIG_VFIO_PCI */
+-- 
+2.39.3
+

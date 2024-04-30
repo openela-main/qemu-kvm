@@ -1,0 +1,139 @@
+From fe5ecedd452754eeb238b23eb0544ed3c5086157 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:06 +0800
+Subject: [PATCH 027/101] vfio/pci: Extract out a helper
+ vfio_pci_get_pci_hot_reset_info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [26/67] 730b7f1496f4f21310fa13c79cb87f8d5e2ad2a8 (eauger1/centos-qemu-kvm)
+
+This helper will be used by both legacy and iommufd backends.
+
+No functional changes intended.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 4d36ec23a75eb387492f4d68ff1b8eeee5d68142)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 54 +++++++++++++++++++++++++++++++++++----------------
+ hw/vfio/pci.h |  3 +++
+ 2 files changed, 40 insertions(+), 17 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index ec98080f28..b482e5479f 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2448,22 +2448,13 @@ static bool vfio_pci_host_match(PCIHostDeviceAddress *addr, const char *name)
+     return (strcmp(tmp, name) == 0);
+ }
+ 
+-static int vfio_pci_hot_reset(VFIOPCIDevice *vdev, bool single)
++int vfio_pci_get_pci_hot_reset_info(VFIOPCIDevice *vdev,
++                                    struct vfio_pci_hot_reset_info **info_p)
+ {
+-    VFIOGroup *group;
+     struct vfio_pci_hot_reset_info *info;
+-    struct vfio_pci_dependent_device *devices;
+-    struct vfio_pci_hot_reset *reset;
+-    int32_t *fds;
+-    int ret, i, count;
+-    bool multi = false;
++    int ret, count;
+ 
+-    trace_vfio_pci_hot_reset(vdev->vbasedev.name, single ? "one" : "multi");
+-
+-    if (!single) {
+-        vfio_pci_pre_reset(vdev);
+-    }
+-    vdev->vbasedev.needs_reset = false;
++    assert(info_p && !*info_p);
+ 
+     info = g_malloc0(sizeof(*info));
+     info->argsz = sizeof(*info);
+@@ -2471,24 +2462,53 @@ static int vfio_pci_hot_reset(VFIOPCIDevice *vdev, bool single)
+     ret = ioctl(vdev->vbasedev.fd, VFIO_DEVICE_GET_PCI_HOT_RESET_INFO, info);
+     if (ret && errno != ENOSPC) {
+         ret = -errno;
++        g_free(info);
+         if (!vdev->has_pm_reset) {
+             error_report("vfio: Cannot reset device %s, "
+                          "no available reset mechanism.", vdev->vbasedev.name);
+         }
+-        goto out_single;
++        return ret;
+     }
+ 
+     count = info->count;
+-    info = g_realloc(info, sizeof(*info) + (count * sizeof(*devices)));
+-    info->argsz = sizeof(*info) + (count * sizeof(*devices));
+-    devices = &info->devices[0];
++    info = g_realloc(info, sizeof(*info) + (count * sizeof(info->devices[0])));
++    info->argsz = sizeof(*info) + (count * sizeof(info->devices[0]));
+ 
+     ret = ioctl(vdev->vbasedev.fd, VFIO_DEVICE_GET_PCI_HOT_RESET_INFO, info);
+     if (ret) {
+         ret = -errno;
++        g_free(info);
+         error_report("vfio: hot reset info failed: %m");
++        return ret;
++    }
++
++    *info_p = info;
++    return 0;
++}
++
++static int vfio_pci_hot_reset(VFIOPCIDevice *vdev, bool single)
++{
++    VFIOGroup *group;
++    struct vfio_pci_hot_reset_info *info = NULL;
++    struct vfio_pci_dependent_device *devices;
++    struct vfio_pci_hot_reset *reset;
++    int32_t *fds;
++    int ret, i, count;
++    bool multi = false;
++
++    trace_vfio_pci_hot_reset(vdev->vbasedev.name, single ? "one" : "multi");
++
++    if (!single) {
++        vfio_pci_pre_reset(vdev);
++    }
++    vdev->vbasedev.needs_reset = false;
++
++    ret = vfio_pci_get_pci_hot_reset_info(vdev, &info);
++
++    if (ret) {
+         goto out_single;
+     }
++    devices = &info->devices[0];
+ 
+     trace_vfio_pci_hot_reset_has_dep_devices(vdev->vbasedev.name);
+ 
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index eb74d9de2d..3568a6135d 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -219,6 +219,9 @@ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr);
+ 
+ extern const PropertyInfo qdev_prop_nv_gpudirect_clique;
+ 
++int vfio_pci_get_pci_hot_reset_info(VFIOPCIDevice *vdev,
++                                    struct vfio_pci_hot_reset_info **info_p);
++
+ int vfio_populate_vga(VFIOPCIDevice *vdev, Error **errp);
+ 
+ int vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
+-- 
+2.39.3
+

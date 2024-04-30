@@ -1,0 +1,58 @@
+From 1ee3f919a51135a0798a14c734ca80d74d30025d Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Mon, 4 Dec 2023 11:42:57 -0500
+Subject: [PATCH 078/101] virtio-scsi: don't lock AioContext around
+ virtio_queue_aio_attach_host_notifier()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [9/26] 5e1179e617d05bf765b285ba42393ec1ddbeba28 (kmwolf/centos-qemu-kvm)
+
+virtio_queue_aio_attach_host_notifier() does not require the AioContext
+lock. Stop taking the lock and add an explicit smp_wmb() because we were
+relying on the implicit barrier in the AioContext lock before.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20231204164259.1515217-3-stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/virtio-scsi-dataplane.c | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/hw/scsi/virtio-scsi-dataplane.c b/hw/scsi/virtio-scsi-dataplane.c
+index 1e684beebe..135e23fe54 100644
+--- a/hw/scsi/virtio-scsi-dataplane.c
++++ b/hw/scsi/virtio-scsi-dataplane.c
+@@ -149,23 +149,17 @@ int virtio_scsi_dataplane_start(VirtIODevice *vdev)
+ 
+     memory_region_transaction_commit();
+ 
+-    /*
+-     * These fields are visible to the IOThread so we rely on implicit barriers
+-     * in aio_context_acquire() on the write side and aio_notify_accept() on
+-     * the read side.
+-     */
+     s->dataplane_starting = false;
+     s->dataplane_started = true;
++    smp_wmb(); /* paired with aio_notify_accept() */
+ 
+     if (s->bus.drain_count == 0) {
+-        aio_context_acquire(s->ctx);
+         virtio_queue_aio_attach_host_notifier(vs->ctrl_vq, s->ctx);
+         virtio_queue_aio_attach_host_notifier_no_poll(vs->event_vq, s->ctx);
+ 
+         for (i = 0; i < vs->conf.num_queues; i++) {
+             virtio_queue_aio_attach_host_notifier(vs->cmd_vqs[i], s->ctx);
+         }
+-        aio_context_release(s->ctx);
+     }
+     return 0;
+ 
+-- 
+2.39.3
+

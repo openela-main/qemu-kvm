@@ -1,0 +1,133 @@
+From 65d58819ff7b012e43b5f1da1356b559d3f5a962 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 14 Mar 2024 17:58:25 +0100
+Subject: [PATCH 3/4] iotests: Add test for reset/AioContext switches with NBD
+ exports
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 231: Fix deadlock and crash during storage migration
+RH-Jira: RHEL-28125
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/3] 7266acdf85271d157497bfe452aa6eeb58fbe7c6 (kmwolf/centos-qemu-kvm)
+
+This replicates the scenario in which the bug was reported.
+Unfortunately this relies on actually executing a guest (so that the
+firmware initialises the virtio-blk device and moves it to its
+configured iothread), so this can't make use of the qtest accelerator
+like most other test cases. I tried to find a different easy way to
+trigger the bug, but couldn't find one.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20240314165825.40261-3-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e8fce34eccf68a32f4ecf2c6f121ff2ac383d6bf)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/tests/iothreads-nbd-export | 66 +++++++++++++++++++
+ .../tests/iothreads-nbd-export.out            | 19 ++++++
+ 2 files changed, 85 insertions(+)
+ create mode 100755 tests/qemu-iotests/tests/iothreads-nbd-export
+ create mode 100644 tests/qemu-iotests/tests/iothreads-nbd-export.out
+
+diff --git a/tests/qemu-iotests/tests/iothreads-nbd-export b/tests/qemu-iotests/tests/iothreads-nbd-export
+new file mode 100755
+index 0000000000..037260729c
+--- /dev/null
++++ b/tests/qemu-iotests/tests/iothreads-nbd-export
+@@ -0,0 +1,66 @@
++#!/usr/bin/env python3
++# group: rw quick
++#
++# Copyright (C) 2024 Red Hat, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++# Creator/Owner: Kevin Wolf <kwolf@redhat.com>
++
++import time
++import qemu
++import iotests
++
++iotests.script_initialize(supported_fmts=['qcow2'],
++                          supported_platforms=['linux'])
++
++with iotests.FilePath('disk1.img') as path, \
++     iotests.FilePath('nbd.sock', base_dir=iotests.sock_dir) as nbd_sock, \
++     qemu.machine.QEMUMachine(iotests.qemu_prog) as vm:
++
++    img_size = '10M'
++
++    iotests.log('Preparing disk...')
++    iotests.qemu_img_create('-f', iotests.imgfmt, path, img_size)
++    vm.add_args('-blockdev', f'file,node-name=disk-file,filename={path}')
++    vm.add_args('-blockdev', 'qcow2,node-name=disk,file=disk-file')
++    vm.add_args('-object', 'iothread,id=iothread0')
++    vm.add_args('-device',
++                'virtio-blk,drive=disk,iothread=iothread0,share-rw=on')
++
++    iotests.log('Launching VM...')
++    vm.add_args('-accel', 'kvm', '-accel', 'tcg')
++    #vm.add_args('-accel', 'qtest')
++    vm.launch()
++
++    iotests.log('Exporting to NBD...')
++    iotests.log(vm.qmp('nbd-server-start',
++                       addr={'type': 'unix', 'data': {'path': nbd_sock}}))
++    iotests.log(vm.qmp('block-export-add', type='nbd', id='exp0',
++                       node_name='disk', writable=True))
++
++    iotests.log('Connecting qemu-img...')
++    qemu_io = iotests.QemuIoInteractive('-f', 'raw',
++                                        f'nbd+unix:///disk?socket={nbd_sock}')
++
++    iotests.log('Moving the NBD export to a different iothread...')
++    for i in range(0, 10):
++        iotests.log(vm.qmp('system_reset'))
++        time.sleep(0.1)
++
++    iotests.log('Checking that it is still alive...')
++    iotests.log(vm.qmp('query-status'))
++
++    qemu_io.close()
++    vm.shutdown()
+diff --git a/tests/qemu-iotests/tests/iothreads-nbd-export.out b/tests/qemu-iotests/tests/iothreads-nbd-export.out
+new file mode 100644
+index 0000000000..bc514e35e5
+--- /dev/null
++++ b/tests/qemu-iotests/tests/iothreads-nbd-export.out
+@@ -0,0 +1,19 @@
++Preparing disk...
++Launching VM...
++Exporting to NBD...
++{"return": {}}
++{"return": {}}
++Connecting qemu-img...
++Moving the NBD export to a different iothread...
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++{"return": {}}
++Checking that it is still alive...
++{"return": {"running": true, "status": "running"}}
+-- 
+2.39.3
+

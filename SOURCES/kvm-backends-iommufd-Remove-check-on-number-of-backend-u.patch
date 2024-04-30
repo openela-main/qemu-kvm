@@ -1,0 +1,47 @@
+From da9a24793e876f6f2727d57f939d882be26a47b8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Fri, 22 Dec 2023 08:55:23 +0100
+Subject: [PATCH 064/101] backends/iommufd: Remove check on number of backend
+ users
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [63/67] ac4d4589d1f2de5ac3f0adfd8d1f27dbf6bbfdee (eauger1/centos-qemu-kvm)
+
+QOM already has a ref count on objects and it will assert much
+earlier, when INT_MAX is reached.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c2ab3a6f7411c895e538e8350fee8948ac07c1a0)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index ba58a0eb0d..393c0d9a37 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -80,11 +80,6 @@ int iommufd_backend_connect(IOMMUFDBackend *be, Error **errp)
+     int fd, ret = 0;
+ 
+     qemu_mutex_lock(&be->lock);
+-    if (be->users == UINT32_MAX) {
+-        error_setg(errp, "too many connections");
+-        ret = -E2BIG;
+-        goto out;
+-    }
+     if (be->owned && !be->users) {
+         fd = qemu_open_old("/dev/iommu", O_RDWR);
+         if (fd < 0) {
+-- 
+2.39.3
+

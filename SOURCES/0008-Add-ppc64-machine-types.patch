@@ -1,4 +1,4 @@
-From 401d0ebf1ee959fd944df6b5b4ae9c51c36d1244 Mon Sep 17 00:00:00 2001
+From d03cff85f5f1b69b1a66011ebaa974ece81d31bc Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 19 Oct 2018 13:27:13 +0200
 Subject: Add ppc64 machine types
@@ -20,7 +20,7 @@ Merged patches (6.1.0):
 - af69d1ca6e Remove RHEL 7.4.0 machine types (only ppc64 changes)
 - 8f7a74ab78 Remove RHEL 7.5.0 machine types (only ppc64 changes)
 
-Merged patches (7.1.0 rc0):
+Merged patches (7.1.0):
 - baa6790171 target/ppc/cpu-models: Fix ppc_cpu_aliases list for RHEL
 ---
  hw/ppc/spapr.c          | 243 ++++++++++++++++++++++++++++++++++++++++
@@ -34,10 +34,10 @@ Merged patches (7.1.0 rc0):
  8 files changed, 314 insertions(+), 1 deletion(-)
 
 diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
-index 4921198b9d..e24b3e22e3 100644
+index df09aa9d6a..ff459e1a46 100644
 --- a/hw/ppc/spapr.c
 +++ b/hw/ppc/spapr.c
-@@ -1634,6 +1634,9 @@ static void spapr_machine_reset(MachineState *machine, ShutdownCause reason)
+@@ -1689,6 +1689,9 @@ static void spapr_machine_reset(MachineState *machine, ShutdownCause reason)
  
      pef_kvm_reset(machine->cgs, &error_fatal);
      spapr_caps_apply(spapr);
@@ -47,7 +47,7 @@ index 4921198b9d..e24b3e22e3 100644
  
      first_ppc_cpu = POWERPC_CPU(first_cpu);
      if (kvm_enabled() && kvmppc_has_cap_mmu_radix() &&
-@@ -3348,6 +3351,20 @@ static void spapr_set_host_serial(Object *obj, const char *value, Error **errp)
+@@ -3397,6 +3400,20 @@ static void spapr_set_host_serial(Object *obj, const char *value, Error **errp)
      spapr->host_serial = g_strdup(value);
  }
  
@@ -68,7 +68,7 @@ index 4921198b9d..e24b3e22e3 100644
  static void spapr_instance_init(Object *obj)
  {
      SpaprMachineState *spapr = SPAPR_MACHINE(obj);
-@@ -3426,6 +3443,12 @@ static void spapr_instance_init(Object *obj)
+@@ -3475,6 +3492,12 @@ static void spapr_instance_init(Object *obj)
          spapr_get_host_serial, spapr_set_host_serial);
      object_property_set_description(obj, "host-serial",
          "Host serial number to advertise in guest device tree");
@@ -81,7 +81,7 @@ index 4921198b9d..e24b3e22e3 100644
  }
  
  static void spapr_machine_finalizefn(Object *obj)
-@@ -4683,6 +4706,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
+@@ -4734,6 +4757,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
      vmc->client_architecture_support = spapr_vof_client_architecture_support;
      vmc->quiesce = spapr_vof_quiesce;
      vmc->setprop = spapr_vof_setprop;
@@ -89,15 +89,15 @@ index 4921198b9d..e24b3e22e3 100644
  }
  
  static const TypeInfo spapr_machine_info = {
-@@ -4734,6 +4758,7 @@ static void spapr_machine_latest_class_options(MachineClass *mc)
+@@ -4785,6 +4809,7 @@ static void spapr_machine_latest_class_options(MachineClass *mc)
      }                                                                \
      type_init(spapr_machine_register_##suffix)
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
  /*
-  * pseries-8.0
+  * pseries-8.2
   */
-@@ -4894,6 +4919,7 @@ static void spapr_machine_4_1_class_options(MachineClass *mc)
+@@ -4967,6 +4992,7 @@ static void spapr_machine_4_1_class_options(MachineClass *mc)
  }
  
  DEFINE_SPAPR_MACHINE(4_1, "4.1", false);
@@ -105,8 +105,8 @@ index 4921198b9d..e24b3e22e3 100644
  
  /*
   * pseries-4.0
-@@ -4913,6 +4939,8 @@ static bool phb_placement_4_0(SpaprMachineState *spapr, uint32_t index,
-     *nv2atsd = 0;
+@@ -4982,6 +5008,8 @@ static bool phb_placement_4_0(SpaprMachineState *spapr, uint32_t index,
+     }
      return true;
  }
 +
@@ -114,7 +114,7 @@ index 4921198b9d..e24b3e22e3 100644
  static void spapr_machine_4_0_class_options(MachineClass *mc)
  {
      SpaprMachineClass *smc = SPAPR_MACHINE_CLASS(mc);
-@@ -5240,6 +5268,221 @@ static void spapr_machine_2_1_class_options(MachineClass *mc)
+@@ -5306,6 +5334,221 @@ static void spapr_machine_2_1_class_options(MachineClass *mc)
      compat_props_add(mc->compat_props, hw_compat_2_1, hw_compat_2_1_len);
  }
  DEFINE_SPAPR_MACHINE(2_1, "2.1", false);
@@ -337,7 +337,7 @@ index 4921198b9d..e24b3e22e3 100644
  static void spapr_machine_register_types(void)
  {
 diff --git a/hw/ppc/spapr_cpu_core.c b/hw/ppc/spapr_cpu_core.c
-index fcb5dfe792..ab8fb5bf62 100644
+index 33e0c8724c..9d01663f43 100644
 --- a/hw/ppc/spapr_cpu_core.c
 +++ b/hw/ppc/spapr_cpu_core.c
 @@ -25,6 +25,7 @@
@@ -348,7 +348,7 @@ index fcb5dfe792..ab8fb5bf62 100644
  
  static void spapr_reset_vcpu(PowerPCCPU *cpu)
  {
-@@ -259,6 +260,7 @@ static bool spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
+@@ -261,6 +262,7 @@ static bool spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
  {
      CPUPPCState *env = &cpu->env;
      CPUState *cs = CPU(cpu);
@@ -356,7 +356,7 @@ index fcb5dfe792..ab8fb5bf62 100644
  
      if (!qdev_realize(DEVICE(cpu), NULL, errp)) {
          return false;
-@@ -270,6 +272,17 @@ static bool spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
+@@ -277,6 +279,17 @@ static bool spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
      /* Set time-base frequency to 512 MHz. vhyp must be set first. */
      cpu_ppc_tb_init(env, SPAPR_TIMEBASE_FREQ);
  
@@ -375,10 +375,10 @@ index fcb5dfe792..ab8fb5bf62 100644
          qdev_unrealize(DEVICE(cpu));
          return false;
 diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
-index 5c8aabd444..04489d5808 100644
+index e91791a1a9..1951d8a2a0 100644
 --- a/include/hw/ppc/spapr.h
 +++ b/include/hw/ppc/spapr.h
-@@ -155,6 +155,7 @@ struct SpaprMachineClass {
+@@ -154,6 +154,7 @@ struct SpaprMachineClass {
      bool pre_5_2_numa_associativity;
      bool pre_6_2_numa_affinity;
  
@@ -386,7 +386,7 @@ index 5c8aabd444..04489d5808 100644
      bool (*phb_placement)(SpaprMachineState *spapr, uint32_t index,
                            uint64_t *buid, hwaddr *pio,
                            hwaddr *mmio32, hwaddr *mmio64,
-@@ -257,6 +258,9 @@ struct SpaprMachineState {
+@@ -256,6 +257,9 @@ struct SpaprMachineState {
      /* Set by -boot */
      char *boot_device;
  
@@ -397,7 +397,7 @@ index 5c8aabd444..04489d5808 100644
      char *kvm_type;
      char *host_model;
 diff --git a/target/ppc/compat.c b/target/ppc/compat.c
-index 7949a24f5a..f207a9ba01 100644
+index ebef2cccec..ff2c00c60e 100644
 --- a/target/ppc/compat.c
 +++ b/target/ppc/compat.c
 @@ -114,8 +114,19 @@ static const CompatInfo *compat_by_pvr(uint32_t pvr)
@@ -422,10 +422,10 @@ index 7949a24f5a..f207a9ba01 100644
      const CompatInfo *compat = compat_by_pvr(compat_pvr);
      const CompatInfo *min = compat_by_pvr(min_compat_pvr);
 diff --git a/target/ppc/cpu-models.c b/target/ppc/cpu-models.c
-index cd3ff700ac..1cb49c8087 100644
+index 69fddb05bc..64a05aaef3 100644
 --- a/target/ppc/cpu-models.c
 +++ b/target/ppc/cpu-models.c
-@@ -746,6 +746,7 @@
+@@ -748,6 +748,7 @@
  /* PowerPC CPU aliases                                                     */
  
  PowerPCCPUAlias ppc_cpu_aliases[] = {
@@ -434,10 +434,10 @@ index cd3ff700ac..1cb49c8087 100644
      { "405cr", "405crc" },
      { "405gp", "405gpd" },
 diff --git a/target/ppc/cpu.h b/target/ppc/cpu.h
-index 557d736dab..6646ec1c27 100644
+index f8101ffa29..e799a2bee6 100644
 --- a/target/ppc/cpu.h
 +++ b/target/ppc/cpu.h
-@@ -1482,6 +1482,7 @@ static inline int cpu_mmu_index(CPUPPCState *env, bool ifetch)
+@@ -1635,6 +1635,7 @@ static inline int cpu_mmu_index(CPUPPCState *env, bool ifetch)
  
  /* Compatibility modes */
  #if defined(TARGET_PPC64)
@@ -446,18 +446,18 @@ index 557d736dab..6646ec1c27 100644
                        uint32_t min_compat_pvr, uint32_t max_compat_pvr);
  bool ppc_type_check_compat(const char *cputype, uint32_t compat_pvr,
 diff --git a/target/ppc/kvm.c b/target/ppc/kvm.c
-index 78f6fc50cd..68d06c3f8f 100644
+index 9b1abe2fc4..56f1c46e8e 100644
 --- a/target/ppc/kvm.c
 +++ b/target/ppc/kvm.c
-@@ -88,6 +88,7 @@ static int cap_ppc_nested_kvm_hv;
- static int cap_large_decr;
+@@ -89,6 +89,7 @@ static int cap_large_decr;
  static int cap_fwnmi;
  static int cap_rpt_invalidate;
+ static int cap_ail_mode_3;
 +static int cap_ppc_secure_guest;
  
  static uint32_t debug_inst_opcode;
  
-@@ -135,6 +136,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
+@@ -141,6 +142,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
      cap_resize_hpt = kvm_vm_check_extension(s, KVM_CAP_SPAPR_RESIZE_HPT);
      kvmppc_get_cpu_characteristics(s);
      cap_ppc_nested_kvm_hv = kvm_vm_check_extension(s, KVM_CAP_PPC_NESTED_HV);
@@ -465,8 +465,8 @@ index 78f6fc50cd..68d06c3f8f 100644
      cap_large_decr = kvmppc_get_dec_bits();
      cap_fwnmi = kvm_vm_check_extension(s, KVM_CAP_PPC_FWNMI);
      /*
-@@ -2569,6 +2571,16 @@ int kvmppc_has_cap_rpt_invalidate(void)
-     return cap_rpt_invalidate;
+@@ -2579,6 +2581,16 @@ bool kvmppc_supports_ail_3(void)
+     return cap_ail_mode_3;
  }
  
 +bool kvmppc_has_cap_secure_guest(void)
@@ -482,7 +482,7 @@ index 78f6fc50cd..68d06c3f8f 100644
  PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)
  {
      uint32_t host_pvr = mfpvr();
-@@ -2969,3 +2981,18 @@ bool kvm_arch_cpu_check_are_resettable(void)
+@@ -2979,3 +2991,18 @@ bool kvm_arch_cpu_check_are_resettable(void)
  void kvm_arch_accel_class_init(ObjectClass *oc)
  {
  }
@@ -502,27 +502,27 @@ index 78f6fc50cd..68d06c3f8f 100644
 +    }
 +}
 diff --git a/target/ppc/kvm_ppc.h b/target/ppc/kvm_ppc.h
-index 5fd9753953..b5ebfe2be0 100644
+index 1975fb5ee6..d1017f98be 100644
 --- a/target/ppc/kvm_ppc.h
 +++ b/target/ppc/kvm_ppc.h
-@@ -43,6 +43,7 @@ int kvmppc_booke_watchdog_enable(PowerPCCPU *cpu);
+@@ -46,6 +46,7 @@ int kvmppc_booke_watchdog_enable(PowerPCCPU *cpu);
  target_ulong kvmppc_configure_v3_mmu(PowerPCCPU *cpu,
                                       bool radix, bool gtse,
                                       uint64_t proc_tbl);
 +void kvmppc_svm_allow(Error **errp);
- #ifndef CONFIG_USER_ONLY
  bool kvmppc_spapr_use_multitce(void);
  int kvmppc_spapr_enable_inkernel_multitce(void);
-@@ -77,6 +78,8 @@ int kvmppc_get_cap_large_decr(void);
- int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable);
+ void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t page_shift,
+@@ -79,6 +80,8 @@ int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable);
  int kvmppc_has_cap_rpt_invalidate(void);
+ bool kvmppc_supports_ail_3(void);
  int kvmppc_enable_hwrng(void);
 +bool kvmppc_has_cap_secure_guest(void);
 +int kvmppc_enable_cap_secure_guest(void);
  int kvmppc_put_books_sregs(PowerPCCPU *cpu);
  PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void);
  void kvmppc_check_papr_resize_hpt(Error **errp);
-@@ -396,6 +399,16 @@ static inline int kvmppc_has_cap_rpt_invalidate(void)
+@@ -427,6 +430,16 @@ static inline bool kvmppc_supports_ail_3(void)
      return false;
  }
  
@@ -540,5 +540,5 @@ index 5fd9753953..b5ebfe2be0 100644
  {
      return -1;
 -- 
-2.39.1
+2.39.3
 

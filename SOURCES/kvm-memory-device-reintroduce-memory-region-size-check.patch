@@ -1,0 +1,112 @@
+From 633c6a52ac88526534466ae311522fe5447bcf91 Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Wed, 17 Jan 2024 14:55:54 +0100
+Subject: [PATCH 02/22] memory-device: reintroduce memory region size check
+
+RH-Author: David Hildenbrand <david@redhat.com>
+RH-MergeRequest: 221: memory-device: reintroduce memory region size check
+RH-Jira: RHEL-20341
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Commit: [2/2] e9ff2339b0c07c3f48f5834c9c80cd6d4cbc8f71
+
+JIRA: https://issues.redhat.com/browse/RHEL-20341
+
+We used to check that the memory region size is multiples of the overall
+requested address alignment for the device memory address.
+
+We removed that check, because there are cases (i.e., hv-balloon) where
+devices unconditionally request an address alignment that has a very large
+alignment (i.e., 32 GiB), but the actual memory device size might not be
+multiples of that alignment.
+
+However, this change:
+
+(a) allows for some practically impossible DIMM sizes, like "1GB+1 byte".
+(b) allows for DIMMs that partially cover hugetlb pages, previously
+    reported in [1].
+
+Both scenarios don't make any sense: we might even waste memory.
+
+So let's reintroduce that check, but only check that the
+memory region size is multiples of the memory region alignment (i.e.,
+page size, huge page size), but not any additional memory device
+requirements communicated using md->get_min_alignment().
+
+The following examples now fail again as expected:
+
+(a) 1M with 2M THP
+ qemu-system-x86_64 -m 4g,maxmem=16g,slots=1 -S -nodefaults -nographic \
+                     -object memory-backend-ram,id=mem1,size=1M \
+                     -device pc-dimm,id=dimm1,memdev=mem1
+ -> backend memory size must be multiple of 0x200000
+
+(b) 1G+1byte
+
+ qemu-system-x86_64 -m 4g,maxmem=16g,slots=1 -S -nodefaults -nographic \
+                   -object memory-backend-ram,id=mem1,size=1073741825B \
+                   -device pc-dimm,id=dimm1,memdev=mem1
+ -> backend memory size must be multiple of 0x200000
+
+(c) Unliagned hugetlb size (2M)
+
+ qemu-system-x86_64 -m 4g,maxmem=16g,slots=1 -S -nodefaults -nographic \
+                   -object memory-backend-file,id=mem1,mem-path=/dev/hugepages/tmp,size=511M \
+                   -device pc-dimm,id=dimm1,memdev=mem1
+ backend memory size must be multiple of 0x200000
+
+(d) Unliagned hugetlb size (1G)
+
+ qemu-system-x86_64 -m 4g,maxmem=16g,slots=1 -S -nodefaults -nographic \
+                    -object memory-backend-file,id=mem1,mem-path=/dev/hugepages1G/tmp,size=2047M \
+                    -device pc-dimm,id=dimm1,memdev=mem1
+ -> backend memory size must be multiple of 0x40000000
+
+Note that this fix depends on a hv-balloon change to communicate its
+additional alignment requirements using get_min_alignment() instead of
+through the memory region.
+
+[1] https://lkml.kernel.org/r/f77d641d500324525ac036fe1827b3070de75fc1.1701088320.git.mprivozn@redhat.com
+
+Message-ID: <20240117135554.787344-3-david@redhat.com>
+Reported-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Reported-by: Michal Privoznik <mprivozn@redhat.com>
+Fixes: eb1b7c4bd413 ("memory-device: Drop size alignment check")
+Tested-by: Zhenyu Zhang <zhenyzha@redhat.com>
+Tested-by: Mario Casquero <mcasquer@redhat.com>
+Reviewed-by: Maciej S. Szmigiero <maciej.szmigiero@oracle.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 540a1abbf0b243e4cfb4333c5d30a041f7080ba4)
+Signed-off-by: David Hildenbrand <david@redhat.com>
+---
+ hw/mem/memory-device.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/hw/mem/memory-device.c b/hw/mem/memory-device.c
+index a1b1af26bc..e098585cda 100644
+--- a/hw/mem/memory-device.c
++++ b/hw/mem/memory-device.c
+@@ -374,6 +374,20 @@ void memory_device_pre_plug(MemoryDeviceState *md, MachineState *ms,
+         goto out;
+     }
+ 
++    /*
++     * We always want the memory region size to be multiples of the memory
++     * region alignment: for example, DIMMs with 1G+1byte size don't make
++     * any sense. Note that we don't check that the size is multiples
++     * of any additional alignment requirements the memory device might
++     * have when it comes to the address in physical address space.
++     */
++    if (!QEMU_IS_ALIGNED(memory_region_size(mr),
++                         memory_region_get_alignment(mr))) {
++        error_setg(errp, "backend memory size must be multiple of 0x%"
++                   PRIx64, memory_region_get_alignment(mr));
++        return;
++    }
++
+     if (legacy_align) {
+         align = *legacy_align;
+     } else {
+-- 
+2.39.3
+

@@ -1,0 +1,106 @@
+From 64b0180f5a52668f8ac4c444ba369231dbc4d5b9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 22 Jan 2024 09:25:53 +0100
+Subject: [PATCH 096/101] s390x/pci: avoid double enable/disable of aif
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 215: s390x: Fix reset ordering of passthrough ISM devices
+RH-Jira: RHEL-21169
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/3] ebdf8a474ea21486f5ec051683f17bae6d20f675 (clegoate/qemu-kvm-c9s)
+
+JIRA: https://issues.redhat.com/browse/RHEL-21169
+
+commit 07b2c8e034d80ff92e202405c494d2ff80fcf848
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Thu Jan 18 13:51:49 2024 -0500
+
+    s390x/pci: avoid double enable/disable of aif
+
+    Use a flag to keep track of whether AIF is currently enabled.  This can be
+    used to avoid enabling/disabling AIF multiple times as well as to determine
+    whether or not it should be disabled during reset processing.
+
+    Fixes: d0bc7091c2 ("s390x/pci: enable adapter event notification for interpreted devices")
+    Reported-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Message-ID: <20240118185151.265329-2-mjrosato@linux.ibm.com>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/s390x/s390-pci-kvm.c         | 25 +++++++++++++++++++++++--
+ include/hw/s390x/s390-pci-bus.h |  1 +
+ 2 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/hw/s390x/s390-pci-kvm.c b/hw/s390x/s390-pci-kvm.c
+index ff41e4106d..1ee510436c 100644
+--- a/hw/s390x/s390-pci-kvm.c
++++ b/hw/s390x/s390-pci-kvm.c
+@@ -27,6 +27,7 @@ bool s390_pci_kvm_interp_allowed(void)
+ 
+ int s390_pci_kvm_aif_enable(S390PCIBusDevice *pbdev, ZpciFib *fib, bool assist)
+ {
++    int rc;
+     struct kvm_s390_zpci_op args = {
+         .fh = pbdev->fh,
+         .op = KVM_S390_ZPCIOP_REG_AEN,
+@@ -38,15 +39,35 @@ int s390_pci_kvm_aif_enable(S390PCIBusDevice *pbdev, ZpciFib *fib, bool assist)
+         .u.reg_aen.flags = (assist) ? 0 : KVM_S390_ZPCIOP_REGAEN_HOST
+     };
+ 
+-    return kvm_vm_ioctl(kvm_state, KVM_S390_ZPCI_OP, &args);
++    if (pbdev->aif) {
++        return -EINVAL;
++    }
++
++    rc = kvm_vm_ioctl(kvm_state, KVM_S390_ZPCI_OP, &args);
++    if (rc == 0) {
++        pbdev->aif = true;
++    }
++
++    return rc;
+ }
+ 
+ int s390_pci_kvm_aif_disable(S390PCIBusDevice *pbdev)
+ {
++    int rc;
++
+     struct kvm_s390_zpci_op args = {
+         .fh = pbdev->fh,
+         .op = KVM_S390_ZPCIOP_DEREG_AEN
+     };
+ 
+-    return kvm_vm_ioctl(kvm_state, KVM_S390_ZPCI_OP, &args);
++    if (!pbdev->aif) {
++        return -EINVAL;
++    }
++
++    rc = kvm_vm_ioctl(kvm_state, KVM_S390_ZPCI_OP, &args);
++    if (rc == 0) {
++        pbdev->aif = false;
++    }
++
++    return rc;
+ }
+diff --git a/include/hw/s390x/s390-pci-bus.h b/include/hw/s390x/s390-pci-bus.h
+index b1bdbeaeb5..435e788867 100644
+--- a/include/hw/s390x/s390-pci-bus.h
++++ b/include/hw/s390x/s390-pci-bus.h
+@@ -361,6 +361,7 @@ struct S390PCIBusDevice {
+     bool unplug_requested;
+     bool interp;
+     bool forwarding_assist;
++    bool aif;
+     QTAILQ_ENTRY(S390PCIBusDevice) link;
+ };
+ 
+-- 
+2.39.3
+

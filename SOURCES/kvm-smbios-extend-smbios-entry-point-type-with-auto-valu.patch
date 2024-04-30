@@ -1,0 +1,48 @@
+From c083959c963fde33f4769fd4c6e122dd16ce6d3c Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Wed, 21 Feb 2024 16:04:36 +0100
+Subject: [PATCH 17/20] smbios: extend smbios-entry-point-type with 'auto'
+ value
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [15/18] 202563dcf77e062a238aa2a10ec14c25d3f5a7d0
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+later patches will use it to pick SMBIOS version at runtime
+depending on configuration.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Ani Sinha <anisinha@redhat.com>
+Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+---
+ qapi/machine.json | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/qapi/machine.json b/qapi/machine.json
+index b6d634b30d..99f6368fa6 100644
+--- a/qapi/machine.json
++++ b/qapi/machine.json
+@@ -1788,10 +1788,13 @@
+ #
+ # @64: SMBIOS version 3.0 (64-bit) Entry Point
+ #
++# @auto: Either 2.x or 3.x SMBIOS version, 2.x if configuration can be
++#     described by it and 3.x otherwise (since: 9.0)
++#
+ # Since: 7.0
+ ##
+ { 'enum': 'SmbiosEntryPointType',
+-  'data': [ '32', '64' ] }
++  'data': [ '32', '64', 'auto' ] }
+ 
+ ##
+ # @MemorySizeConfiguration:
+-- 
+2.39.3
+

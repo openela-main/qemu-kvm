@@ -1,0 +1,177 @@
+From d54e88103aa76f3bf755b3f4308d8ab60367c6ef Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 14 Sep 2023 10:00:59 -0400
+Subject: [PATCH 074/101] virtio-blk: add lock to protect s->rq
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [5/26] 17dcd5ba18c03e5633a014d8d62d34d8dd7b43bf (kmwolf/centos-qemu-kvm)
+
+s->rq is accessed from IO_CODE and GLOBAL_STATE_CODE. Introduce a lock
+to protect s->rq and eliminate reliance on the AioContext lock.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20230914140101.1065008-3-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/block/virtio-blk.c          | 67 +++++++++++++++++++++++-----------
+ include/hw/virtio/virtio-blk.h |  3 +-
+ 2 files changed, 47 insertions(+), 23 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index a1f8e15522..ee38e089bc 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -82,8 +82,11 @@ static int virtio_blk_handle_rw_error(VirtIOBlockReq *req, int error,
+         /* Break the link as the next request is going to be parsed from the
+          * ring again. Otherwise we may end up doing a double completion! */
+         req->mr_next = NULL;
+-        req->next = s->rq;
+-        s->rq = req;
++
++        WITH_QEMU_LOCK_GUARD(&s->rq_lock) {
++            req->next = s->rq;
++            s->rq = req;
++        }
+     } else if (action == BLOCK_ERROR_ACTION_REPORT) {
+         virtio_blk_req_complete(req, VIRTIO_BLK_S_IOERR);
+         if (acct_failed) {
+@@ -1183,10 +1186,13 @@ static void virtio_blk_dma_restart_bh(void *opaque)
+ {
+     VirtIOBlock *s = opaque;
+ 
+-    VirtIOBlockReq *req = s->rq;
++    VirtIOBlockReq *req;
+     MultiReqBuffer mrb = {};
+ 
+-    s->rq = NULL;
++    WITH_QEMU_LOCK_GUARD(&s->rq_lock) {
++        req = s->rq;
++        s->rq = NULL;
++    }
+ 
+     aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     while (req) {
+@@ -1238,22 +1244,29 @@ static void virtio_blk_reset(VirtIODevice *vdev)
+     AioContext *ctx;
+     VirtIOBlockReq *req;
+ 
++    /* Dataplane has stopped... */
++    assert(!s->dataplane_started);
++
++    /* ...but requests may still be in flight. */
+     ctx = blk_get_aio_context(s->blk);
+     aio_context_acquire(ctx);
+     blk_drain(s->blk);
++    aio_context_release(ctx);
+ 
+     /* We drop queued requests after blk_drain() because blk_drain() itself can
+      * produce them. */
+-    while (s->rq) {
+-        req = s->rq;
+-        s->rq = req->next;
+-        virtqueue_detach_element(req->vq, &req->elem, 0);
+-        virtio_blk_free_request(req);
+-    }
++    WITH_QEMU_LOCK_GUARD(&s->rq_lock) {
++        while (s->rq) {
++            req = s->rq;
++            s->rq = req->next;
+ 
+-    aio_context_release(ctx);
++            /* No other threads can access req->vq here */
++            virtqueue_detach_element(req->vq, &req->elem, 0);
++
++            virtio_blk_free_request(req);
++        }
++    }
+ 
+-    assert(!s->dataplane_started);
+     blk_set_enable_write_cache(s->blk, s->original_wce);
+ }
+ 
+@@ -1443,18 +1456,22 @@ static void virtio_blk_set_status(VirtIODevice *vdev, uint8_t status)
+ static void virtio_blk_save_device(VirtIODevice *vdev, QEMUFile *f)
+ {
+     VirtIOBlock *s = VIRTIO_BLK(vdev);
+-    VirtIOBlockReq *req = s->rq;
+ 
+-    while (req) {
+-        qemu_put_sbyte(f, 1);
++    WITH_QEMU_LOCK_GUARD(&s->rq_lock) {
++        VirtIOBlockReq *req = s->rq;
+ 
+-        if (s->conf.num_queues > 1) {
+-            qemu_put_be32(f, virtio_get_queue_index(req->vq));
+-        }
++        while (req) {
++            qemu_put_sbyte(f, 1);
+ 
+-        qemu_put_virtqueue_element(vdev, f, &req->elem);
+-        req = req->next;
++            if (s->conf.num_queues > 1) {
++                qemu_put_be32(f, virtio_get_queue_index(req->vq));
++            }
++
++            qemu_put_virtqueue_element(vdev, f, &req->elem);
++            req = req->next;
++        }
+     }
++
+     qemu_put_sbyte(f, 0);
+ }
+ 
+@@ -1480,8 +1497,11 @@ static int virtio_blk_load_device(VirtIODevice *vdev, QEMUFile *f,
+ 
+         req = qemu_get_virtqueue_element(vdev, f, sizeof(VirtIOBlockReq));
+         virtio_blk_init_request(s, virtio_get_queue(vdev, vq_idx), req);
+-        req->next = s->rq;
+-        s->rq = req;
++
++        WITH_QEMU_LOCK_GUARD(&s->rq_lock) {
++            req->next = s->rq;
++            s->rq = req;
++        }
+     }
+ 
+     return 0;
+@@ -1628,6 +1648,8 @@ static void virtio_blk_device_realize(DeviceState *dev, Error **errp)
+                                             s->host_features);
+     virtio_init(vdev, VIRTIO_ID_BLOCK, s->config_size);
+ 
++    qemu_mutex_init(&s->rq_lock);
++
+     s->blk = conf->conf.blk;
+     s->rq = NULL;
+     s->sector_mask = (s->conf.conf.logical_block_size / BDRV_SECTOR_SIZE) - 1;
+@@ -1679,6 +1701,7 @@ static void virtio_blk_device_unrealize(DeviceState *dev)
+         virtio_del_queue(vdev, i);
+     }
+     qemu_coroutine_dec_pool_size(conf->num_queues * conf->queue_size / 2);
++    qemu_mutex_destroy(&s->rq_lock);
+     blk_ram_registrar_destroy(&s->blk_ram_registrar);
+     qemu_del_vm_change_state_handler(s->change);
+     blockdev_mark_auto_del(s->blk);
+diff --git a/include/hw/virtio/virtio-blk.h b/include/hw/virtio/virtio-blk.h
+index dafec432ce..9881009c22 100644
+--- a/include/hw/virtio/virtio-blk.h
++++ b/include/hw/virtio/virtio-blk.h
+@@ -54,7 +54,8 @@ struct VirtIOBlockReq;
+ struct VirtIOBlock {
+     VirtIODevice parent_obj;
+     BlockBackend *blk;
+-    void *rq;
++    QemuMutex rq_lock;
++    void *rq; /* protected by rq_lock */
+     VirtIOBlkConf conf;
+     unsigned short sector_mask;
+     bool original_wce;
+-- 
+2.39.3
+

@@ -1,0 +1,143 @@
+From 5b63e4595e106196ef922b7f762c8f4150d73979 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:19 +0100
+Subject: [PATCH 052/101] vfio/container: Introduce a VFIOIOMMU QOM interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [51/67] 7c06e2165efe94dcd203d44e422a7aa9fac9816c (eauger1/centos-qemu-kvm)
+
+VFIOContainerBase was not introduced as an abstract QOM object because
+it felt unnecessary to expose all the IOMMU backends to the QEMU
+machine and human interface. However, we can still abstract the IOMMU
+backend handlers using a QOM interface class. This provides more
+flexibility when referencing the various implementations.
+
+Simply transform the VFIOIOMMUOps struct in an InterfaceClass and do
+some initial name replacements. Next changes will start converting
+VFIOIOMMUOps.
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit fdaa774e67435a328c0e28006c4d749f2198294a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c                      |  2 +-
+ hw/vfio/container-base.c              | 12 +++++++++++-
+ hw/vfio/pci.c                         |  2 +-
+ include/hw/vfio/vfio-container-base.h | 23 +++++++++++++++++++----
+ 4 files changed, 32 insertions(+), 7 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 08a3e57672..49dab41566 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -1503,7 +1503,7 @@ retry:
+ int vfio_attach_device(char *name, VFIODevice *vbasedev,
+                        AddressSpace *as, Error **errp)
+ {
+-    const VFIOIOMMUOps *ops = &vfio_legacy_ops;
++    const VFIOIOMMUClass *ops = &vfio_legacy_ops;
+ 
+ #ifdef CONFIG_IOMMUFD
+     if (vbasedev->iommufd) {
+diff --git a/hw/vfio/container-base.c b/hw/vfio/container-base.c
+index 1ffd25bbfa..913ae49077 100644
+--- a/hw/vfio/container-base.c
++++ b/hw/vfio/container-base.c
+@@ -72,7 +72,7 @@ int vfio_container_query_dirty_bitmap(const VFIOContainerBase *bcontainer,
+ }
+ 
+ void vfio_container_init(VFIOContainerBase *bcontainer, VFIOAddressSpace *space,
+-                         const VFIOIOMMUOps *ops)
++                         const VFIOIOMMUClass *ops)
+ {
+     bcontainer->ops = ops;
+     bcontainer->space = space;
+@@ -99,3 +99,13 @@ void vfio_container_destroy(VFIOContainerBase *bcontainer)
+ 
+     g_list_free_full(bcontainer->iova_ranges, g_free);
+ }
++
++static const TypeInfo types[] = {
++    {
++        .name = TYPE_VFIO_IOMMU,
++        .parent = TYPE_INTERFACE,
++        .class_size = sizeof(VFIOIOMMUClass),
++    },
++};
++
++DEFINE_TYPES(types)
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 83c3238608..adb7c09367 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2491,7 +2491,7 @@ int vfio_pci_get_pci_hot_reset_info(VFIOPCIDevice *vdev,
+ static int vfio_pci_hot_reset(VFIOPCIDevice *vdev, bool single)
+ {
+     VFIODevice *vbasedev = &vdev->vbasedev;
+-    const VFIOIOMMUOps *ops = vbasedev->bcontainer->ops;
++    const VFIOIOMMUClass *ops = vbasedev->bcontainer->ops;
+ 
+     return ops->pci_hot_reset(vbasedev, single);
+ }
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index 5c9594b6c7..d6147b4aee 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -16,7 +16,8 @@
+ #include "exec/memory.h"
+ 
+ typedef struct VFIODevice VFIODevice;
+-typedef struct VFIOIOMMUOps VFIOIOMMUOps;
++typedef struct VFIOIOMMUClass VFIOIOMMUClass;
++#define VFIOIOMMUOps VFIOIOMMUClass /* To remove */
+ 
+ typedef struct {
+     unsigned long *bitmap;
+@@ -34,7 +35,7 @@ typedef struct VFIOAddressSpace {
+  * This is the base object for vfio container backends
+  */
+ typedef struct VFIOContainerBase {
+-    const VFIOIOMMUOps *ops;
++    const VFIOIOMMUClass *ops;
+     VFIOAddressSpace *space;
+     MemoryListener listener;
+     Error *error;
+@@ -88,10 +89,24 @@ int vfio_container_query_dirty_bitmap(const VFIOContainerBase *bcontainer,
+ 
+ void vfio_container_init(VFIOContainerBase *bcontainer,
+                          VFIOAddressSpace *space,
+-                         const VFIOIOMMUOps *ops);
++                         const VFIOIOMMUClass *ops);
+ void vfio_container_destroy(VFIOContainerBase *bcontainer);
+ 
+-struct VFIOIOMMUOps {
++
++#define TYPE_VFIO_IOMMU "vfio-iommu"
++
++/*
++ * VFIOContainerBase is not an abstract QOM object because it felt
++ * unnecessary to expose all the IOMMU backends to the QEMU machine
++ * and human interface. However, we can still abstract the IOMMU
++ * backend handlers using a QOM interface class. This provides more
++ * flexibility when referencing the various implementations.
++ */
++DECLARE_CLASS_CHECKERS(VFIOIOMMUClass, VFIO_IOMMU, TYPE_VFIO_IOMMU)
++
++struct VFIOIOMMUClass {
++    InterfaceClass parent_class;
++
+     /* basic feature */
+     int (*dma_map)(const VFIOContainerBase *bcontainer,
+                    hwaddr iova, ram_addr_t size,
+-- 
+2.39.3
+

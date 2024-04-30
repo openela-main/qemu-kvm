@@ -1,0 +1,205 @@
+From cc8d794932e26df7c7f3c8cc0c1f42da8d52f12b Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 15 Jan 2024 10:26:52 +0100
+Subject: [PATCH 069/101] target/s390x/kvm/pv: Provide some more useful
+ information if decryption fails
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 213: s390x: Provide some more useful information if decryption of a PV image fails
+RH-Jira: RHEL-18212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/1] 4ffb61869f7df33e23d3e0ebf8c29e386e3f6cbc (thuth/qemu-kvm-cs9)
+
+JIRA: https://issues.redhat.com/browse/RHEL-18212
+
+commit 7af51621b16ae86646cc2dc9dee30de8176ff761
+Author: Thomas Huth <thuth@redhat.com>
+Date:   Wed Jan 10 15:29:16 2024 +0100
+
+    target/s390x/kvm/pv: Provide some more useful information if decryption fails
+
+    It's a common scenario to copy guest images from one host to another
+    to run the guest on the other machine. This (of course) does not work
+    with "secure execution" guests since they are encrypted with one certain
+    host key. However, if you still (accidentally) do it, you only get a
+    very user-unfriendly error message that looks like this:
+
+     qemu-system-s390x: KVM PV command 2 (KVM_PV_SET_SEC_PARMS) failed:
+      header rc 108 rrc 5 IOCTL rc: -22
+
+    Let's provide at least a somewhat nicer hint to the users so that they
+    are able to figure out what might have gone wrong.
+
+    Buglink: https://issues.redhat.com/browse/RHEL-18212
+    Message-ID: <20240110142916.850605-1-thuth@redhat.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Reviewed-by: Cédric Le Goater <clg@redhat.com>
+    Reviewed-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/ipl.c             |  5 ++---
+ hw/s390x/ipl.h             |  2 +-
+ hw/s390x/s390-virtio-ccw.c |  5 ++++-
+ target/s390x/kvm/pv.c      | 25 ++++++++++++++++++++-----
+ target/s390x/kvm/pv.h      |  5 +++--
+ 5 files changed, 30 insertions(+), 12 deletions(-)
+
+diff --git a/hw/s390x/ipl.c b/hw/s390x/ipl.c
+index 515dcf51b5..b23a6a0ef3 100644
+--- a/hw/s390x/ipl.c
++++ b/hw/s390x/ipl.c
+@@ -703,7 +703,7 @@ static void s390_ipl_prepare_qipl(S390CPU *cpu)
+     cpu_physical_memory_unmap(addr, len, 1, len);
+ }
+ 
+-int s390_ipl_prepare_pv_header(void)
++int s390_ipl_prepare_pv_header(Error **errp)
+ {
+     IplParameterBlock *ipib = s390_ipl_get_iplb_pv();
+     IPLBlockPV *ipib_pv = &ipib->pv;
+@@ -712,8 +712,7 @@ int s390_ipl_prepare_pv_header(void)
+ 
+     cpu_physical_memory_read(ipib_pv->pv_header_addr, hdr,
+                              ipib_pv->pv_header_len);
+-    rc = s390_pv_set_sec_parms((uintptr_t)hdr,
+-                               ipib_pv->pv_header_len);
++    rc = s390_pv_set_sec_parms((uintptr_t)hdr, ipib_pv->pv_header_len, errp);
+     g_free(hdr);
+     return rc;
+ }
+diff --git a/hw/s390x/ipl.h b/hw/s390x/ipl.h
+index 7fc86e7905..57cd125769 100644
+--- a/hw/s390x/ipl.h
++++ b/hw/s390x/ipl.h
+@@ -107,7 +107,7 @@ typedef union IplParameterBlock IplParameterBlock;
+ 
+ int s390_ipl_set_loadparm(uint8_t *loadparm);
+ void s390_ipl_update_diag308(IplParameterBlock *iplb);
+-int s390_ipl_prepare_pv_header(void);
++int s390_ipl_prepare_pv_header(Error **errp);
+ int s390_ipl_pv_unpack(void);
+ void s390_ipl_prepare_cpu(S390CPU *cpu);
+ IplParameterBlock *s390_ipl_get_iplb(void);
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 984891b82a..e26ce26f5a 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -391,7 +391,7 @@ static int s390_machine_protect(S390CcwMachineState *ms)
+     }
+ 
+     /* Set SE header and unpack */
+-    rc = s390_ipl_prepare_pv_header();
++    rc = s390_ipl_prepare_pv_header(&local_err);
+     if (rc) {
+         goto out_err;
+     }
+@@ -410,6 +410,9 @@ static int s390_machine_protect(S390CcwMachineState *ms)
+     return rc;
+ 
+ out_err:
++    if (local_err) {
++        error_report_err(local_err);
++    }
+     s390_machine_unprotect(ms);
+     return rc;
+ }
+diff --git a/target/s390x/kvm/pv.c b/target/s390x/kvm/pv.c
+index 6a69be7e5c..7ca7faec73 100644
+--- a/target/s390x/kvm/pv.c
++++ b/target/s390x/kvm/pv.c
+@@ -29,7 +29,8 @@ static bool info_valid;
+ static struct kvm_s390_pv_info_vm info_vm;
+ static struct kvm_s390_pv_info_dump info_dump;
+ 
+-static int __s390_pv_cmd(uint32_t cmd, const char *cmdname, void *data)
++static int __s390_pv_cmd(uint32_t cmd, const char *cmdname, void *data,
++                         int *pvrc)
+ {
+     struct kvm_pv_cmd pv_cmd = {
+         .cmd = cmd,
+@@ -46,6 +47,9 @@ static int __s390_pv_cmd(uint32_t cmd, const char *cmdname, void *data)
+                      "IOCTL rc: %d", cmd, cmdname, pv_cmd.rc, pv_cmd.rrc,
+                      rc);
+     }
++    if (pvrc) {
++        *pvrc = pv_cmd.rc;
++    }
+     return rc;
+ }
+ 
+@@ -53,12 +57,13 @@ static int __s390_pv_cmd(uint32_t cmd, const char *cmdname, void *data)
+  * This macro lets us pass the command as a string to the function so
+  * we can print it on an error.
+  */
+-#define s390_pv_cmd(cmd, data) __s390_pv_cmd(cmd, #cmd, data)
++#define s390_pv_cmd(cmd, data) __s390_pv_cmd(cmd, #cmd, data, NULL)
++#define s390_pv_cmd_pvrc(cmd, data, pvrc) __s390_pv_cmd(cmd, #cmd, data, pvrc)
+ #define s390_pv_cmd_exit(cmd, data)    \
+ {                                      \
+     int rc;                            \
+                                        \
+-    rc = __s390_pv_cmd(cmd, #cmd, data);\
++    rc = __s390_pv_cmd(cmd, #cmd, data, NULL); \
+     if (rc) {                          \
+         exit(1);                       \
+     }                                  \
+@@ -142,14 +147,24 @@ bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms)
+     return true;
+ }
+ 
+-int s390_pv_set_sec_parms(uint64_t origin, uint64_t length)
++int s390_pv_set_sec_parms(uint64_t origin, uint64_t length, Error **errp)
+ {
++    int ret, pvrc;
+     struct kvm_s390_pv_sec_parm args = {
+         .origin = origin,
+         .length = length,
+     };
+ 
+-    return s390_pv_cmd(KVM_PV_SET_SEC_PARMS, &args);
++    ret = s390_pv_cmd_pvrc(KVM_PV_SET_SEC_PARMS, &args, &pvrc);
++    if (ret) {
++        error_setg(errp, "Failed to set secure execution parameters");
++        if (pvrc == 0x108) {
++            error_append_hint(errp, "Please check whether the image is "
++                                    "correctly encrypted for this host\n");
++        }
++    }
++
++    return ret;
+ }
+ 
+ /*
+diff --git a/target/s390x/kvm/pv.h b/target/s390x/kvm/pv.h
+index 7b935e2246..5877d28ff1 100644
+--- a/target/s390x/kvm/pv.h
++++ b/target/s390x/kvm/pv.h
+@@ -42,7 +42,7 @@ int s390_pv_query_info(void);
+ int s390_pv_vm_enable(void);
+ void s390_pv_vm_disable(void);
+ bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms);
+-int s390_pv_set_sec_parms(uint64_t origin, uint64_t length);
++int s390_pv_set_sec_parms(uint64_t origin, uint64_t length, Error **errp);
+ int s390_pv_unpack(uint64_t addr, uint64_t size, uint64_t tweak);
+ void s390_pv_prep_reset(void);
+ int s390_pv_verify(void);
+@@ -62,7 +62,8 @@ static inline int s390_pv_query_info(void) { return 0; }
+ static inline int s390_pv_vm_enable(void) { return 0; }
+ static inline void s390_pv_vm_disable(void) {}
+ static inline bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms) { return false; }
+-static inline int s390_pv_set_sec_parms(uint64_t origin, uint64_t length) { return 0; }
++static inline int s390_pv_set_sec_parms(uint64_t origin, uint64_t length,
++                                        Error **errp) { return 0; }
+ static inline int s390_pv_unpack(uint64_t addr, uint64_t size, uint64_t tweak) { return 0; }
+ static inline void s390_pv_prep_reset(void) {}
+ static inline int s390_pv_verify(void) { return 0; }
+-- 
+2.39.3
+

@@ -1,0 +1,154 @@
+From f554328f6f4702743af71befcb83c25c36e4fa4d Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:25 +0800
+Subject: [PATCH 046/101] vfio: Introduce a helper function to initialize
+ VFIODevice
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [45/67] 73225f394540bf5aeb70c0bdb89771f19a6d286d (eauger1/centos-qemu-kvm)
+
+Introduce a helper function to replace the common code to initialize
+VFIODevice in pci, platform, ap and ccw VFIO device.
+
+No functional change intended.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 6106a329141af7d47bdc3346ce9820d4714e0e5d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ap.c                  |  8 ++------
+ hw/vfio/ccw.c                 |  8 ++------
+ hw/vfio/helpers.c             | 11 +++++++++++
+ hw/vfio/pci.c                 |  6 ++----
+ hw/vfio/platform.c            |  6 ++----
+ include/hw/vfio/vfio-common.h |  2 ++
+ 6 files changed, 21 insertions(+), 20 deletions(-)
+
+diff --git a/hw/vfio/ap.c b/hw/vfio/ap.c
+index 95fe7cd98b..e157aa1ff7 100644
+--- a/hw/vfio/ap.c
++++ b/hw/vfio/ap.c
+@@ -226,18 +226,14 @@ static void vfio_ap_instance_init(Object *obj)
+     VFIOAPDevice *vapdev = VFIO_AP_DEVICE(obj);
+     VFIODevice *vbasedev = &vapdev->vdev;
+ 
+-    vbasedev->type = VFIO_DEVICE_TYPE_AP;
+-    vbasedev->ops = &vfio_ap_ops;
+-    vbasedev->dev = DEVICE(vapdev);
+-    vbasedev->fd = -1;
+-
+     /*
+      * vfio-ap devices operate in a way compatible with discarding of
+      * memory in RAM blocks, as no pages are pinned in the host.
+      * This needs to be set before vfio_get_device() for vfio common to
+      * handle ram_block_discard_disable().
+      */
+-    vbasedev->ram_block_discard_allowed = true;
++    vfio_device_init(vbasedev, VFIO_DEVICE_TYPE_AP, &vfio_ap_ops,
++                     DEVICE(vapdev), true);
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+diff --git a/hw/vfio/ccw.c b/hw/vfio/ccw.c
+index 6305a4c1b8..90e4a53437 100644
+--- a/hw/vfio/ccw.c
++++ b/hw/vfio/ccw.c
+@@ -683,11 +683,6 @@ static void vfio_ccw_instance_init(Object *obj)
+     VFIOCCWDevice *vcdev = VFIO_CCW(obj);
+     VFIODevice *vbasedev = &vcdev->vdev;
+ 
+-    vbasedev->type = VFIO_DEVICE_TYPE_CCW;
+-    vbasedev->ops = &vfio_ccw_ops;
+-    vbasedev->dev = DEVICE(vcdev);
+-    vbasedev->fd = -1;
+-
+     /*
+      * All vfio-ccw devices are believed to operate in a way compatible with
+      * discarding of memory in RAM blocks, ie. pages pinned in the host are
+@@ -696,7 +691,8 @@ static void vfio_ccw_instance_init(Object *obj)
+      * needs to be set before vfio_get_device() for vfio common to handle
+      * ram_block_discard_disable().
+      */
+-    vbasedev->ram_block_discard_allowed = true;
++    vfio_device_init(vbasedev, VFIO_DEVICE_TYPE_CCW, &vfio_ccw_ops,
++                     DEVICE(vcdev), true);
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+diff --git a/hw/vfio/helpers.c b/hw/vfio/helpers.c
+index 3592c3d54e..6789870802 100644
+--- a/hw/vfio/helpers.c
++++ b/hw/vfio/helpers.c
+@@ -652,3 +652,14 @@ void vfio_device_set_fd(VFIODevice *vbasedev, const char *str, Error **errp)
+     }
+     vbasedev->fd = fd;
+ }
++
++void vfio_device_init(VFIODevice *vbasedev, int type, VFIODeviceOps *ops,
++                      DeviceState *dev, bool ram_discard)
++{
++    vbasedev->type = type;
++    vbasedev->ops = ops;
++    vbasedev->dev = dev;
++    vbasedev->fd = -1;
++
++    vbasedev->ram_block_discard_allowed = ram_discard;
++}
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 3f5900cc46..83c3238608 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3353,10 +3353,8 @@ static void vfio_instance_init(Object *obj)
+     vdev->host.slot = ~0U;
+     vdev->host.function = ~0U;
+ 
+-    vbasedev->type = VFIO_DEVICE_TYPE_PCI;
+-    vbasedev->ops = &vfio_pci_ops;
+-    vbasedev->dev = DEVICE(vdev);
+-    vbasedev->fd = -1;
++    vfio_device_init(vbasedev, VFIO_DEVICE_TYPE_PCI, &vfio_pci_ops,
++                     DEVICE(vdev), false);
+ 
+     vdev->nv_gpudirect_clique = 0xFF;
+ 
+diff --git a/hw/vfio/platform.c b/hw/vfio/platform.c
+index 506eb8193f..a8d9b7da63 100644
+--- a/hw/vfio/platform.c
++++ b/hw/vfio/platform.c
+@@ -657,10 +657,8 @@ static void vfio_platform_instance_init(Object *obj)
+     VFIOPlatformDevice *vdev = VFIO_PLATFORM_DEVICE(obj);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+-    vbasedev->type = VFIO_DEVICE_TYPE_PLATFORM;
+-    vbasedev->ops = &vfio_platform_ops;
+-    vbasedev->dev = DEVICE(vdev);
+-    vbasedev->fd = -1;
++    vfio_device_init(vbasedev, VFIO_DEVICE_TYPE_PLATFORM, &vfio_platform_ops,
++                     DEVICE(vdev), false);
+ }
+ 
+ #ifdef CONFIG_IOMMUFD
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index efcba19f66..b8aa8a5495 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -257,4 +257,6 @@ int vfio_get_dirty_bitmap(const VFIOContainerBase *bcontainer, uint64_t iova,
+ /* Returns 0 on success, or a negative errno. */
+ int vfio_device_get_name(VFIODevice *vbasedev, Error **errp);
+ void vfio_device_set_fd(VFIODevice *vbasedev, const char *str, Error **errp);
++void vfio_device_init(VFIODevice *vbasedev, int type, VFIODeviceOps *ops,
++                      DeviceState *dev, bool ram_discard);
+ #endif /* HW_VFIO_VFIO_COMMON_H */
+-- 
+2.39.3
+

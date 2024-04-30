@@ -1,0 +1,54 @@
+From 51b8f29cddb73eb02f91af5f52a205fdd3af6583 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Wed, 17 Jan 2024 21:08:59 +0100
+Subject: [PATCH 099/101] include/ui/rect.h: fix qemu_rect_init()
+ mis-assignment
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 216: Fix regression in QEMU's virtio-gpu VNC sessions
+RH-Jira: RHEL-21570
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [1/1] a9d487be04e2c1847b80c479b5cc790af81e3428 (thuth/qemu-kvm-cs9)
+
+JIRA: https://issues.redhat.com/browse/RHEL-21570
+
+commit 9d5b42beb6978dc6219d5dc029c9d453c6b8d503
+Author: Elen Avan <elen.avan@bk.ru>
+Date:   Fri Dec 22 22:17:21 2023 +0300
+
+    include/ui/rect.h: fix qemu_rect_init() mis-assignment
+
+    Signed-off-by: Elen Avan <elen.avan@bk.ru>
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/2051
+    Resolves: https://gitlab.com/qemu-project/qemu/-/issues/2050
+    Fixes: a200d53b1fde "virtio-gpu: replace PIXMAN for region/rect test"
+    Cc: qemu-stable@nongnu.org
+    Reviewed-by: Michael Tokarev <mjt@tls.msk.ru>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ include/ui/rect.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/ui/rect.h b/include/ui/rect.h
+index 94898f92d0..68f05d78a8 100644
+--- a/include/ui/rect.h
++++ b/include/ui/rect.h
+@@ -19,7 +19,7 @@ static inline void qemu_rect_init(QemuRect *rect,
+                                   uint16_t width, uint16_t height)
+ {
+     rect->x = x;
+-    rect->y = x;
++    rect->y = y;
+     rect->width = width;
+     rect->height = height;
+ }
+-- 
+2.39.3
+

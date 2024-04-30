@@ -1,0 +1,155 @@
+From f98defd6fe081bc44f5bd823d187d7d3b12832ac Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:23 +0100
+Subject: [PATCH 056/101] vfio/iommufd: Introduce a VFIOIOMMU iommufd QOM
+ interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [55/67] 789ecf74ace326b0df5d494fd558d7d0b6294a85 (eauger1/centos-qemu-kvm)
+
+As previously done for the sPAPR and legacy IOMMU backends, convert
+the VFIOIOMMUOps struct to a QOM interface. The set of of operations
+for this backend can be referenced with a literal typename instead of
+a C struct.
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit ce5f6d49f5845c3b9955cc377a5223c3f8d7ba1e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c                      |  2 +-
+ hw/vfio/iommufd.c                     | 35 ++++++++++++++++++++-------
+ include/hw/vfio/vfio-common.h         |  1 -
+ include/hw/vfio/vfio-container-base.h |  2 +-
+ 4 files changed, 28 insertions(+), 12 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 2329d0efc8..89ff1c7aed 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -1508,7 +1508,7 @@ int vfio_attach_device(char *name, VFIODevice *vbasedev,
+ 
+ #ifdef CONFIG_IOMMUFD
+     if (vbasedev->iommufd) {
+-        ops = &vfio_iommufd_ops;
++        ops = VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_IOMMUFD));
+     }
+ #endif
+ 
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 87a561c545..d4c586e842 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -319,6 +319,8 @@ static int iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+     int ret, devfd;
+     uint32_t ioas_id;
+     Error *err = NULL;
++    const VFIOIOMMUClass *iommufd_vioc =
++        VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_IOMMUFD));
+ 
+     if (vbasedev->fd < 0) {
+         devfd = iommufd_cdev_getfd(vbasedev->sysfsdev, errp);
+@@ -340,7 +342,7 @@ static int iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+     /* try to attach to an existing container in this space */
+     QLIST_FOREACH(bcontainer, &space->containers, next) {
+         container = container_of(bcontainer, VFIOIOMMUFDContainer, bcontainer);
+-        if (bcontainer->ops != &vfio_iommufd_ops ||
++        if (bcontainer->ops != iommufd_vioc ||
+             vbasedev->iommufd != container->be) {
+             continue;
+         }
+@@ -374,7 +376,7 @@ static int iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+     container->ioas_id = ioas_id;
+ 
+     bcontainer = &container->bcontainer;
+-    vfio_container_init(bcontainer, space, &vfio_iommufd_ops);
++    vfio_container_init(bcontainer, space, iommufd_vioc);
+     QLIST_INSERT_HEAD(&space->containers, bcontainer, next);
+ 
+     ret = iommufd_cdev_attach_container(vbasedev, container, errp);
+@@ -476,9 +478,11 @@ static void iommufd_cdev_detach(VFIODevice *vbasedev)
+ static VFIODevice *iommufd_cdev_pci_find_by_devid(__u32 devid)
+ {
+     VFIODevice *vbasedev_iter;
++    const VFIOIOMMUClass *iommufd_vioc =
++        VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_IOMMUFD));
+ 
+     QLIST_FOREACH(vbasedev_iter, &vfio_device_list, global_next) {
+-        if (vbasedev_iter->bcontainer->ops != &vfio_iommufd_ops) {
++        if (vbasedev_iter->bcontainer->ops != iommufd_vioc) {
+             continue;
+         }
+         if (devid == vbasedev_iter->devid) {
+@@ -621,10 +625,23 @@ out_single:
+     return ret;
+ }
+ 
+-const VFIOIOMMUOps vfio_iommufd_ops = {
+-    .dma_map = iommufd_cdev_map,
+-    .dma_unmap = iommufd_cdev_unmap,
+-    .attach_device = iommufd_cdev_attach,
+-    .detach_device = iommufd_cdev_detach,
+-    .pci_hot_reset = iommufd_cdev_pci_hot_reset,
++static void vfio_iommu_iommufd_class_init(ObjectClass *klass, void *data)
++{
++    VFIOIOMMUClass *vioc = VFIO_IOMMU_CLASS(klass);
++
++    vioc->dma_map = iommufd_cdev_map;
++    vioc->dma_unmap = iommufd_cdev_unmap;
++    vioc->attach_device = iommufd_cdev_attach;
++    vioc->detach_device = iommufd_cdev_detach;
++    vioc->pci_hot_reset = iommufd_cdev_pci_hot_reset;
+ };
++
++static const TypeInfo types[] = {
++    {
++        .name = TYPE_VFIO_IOMMU_IOMMUFD,
++        .parent = TYPE_VFIO_IOMMU,
++        .class_init = vfio_iommu_iommufd_class_init,
++    },
++};
++
++DEFINE_TYPES(types)
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index 14c497b6b0..9b7ef7d02b 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -210,7 +210,6 @@ typedef QLIST_HEAD(VFIOGroupList, VFIOGroup) VFIOGroupList;
+ typedef QLIST_HEAD(VFIODeviceList, VFIODevice) VFIODeviceList;
+ extern VFIOGroupList vfio_group_list;
+ extern VFIODeviceList vfio_device_list;
+-extern const VFIOIOMMUOps vfio_iommufd_ops;
+ extern const MemoryListener vfio_memory_listener;
+ extern int vfio_kvm_device_fd;
+ 
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index 9e21d7811f..b2813b0c11 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -17,7 +17,6 @@
+ 
+ typedef struct VFIODevice VFIODevice;
+ typedef struct VFIOIOMMUClass VFIOIOMMUClass;
+-#define VFIOIOMMUOps VFIOIOMMUClass /* To remove */
+ 
+ typedef struct {
+     unsigned long *bitmap;
+@@ -96,6 +95,7 @@ void vfio_container_destroy(VFIOContainerBase *bcontainer);
+ #define TYPE_VFIO_IOMMU "vfio-iommu"
+ #define TYPE_VFIO_IOMMU_LEGACY TYPE_VFIO_IOMMU "-legacy"
+ #define TYPE_VFIO_IOMMU_SPAPR TYPE_VFIO_IOMMU "-spapr"
++#define TYPE_VFIO_IOMMU_IOMMUFD TYPE_VFIO_IOMMU "-iommufd"
+ 
+ /*
+  * VFIOContainerBase is not an abstract QOM object because it felt
+-- 
+2.39.3
+

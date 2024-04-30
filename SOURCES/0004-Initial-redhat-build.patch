@@ -1,4 +1,4 @@
-From 84039bfc860878f3c3421de4a1836ac5d6300ed7 Mon Sep 17 00:00:00 2001
+From faae70a870156f86a5cf55ca967b15d7612941ff Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,7 +13,7 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-This rebase is based on qemu-kvm-7.2.0-14.el9
+This rebase is based on qemu-kvm-8.1.0-5.el9
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 --
@@ -50,31 +50,38 @@ Rebase changes (7.0.0):
 - Change permissions on installing tests/Makefile.include
 - Remove ssh block driver
 
-Rebase changes (7.1.0 rc0):
+Rebase changes (7.1.0):
 - --disable-vnc-png renamed to --disable-png (upstream)
 - removed --disable-vhost-vsock and --disable-vhost-scsi
 - capstone submodule removed
 - Temporary include capstone build
 
-Rebase changes (7.2.0 rc0):
+Rebase changes (7.2.0):
 - Switch --enable-slirp=system to --enable-slirp
-
-Rebaes changes (7.2.0 rc2):
 - Added new configure options (blkio and sndio, both disabled)
 
 Rebase changes (7.2.0):
 - Fix SRPM name generation to work on Fedora 37
 - Switch back to system meson
 
-Rebase changes (8.0.0-rc1):
+Rebase changes (8.0.0):
 - use enable-dtrace-backands instead of enable-dtrace-backend
 - Removed qemu virtiofsd bits
-
-Rebase changes (8.0.0-rc2):
 - test/check-block.sh removed (upstream)
-
-Rebase changes (8.0.0-rc3):
 - Add new --disable-* options for configure
+
+Rebase changes (8.1.0):
+- qmp-spec.txt installed by make
+- Removed --meson configure option
+- Add --disable-pypi
+- Removed --with-git and -with-gitsubmodules
+- Renamed --disable-pypi to --disable-downloads
+- Minor updates in README.tests
+
+Rebase changes (8.2.0):
+- Removed --disable-hax (upstream)
+- Added --disable-plugins configure option
+- Fixing frh.py strings
 
 Merged patches (6.0.0):
  - 605758c902 Limit build on Power to qemu-img and qemu-ga only
@@ -168,24 +175,35 @@ Merged patches (7.0.0):
 - d46d2710b2 spec: Obsolete old usb redir subpackage
 - 6f52a50b68 spec: Obsolete ssh driver
 
-Merged patches (7.2.0 rc4):
+Merged patches (7.2.0):
 - 8c6834feb6 Remove opengl display device subpackages (C9S MR 124)
 - 0ecc97f29e spec: Add requires for packages with additional virtio-gpu variants (C9S MR 124)
 
-Merged patches (8.0.0-rc1):
+Merged patches (8.0.0):
 - 7754f6ba78 Minor packaging fixes
 - 401af56187 spec: Disable VDUSE
+
+Merged patches (8.1.0):
+- 0c2306676f Enable Linux io_uring
+- b7fa6426d5 Enable libblkio block drivers
+- 19f6d7a6f4 Fix virtio-blk-vhost-vdpa typo in spec file
+- f356cae88f spec: Build DBUS display
+- 77b763efd5 Provide elf2dmp binary in qemu-tools
+
+Merged patches (8.2.0):
+- cd9efa221d Enable qemu-kvm-device-usb-redirec for aarch64
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 ---
  .distro/Makefile                        |  100 +
- .distro/Makefile.common                 |   41 +
+ .distro/Makefile.common                 |   42 +
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 4528 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 4909 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
+ .distro/scripts/frh.py                  |    4 +-
  .distro/scripts/process-patches.sh      |    4 +
  .gitignore                              |    1 +
  README.systemtap                        |   43 +
@@ -193,7 +211,7 @@ Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 15 files changed, 4784 insertions(+), 4 deletions(-)
+ 16 files changed, 5168 insertions(+), 6 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests
@@ -296,5 +314,5 @@ index 47fdae5b21..2a950caa2a 100644
      if (saslErr != SASL_OK) {
          error_setg(errp, "Failed to initialize SASL auth: %s",
 -- 
-2.39.1
+2.39.3
 

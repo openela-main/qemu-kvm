@@ -1,0 +1,91 @@
+From ff0c13c22878eed0f3879c0805bef5b9f9d83e04 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:42 +0800
+Subject: [PATCH 017/101] vfio/spapr: Introduce spapr backend and target
+ interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [16/67] e35cda157a2a1afeded3305622c861abd07edb51 (eauger1/centos-qemu-kvm)
+
+Introduce an empty spapr backend which will hold spapr specific
+content, currently only prereg_listener and hostwin_list.
+
+Also introduce two spapr specific callbacks add/del_window into
+VFIOIOMMUOps. Instantiate a spapr ops with a helper setup_spapr_ops
+and assign it to bcontainer->ops.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 9b7d38bf5a2c1054bfe6de08806954cdc45d8d98)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/spapr.c                       | 14 ++++++++++++++
+ include/hw/vfio/vfio-container-base.h |  6 ++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index 7a50975f25..e1a6b35563 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -24,6 +24,10 @@
+ #include "qapi/error.h"
+ #include "trace.h"
+ 
++typedef struct VFIOSpaprContainer {
++    VFIOContainer container;
++} VFIOSpaprContainer;
++
+ static bool vfio_prereg_listener_skipped_section(MemoryRegionSection *section)
+ {
+     if (memory_region_is_iommu(section->mr)) {
+@@ -421,6 +425,14 @@ void vfio_container_del_section_window(VFIOContainer *container,
+     }
+ }
+ 
++static VFIOIOMMUOps vfio_iommu_spapr_ops;
++
++static void setup_spapr_ops(VFIOContainerBase *bcontainer)
++{
++    vfio_iommu_spapr_ops = *bcontainer->ops;
++    bcontainer->ops = &vfio_iommu_spapr_ops;
++}
++
+ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+ {
+     VFIOContainerBase *bcontainer = &container->bcontainer;
+@@ -486,6 +498,8 @@ int vfio_spapr_container_init(VFIOContainer *container, Error **errp)
+                           0x1000);
+     }
+ 
++    setup_spapr_ops(bcontainer);
++
+     return 0;
+ 
+ listener_unregister_exit:
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index 9658ffb526..f62a14ac73 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -101,5 +101,11 @@ struct VFIOIOMMUOps {
+     int (*set_dirty_page_tracking)(VFIOContainerBase *bcontainer, bool start);
+     int (*query_dirty_bitmap)(VFIOContainerBase *bcontainer, VFIOBitmap *vbmap,
+                               hwaddr iova, hwaddr size);
++    /* SPAPR specific */
++    int (*add_window)(VFIOContainerBase *bcontainer,
++                      MemoryRegionSection *section,
++                      Error **errp);
++    void (*del_window)(VFIOContainerBase *bcontainer,
++                       MemoryRegionSection *section);
+ };
+ #endif /* HW_VFIO_VFIO_CONTAINER_BASE_H */
+-- 
+2.39.3
+

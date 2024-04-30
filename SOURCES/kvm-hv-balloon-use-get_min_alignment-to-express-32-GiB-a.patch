@@ -1,0 +1,94 @@
+From a5b4eec5f456b1ca3fe753e1d76f96cf3f8914ef Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Wed, 17 Jan 2024 14:55:53 +0100
+Subject: [PATCH 01/22] hv-balloon: use get_min_alignment() to express 32 GiB
+ alignment
+
+RH-Author: David Hildenbrand <david@redhat.com>
+RH-MergeRequest: 221: memory-device: reintroduce memory region size check
+RH-Jira: RHEL-20341
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Commit: [1/2] cbe092fe549552928270892253b31cd8fe199825
+
+https://issues.redhat.com/browse/RHEL-20341
+
+Let's implement the get_min_alignment() callback for memory devices, and
+copy for the device memory region the alignment of the host memory
+region. This mimics what virtio-mem does, and allows for re-introducing
+proper alignment checks for the memory region size (where we don't care
+about additional device requirements) in memory device core.
+
+Message-ID: <20240117135554.787344-2-david@redhat.com>
+Reviewed-by: Maciej S. Szmigiero <maciej.szmigiero@oracle.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit f77c5f38f49c71bc14cf1019ac92b0b95f572414)
+Signed-off-by: David Hildenbrand <david@redhat.com>
+---
+ hw/hyperv/hv-balloon.c | 37 +++++++++++++++++++++----------------
+ 1 file changed, 21 insertions(+), 16 deletions(-)
+
+diff --git a/hw/hyperv/hv-balloon.c b/hw/hyperv/hv-balloon.c
+index 66f297c1d7..0829c495b0 100644
+--- a/hw/hyperv/hv-balloon.c
++++ b/hw/hyperv/hv-balloon.c
+@@ -1476,22 +1476,7 @@ static void hv_balloon_ensure_mr(HvBalloon *balloon)
+     balloon->mr = g_new0(MemoryRegion, 1);
+     memory_region_init(balloon->mr, OBJECT(balloon), TYPE_HV_BALLOON,
+                        memory_region_size(hostmem_mr));
+-
+-    /*
+-     * The VM can indicate an alignment up to 32 GiB. Memory device core can
+-     * usually only handle/guarantee 1 GiB alignment. The user will have to
+-     * specify a larger maxmem eventually.
+-     *
+-     * The memory device core will warn the user in case maxmem might have to be
+-     * increased and will fail plugging the device if there is not sufficient
+-     * space after alignment.
+-     *
+-     * TODO: we could do the alignment ourselves in a slightly bigger region.
+-     * But this feels better, although the warning might be annoying. Maybe
+-     * we can optimize that in the future (e.g., with such a device on the
+-     * cmdline place/size the device memory region differently.
+-     */
+-    balloon->mr->align = MAX(32 * GiB, memory_region_get_alignment(hostmem_mr));
++    balloon->mr->align = memory_region_get_alignment(hostmem_mr);
+ }
+ 
+ static void hv_balloon_free_mr(HvBalloon *balloon)
+@@ -1653,6 +1638,25 @@ static MemoryRegion *hv_balloon_md_get_memory_region(MemoryDeviceState *md,
+     return balloon->mr;
+ }
+ 
++static uint64_t hv_balloon_md_get_min_alignment(const MemoryDeviceState *md)
++{
++    /*
++     * The VM can indicate an alignment up to 32 GiB. Memory device core can
++     * usually only handle/guarantee 1 GiB alignment. The user will have to
++     * specify a larger maxmem eventually.
++     *
++     * The memory device core will warn the user in case maxmem might have to be
++     * increased and will fail plugging the device if there is not sufficient
++     * space after alignment.
++     *
++     * TODO: we could do the alignment ourselves in a slightly bigger region.
++     * But this feels better, although the warning might be annoying. Maybe
++     * we can optimize that in the future (e.g., with such a device on the
++     * cmdline place/size the device memory region differently.
++     */
++    return 32 * GiB;
++}
++
+ static void hv_balloon_md_fill_device_info(const MemoryDeviceState *md,
+                                            MemoryDeviceInfo *info)
+ {
+@@ -1765,5 +1769,6 @@ static void hv_balloon_class_init(ObjectClass *klass, void *data)
+     mdc->get_memory_region = hv_balloon_md_get_memory_region;
+     mdc->decide_memslots = hv_balloon_decide_memslots;
+     mdc->get_memslots = hv_balloon_get_memslots;
++    mdc->get_min_alignment = hv_balloon_md_get_min_alignment;
+     mdc->fill_device_info = hv_balloon_md_fill_device_info;
+ }
+-- 
+2.39.3
+

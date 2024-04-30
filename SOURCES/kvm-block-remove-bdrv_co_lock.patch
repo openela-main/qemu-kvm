@@ -1,0 +1,97 @@
+From d0514c7d5d6cc1aa140119c95d5ea2c1591b01e9 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:20:04 -0500
+Subject: [PATCH 087/101] block: remove bdrv_co_lock()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [18/26] a303f861ea5e84d8e89fd51e530fd0cb2da17b89 (kmwolf/centos-qemu-kvm)
+
+The bdrv_co_lock() and bdrv_co_unlock() functions are already no-ops.
+Remove them.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20231205182011.1976568-8-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block.c                            | 10 ----------
+ blockdev.c                         |  5 -----
+ include/block/block-global-state.h | 14 --------------
+ 3 files changed, 29 deletions(-)
+
+diff --git a/block.c b/block.c
+index 91ace5d2d5..434b7f4d72 100644
+--- a/block.c
++++ b/block.c
+@@ -7431,16 +7431,6 @@ void coroutine_fn bdrv_co_leave(BlockDriverState *bs, AioContext *old_ctx)
+     bdrv_dec_in_flight(bs);
+ }
+ 
+-void coroutine_fn bdrv_co_lock(BlockDriverState *bs)
+-{
+-    /* TODO removed in next patch */
+-}
+-
+-void coroutine_fn bdrv_co_unlock(BlockDriverState *bs)
+-{
+-    /* TODO removed in next patch */
+-}
+-
+ static void bdrv_do_remove_aio_context_notifier(BdrvAioNotifier *ban)
+ {
+     GLOBAL_STATE_CODE();
+diff --git a/blockdev.c b/blockdev.c
+index 5d8b3a23eb..3a5e7222ec 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -2264,18 +2264,13 @@ void coroutine_fn qmp_block_resize(const char *device, const char *node_name,
+         return;
+     }
+ 
+-    bdrv_co_lock(bs);
+     bdrv_drained_begin(bs);
+-    bdrv_co_unlock(bs);
+ 
+     old_ctx = bdrv_co_enter(bs);
+     blk_co_truncate(blk, size, false, PREALLOC_MODE_OFF, 0, errp);
+     bdrv_co_leave(bs, old_ctx);
+ 
+-    bdrv_co_lock(bs);
+     bdrv_drained_end(bs);
+-    bdrv_co_unlock(bs);
+-
+     blk_co_unref(blk);
+ }
+ 
+diff --git a/include/block/block-global-state.h b/include/block/block-global-state.h
+index 0327f1c605..4ec0b217f0 100644
+--- a/include/block/block-global-state.h
++++ b/include/block/block-global-state.h
+@@ -267,20 +267,6 @@ int bdrv_debug_remove_breakpoint(BlockDriverState *bs, const char *tag);
+ int bdrv_debug_resume(BlockDriverState *bs, const char *tag);
+ bool bdrv_debug_is_suspended(BlockDriverState *bs, const char *tag);
+ 
+-/**
+- * Locks the AioContext of @bs if it's not the current AioContext. This avoids
+- * double locking which could lead to deadlocks: This is a coroutine_fn, so we
+- * know we already own the lock of the current AioContext.
+- *
+- * May only be called in the main thread.
+- */
+-void coroutine_fn bdrv_co_lock(BlockDriverState *bs);
+-
+-/**
+- * Unlocks the AioContext of @bs if it's not the current AioContext.
+- */
+-void coroutine_fn bdrv_co_unlock(BlockDriverState *bs);
+-
+ bool bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
+                                    GHashTable *visited, Transaction *tran,
+                                    Error **errp);
+-- 
+2.39.3
+

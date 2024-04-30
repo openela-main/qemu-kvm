@@ -1,0 +1,88 @@
+From e670722b9a6460d41497688d820d5a9a9b51d8e9 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Tue, 9 Jan 2024 11:36:42 +1000
+Subject: [PATCH 001/101] hw/arm/virt: Add properties to disable high memory
+ regions
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 210: hw/arm/virt: Add properties to disable high memory regions
+RH-Jira: RHEL-19738
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/1] 4097ba5133a67126e30b84202cb40df4e019c5f4
+
+Upstream: RHEL-only
+Brew: https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=57927352
+
+There are 3 high memory regions for GICv3 or GICv4 redistributor, PCI
+ECAM and PCI MMIO. Each of them has a property introduced by upstream
+commit 6a48c64eec ("hw/arm/virt: Add properties to disable high memory
+regions") so that the corresponding high memory region can be disabled.
+
+It's notable that another property ("compact-highmem") introduced by
+upstream commit f40408a9fe ("hw/arm/virt: Add 'compact-highmem' property")
+so that the compact high memory region layout during assignment can be
+disabled, compatible to the old machine types. However, we don't have
+the compatible issue since the compact high memory region layout is
+always kept as disabled until RHEL9.2.0 machine type and onwards.
+
+Expose those 3 properties: "highmem-redists", "highmem-ecam" and
+"highmem-mmio". The property "compact-highmem" is kept as hidden.
+
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+---
+ hw/arm/virt.c | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 5cab00b4cd..60f117f0d2 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -2456,6 +2456,7 @@ static void virt_set_compact_highmem(Object *obj, bool value, Error **errp)
+ 
+     vms->highmem_compact = value;
+ }
++#endif /* disabled for RHEL */
+ 
+ static bool virt_get_highmem_redists(Object *obj, Error **errp)
+ {
+@@ -2498,7 +2499,6 @@ static void virt_set_highmem_mmio(Object *obj, bool value, Error **errp)
+ 
+     vms->highmem_mmio = value;
+ }
+-#endif /* disabled for RHEL */
+ 
+ static bool virt_get_its(Object *obj, Error **errp)
+ {
+@@ -3521,6 +3521,28 @@ static void rhel_machine_class_init(ObjectClass *oc, void *data)
+                                           "Set on/off to enable/disable using "
+                                           "physical address space above 32 bits");
+ 
++    object_class_property_add_bool(oc, "highmem-redists",
++                                   virt_get_highmem_redists,
++                                   virt_set_highmem_redists);
++    object_class_property_set_description(oc, "highmem-redists",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for GICv3 or GICv4 "
++                                          "redistributor");
++
++    object_class_property_add_bool(oc, "highmem-ecam",
++                                   virt_get_highmem_ecam,
++                                   virt_set_highmem_ecam);
++    object_class_property_set_description(oc, "highmem-ecam",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for PCI ECAM");
++
++    object_class_property_add_bool(oc, "highmem-mmio",
++                                   virt_get_highmem_mmio,
++                                   virt_set_highmem_mmio);
++    object_class_property_set_description(oc, "highmem-mmio",
++                                          "Set on/off to enable/disable high "
++                                          "memory region for PCI MMIO");
++
+     object_class_property_add_str(oc, "gic-version", virt_get_gic_version,
+                                   virt_set_gic_version);
+     object_class_property_set_description(oc, "gic-version",
+-- 
+2.39.3
+

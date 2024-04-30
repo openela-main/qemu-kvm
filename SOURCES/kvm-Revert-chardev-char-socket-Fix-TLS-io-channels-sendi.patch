@@ -1,0 +1,60 @@
+From 2e0e4355b2d4edb66b7d8c198339e17940abd682 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Mon, 18 Mar 2024 13:03:19 +0000
+Subject: [PATCH 2/3] Revert "chardev/char-socket: Fix TLS io channels sending
+ too much data to the backend"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 233: Fix handling of TLS sessions in chardevs
+RH-Jira: RHEL-24614
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Commit: [2/3] 1cb3d72b86ced0f70a09dfa0d325ae8a85db1b2b (berrange/centos-src-qemu)
+
+This commit results in unexpected termination of the TLS connection.
+When 'fd_can_read' returns 0, the code goes on to pass a zero length
+buffer to qio_channel_read. The TLS impl calls into gnutls_recv()
+with this zero length buffer, at which point GNUTLS returns an error
+GNUTLS_E_INVALID_REQUEST. This is treated as fatal by QEMU's TLS code
+resulting in the connection being torn down by the chardev.
+
+Simply skipping the qio_channel_read when the buffer length is zero
+is also not satisfactory, as it results in a high CPU burn busy loop
+massively slowing QEMU's functionality.
+
+The proper solution is to avoid tcp_chr_read being called at all
+unless the frontend is able to accept more data. This will be done
+in a followup commit.
+
+This reverts commit 462945cd22d2bcd233401ed3aa167d83a8e35b05
+
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit e8ee827ffdb86ebbd5f5213a1f78123c25a90864)
+---
+ chardev/char-socket.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/chardev/char-socket.c b/chardev/char-socket.c
+index f48d341ebc..51d0943fce 100644
+--- a/chardev/char-socket.c
++++ b/chardev/char-socket.c
+@@ -492,9 +492,9 @@ static gboolean tcp_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
+         s->max_size <= 0) {
+         return TRUE;
+     }
+-    len = tcp_chr_read_poll(opaque);
+-    if (len > sizeof(buf)) {
+-        len = sizeof(buf);
++    len = sizeof(buf);
++    if (len > s->max_size) {
++        len = s->max_size;
+     }
+     size = tcp_chr_recv(chr, (void *)buf, len);
+     if (size == 0 || (size == -1 && errno != EAGAIN)) {
+-- 
+2.39.3
+

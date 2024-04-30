@@ -1,0 +1,93 @@
+From 0ff08afdec19f4decaf750fa7d158e0ea498ff28 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:16 +0800
+Subject: [PATCH 037/101] vfio/ccw: Make vfio cdev pre-openable by passing a
+ file handle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [36/67] cc0d8f51cffa5d5a7aebc2334b908b9877179ae7 (eauger1/centos-qemu-kvm)
+
+This gives management tools like libvirt a chance to open the vfio
+cdev with privilege and pass FD to qemu. This way qemu never needs
+to have privilege to open a VFIO or iommu cdev node.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 909a6254edaa8d0b0e3f1c0a623862e73d1842e9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ccw.c | 25 ++++++++++++++++++++++---
+ 1 file changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/ccw.c b/hw/vfio/ccw.c
+index d2d58bb677..2afdf17dbe 100644
+--- a/hw/vfio/ccw.c
++++ b/hw/vfio/ccw.c
+@@ -590,11 +590,12 @@ static void vfio_ccw_realize(DeviceState *dev, Error **errp)
+         }
+     }
+ 
++    if (vfio_device_get_name(vbasedev, errp) < 0) {
++        return;
++    }
++
+     vbasedev->ops = &vfio_ccw_ops;
+     vbasedev->type = VFIO_DEVICE_TYPE_CCW;
+-    vbasedev->name = g_strdup_printf("%x.%x.%04x", vcdev->cdev.hostid.cssid,
+-                           vcdev->cdev.hostid.ssid,
+-                           vcdev->cdev.hostid.devid);
+     vbasedev->dev = dev;
+ 
+     /*
+@@ -691,12 +692,29 @@ static const VMStateDescription vfio_ccw_vmstate = {
+     .unmigratable = 1,
+ };
+ 
++static void vfio_ccw_instance_init(Object *obj)
++{
++    VFIOCCWDevice *vcdev = VFIO_CCW(obj);
++
++    vcdev->vdev.fd = -1;
++}
++
++#ifdef CONFIG_IOMMUFD
++static void vfio_ccw_set_fd(Object *obj, const char *str, Error **errp)
++{
++    vfio_device_set_fd(&VFIO_CCW(obj)->vdev, str, errp);
++}
++#endif
++
+ static void vfio_ccw_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     S390CCWDeviceClass *cdc = S390_CCW_DEVICE_CLASS(klass);
+ 
+     device_class_set_props(dc, vfio_ccw_properties);
++#ifdef CONFIG_IOMMUFD
++    object_class_property_add_str(klass, "fd", NULL, vfio_ccw_set_fd);
++#endif
+     dc->vmsd = &vfio_ccw_vmstate;
+     dc->desc = "VFIO-based subchannel assignment";
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+@@ -714,6 +732,7 @@ static const TypeInfo vfio_ccw_info = {
+     .name = TYPE_VFIO_CCW,
+     .parent = TYPE_S390_CCW,
+     .instance_size = sizeof(VFIOCCWDevice),
++    .instance_init = vfio_ccw_instance_init,
+     .class_init = vfio_ccw_class_init,
+ };
+ 
+-- 
+2.39.3
+

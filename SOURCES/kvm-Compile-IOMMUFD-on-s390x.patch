@@ -1,0 +1,37 @@
+From c1e9ddf8d0ea6d358fcaa5cacd3a91920f36e73b Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Thu, 11 Jan 2024 12:33:17 -0500
+Subject: [PATCH 067/101] Compile IOMMUFD on s390x
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [66/67] d3004aafca2bb76d817ac99c3d65973b8fbd4557 (eauger1/centos-qemu-kvm)
+
+Upstream: RHEL only
+
+Compiles the IOMMUFD object on s390x to be able to use
+the IOMMUFD VFIO backend.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ configs/devices/s390x-softmmu/s390x-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/s390x-softmmu/s390x-rh-devices.mak b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+index 69a799adbd..24cf6dbd03 100644
+--- a/configs/devices/s390x-softmmu/s390x-rh-devices.mak
++++ b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+@@ -16,3 +16,4 @@ CONFIG_WDT_DIAG288=y
+ CONFIG_VHOST_VSOCK=y
+ CONFIG_VHOST_USER_VSOCK=y
+ CONFIG_VHOST_USER_FS=y
++CONFIG_IOMMUFD=y
+-- 
+2.39.3
+

@@ -1,0 +1,167 @@
+From a2069ff76637365cacf5b96f9427b98a6ca2c9ba Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 14 Sep 2023 10:01:00 -0400
+Subject: [PATCH 075/101] virtio-blk: don't lock AioContext in the completion
+ code path
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [6/26] 3426f62c2156f6967bb4ffbce75a4ff46d3312a3 (kmwolf/centos-qemu-kvm)
+
+Nothing in the completion code path relies on the AioContext lock
+anymore. Virtqueues are only accessed from one thread at any moment and
+the s->rq global state is protected by its own lock now.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20230914140101.1065008-4-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/block/virtio-blk.c | 34 ++++------------------------------
+ 1 file changed, 4 insertions(+), 30 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index ee38e089bc..f5315df042 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -105,7 +105,6 @@ static void virtio_blk_rw_complete(void *opaque, int ret)
+     VirtIOBlock *s = next->dev;
+     VirtIODevice *vdev = VIRTIO_DEVICE(s);
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     while (next) {
+         VirtIOBlockReq *req = next;
+         next = req->mr_next;
+@@ -138,7 +137,6 @@ static void virtio_blk_rw_complete(void *opaque, int ret)
+         block_acct_done(blk_get_stats(s->blk), &req->acct);
+         virtio_blk_free_request(req);
+     }
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+ }
+ 
+ static void virtio_blk_flush_complete(void *opaque, int ret)
+@@ -146,19 +144,13 @@ static void virtio_blk_flush_complete(void *opaque, int ret)
+     VirtIOBlockReq *req = opaque;
+     VirtIOBlock *s = req->dev;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+-    if (ret) {
+-        if (virtio_blk_handle_rw_error(req, -ret, 0, true)) {
+-            goto out;
+-        }
++    if (ret && virtio_blk_handle_rw_error(req, -ret, 0, true)) {
++        return;
+     }
+ 
+     virtio_blk_req_complete(req, VIRTIO_BLK_S_OK);
+     block_acct_done(blk_get_stats(s->blk), &req->acct);
+     virtio_blk_free_request(req);
+-
+-out:
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+ }
+ 
+ static void virtio_blk_discard_write_zeroes_complete(void *opaque, int ret)
+@@ -168,11 +160,8 @@ static void virtio_blk_discard_write_zeroes_complete(void *opaque, int ret)
+     bool is_write_zeroes = (virtio_ldl_p(VIRTIO_DEVICE(s), &req->out.type) &
+                             ~VIRTIO_BLK_T_BARRIER) == VIRTIO_BLK_T_WRITE_ZEROES;
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+-    if (ret) {
+-        if (virtio_blk_handle_rw_error(req, -ret, false, is_write_zeroes)) {
+-            goto out;
+-        }
++    if (ret && virtio_blk_handle_rw_error(req, -ret, false, is_write_zeroes)) {
++        return;
+     }
+ 
+     virtio_blk_req_complete(req, VIRTIO_BLK_S_OK);
+@@ -180,9 +169,6 @@ static void virtio_blk_discard_write_zeroes_complete(void *opaque, int ret)
+         block_acct_done(blk_get_stats(s->blk), &req->acct);
+     }
+     virtio_blk_free_request(req);
+-
+-out:
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+ }
+ 
+ #ifdef __linux__
+@@ -229,10 +215,8 @@ static void virtio_blk_ioctl_complete(void *opaque, int status)
+     virtio_stl_p(vdev, &scsi->data_len, hdr->dxfer_len);
+ 
+ out:
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     virtio_blk_req_complete(req, status);
+     virtio_blk_free_request(req);
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+     g_free(ioctl_req);
+ }
+ 
+@@ -672,7 +656,6 @@ static void virtio_blk_zone_report_complete(void *opaque, int ret)
+ {
+     ZoneCmdData *data = opaque;
+     VirtIOBlockReq *req = data->req;
+-    VirtIOBlock *s = req->dev;
+     VirtIODevice *vdev = VIRTIO_DEVICE(req->dev);
+     struct iovec *in_iov = data->in_iov;
+     unsigned in_num = data->in_num;
+@@ -763,10 +746,8 @@ static void virtio_blk_zone_report_complete(void *opaque, int ret)
+     }
+ 
+ out:
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     virtio_blk_req_complete(req, err_status);
+     virtio_blk_free_request(req);
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+     g_free(data->zone_report_data.zones);
+     g_free(data);
+ }
+@@ -829,10 +810,8 @@ static void virtio_blk_zone_mgmt_complete(void *opaque, int ret)
+         err_status = VIRTIO_BLK_S_ZONE_INVALID_CMD;
+     }
+ 
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     virtio_blk_req_complete(req, err_status);
+     virtio_blk_free_request(req);
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+ }
+ 
+ static int virtio_blk_handle_zone_mgmt(VirtIOBlockReq *req, BlockZoneOp op)
+@@ -882,7 +861,6 @@ static void virtio_blk_zone_append_complete(void *opaque, int ret)
+ {
+     ZoneCmdData *data = opaque;
+     VirtIOBlockReq *req = data->req;
+-    VirtIOBlock *s = req->dev;
+     VirtIODevice *vdev = VIRTIO_DEVICE(req->dev);
+     int64_t append_sector, n;
+     uint8_t err_status = VIRTIO_BLK_S_OK;
+@@ -905,10 +883,8 @@ static void virtio_blk_zone_append_complete(void *opaque, int ret)
+     trace_virtio_blk_zone_append_complete(vdev, req, append_sector, ret);
+ 
+ out:
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     virtio_blk_req_complete(req, err_status);
+     virtio_blk_free_request(req);
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+     g_free(data);
+ }
+ 
+@@ -944,10 +920,8 @@ static int virtio_blk_handle_zone_append(VirtIOBlockReq *req,
+     return 0;
+ 
+ out:
+-    aio_context_acquire(blk_get_aio_context(s->conf.conf.blk));
+     virtio_blk_req_complete(req, err_status);
+     virtio_blk_free_request(req);
+-    aio_context_release(blk_get_aio_context(s->conf.conf.blk));
+     return err_status;
+ }
+ 
+-- 
+2.39.3
+

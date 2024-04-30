@@ -1,0 +1,102 @@
+From 14913d8970090c8914dc19dad14f3b9f91985ec3 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 5 Dec 2023 13:20:07 -0500
+Subject: [PATCH 090/101] aio: remove
+ aio_context_acquire()/aio_context_release() API
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 214: Remove AioContext lock
+RH-Jira: RHEL-15965
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [21/26] 4b6d4afcac79d3248a6722b063b5fc777dc418df (kmwolf/centos-qemu-kvm)
+
+Delete these functions because nothing calls these functions anymore.
+
+I introduced these APIs in commit 98563fc3ec44 ("aio: add
+aio_context_acquire() and aio_context_release()") in 2014. It's with a
+sigh of relief that I delete these APIs almost 10 years later.
+
+Thanks to Paolo Bonzini's vision for multi-queue QEMU, we got an
+understanding of where the code needed to go in order to remove the
+limitations that the original dataplane and the IOThread/AioContext
+approach that followed it.
+
+Emanuele Giuseppe Esposito had the splendid determination to convert
+large parts of the codebase so that they no longer needed the AioContext
+lock. This was a painstaking process, both in the actual code changes
+required and the iterations of code review that Emanuele eked out of
+Kevin and me over many months.
+
+Kevin Wolf tackled multitudes of graph locking conversions to protect
+in-flight I/O from run-time changes to the block graph as well as the
+clang Thread Safety Analysis annotations that allow the compiler to
+check whether the graph lock is being used correctly.
+
+And me, well, I'm just here to add some pizzazz to the QEMU multi-queue
+block layer :). Thank you to everyone who helped with this effort,
+including Eric Blake, code reviewer extraordinaire, and others who I've
+forgotten to mention.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20231205182011.1976568-11-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/block/aio.h | 17 -----------------
+ util/async.c        | 10 ----------
+ 2 files changed, 27 deletions(-)
+
+diff --git a/include/block/aio.h b/include/block/aio.h
+index f08b358077..af05512a7d 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -278,23 +278,6 @@ void aio_context_ref(AioContext *ctx);
+  */
+ void aio_context_unref(AioContext *ctx);
+ 
+-/* Take ownership of the AioContext.  If the AioContext will be shared between
+- * threads, and a thread does not want to be interrupted, it will have to
+- * take ownership around calls to aio_poll().  Otherwise, aio_poll()
+- * automatically takes care of calling aio_context_acquire and
+- * aio_context_release.
+- *
+- * Note that this is separate from bdrv_drained_begin/bdrv_drained_end.  A
+- * thread still has to call those to avoid being interrupted by the guest.
+- *
+- * Bottom halves, timers and callbacks can be created or removed without
+- * acquiring the AioContext.
+- */
+-void aio_context_acquire(AioContext *ctx);
+-
+-/* Relinquish ownership of the AioContext. */
+-void aio_context_release(AioContext *ctx);
+-
+ /**
+  * aio_bh_schedule_oneshot_full: Allocate a new bottom half structure that will
+  * run only once and as soon as possible.
+diff --git a/util/async.c b/util/async.c
+index dfd44ef612..460529057c 100644
+--- a/util/async.c
++++ b/util/async.c
+@@ -719,16 +719,6 @@ void aio_context_unref(AioContext *ctx)
+     g_source_unref(&ctx->source);
+ }
+ 
+-void aio_context_acquire(AioContext *ctx)
+-{
+-    /* TODO remove this function */
+-}
+-
+-void aio_context_release(AioContext *ctx)
+-{
+-    /* TODO remove this function */
+-}
+-
+ QEMU_DEFINE_STATIC_CO_TLS(AioContext *, my_aiocontext)
+ 
+ AioContext *qemu_get_current_aio_context(void)
+-- 
+2.39.3
+

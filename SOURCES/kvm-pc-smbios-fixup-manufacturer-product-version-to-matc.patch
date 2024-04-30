@@ -1,0 +1,44 @@
+From 03cad16743d9a4d377af66611d030eca9eda326d Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Tue, 19 Mar 2024 11:42:04 +0100
+Subject: [PATCH 4/4] pc: smbios: fixup manufacturer/product/version to match
+ downstream
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 232: pc: smbios: fixup manufacturer/product/version to match downstream
+RH-Jira: RHEL-21705
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Ani Sinha <anisinha@redhat.com>
+RH-Commit: [1/1] 9235f64acb5ff46360282e889d0aedcb13374ac1
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+
+commit [1] discarded RHEL only change that customizes
+SMBIOS values for manufacturer/product/version for pc/q35
+machine types.
+Fix it up by reverting back to ("Red Hat", "KVM", mc->desc)
+tuple.
+
+1)
+Fixes: 208239eb2 (hw/i386/pc: Defer smbios_set_defaults() to machine_done)
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/i386/fw_cfg.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index 58429bb78d..d6a24177e2 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -63,7 +63,7 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg,
+ 
+     if (pcmc->smbios_defaults) {
+         /* These values are guest ABI, do not change */
+-        smbios_set_defaults("QEMU", mc->desc, mc->name,
++        smbios_set_defaults("Red Hat", "KVM", mc->desc,
+                             pcmc->smbios_uuid_encoded,
+                             pcmc->smbios_stream_product,
+                             pcmc->smbios_stream_version);
+-- 
+2.39.3
+

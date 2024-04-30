@@ -1,0 +1,55 @@
+From 5549bf1b2e07213c23e280a43ab2ab67d5b7304a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 19 Dec 2023 07:58:25 +0100
+Subject: [PATCH 058/101] vfio/iommufd: Remove CONFIG_IOMMUFD usage
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [57/67] 3a6a45d379241d9412e0b8bcfeb9be0b4add59a5 (eauger1/centos-qemu-kvm)
+
+Availability of the IOMMUFD backend can now be fully determined at
+runtime and the ifdef check was a build time protection (for PPC not
+supporting it mostly).
+
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Tested-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c1139fa4feba8c320e4bd0a4e34af55caa5ffbb9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 89ff1c7aed..0d4d8b8416 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -19,7 +19,6 @@
+  */
+ 
+ #include "qemu/osdep.h"
+-#include CONFIG_DEVICES /* CONFIG_IOMMUFD */
+ #include <sys/ioctl.h>
+ #ifdef CONFIG_KVM
+ #include <linux/kvm.h>
+@@ -1506,11 +1505,9 @@ int vfio_attach_device(char *name, VFIODevice *vbasedev,
+     const VFIOIOMMUClass *ops =
+         VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_LEGACY));
+ 
+-#ifdef CONFIG_IOMMUFD
+     if (vbasedev->iommufd) {
+         ops = VFIO_IOMMU_CLASS(object_class_by_name(TYPE_VFIO_IOMMU_IOMMUFD));
+     }
+-#endif
+ 
+     assert(ops);
+ 
+-- 
+2.39.3
+

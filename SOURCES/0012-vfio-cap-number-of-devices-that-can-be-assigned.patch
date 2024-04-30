@@ -1,4 +1,4 @@
-From 34cb4f7ddd762ec46ed1a6a4261aebde39360ca4 Mon Sep 17 00:00:00 2001
+From a27cfa0b407bd806ce389a7c69d0130bcfd35244 Mon Sep 17 00:00:00 2001
 From: Bandan Das <bsd@redhat.com>
 Date: Tue, 3 Dec 2013 20:05:13 +0100
 Subject: vfio: cap number of devices that can be assigned
@@ -26,13 +26,16 @@ Count of slots increased to 509 later so we could increase limit
 to 64 as some usecases require more than 32 devices.
 
 Signed-off-by: Bandan Das <bsd@redhat.com>
+
+Rebase changes (231025):
+- Update to upstream changes
 ---
- hw/vfio/pci.c | 29 ++++++++++++++++++++++++++++-
+ hw/vfio/pci.c | 31 ++++++++++++++++++++++++++++++-
  hw/vfio/pci.h |  1 +
- 2 files changed, 29 insertions(+), 1 deletion(-)
+ 2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
-index ec9a854361..a779053be3 100644
+index c62c02f7b6..ec98080f28 100644
 --- a/hw/vfio/pci.c
 +++ b/hw/vfio/pci.c
 @@ -48,6 +48,9 @@
@@ -45,13 +48,20 @@ index ec9a854361..a779053be3 100644
  static void vfio_disable_interrupts(VFIOPCIDevice *vdev);
  static void vfio_mmap_set_enabled(VFIOPCIDevice *vdev, bool enabled);
  static void vfio_msi_disable_common(VFIOPCIDevice *vdev);
-@@ -2854,9 +2857,30 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
-     ssize_t len;
+@@ -3076,14 +3079,37 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+ {
+     VFIOPCIDevice *vdev = VFIO_PCI(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
++    VFIODevice *vbasedev_iter;
++    VFIOGroup *group;
+     char *tmp, *subsys;
+     Error *err = NULL;
      struct stat st;
-     int groupid;
 -    int i, ret;
 +    int ret, i = 0;
      bool is_mdev;
+     char uuid[UUID_STR_LEN];
+     char *name;
  
 +    if (device_limit && device_limit != vdev->assigned_device_limit) {
 +            error_setg(errp, "Assigned device limit has been redefined. "
@@ -77,7 +87,7 @@ index ec9a854361..a779053be3 100644
      if (!vbasedev->sysfsdev) {
          if (!(~vdev->host.domain || ~vdev->host.bus ||
                ~vdev->host.slot || ~vdev->host.function)) {
-@@ -3294,6 +3318,9 @@ static Property vfio_pci_dev_properties[] = {
+@@ -3501,6 +3527,9 @@ static Property vfio_pci_dev_properties[] = {
      DEFINE_PROP_BOOL("x-no-kvm-msix", VFIOPCIDevice, no_kvm_msix, false),
      DEFINE_PROP_BOOL("x-no-geforce-quirks", VFIOPCIDevice,
                       no_geforce_quirks, false),
@@ -88,10 +98,10 @@ index ec9a854361..a779053be3 100644
                       false),
      DEFINE_PROP_BOOL("x-no-vfio-ioeventfd", VFIOPCIDevice, no_vfio_ioeventfd,
 diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
-index 177abcc8fb..45235d38ba 100644
+index fba8737ab2..eb74d9de2d 100644
 --- a/hw/vfio/pci.h
 +++ b/hw/vfio/pci.h
-@@ -140,6 +140,7 @@ struct VFIOPCIDevice {
+@@ -142,6 +142,7 @@ struct VFIOPCIDevice {
      EventNotifier err_notifier;
      EventNotifier req_notifier;
      int (*resetfn)(struct VFIOPCIDevice *);
@@ -100,5 +110,5 @@ index 177abcc8fb..45235d38ba 100644
      uint32_t device_id;
      uint32_t sub_vendor_id;
 -- 
-2.39.1
+2.39.3
 

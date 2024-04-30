@@ -1,0 +1,184 @@
+From 3b7f044f15b4a9daf4ad7eda58777aba6dbe3fc0 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:43 +0800
+Subject: [PATCH 018/101] vfio/spapr: switch to spapr IOMMU BE
+ add/del_section_window
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [17/67] a0d9f1f2d4d2592f3d9fc2ee5b2c38236a986e38 (eauger1/centos-qemu-kvm)
+
+No functional change intended.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 233309e8e4c158af6c6b126d5ad021bae40a918a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c                      |  8 ++------
+ hw/vfio/container-base.c              | 21 +++++++++++++++++++++
+ hw/vfio/spapr.c                       | 19 ++++++++++++++-----
+ include/hw/vfio/vfio-common.h         |  5 -----
+ include/hw/vfio/vfio-container-base.h |  5 +++++
+ 5 files changed, 42 insertions(+), 16 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 483ba82089..572ae7c934 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -571,8 +571,6 @@ static void vfio_listener_region_add(MemoryListener *listener,
+ {
+     VFIOContainerBase *bcontainer = container_of(listener, VFIOContainerBase,
+                                                  listener);
+-    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
+-                                            bcontainer);
+     hwaddr iova, end;
+     Int128 llend, llsize;
+     void *vaddr;
+@@ -595,7 +593,7 @@ static void vfio_listener_region_add(MemoryListener *listener,
+         return;
+     }
+ 
+-    if (vfio_container_add_section_window(container, section, &err)) {
++    if (vfio_container_add_section_window(bcontainer, section, &err)) {
+         goto fail;
+     }
+ 
+@@ -738,8 +736,6 @@ static void vfio_listener_region_del(MemoryListener *listener,
+ {
+     VFIOContainerBase *bcontainer = container_of(listener, VFIOContainerBase,
+                                                  listener);
+-    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
+-                                            bcontainer);
+     hwaddr iova, end;
+     Int128 llend, llsize;
+     int ret;
+@@ -818,7 +814,7 @@ static void vfio_listener_region_del(MemoryListener *listener,
+ 
+     memory_region_unref(section->mr);
+ 
+-    vfio_container_del_section_window(container, section);
++    vfio_container_del_section_window(bcontainer, section);
+ }
+ 
+ typedef struct VFIODirtyRanges {
+diff --git a/hw/vfio/container-base.c b/hw/vfio/container-base.c
+index 0177f43741..71f7274973 100644
+--- a/hw/vfio/container-base.c
++++ b/hw/vfio/container-base.c
+@@ -31,6 +31,27 @@ int vfio_container_dma_unmap(VFIOContainerBase *bcontainer,
+     return bcontainer->ops->dma_unmap(bcontainer, iova, size, iotlb);
+ }
+ 
++int vfio_container_add_section_window(VFIOContainerBase *bcontainer,
++                                      MemoryRegionSection *section,
++                                      Error **errp)
++{
++    if (!bcontainer->ops->add_window) {
++        return 0;
++    }
++
++    return bcontainer->ops->add_window(bcontainer, section, errp);
++}
++
++void vfio_container_del_section_window(VFIOContainerBase *bcontainer,
++                                       MemoryRegionSection *section)
++{
++    if (!bcontainer->ops->del_window) {
++        return;
++    }
++
++    return bcontainer->ops->del_window(bcontainer, section);
++}
++
+ int vfio_container_set_dirty_page_tracking(VFIOContainerBase *bcontainer,
+                                            bool start)
+ {
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index e1a6b35563..5be1911aad 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -319,10 +319,13 @@ static int vfio_spapr_create_window(VFIOContainer *container,
+     return 0;
+ }
+ 
+-int vfio_container_add_section_window(VFIOContainer *container,
+-                                      MemoryRegionSection *section,
+-                                      Error **errp)
++static int
++vfio_spapr_container_add_section_window(VFIOContainerBase *bcontainer,
++                                        MemoryRegionSection *section,
++                                        Error **errp)
+ {
++    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
++                                            bcontainer);
+     VFIOHostDMAWindow *hostwin;
+     hwaddr pgsize = 0;
+     int ret;
+@@ -407,9 +410,13 @@ int vfio_container_add_section_window(VFIOContainer *container,
+     return 0;
+ }
+ 
+-void vfio_container_del_section_window(VFIOContainer *container,
+-                                       MemoryRegionSection *section)
++static void
++vfio_spapr_container_del_section_window(VFIOContainerBase *bcontainer,
++                                        MemoryRegionSection *section)
+ {
++    VFIOContainer *container = container_of(bcontainer, VFIOContainer,
++                                            bcontainer);
++
+     if (container->iommu_type != VFIO_SPAPR_TCE_v2_IOMMU) {
+         return;
+     }
+@@ -430,6 +437,8 @@ static VFIOIOMMUOps vfio_iommu_spapr_ops;
+ static void setup_spapr_ops(VFIOContainerBase *bcontainer)
+ {
+     vfio_iommu_spapr_ops = *bcontainer->ops;
++    vfio_iommu_spapr_ops.add_window = vfio_spapr_container_add_section_window;
++    vfio_iommu_spapr_ops.del_window = vfio_spapr_container_del_section_window;
+     bcontainer->ops = &vfio_iommu_spapr_ops;
+ }
+ 
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index b9e5a0e64b..055f679363 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -169,11 +169,6 @@ VFIOAddressSpace *vfio_get_address_space(AddressSpace *as);
+ void vfio_put_address_space(VFIOAddressSpace *space);
+ 
+ /* SPAPR specific */
+-int vfio_container_add_section_window(VFIOContainer *container,
+-                                      MemoryRegionSection *section,
+-                                      Error **errp);
+-void vfio_container_del_section_window(VFIOContainer *container,
+-                                       MemoryRegionSection *section);
+ int vfio_spapr_container_init(VFIOContainer *container, Error **errp);
+ void vfio_spapr_container_deinit(VFIOContainer *container);
+ 
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index f62a14ac73..4b6f017c6f 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -75,6 +75,11 @@ int vfio_container_dma_map(VFIOContainerBase *bcontainer,
+ int vfio_container_dma_unmap(VFIOContainerBase *bcontainer,
+                              hwaddr iova, ram_addr_t size,
+                              IOMMUTLBEntry *iotlb);
++int vfio_container_add_section_window(VFIOContainerBase *bcontainer,
++                                      MemoryRegionSection *section,
++                                      Error **errp);
++void vfio_container_del_section_window(VFIOContainerBase *bcontainer,
++                                       MemoryRegionSection *section);
+ int vfio_container_set_dirty_page_tracking(VFIOContainerBase *bcontainer,
+                                            bool start);
+ int vfio_container_query_dirty_bitmap(VFIOContainerBase *bcontainer,
+-- 
+2.39.3
+

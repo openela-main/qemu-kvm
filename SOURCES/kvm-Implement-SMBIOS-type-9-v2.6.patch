@@ -1,0 +1,155 @@
+From 5c639f8ce65183ce8e44ee8e0230e9d627a440d7 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Wed, 21 Feb 2024 17:00:27 +0000
+Subject: [PATCH 05/20] Implement SMBIOS type 9 v2.6
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 230: Workaround Windows failing to find 64bit SMBIOS entry point with SeaBIOS
+RH-Jira: RHEL-21705
+RH-Acked-by: MST <mst@redhat.com>
+RH-Acked-by: Ani Sinha <None>
+RH-Commit: [3/18] ead230527d93938907a561cf5b985ee4f54d82b1
+
+JIRA: https://issues.redhat.com/browse/RHEL-21705
+Author: Felix Wu <flwu@google.com>
+
+    Signed-off-by: Felix Wu <flwu@google.com>
+    Signed-off-by: Nabih Estefan <nabihestefan@google.com>
+    Message-Id: <20240221170027.1027325-3-nabihestefan@google.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 04f143d828845d0fd52dd4a52664d81a4f5431f7)
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ hw/smbios/smbios.c           | 49 +++++++++++++++++++++++++++++++++---
+ include/hw/firmware/smbios.h |  4 +++
+ qemu-options.hx              |  2 +-
+ 3 files changed, 51 insertions(+), 4 deletions(-)
+
+diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
+index 4f5637d445..074705fa4c 100644
+--- a/hw/smbios/smbios.c
++++ b/hw/smbios/smbios.c
+@@ -124,7 +124,7 @@ static QTAILQ_HEAD(, type8_instance) type8 = QTAILQ_HEAD_INITIALIZER(type8);
+ 
+ /* type 9 instance for parsing */
+ struct type9_instance {
+-    const char *slot_designation;
++    const char *slot_designation, *pcidev;
+     uint8_t slot_type, slot_data_bus_width, current_usage, slot_length,
+             slot_characteristics1, slot_characteristics2;
+     uint16_t slot_id;
+@@ -427,6 +427,11 @@ static const QemuOptDesc qemu_smbios_type9_opts[] = {
+         .type = QEMU_OPT_NUMBER,
+         .help = "slot characteristics2, see the spec",
+     },
++    {
++        .name = "pci_device",
++        .type = QEMU_OPT_STRING,
++        .help = "PCI device, if provided."
++    }
+ };
+ 
+ static const QemuOptDesc qemu_smbios_type11_opts[] = {
+@@ -851,7 +856,7 @@ static void smbios_build_type_8_table(void)
+     }
+ }
+ 
+-static void smbios_build_type_9_table(void)
++static void smbios_build_type_9_table(Error **errp)
+ {
+     unsigned instance = 0;
+     struct type9_instance *t9;
+@@ -868,6 +873,43 @@ static void smbios_build_type_9_table(void)
+         t->slot_characteristics1 = t9->slot_characteristics1;
+         t->slot_characteristics2 = t9->slot_characteristics2;
+ 
++        if (t9->pcidev) {
++            PCIDevice *pdev = NULL;
++            int rc = pci_qdev_find_device(t9->pcidev, &pdev);
++            if (rc != 0) {
++                error_setg(errp,
++                           "No PCI device %s for SMBIOS type 9 entry %s",
++                           t9->pcidev, t9->slot_designation);
++                return;
++            }
++            /*
++             * We only handle the case were the device is attached to
++             * the PCI root bus. The general case is more complex as
++             * bridges are enumerated later and the table would need
++             * to be updated at this moment.
++             */
++            if (!pci_bus_is_root(pci_get_bus(pdev))) {
++                error_setg(errp,
++                           "Cannot create type 9 entry for PCI device %s: "
++                           "not attached to the root bus",
++                           t9->pcidev);
++                return;
++            }
++            t->segment_group_number = cpu_to_le16(0);
++            t->bus_number = pci_dev_bus_num(pdev);
++            t->device_number = pdev->devfn;
++        } else {
++            /*
++             * Per SMBIOS spec, For slots that are not of the PCI, AGP, PCI-X,
++             * or PCI-Express type that do not have bus/device/function
++             * information, 0FFh should be populated in the fields of Segment
++             * Group Number, Bus Number, Device/Function Number.
++             */
++            t->segment_group_number = 0xff;
++            t->bus_number = 0xff;
++            t->device_number = 0xff;
++        }
++
+         SMBIOS_BUILD_TABLE_POST;
+         instance++;
+     }
+@@ -1222,7 +1264,7 @@ void smbios_get_tables(MachineState *ms,
+         }
+ 
+         smbios_build_type_8_table();
+-        smbios_build_type_9_table();
++        smbios_build_type_9_table(errp);
+         smbios_build_type_11_table();
+ 
+ #define MAX_DIMM_SZ (16 * GiB)
+@@ -1568,6 +1610,7 @@ void smbios_entry_add(QemuOpts *opts, Error **errp)
+             t->slot_id = qemu_opt_get_number(opts, "slot_id", 0);
+             t->slot_characteristics1 = qemu_opt_get_number(opts, "slot_characteristics1", 0);
+             t->slot_characteristics2 = qemu_opt_get_number(opts, "slot_characteristics2", 0);
++            save_opt(&t->pcidev, opts, "pcidev");
+             QTAILQ_INSERT_TAIL(&type9, t, next);
+             return;
+         }
+diff --git a/include/hw/firmware/smbios.h b/include/hw/firmware/smbios.h
+index 6bbd5a4c20..f8dd07fe4c 100644
+--- a/include/hw/firmware/smbios.h
++++ b/include/hw/firmware/smbios.h
+@@ -222,6 +222,10 @@ struct smbios_type_9 {
+     uint16_t slot_id;
+     uint8_t slot_characteristics1;
+     uint8_t slot_characteristics2;
++    /* SMBIOS spec v2.6+ */
++    uint16_t segment_group_number;
++    uint8_t bus_number;
++    uint8_t device_number;
+ } QEMU_PACKED;
+ 
+ /* SMBIOS type 11 - OEM strings */
+diff --git a/qemu-options.hx b/qemu-options.hx
+index 94cacc2c63..93364e1765 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -2710,7 +2710,7 @@ SRST
+ ``-smbios type=4[,sock_pfx=str][,manufacturer=str][,version=str][,serial=str][,asset=str][,part=str][,processor-id=%d]``
+     Specify SMBIOS type 4 fields
+ 
+-``-smbios type=9[,slot_designation=str][,slot_type=%d][,slot_data_bus_width=%d][,current_usage=%d][,slot_length=%d][,slot_id=%d][,slot_characteristics1=%d][,slot_characteristics12=%d]``
++``-smbios type=9[,slot_designation=str][,slot_type=%d][,slot_data_bus_width=%d][,current_usage=%d][,slot_length=%d][,slot_id=%d][,slot_characteristics1=%d][,slot_characteristics12=%d][,pci_device=str]``
+     Specify SMBIOS type 9 fields
+ 
+ ``-smbios type=11[,value=str][,path=filename]``
+-- 
+2.39.3
+

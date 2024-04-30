@@ -1,0 +1,41 @@
+From 4c1d07995a7afb6fae68a7e7a8b6b6c94fa0a7bb Mon Sep 17 00:00:00 2001
+From: Cornelia Huck <cohuck@redhat.com>
+Date: Mon, 12 Feb 2024 10:37:54 +0100
+Subject: [PATCH 5/6] hw/arm/virt: deprecate virt-rhel9.{0,2}.0 machine types
+
+RH-Author: Cornelia Huck <cohuck@redhat.com>
+RH-MergeRequest: 225: hw/arm/virt: deprecate virt-rhel9.{0,2}.0 machine types
+RH-Jira: RHEL-24988
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/1] f15579db44808fa8a2d7bc01b3915aa59c064411 (cohuck/qemu-kvm-c9s)
+
+Jira: https://issues.redhat.com/browse/RHEL-24988
+Upstream: RHEL only
+
+We do not plan to support any machine types prior to 9.4.0; leave them
+in, but mark as deprecated.
+
+Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+---
+ hw/arm/virt.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 60f117f0d2..943c563391 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3679,6 +3679,10 @@ static void rhel920_virt_options(MachineClass *mc)
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_4, hw_compat_rhel_9_4_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_3, hw_compat_rhel_9_3_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_2, hw_compat_rhel_9_2_len);
++
++    /* RHEL 9.4 is the first supported release */
++    mc->deprecation_reason =
++        "machine types for versions prior to 9.4 are deprecated";
+ }
+ DEFINE_RHEL_MACHINE(9, 2, 0)
+ 
+-- 
+2.39.3
+

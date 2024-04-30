@@ -1,0 +1,42 @@
+From ceaee9c4372bbdc4196cb6808515047388f7aa26 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 21 Nov 2023 16:44:18 +0800
+Subject: [PATCH 039/101] hw/arm: Activate IOMMUFD for virt machines
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [38/67] 0a059ae661616e95eb8455e17f35774495cae8e7 (eauger1/centos-qemu-kvm)
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 0970238343af45a8b547695bfc22f18d4eb7da7e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
+index 3ada335a24..660f49db49 100644
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -8,6 +8,7 @@ config ARM_VIRT
+     imply TPM_TIS_SYSBUS
+     imply TPM_TIS_I2C
+     imply NVDIMM
++    imply IOMMUFD
+     select ARM_GIC
+     select ACPI
+     select ARM_SMMUV3
+-- 
+2.39.3
+

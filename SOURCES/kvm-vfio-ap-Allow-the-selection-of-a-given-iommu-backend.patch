@@ -1,0 +1,75 @@
+From 57bdfc821d6f4b4f9c6b1ff05bf0114e5cabc77e Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:13 +0800
+Subject: [PATCH 034/101] vfio/ap: Allow the selection of a given iommu backend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [33/67] a12bb86e5b627ccf246fb9ce60820595589ff8e5 (eauger1/centos-qemu-kvm)
+
+Now we support two types of iommu backends, let's add the capability
+to select one of them. This depends on whether an iommufd object has
+been linked with the vfio-ap device:
+
+if the user wants to use the legacy backend, it shall not
+link the vfio-ap device with any iommufd object:
+
+ -device vfio-ap,sysfsdev=/sys/bus/mdev/devices/XXX
+
+This is called the legacy mode/backend.
+
+If the user wants to use the iommufd backend (/dev/iommu) it
+shall pass an iommufd object id in the vfio-ap device options:
+
+ -object iommufd,id=iommufd0
+ -device vfio-ap,sysfsdev=/sys/bus/mdev/devices/XXX,iommufd=iommufd0
+
+Suggested-by: Alex Williamson <alex.williamson@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 336f308958d598f3db351bb7d94cc57b4b2d448d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/ap.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/vfio/ap.c b/hw/vfio/ap.c
+index bbf69ff55a..80629609ae 100644
+--- a/hw/vfio/ap.c
++++ b/hw/vfio/ap.c
+@@ -11,10 +11,12 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include CONFIG_DEVICES /* CONFIG_IOMMUFD */
+ #include <linux/vfio.h>
+ #include <sys/ioctl.h>
+ #include "qapi/error.h"
+ #include "hw/vfio/vfio-common.h"
++#include "sysemu/iommufd.h"
+ #include "hw/s390x/ap-device.h"
+ #include "qemu/error-report.h"
+ #include "qemu/event_notifier.h"
+@@ -204,6 +206,10 @@ static void vfio_ap_unrealize(DeviceState *dev)
+ 
+ static Property vfio_ap_properties[] = {
+     DEFINE_PROP_STRING("sysfsdev", VFIOAPDevice, vdev.sysfsdev),
++#ifdef CONFIG_IOMMUFD
++    DEFINE_PROP_LINK("iommufd", VFIOAPDevice, vdev.iommufd,
++                     TYPE_IOMMUFD_BACKEND, IOMMUFDBackend *),
++#endif
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+-- 
+2.39.3
+

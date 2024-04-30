@@ -1,0 +1,112 @@
+From 92aff3cc1a412de01e9563802fa48848eae5283f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Thu, 21 Dec 2023 16:58:41 +0100
+Subject: [PATCH 065/101] backends/iommufd: Remove mutex
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [64/67] 65518432b18f18ceadafe1b0698cdaa962e84f61 (eauger1/centos-qemu-kvm)
+
+Coverity reports a concurrent data access violation because be->users
+is being accessed in iommufd_backend_can_be_deleted() without holding
+the mutex.
+
+However, these routines are called from the QEMU main thread when a
+device is created. In this case, the code paths should be protected by
+the BQL lock and it should be safe to drop the IOMMUFD backend mutex.
+Simply remove it.
+
+Fixes: CID 1531550
+Fixes: CID 1531549
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 19368b1905b4b917e915526fcbd5bfa3f7439451)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c       | 7 -------
+ include/sysemu/iommufd.h | 2 --
+ 2 files changed, 9 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index 393c0d9a37..1ef683c7b0 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -29,7 +29,6 @@ static void iommufd_backend_init(Object *obj)
+     be->fd = -1;
+     be->users = 0;
+     be->owned = true;
+-    qemu_mutex_init(&be->lock);
+ }
+ 
+ static void iommufd_backend_finalize(Object *obj)
+@@ -52,10 +51,8 @@ static void iommufd_backend_set_fd(Object *obj, const char *str, Error **errp)
+         error_prepend(errp, "Could not parse remote object fd %s:", str);
+         return;
+     }
+-    qemu_mutex_lock(&be->lock);
+     be->fd = fd;
+     be->owned = false;
+-    qemu_mutex_unlock(&be->lock);
+     trace_iommu_backend_set_fd(be->fd);
+ }
+ 
+@@ -79,7 +76,6 @@ int iommufd_backend_connect(IOMMUFDBackend *be, Error **errp)
+ {
+     int fd, ret = 0;
+ 
+-    qemu_mutex_lock(&be->lock);
+     if (be->owned && !be->users) {
+         fd = qemu_open_old("/dev/iommu", O_RDWR);
+         if (fd < 0) {
+@@ -93,13 +89,11 @@ int iommufd_backend_connect(IOMMUFDBackend *be, Error **errp)
+ out:
+     trace_iommufd_backend_connect(be->fd, be->owned,
+                                   be->users, ret);
+-    qemu_mutex_unlock(&be->lock);
+     return ret;
+ }
+ 
+ void iommufd_backend_disconnect(IOMMUFDBackend *be)
+ {
+-    qemu_mutex_lock(&be->lock);
+     if (!be->users) {
+         goto out;
+     }
+@@ -110,7 +104,6 @@ void iommufd_backend_disconnect(IOMMUFDBackend *be)
+     }
+ out:
+     trace_iommufd_backend_disconnect(be->fd, be->users);
+-    qemu_mutex_unlock(&be->lock);
+ }
+ 
+ int iommufd_backend_alloc_ioas(IOMMUFDBackend *be, uint32_t *ioas_id,
+diff --git a/include/sysemu/iommufd.h b/include/sysemu/iommufd.h
+index 9c5524b0ed..9af27ebd6c 100644
+--- a/include/sysemu/iommufd.h
++++ b/include/sysemu/iommufd.h
+@@ -2,7 +2,6 @@
+ #define SYSEMU_IOMMUFD_H
+ 
+ #include "qom/object.h"
+-#include "qemu/thread.h"
+ #include "exec/hwaddr.h"
+ #include "exec/cpu-common.h"
+ 
+@@ -19,7 +18,6 @@ struct IOMMUFDBackend {
+     /*< protected >*/
+     int fd;            /* /dev/iommu file descriptor */
+     bool owned;        /* is the /dev/iommu opened internally */
+-    QemuMutex lock;
+     uint32_t users;
+ 
+     /*< public >*/
+-- 
+2.39.3
+

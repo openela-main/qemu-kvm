@@ -1,0 +1,104 @@
+From afa842e9fdf6e1d6e5d5785679a22779632142bd Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Fri, 2 Feb 2024 15:47:54 +0100
+Subject: [PATCH 03/22] block-backend: Allow concurrent context changes
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 222: Allow concurrent BlockBackend context changes
+RH-Jira: RHEL-24593
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/2] 9e1b535f60f7afa94a0817dc3e71136e41631c71 (hreitz/qemu-kvm-c-9-s)
+
+Since AioContext locks have been removed, a BlockBackend's AioContext
+may really change at any time (only exception is that it is often
+confined to a drained section, as noted in this patch).  Therefore,
+blk_get_aio_context() cannot rely on its root node's context always
+matching that of the BlockBackend.
+
+In practice, whether they match does not matter anymore anyway: Requests
+can be sent to BDSs from any context, so anyone who requests the BB's
+context should have no reason to require the root node to have the same
+context.  Therefore, we can and should remove the assertion to that
+effect.
+
+In addition, because the context can be set and queried from different
+threads concurrently, it has to be accessed with atomic operations.
+
+Buglink: https://issues.redhat.com/browse/RHEL-19381
+Suggested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20240202144755.671354-2-hreitz@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ad893672027ffe26db498947d70cde6d4f58a111)
+---
+ block/block-backend.c | 22 +++++++++++-----------
+ 1 file changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/block/block-backend.c b/block/block-backend.c
+index 209eb07528..9c4de79e6b 100644
+--- a/block/block-backend.c
++++ b/block/block-backend.c
+@@ -44,7 +44,7 @@ struct BlockBackend {
+     char *name;
+     int refcnt;
+     BdrvChild *root;
+-    AioContext *ctx;
++    AioContext *ctx; /* access with atomic operations only */
+     DriveInfo *legacy_dinfo;    /* null unless created by drive_new() */
+     QTAILQ_ENTRY(BlockBackend) link;         /* for block_backends */
+     QTAILQ_ENTRY(BlockBackend) monitor_link; /* for monitor_block_backends */
+@@ -2414,22 +2414,22 @@ void blk_op_unblock_all(BlockBackend *blk, Error *reason)
+     }
+ }
+ 
++/**
++ * Return BB's current AioContext.  Note that this context may change
++ * concurrently at any time, with one exception: If the BB has a root node
++ * attached, its context will only change through bdrv_try_change_aio_context(),
++ * which creates a drained section.  Therefore, incrementing such a BB's
++ * in-flight counter will prevent its context from changing.
++ */
+ AioContext *blk_get_aio_context(BlockBackend *blk)
+ {
+-    BlockDriverState *bs;
+     IO_CODE();
+ 
+     if (!blk) {
+         return qemu_get_aio_context();
+     }
+ 
+-    bs = blk_bs(blk);
+-    if (bs) {
+-        AioContext *ctx = bdrv_get_aio_context(blk_bs(blk));
+-        assert(ctx == blk->ctx);
+-    }
+-
+-    return blk->ctx;
++    return qatomic_read(&blk->ctx);
+ }
+ 
+ int blk_set_aio_context(BlockBackend *blk, AioContext *new_context,
+@@ -2442,7 +2442,7 @@ int blk_set_aio_context(BlockBackend *blk, AioContext *new_context,
+     GLOBAL_STATE_CODE();
+ 
+     if (!bs) {
+-        blk->ctx = new_context;
++        qatomic_set(&blk->ctx, new_context);
+         return 0;
+     }
+ 
+@@ -2471,7 +2471,7 @@ static void blk_root_set_aio_ctx_commit(void *opaque)
+     AioContext *new_context = s->new_ctx;
+     ThrottleGroupMember *tgm = &blk->public.throttle_group_member;
+ 
+-    blk->ctx = new_context;
++    qatomic_set(&blk->ctx, new_context);
+     if (tgm->throttle_state) {
+         throttle_group_detach_aio_context(tgm);
+         throttle_group_attach_aio_context(tgm, new_context);
+-- 
+2.39.3
+

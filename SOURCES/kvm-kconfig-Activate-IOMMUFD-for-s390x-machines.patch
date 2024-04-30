@@ -1,0 +1,42 @@
+From 9c2eb4ab03903bc084c53ac29b60b8d2121c9fed Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 21 Nov 2023 16:44:19 +0800
+Subject: [PATCH 040/101] kconfig: Activate IOMMUFD for s390x machines
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [39/67] cf0ebe770b8db5916dd35247618c0a325dc1eaab (eauger1/centos-qemu-kvm)
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 73e2df669335047b542b67d37ade060a6ae40dd8)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/s390x/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/s390x/Kconfig b/hw/s390x/Kconfig
+index 4c068d7960..26ad104485 100644
+--- a/hw/s390x/Kconfig
++++ b/hw/s390x/Kconfig
+@@ -6,6 +6,7 @@ config S390_CCW_VIRTIO
+     imply VFIO_CCW
+     imply WDT_DIAG288
+     imply PCIE_DEVICES
++    imply IOMMUFD
+     select PCI_EXPRESS
+     select S390_FLIC
+     select S390_FLIC_KVM if KVM
+-- 
+2.39.3
+

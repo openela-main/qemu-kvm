@@ -1,0 +1,129 @@
+From 7f392385d1b865904eae4b6681e3e7a87eb3af3d Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:27 +0800
+Subject: [PATCH 002/101] vfio: Introduce base object for VFIOContainer and
+ targeted interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [1/67] e63af50c2cb94f286b2d91f58c2d19dd862e019d (eauger1/centos-qemu-kvm)
+
+Introduce a dumb VFIOContainerBase object and its targeted interface.
+This is willingly not a QOM object because we don't want it to be
+visible from the user interface. The VFIOContainerBase will be
+smoothly populated in subsequent patches as well as interfaces.
+
+No functional change intended.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Yi Liu <yi.l.liu@intel.com>
+Signed-off-by: Yi Sun <yi.y.sun@linux.intel.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit f61dddd73232e3d82d560d1e1bca120446021f2f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/hw/vfio/vfio-common.h         |  8 ++---
+ include/hw/vfio/vfio-container-base.h | 50 +++++++++++++++++++++++++++
+ 2 files changed, 52 insertions(+), 6 deletions(-)
+ create mode 100644 include/hw/vfio/vfio-container-base.h
+
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index a4a22accb9..586d153c12 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -30,6 +30,7 @@
+ #include <linux/vfio.h>
+ #endif
+ #include "sysemu/sysemu.h"
++#include "hw/vfio/vfio-container-base.h"
+ 
+ #define VFIO_MSG_PREFIX "vfio %s: "
+ 
+@@ -81,6 +82,7 @@ typedef struct VFIOAddressSpace {
+ struct VFIOGroup;
+ 
+ typedef struct VFIOContainer {
++    VFIOContainerBase bcontainer;
+     VFIOAddressSpace *space;
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+     MemoryListener listener;
+@@ -201,12 +203,6 @@ typedef struct VFIODisplay {
+     } dmabuf;
+ } VFIODisplay;
+ 
+-typedef struct {
+-    unsigned long *bitmap;
+-    hwaddr size;
+-    hwaddr pages;
+-} VFIOBitmap;
+-
+ VFIOAddressSpace *vfio_get_address_space(AddressSpace *as);
+ void vfio_put_address_space(VFIOAddressSpace *space);
+ bool vfio_devices_all_running_and_saving(VFIOContainer *container);
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+new file mode 100644
+index 0000000000..1d6daaea5d
+--- /dev/null
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -0,0 +1,50 @@
++/*
++ * VFIO BASE CONTAINER
++ *
++ * Copyright (C) 2023 Intel Corporation.
++ * Copyright Red Hat, Inc. 2023
++ *
++ * Authors: Yi Liu <yi.l.liu@intel.com>
++ *          Eric Auger <eric.auger@redhat.com>
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef HW_VFIO_VFIO_CONTAINER_BASE_H
++#define HW_VFIO_VFIO_CONTAINER_BASE_H
++
++#include "exec/memory.h"
++
++typedef struct VFIODevice VFIODevice;
++typedef struct VFIOIOMMUOps VFIOIOMMUOps;
++
++typedef struct {
++    unsigned long *bitmap;
++    hwaddr size;
++    hwaddr pages;
++} VFIOBitmap;
++
++/*
++ * This is the base object for vfio container backends
++ */
++typedef struct VFIOContainerBase {
++    const VFIOIOMMUOps *ops;
++} VFIOContainerBase;
++
++struct VFIOIOMMUOps {
++    /* basic feature */
++    int (*dma_map)(VFIOContainerBase *bcontainer,
++                   hwaddr iova, ram_addr_t size,
++                   void *vaddr, bool readonly);
++    int (*dma_unmap)(VFIOContainerBase *bcontainer,
++                     hwaddr iova, ram_addr_t size,
++                     IOMMUTLBEntry *iotlb);
++    int (*attach_device)(const char *name, VFIODevice *vbasedev,
++                         AddressSpace *as, Error **errp);
++    void (*detach_device)(VFIODevice *vbasedev);
++    /* migration feature */
++    int (*set_dirty_page_tracking)(VFIOContainerBase *bcontainer, bool start);
++    int (*query_dirty_bitmap)(VFIOContainerBase *bcontainer, VFIOBitmap *vbmap,
++                              hwaddr iova, hwaddr size);
++};
++#endif /* HW_VFIO_VFIO_CONTAINER_BASE_H */
+-- 
+2.39.3
+

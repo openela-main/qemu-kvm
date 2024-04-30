@@ -1,0 +1,255 @@
+From aadd055dcc06cb964ebfd2868b7e9b207d62ae0e Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 2 Nov 2023 15:12:37 +0800
+Subject: [PATCH 012/101] vfio/container: Move vrdl_list to base container
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [11/67] 42da5389e39291839259f0e4c020c7461b7225cc (eauger1/centos-qemu-kvm)
+
+No functional change intended.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit dc74a4b0056c0c803d46612a2319294921097974)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c                      | 38 +++++++++++++--------------
+ hw/vfio/container-base.c              |  1 +
+ hw/vfio/container.c                   |  1 -
+ include/hw/vfio/vfio-common.h         | 11 --------
+ include/hw/vfio/vfio-container-base.h | 11 ++++++++
+ 5 files changed, 31 insertions(+), 31 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 1cb53d369e..f15665789f 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -351,13 +351,13 @@ static void vfio_ram_discard_notify_discard(RamDiscardListener *rdl,
+ {
+     VFIORamDiscardListener *vrdl = container_of(rdl, VFIORamDiscardListener,
+                                                 listener);
++    VFIOContainerBase *bcontainer = vrdl->bcontainer;
+     const hwaddr size = int128_get64(section->size);
+     const hwaddr iova = section->offset_within_address_space;
+     int ret;
+ 
+     /* Unmap with a single call. */
+-    ret = vfio_container_dma_unmap(&vrdl->container->bcontainer,
+-                                   iova, size , NULL);
++    ret = vfio_container_dma_unmap(bcontainer, iova, size , NULL);
+     if (ret) {
+         error_report("%s: vfio_container_dma_unmap() failed: %s", __func__,
+                      strerror(-ret));
+@@ -369,6 +369,7 @@ static int vfio_ram_discard_notify_populate(RamDiscardListener *rdl,
+ {
+     VFIORamDiscardListener *vrdl = container_of(rdl, VFIORamDiscardListener,
+                                                 listener);
++    VFIOContainerBase *bcontainer = vrdl->bcontainer;
+     const hwaddr end = section->offset_within_region +
+                        int128_get64(section->size);
+     hwaddr start, next, iova;
+@@ -387,8 +388,8 @@ static int vfio_ram_discard_notify_populate(RamDiscardListener *rdl,
+                section->offset_within_address_space;
+         vaddr = memory_region_get_ram_ptr(section->mr) + start;
+ 
+-        ret = vfio_container_dma_map(&vrdl->container->bcontainer, iova,
+-                                     next - start, vaddr, section->readonly);
++        ret = vfio_container_dma_map(bcontainer, iova, next - start,
++                                     vaddr, section->readonly);
+         if (ret) {
+             /* Rollback */
+             vfio_ram_discard_notify_discard(rdl, section);
+@@ -398,10 +399,9 @@ static int vfio_ram_discard_notify_populate(RamDiscardListener *rdl,
+     return 0;
+ }
+ 
+-static void vfio_register_ram_discard_listener(VFIOContainer *container,
++static void vfio_register_ram_discard_listener(VFIOContainerBase *bcontainer,
+                                                MemoryRegionSection *section)
+ {
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
+     RamDiscardManager *rdm = memory_region_get_ram_discard_manager(section->mr);
+     VFIORamDiscardListener *vrdl;
+ 
+@@ -412,7 +412,7 @@ static void vfio_register_ram_discard_listener(VFIOContainer *container,
+     g_assert(QEMU_IS_ALIGNED(int128_get64(section->size), TARGET_PAGE_SIZE));
+ 
+     vrdl = g_new0(VFIORamDiscardListener, 1);
+-    vrdl->container = container;
++    vrdl->bcontainer = bcontainer;
+     vrdl->mr = section->mr;
+     vrdl->offset_within_address_space = section->offset_within_address_space;
+     vrdl->size = int128_get64(section->size);
+@@ -427,7 +427,7 @@ static void vfio_register_ram_discard_listener(VFIOContainer *container,
+                               vfio_ram_discard_notify_populate,
+                               vfio_ram_discard_notify_discard, true);
+     ram_discard_manager_register_listener(rdm, &vrdl->listener, section);
+-    QLIST_INSERT_HEAD(&container->vrdl_list, vrdl, next);
++    QLIST_INSERT_HEAD(&bcontainer->vrdl_list, vrdl, next);
+ 
+     /*
+      * Sanity-check if we have a theoretically problematic setup where we could
+@@ -451,7 +451,7 @@ static void vfio_register_ram_discard_listener(VFIOContainer *container,
+         }
+ #endif
+ 
+-        QLIST_FOREACH(vrdl, &container->vrdl_list, next) {
++        QLIST_FOREACH(vrdl, &bcontainer->vrdl_list, next) {
+             hwaddr start, end;
+ 
+             start = QEMU_ALIGN_DOWN(vrdl->offset_within_address_space,
+@@ -473,13 +473,13 @@ static void vfio_register_ram_discard_listener(VFIOContainer *container,
+     }
+ }
+ 
+-static void vfio_unregister_ram_discard_listener(VFIOContainer *container,
++static void vfio_unregister_ram_discard_listener(VFIOContainerBase *bcontainer,
+                                                  MemoryRegionSection *section)
+ {
+     RamDiscardManager *rdm = memory_region_get_ram_discard_manager(section->mr);
+     VFIORamDiscardListener *vrdl = NULL;
+ 
+-    QLIST_FOREACH(vrdl, &container->vrdl_list, next) {
++    QLIST_FOREACH(vrdl, &bcontainer->vrdl_list, next) {
+         if (vrdl->mr == section->mr &&
+             vrdl->offset_within_address_space ==
+             section->offset_within_address_space) {
+@@ -663,7 +663,7 @@ static void vfio_listener_region_add(MemoryListener *listener,
+      * about changes.
+      */
+     if (memory_region_has_ram_discard_manager(section->mr)) {
+-        vfio_register_ram_discard_listener(container, section);
++        vfio_register_ram_discard_listener(bcontainer, section);
+         return;
+     }
+ 
+@@ -781,7 +781,7 @@ static void vfio_listener_region_del(MemoryListener *listener,
+         pgmask = (1ULL << ctz64(bcontainer->pgsizes)) - 1;
+         try_unmap = !((iova & pgmask) || (int128_get64(llsize) & pgmask));
+     } else if (memory_region_has_ram_discard_manager(section->mr)) {
+-        vfio_unregister_ram_discard_listener(container, section);
++        vfio_unregister_ram_discard_listener(bcontainer, section);
+         /* Unregistering will trigger an unmap. */
+         try_unmap = false;
+     }
+@@ -1260,17 +1260,17 @@ static int vfio_ram_discard_get_dirty_bitmap(MemoryRegionSection *section,
+      * Sync the whole mapped region (spanning multiple individual mappings)
+      * in one go.
+      */
+-    return vfio_get_dirty_bitmap(&vrdl->container->bcontainer, iova, size,
+-                                 ram_addr);
++    return vfio_get_dirty_bitmap(vrdl->bcontainer, iova, size, ram_addr);
+ }
+ 
+-static int vfio_sync_ram_discard_listener_dirty_bitmap(VFIOContainer *container,
+-                                                   MemoryRegionSection *section)
++static int
++vfio_sync_ram_discard_listener_dirty_bitmap(VFIOContainerBase *bcontainer,
++                                            MemoryRegionSection *section)
+ {
+     RamDiscardManager *rdm = memory_region_get_ram_discard_manager(section->mr);
+     VFIORamDiscardListener *vrdl = NULL;
+ 
+-    QLIST_FOREACH(vrdl, &container->vrdl_list, next) {
++    QLIST_FOREACH(vrdl, &bcontainer->vrdl_list, next) {
+         if (vrdl->mr == section->mr &&
+             vrdl->offset_within_address_space ==
+             section->offset_within_address_space) {
+@@ -1324,7 +1324,7 @@ static int vfio_sync_dirty_bitmap(VFIOContainer *container,
+         }
+         return 0;
+     } else if (memory_region_has_ram_discard_manager(section->mr)) {
+-        return vfio_sync_ram_discard_listener_dirty_bitmap(container, section);
++        return vfio_sync_ram_discard_listener_dirty_bitmap(bcontainer, section);
+     }
+ 
+     ram_addr = memory_region_get_ram_addr(section->mr) +
+diff --git a/hw/vfio/container-base.c b/hw/vfio/container-base.c
+index dcce111349..584eee4ba1 100644
+--- a/hw/vfio/container-base.c
++++ b/hw/vfio/container-base.c
+@@ -54,6 +54,7 @@ void vfio_container_init(VFIOContainerBase *bcontainer, VFIOAddressSpace *space,
+     bcontainer->dirty_pages_supported = false;
+     bcontainer->dma_max_mappings = 0;
+     QLIST_INIT(&bcontainer->giommu_list);
++    QLIST_INIT(&bcontainer->vrdl_list);
+ }
+ 
+ void vfio_container_destroy(VFIOContainerBase *bcontainer)
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index c5a6262882..6ba2e2f8c4 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -560,7 +560,6 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
+     container->fd = fd;
+     container->error = NULL;
+     container->iova_ranges = NULL;
+-    QLIST_INIT(&container->vrdl_list);
+     bcontainer = &container->bcontainer;
+     vfio_container_init(bcontainer, space, &vfio_legacy_ops);
+ 
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index d3dc2f9dcb..8a607a4c17 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -87,20 +87,9 @@ typedef struct VFIOContainer {
+     uint64_t max_dirty_bitmap_size;
+     QLIST_HEAD(, VFIOHostDMAWindow) hostwin_list;
+     QLIST_HEAD(, VFIOGroup) group_list;
+-    QLIST_HEAD(, VFIORamDiscardListener) vrdl_list;
+     GList *iova_ranges;
+ } VFIOContainer;
+ 
+-typedef struct VFIORamDiscardListener {
+-    VFIOContainer *container;
+-    MemoryRegion *mr;
+-    hwaddr offset_within_address_space;
+-    hwaddr size;
+-    uint64_t granularity;
+-    RamDiscardListener listener;
+-    QLIST_ENTRY(VFIORamDiscardListener) next;
+-} VFIORamDiscardListener;
+-
+ typedef struct VFIOHostDMAWindow {
+     hwaddr min_iova;
+     hwaddr max_iova;
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container-base.h
+index 85ec7e1a56..8e05b5ac5a 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container-base.h
+@@ -40,6 +40,7 @@ typedef struct VFIOContainerBase {
+     unsigned int dma_max_mappings;
+     bool dirty_pages_supported;
+     QLIST_HEAD(, VFIOGuestIOMMU) giommu_list;
++    QLIST_HEAD(, VFIORamDiscardListener) vrdl_list;
+     QLIST_ENTRY(VFIOContainerBase) next;
+     QLIST_HEAD(, VFIODevice) device_list;
+ } VFIOContainerBase;
+@@ -52,6 +53,16 @@ typedef struct VFIOGuestIOMMU {
+     QLIST_ENTRY(VFIOGuestIOMMU) giommu_next;
+ } VFIOGuestIOMMU;
+ 
++typedef struct VFIORamDiscardListener {
++    VFIOContainerBase *bcontainer;
++    MemoryRegion *mr;
++    hwaddr offset_within_address_space;
++    hwaddr size;
++    uint64_t granularity;
++    RamDiscardListener listener;
++    QLIST_ENTRY(VFIORamDiscardListener) next;
++} VFIORamDiscardListener;
++
+ int vfio_container_dma_map(VFIOContainerBase *bcontainer,
+                            hwaddr iova, ram_addr_t size,
+                            void *vaddr, bool readonly);
+-- 
+2.39.3
+

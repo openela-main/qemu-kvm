@@ -1,0 +1,115 @@
+From 49435d4d592bc890f56b69c2290f890c87b5a103 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 21 Nov 2023 16:44:05 +0800
+Subject: [PATCH 026/101] vfio/iommufd: Add support for iova_ranges and pgsizes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [25/67] 578af0547d97276ccd4936b574c12118fc70d468 (eauger1/centos-qemu-kvm)
+
+Some vIOMMU such as virtio-iommu use IOVA ranges from host side to
+setup reserved ranges for passthrough device, so that guest will not
+use an IOVA range beyond host support.
+
+Use an uAPI of IOMMUFD to get IOVA ranges of host side and pass to
+vIOMMU just like the legacy backend, if this fails, fallback to
+64bit IOVA range.
+
+Also use out_iova_alignment returned from uAPI as pgsizes instead of
+qemu_real_host_page_size() as a fallback.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 714e9affa8ae1d84007c8afde7bb10fef9cb883d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c | 56 ++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 6d31aeac7b..01b448e840 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -261,6 +261,53 @@ static int iommufd_cdev_ram_block_discard_disable(bool state)
+     return ram_block_uncoordinated_discard_disable(state);
+ }
+ 
++static int iommufd_cdev_get_info_iova_range(VFIOIOMMUFDContainer *container,
++                                            uint32_t ioas_id, Error **errp)
++{
++    VFIOContainerBase *bcontainer = &container->bcontainer;
++    struct iommu_ioas_iova_ranges *info;
++    struct iommu_iova_range *iova_ranges;
++    int ret, sz, fd = container->be->fd;
++
++    info = g_malloc0(sizeof(*info));
++    info->size = sizeof(*info);
++    info->ioas_id = ioas_id;
++
++    ret = ioctl(fd, IOMMU_IOAS_IOVA_RANGES, info);
++    if (ret && errno != EMSGSIZE) {
++        goto error;
++    }
++
++    sz = info->num_iovas * sizeof(struct iommu_iova_range);
++    info = g_realloc(info, sizeof(*info) + sz);
++    info->allowed_iovas = (uintptr_t)(info + 1);
++
++    ret = ioctl(fd, IOMMU_IOAS_IOVA_RANGES, info);
++    if (ret) {
++        goto error;
++    }
++
++    iova_ranges = (struct iommu_iova_range *)(uintptr_t)info->allowed_iovas;
++
++    for (int i = 0; i < info->num_iovas; i++) {
++        Range *range = g_new(Range, 1);
++
++        range_set_bounds(range, iova_ranges[i].start, iova_ranges[i].last);
++        bcontainer->iova_ranges =
++            range_list_insert(bcontainer->iova_ranges, range);
++    }
++    bcontainer->pgsizes = info->out_iova_alignment;
++
++    g_free(info);
++    return 0;
++
++error:
++    ret = -errno;
++    g_free(info);
++    error_setg_errno(errp, errno, "Cannot get IOVA ranges");
++    return ret;
++}
++
+ static int iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+                                AddressSpace *as, Error **errp)
+ {
+@@ -335,7 +382,14 @@ static int iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+         goto err_discard_disable;
+     }
+ 
+-    bcontainer->pgsizes = qemu_real_host_page_size();
++    ret = iommufd_cdev_get_info_iova_range(container, ioas_id, &err);
++    if (ret) {
++        error_append_hint(&err,
++                   "Fallback to default 64bit IOVA range and 4K page size\n");
++        warn_report_err(err);
++        err = NULL;
++        bcontainer->pgsizes = qemu_real_host_page_size();
++    }
+ 
+     bcontainer->listener = vfio_memory_listener;
+     memory_listener_register(&bcontainer->listener, bcontainer->space->as);
+-- 
+2.39.3
+

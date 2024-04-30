@@ -1,0 +1,41 @@
+From 7a6be312c11911bdd2ce82566be22a3e014947c2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Tue, 21 Nov 2023 16:44:20 +0800
+Subject: [PATCH 041/101] hw/i386: Activate IOMMUFD for q35 machines
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 211: IOMMUFD backend backport
+RH-Jira: RHEL-19302 RHEL-21057
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Commit: [40/67] b15764ab24fd57389a8d219736613484acd7d29e (eauger1/centos-qemu-kvm)
+
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 64ad06f6eba66c514477f490bcba409439a480d8)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/i386/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/i386/Kconfig b/hw/i386/Kconfig
+index 55850791df..a1846be6f7 100644
+--- a/hw/i386/Kconfig
++++ b/hw/i386/Kconfig
+@@ -95,6 +95,7 @@ config Q35
+     imply E1000E_PCI_EXPRESS
+     imply VMPORT
+     imply VMMOUSE
++    imply IOMMUFD
+     select PC_PCI
+     select PC_ACPI
+     select PCI_EXPRESS_Q35
+-- 
+2.39.3
+
