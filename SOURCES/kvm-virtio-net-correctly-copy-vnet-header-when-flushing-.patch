@@ -1,0 +1,90 @@
+From c3146dd39fb274ffbd70d20f8ba9e13562fb21ad Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 5 Mar 2024 16:38:49 -0500
+Subject: [PATCH 3/3] virtio-net: correctly copy vnet header when flushing TX
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 354: virtio-net: correctly copy vnet header when flushing TX
+RH-Jira: RHEL-19496
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/1] 445b601da86a64298b776879fa0f30a4bf6c16f5 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-19496
+CVE: CVE-2023-6693
+Upstream: Merged
+
+commit 2220e8189fb94068dbad333228659fbac819abb0
+Author: Jason Wang <jasowang@redhat.com>
+Date:   Tue Jan 2 11:29:01 2024 +0800
+
+    virtio-net: correctly copy vnet header when flushing TX
+
+    When HASH_REPORT is negotiated, the guest_hdr_len might be larger than
+    the size of the mergeable rx buffer header. Using
+    virtio_net_hdr_mrg_rxbuf during the header swap might lead a stack
+    overflow in this case. Fixing this by using virtio_net_hdr_v1_hash
+    instead.
+
+    Reported-by: Xiao Lei <leixiao.nop@zju.edu.cn>
+    Cc: Yuri Benditovich <yuri.benditovich@daynix.com>
+    Cc: qemu-stable@nongnu.org
+    Cc: Mauro Matteo Cascella <mcascell@redhat.com>
+    Fixes: CVE-2023-6693
+    Fixes: e22f0603fb2f ("virtio-net: reference implementation of hash report")
+    Reviewed-by: Michael Tokarev <mjt@tls.msk.ru>
+    Signed-off-by: Jason Wang <jasowang@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/net/virtio-net.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index f5f07f8e63..7d459726d4 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -602,6 +602,11 @@ static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
+ 
+     n->mergeable_rx_bufs = mergeable_rx_bufs;
+ 
++    /*
++     * Note: when extending the vnet header, please make sure to
++     * change the vnet header copying logic in virtio_net_flush_tx()
++     * as well.
++     */
+     if (version_1) {
+         n->guest_hdr_len = hash_report ?
+             sizeof(struct virtio_net_hdr_v1_hash) :
+@@ -2535,7 +2540,7 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
+         ssize_t ret;
+         unsigned int out_num;
+         struct iovec sg[VIRTQUEUE_MAX_SIZE], sg2[VIRTQUEUE_MAX_SIZE + 1], *out_sg;
+-        struct virtio_net_hdr_mrg_rxbuf mhdr;
++        struct virtio_net_hdr_v1_hash vhdr;
+ 
+         elem = virtqueue_pop(q->tx_vq, sizeof(VirtQueueElement));
+         if (!elem) {
+@@ -2552,7 +2557,7 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
+         }
+ 
+         if (n->has_vnet_hdr) {
+-            if (iov_to_buf(out_sg, out_num, 0, &mhdr, n->guest_hdr_len) <
++            if (iov_to_buf(out_sg, out_num, 0, &vhdr, n->guest_hdr_len) <
+                 n->guest_hdr_len) {
+                 virtio_error(vdev, "virtio-net header incorrect");
+                 virtqueue_detach_element(q->tx_vq, elem, 0);
+@@ -2560,8 +2565,8 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
+                 return -EINVAL;
+             }
+             if (n->needs_vnet_hdr_swap) {
+-                virtio_net_hdr_swap(vdev, (void *) &mhdr);
+-                sg2[0].iov_base = &mhdr;
++                virtio_net_hdr_swap(vdev, (void *) &vhdr);
++                sg2[0].iov_base = &vhdr;
+                 sg2[0].iov_len = n->guest_hdr_len;
+                 out_num = iov_copy(&sg2[1], ARRAY_SIZE(sg2) - 1,
+                                    out_sg, out_num,
+-- 
+2.41.0
+

@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 40%{?rcrel}%{?dist}.2
+Release: 49%{?rcrel}%{?dist}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -781,22 +781,72 @@ Patch309: kvm-i386-cpu-Update-how-the-EBX-register-of-CPUID-0x8000.patch
 Patch310: kvm-target-i386-kvm-Fix-disabling-MPX-on-cpu-host-with-M.patch
 # For bz#2215786 - CVE-2023-3301 virt:rhel/qemu-kvm: QEMU: net: triggerable assertion due to race condition in hot-unplug [rhel-8]
 Patch311: kvm-vhost-vdpa-do-not-cleanup-the-vdpa-vhost-net-structu.patch
-# For RHEL-2186 - [RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9
-Patch312: kvm-acpi-fix-acpi_index-migration.patch
-# For RHEL-2186 - [RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9
-Patch313: kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch
-# For RHEL-7339 - CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.9.0]
-Patch314: kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch
-# For RHEL-16095 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z]
-Patch315: kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch
-# For RHEL-16095 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z]
-Patch316: kvm-net-Update-MemReentrancyGuard-for-NIC.patch
-# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
-Patch317: kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch
-# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
-Patch318: kvm-dump-Add-arch-cleanup-function.patch
-# For RHEL-17253 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z]
-Patch319: kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch
+# For bz#2218488 - CVE-2023-3255 virt:rhel/qemu-kvm: QEMU: VNC: infinite loop in inflate_buffer() leads to denial of service [rhel-8]
+Patch312: kvm-ui-vnc-clipboard-fix-infinite-loop-in-inflate_buffer.patch
+# For bz#2111390 - [IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part
+Patch313: kvm-s390x-ap-fix-missing-subsystem-reset-registration.patch
+# For bz#2111390 - [IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part
+Patch314: kvm-s390x-do-a-subsystem-reset-before-the-unprotect-on-r.patch
+# For bz#2111390 - [IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part
+Patch315: kvm-redhat-Update-linux-headers-for-kvm_s390_vm_cpu_uv_f.patch
+# For bz#2111390 - [IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part
+Patch316: kvm-target-s390x-kvm-Refactor-AP-functionalities.patch
+# For bz#2111390 - [IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part
+Patch317: kvm-target-s390x-AP-passthrough-for-PV-guests.patch
+# For RHEL-16696 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm)
+Patch318: kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch
+# For RHEL-16696 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm)
+Patch319: kvm-dump-Add-arch-cleanup-function.patch
+# For RHEL-16696 - RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm)
+Patch320: kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch
+# For RHEL-7309 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8]
+Patch321: kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch
+# For RHEL-7309 - CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8]
+Patch322: kvm-net-Update-MemReentrancyGuard-for-NIC.patch
+# For RHEL-7567 - [RHEL8][clone]VM crash when guest running testpmd and delete created vhostuserclient port on host
+Patch323: kvm-vhost-release-memory_listener-object-in-error-path.patch
+# For RHEL-2600 - qemu core dump occurs when client connects to VNC server because qemu cmd only adds vnc but without graphics device
+Patch324: kvm-ui-fix-crash-when-there-are-no-active_console.patch
+# For RHEL-15437 - CVE-2023-5088 virt:rhel/qemu-kvm: QEMU: improper IDE controller reset can lead to MBR overwrite [rhel-8]
+Patch325: kvm-hw-ide-reset-cancel-async-DMA-operation-before-reset.patch
+# For RHEL-15437 - CVE-2023-5088 virt:rhel/qemu-kvm: QEMU: improper IDE controller reset can lead to MBR overwrite [rhel-8]
+Patch326: kvm-tests-qtest-ahci-test-add-test-exposing-reset-issue-.patch
+# For RHEL-20189 - [RHEL.8.10.0]Failed to migrate guest with pc (i440x)  between RHELAV 8.4.0 and RHEL 8.10.0
+Patch327: kvm-acpi-fix-acpi_index-migration.patch
+# For RHEL-20189 - [RHEL.8.10.0]Failed to migrate guest with pc (i440x)  between RHELAV 8.4.0 and RHEL 8.10.0
+Patch328: kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch
+# For RHEL-14870 - [rhel8]ipxe-roms-qemu does not provide efi-virtio.rom
+Patch329: kvm-hw-arm-virt-Do-not-load-efi-virtio.rom-for-all-virti.patch
+# For RHEL-18214 - [RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption
+Patch330: kvm-MAINTAINERS-split-out-s390x-sections.patch
+# For RHEL-18214 - [RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption
+Patch331: kvm-s390x-pv-remove-semicolon-from-macro-definition.patch
+# For RHEL-18214 - [RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption
+Patch332: kvm-hw-s390x-pv-Restrict-Protected-Virtualization-to-sys.patch
+# For RHEL-18214 - [RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption
+Patch333: kvm-hw-s390x-Move-KVM-specific-PV-from-hw-to-target-s390.patch
+# For RHEL-18214 - [RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption
+Patch334: kvm-target-s390x-kvm-pv-Provide-some-more-useful-informa.patch
+# For RHEL-22411 - [s390x] VM fails to start with ISM passed through
+Patch335: kvm-s390x-pci-avoid-double-enable-disable-of-aif.patch
+# For RHEL-22411 - [s390x] VM fails to start with ISM passed through
+Patch336: kvm-s390x-pci-refresh-fh-before-disabling-aif.patch
+# For RHEL-22411 - [s390x] VM fails to start with ISM passed through
+Patch337: kvm-s390x-pci-drive-ISM-reset-from-subsystem-reset.patch
+# For RHEL-7353 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-8]
+Patch338: kvm-iotests-add-filter_qmp_generated_node_ids.patch
+# For RHEL-7353 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-8]
+Patch339: kvm-iotests-port-141-to-Python-for-reliable-QMP-testing.patch
+# For RHEL-7353 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-8]
+Patch340: kvm-monitor-only-run-coroutine-commands-in-qemu_aio_cont.patch
+# For RHEL-7353 - [qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-8]
+Patch341: kvm-iotests-Make-144-deterministic-again.patch
+# For RHEL-19628 - CVE-2023-6683 virt:rhel/qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-8]
+Patch342: kvm-glib-compat-Introduce-g_memdup2-wrapper.patch
+# For RHEL-19628 - CVE-2023-6683 virt:rhel/qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-8]
+Patch343: kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch
+# For RHEL-19496 - CVE-2023-6693 virt:rhel/qemu-kvm: QEMU: virtio-net: stack buffer overflow in virtio_net_flush_tx() [rhel-8]
+Patch344: kvm-virtio-net-correctly-copy-vnet-header-when-flushing-.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -1966,27 +2016,86 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
-* Wed Nov 29 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-40.el8_9.2
-- kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch [RHEL-16095]
-- kvm-net-Update-MemReentrancyGuard-for-NIC.patch [RHEL-16095]
-- kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch [RHEL-17253]
-- kvm-dump-Add-arch-cleanup-function.patch [RHEL-17253]
-- kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch [RHEL-17253]
-- Resolves: RHEL-16095
-  (CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8.9.0.z])
-- Resolves: RHEL-17253
-  (RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm) [rhel-8.9.0.z])
+* Thu Mar 14 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-49
+- kvm-glib-compat-Introduce-g_memdup2-wrapper.patch [RHEL-19628]
+- kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch [RHEL-19628]
+- kvm-virtio-net-correctly-copy-vnet-header-when-flushing-.patch [RHEL-19496]
+- Resolves: RHEL-19628
+  (CVE-2023-6683 virt:rhel/qemu-kvm: QEMU: VNC: NULL pointer dereference in qemu_clipboard_request() [rhel-8])
+- Resolves: RHEL-19496
+  (CVE-2023-6693 virt:rhel/qemu-kvm: QEMU: virtio-net: stack buffer overflow in virtio_net_flush_tx() [rhel-8])
 
-* Wed Sep 27 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-40.el8_9.1
-- kvm-io-remove-io-watch-if-TLS-channel-is-closed-during-h.patch [RHEL-7339]
-- Resolves: RHEL-7339
-  (CVE-2023-3354 virt:rhel/qemu-kvm: QEMU: VNC: improper I/O watch removal in TLS handshake can lead to remote unauthenticated denial of service [rhel-8.9.0])
+* Mon Feb 26 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-48
+- kvm-iotests-add-filter_qmp_generated_node_ids.patch [RHEL-7353]
+- kvm-iotests-port-141-to-Python-for-reliable-QMP-testing.patch [RHEL-7353]
+- kvm-monitor-only-run-coroutine-commands-in-qemu_aio_cont.patch [RHEL-7353]
+- kvm-iotests-Make-144-deterministic-again.patch [RHEL-7353]
+- Resolves: RHEL-7353
+  ([qemu-kvm] no response with QMP command device_add when repeatedly hotplug/unplug virtio disks [RHEL-8])
 
-* Thu Sep 21 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-40.el8_9
-- kvm-acpi-fix-acpi_index-migration.patch [RHEL-2186]
-- kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch [RHEL-2186]
-- Resolves: RHEL-2186
-  ([RHEL8][pc machine type] Migration failed with pc machine type between rhe8.8 and rhel 8.9)
+* Sat Feb 03 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-47
+- kvm-s390x-pci-avoid-double-enable-disable-of-aif.patch [RHEL-22411]
+- kvm-s390x-pci-refresh-fh-before-disabling-aif.patch [RHEL-22411]
+- kvm-s390x-pci-drive-ISM-reset-from-subsystem-reset.patch [RHEL-22411]
+- Resolves: RHEL-22411
+  ([s390x] VM fails to start with ISM passed through)
+
+* Wed Jan 17 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-46
+- kvm-MAINTAINERS-split-out-s390x-sections.patch [RHEL-18214]
+- kvm-s390x-pv-remove-semicolon-from-macro-definition.patch [RHEL-18214]
+- kvm-hw-s390x-pv-Restrict-Protected-Virtualization-to-sys.patch [RHEL-18214]
+- kvm-hw-s390x-Move-KVM-specific-PV-from-hw-to-target-s390.patch [RHEL-18214]
+- kvm-target-s390x-kvm-pv-Provide-some-more-useful-informa.patch [RHEL-18214]
+- Resolves: RHEL-18214
+  ([RHEL8][Secure-execution][s390x]  The error message is not clear when boot up a SE guest with wrong encryption)
+
+* Thu Jan 04 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-45
+- kvm-acpi-fix-acpi_index-migration.patch [RHEL-20189]
+- kvm-RHEL-Enable-x-not-migrate-acpi-index-for-all-pre-RHE.patch [RHEL-20189]
+- kvm-hw-arm-virt-Do-not-load-efi-virtio.rom-for-all-virti.patch [RHEL-14870]
+- Resolves: RHEL-20189
+  ([RHEL.8.10.0]Failed to migrate guest with pc (i440x)  between RHELAV 8.4.0 and RHEL 8.10.0)
+- Resolves: RHEL-14870
+  ([rhel8]ipxe-roms-qemu does not provide efi-virtio.rom)
+
+* Wed Dec 13 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-44
+- kvm-hw-ide-reset-cancel-async-DMA-operation-before-reset.patch [RHEL-15437]
+- kvm-tests-qtest-ahci-test-add-test-exposing-reset-issue-.patch [RHEL-15437]
+- Resolves: RHEL-15437
+  (CVE-2023-5088 virt:rhel/qemu-kvm: QEMU: improper IDE controller reset can lead to MBR overwrite [rhel-8])
+
+* Wed Dec 06 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-43
+- kvm-net-Provide-MemReentrancyGuard-to-qemu_new_nic.patch [RHEL-7309]
+- kvm-net-Update-MemReentrancyGuard-for-NIC.patch [RHEL-7309]
+- kvm-vhost-release-memory_listener-object-in-error-path.patch [RHEL-7567]
+- kvm-ui-fix-crash-when-there-are-no-active_console.patch [RHEL-2600]
+- Resolves: RHEL-7309
+  (CVE-2023-3019 virt:rhel/qemu-kvm: QEMU: e1000e: heap use-after-free in e1000e_write_packet_to_guest() [rhel-8])
+- Resolves: RHEL-7567
+  ([RHEL8][clone]VM crash when guest running testpmd and delete created vhostuserclient port on host)
+- Resolves: RHEL-2600
+  (qemu core dump occurs when client connects to VNC server because qemu cmd only adds vnc but without graphics device)
+
+* Thu Nov 23 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-42
+- kvm-target-s390x-dump-Remove-unneeded-dump-info-function.patch [RHEL-16696]
+- kvm-dump-Add-arch-cleanup-function.patch [RHEL-16696]
+- kvm-target-s390x-arch_dump-Add-arch-cleanup-function-for.patch [RHEL-16696]
+- Resolves: RHEL-16696
+  (RHEL8 - KVM : Secure execution guest remains in "paused" state, post "virsh dump" failure (qemu-kvm))
+
+* Fri Sep 29 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-41
+- kvm-s390x-ap-fix-missing-subsystem-reset-registration.patch [bz#2111390]
+- kvm-s390x-do-a-subsystem-reset-before-the-unprotect-on-r.patch [bz#2111390]
+- kvm-redhat-Update-linux-headers-for-kvm_s390_vm_cpu_uv_f.patch [bz#2111390]
+- kvm-target-s390x-kvm-Refactor-AP-functionalities.patch [bz#2111390]
+- kvm-target-s390x-AP-passthrough-for-PV-guests.patch [bz#2111390]
+- Resolves: bz#2111390
+  ([IBM 8.10 FEAT] KVM: Enable Secure Execution Crypto Passthrough - qemu part)
+
+* Thu Sep 28 2023 Jon Maloy <jmaloy@redhat.com> - 6.2.0-40
+- kvm-ui-vnc-clipboard-fix-infinite-loop-in-inflate_buffer.patch [bz#2218488]
+- Resolves: bz#2218488
+  (CVE-2023-3255 virt:rhel/qemu-kvm: QEMU: VNC: infinite loop in inflate_buffer() leads to denial of service [rhel-8])
 
 * Mon Aug 28 2023 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-39
 - kvm-vhost-vdpa-do-not-cleanup-the-vdpa-vhost-net-structu.patch [bz#2215786]

@@ -1,0 +1,68 @@
+From 05b145a8d5b1c2f796069cdd81826c00cf7c983e Mon Sep 17 00:00:00 2001
+From: Janosch Frank <frankja@linux.ibm.com>
+Date: Fri, 1 Sep 2023 11:48:51 +0000
+Subject: [PATCH 2/5] s390x: do a subsystem reset before the unprotect on
+ reboot
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 321: Enable Secure Execution Crypto Passthrough for KVM on s390x
+RH-Bugzilla: 2111390
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [2/5] ea430d236e1a20ddad7095d2e6d10f741f9a1907
+
+Bound APQNs have to be reset before tearing down the secure config via
+s390_machine_unprotect(). Otherwise the Ultravisor will return a error
+code.
+
+So let's do a subsystem_reset() which includes a AP reset before the
+unprotect call. We'll do a full device_reset() afterwards which will
+reset some devices twice. That's ok since we can't move the
+device_reset() before the unprotect as it includes a CPU clear reset
+which the Ultravisor does not expect at that point in time.
+
+Signed-off-by: Janosch Frank <frankja@linux.ibm.com>
+Message-ID: <20230901114851.154357-1-frankja@linux.ibm.com>
+Tested-by: Viktor Mihajlovski <mihajlov@linux.ibm.com>
+Acked-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit ef1535901a07f2e49fa25c8bcee7f0b73801d824)
+
+Conflicts:
+	hw/s390x/s390-virtio-ccw.c
+	(contextual conflict due to missing commit 7966d70f6f6b)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 412d73715a..17146469ee 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -430,10 +430,20 @@ static void s390_machine_reset(MachineState *machine)
+     switch (reset_type) {
+     case S390_RESET_EXTERNAL:
+     case S390_RESET_REIPL:
++        /*
++         * Reset the subsystem which includes a AP reset. If a PV
++         * guest had APQNs attached the AP reset is a prerequisite to
++         * unprotecting since the UV checks if all APQNs are reset.
++         */
++        subsystem_reset();
+         if (s390_is_pv()) {
+             s390_machine_unprotect(ms);
+         }
+ 
++        /*
++         * Device reset includes CPU clear resets so this has to be
++         * done AFTER the unprotect call above.
++         */
+         qemu_devices_reset();
+         s390_crypto_reset();
+ 
+-- 
+2.41.0
+

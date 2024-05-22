@@ -1,0 +1,100 @@
+From 053faafcf523b0ea4d841c0af8e7e26a2cddd5e8 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 15 Jan 2024 14:00:04 +0100
+Subject: [PATCH 3/5] hw/s390x/pv: Restrict Protected Virtualization to sysemu
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 348: s390x: Provide some more useful information if decryption of a PV image fails
+RH-Jira: RHEL-18214
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [3/5] 17b11f9fd2b53c7d33c09a62f28cfca19b18e798
+
+JIRA: https://issues.redhat.com/browse/RHEL-18214
+
+commit 3ea7e312671686e616efa1b8caa5f5ce2d06543a
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Sat Dec 17 16:24:52 2022 +0100
+
+    hw/s390x/pv: Restrict Protected Virtualization to sysemu
+
+    Protected Virtualization is irrelevant in user emulation.
+
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Message-Id: <20221217152454.96388-4-philmd@linaro.org>
+    Reviewed-by: Thomas Huth <thuth@redhat.com>
+    Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ target/s390x/cpu_features.c | 4 ++++
+ target/s390x/cpu_models.c   | 4 +++-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index 5528acd082..2e4e11d264 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -14,7 +14,9 @@
+ #include "qemu/osdep.h"
+ #include "qemu/module.h"
+ #include "cpu_features.h"
++#ifndef CONFIG_USER_ONLY
+ #include "hw/s390x/pv.h"
++#endif
+ 
+ #define DEF_FEAT(_FEAT, _NAME, _TYPE, _BIT, _DESC) \
+     [S390_FEAT_##_FEAT] = {                        \
+@@ -107,6 +109,7 @@ void s390_fill_feat_block(const S390FeatBitmap features, S390FeatType type,
+         feat = find_next_bit(features, S390_FEAT_MAX, feat + 1);
+     }
+ 
++#ifndef CONFIG_USER_ONLY
+     if (!s390_is_pv()) {
+         return;
+     }
+@@ -147,6 +150,7 @@ void s390_fill_feat_block(const S390FeatBitmap features, S390FeatType type,
+     default:
+         return;
+     }
++#endif
+ }
+ 
+ void s390_add_from_feat_block(S390FeatBitmap features, S390FeatType type,
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 454485e706..e7c586c76e 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -22,8 +22,8 @@
+ #include "qemu/qemu-print.h"
+ #ifndef CONFIG_USER_ONLY
+ #include "sysemu/sysemu.h"
+-#endif
+ #include "hw/s390x/pv.h"
++#endif
+ 
+ #define CPUDEF_INIT(_type, _gen, _ec_ga, _mha_pow, _hmfai, _name, _desc) \
+     {                                                                    \
+@@ -236,6 +236,7 @@ bool s390_has_feat(S390Feat feat)
+         return 0;
+     }
+ 
++#ifndef CONFIG_USER_ONLY
+     if (s390_is_pv()) {
+         switch (feat) {
+         case S390_FEAT_DIAG_318:
+@@ -259,6 +260,7 @@ bool s390_has_feat(S390Feat feat)
+             break;
+         }
+     }
++#endif
+     return test_bit(feat, cpu->model->features);
+ }
+ 
+-- 
+2.41.0
+

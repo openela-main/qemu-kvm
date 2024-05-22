@@ -1,0 +1,69 @@
+From a728c0b522997e8e63bf6b64b202a7ae48693d02 Mon Sep 17 00:00:00 2001
+From: Prasad Pandit <ppandit@redhat.com>
+Date: Fri, 18 Aug 2023 16:38:12 +0530
+Subject: [PATCH 3/4] vhost: release memory_listener object in error path
+
+RH-Author: Prasad Pandit <None>
+RH-MergeRequest: 337: vhost: release memory_listener object in error path
+RH-Jira: RHEL-7567
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/1] 1e377a2f6f148e11a452d11107d839521354e2ca
+
+Jira: https://issues.redhat.com/browse/RHEL-7567
+
+commit 1e3ffb34f764f8ac4c003b2b2e6a775b2b073a16
+Author: Prasad J Pandit <pjp@fedoraproject.org>
+Date:   Mon May 29 17:13:32 2023 +0530
+
+    vhost: release memory_listener object in error path
+
+    vhost_dev_start function does not release memory_listener object
+    in case of an error. This may crash the guest when vhost is unable
+    to set memory table:
+
+      stack trace of thread 125653:
+      Program terminated with signal SIGSEGV, Segmentation fault
+      #0  memory_listener_register (qemu-kvm + 0x6cda0f)
+      #1  vhost_dev_start (qemu-kvm + 0x699301)
+      #2  vhost_net_start (qemu-kvm + 0x45b03f)
+      #3  virtio_net_set_status (qemu-kvm + 0x665672)
+      #4  qmp_set_link (qemu-kvm + 0x548fd5)
+      #5  net_vhost_user_event (qemu-kvm + 0x552c45)
+      #6  tcp_chr_connect (qemu-kvm + 0x88d473)
+      #7  tcp_chr_new_client (qemu-kvm + 0x88cf83)
+      #8  tcp_chr_accept (qemu-kvm + 0x88b429)
+      #9  qio_net_listener_channel_func (qemu-kvm + 0x7ac07c)
+      #10 g_main_context_dispatch (libglib-2.0.so.0 + 0x54e2f)
+
+    Release memory_listener objects in the error path.
+
+    Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
+    Message-Id: <20230529114333.31686-2-ppandit@redhat.com>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+    Reviewed-by: Peter Xu <peterx@redhat.com>
+    Fixes: c471ad0e9b ("vhost_net: device IOTLB support")
+    Cc: qemu-stable@nongnu.org
+    Acked-by: Jason Wang <jasowang@redhat.com>
+---
+ hw/virtio/vhost.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 437347ad01..639029aa76 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -1818,6 +1818,9 @@ fail_vq:
+     }
+ 
+ fail_mem:
++    if (vhost_dev_has_iommu(hdev)) {
++        memory_listener_unregister(&hdev->iommu_listener);
++    }
+ fail_features:
+ 
+     hdev->started = false;
+-- 
+2.41.0
+

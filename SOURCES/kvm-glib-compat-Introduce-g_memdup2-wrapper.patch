@@ -1,0 +1,105 @@
+From 939c75ab92ac608893cad0e46f55527950518a57 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 5 Mar 2024 11:36:15 -0500
+Subject: [PATCH 1/3] glib-compat: Introduce g_memdup2() wrapper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 353: ui/clipboard: mark type as not available when there is no data
+RH-Jira: RHEL-19628
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Commit: [1/2] f401c63303ef558bfcbb36e4c8fcc8bf2b1c3eb4 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-19628
+CVE: CVE-2023-6683
+Upstream: Merged
+
+commit 2c674fada72079583a3f2cc1790b16a0259c4fa0
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Fri Sep 3 19:44:44 2021 +0200
+
+    glib-compat: Introduce g_memdup2() wrapper
+    When experimenting raising GLIB_VERSION_MIN_REQUIRED to 2.68
+    (Fedora 34 provides GLib 2.68.1) we get:
+
+      hw/virtio/virtio-crypto.c:245:24: error: 'g_memdup' is deprecated: Use 'g_memdup2' instead [-Werror,-Wdeprecated-declarations]
+      ...
+
+    g_memdup() has been updated by g_memdup2() to fix eventual security
+    issues (size argument is 32-bit and could be truncated / wrapping).
+    GLib recommends to copy their static inline version of g_memdup2():
+    https://discourse.gnome.org/t/port-your-module-from-g-memdup-to-g-memdup2-now/5538
+
+    Our glib-compat.h provides a comment explaining how to deal with
+    these deprecated declarations (see commit e71e8cc0355
+    "glib: enforce the minimum required version and warn about old APIs").
+
+    Following this comment suggestion, implement the g_memdup2_qemu()
+    wrapper to g_memdup2(), and use the safer equivalent inlined when
+    we are using pre-2.68 GLib.
+
+    Reported-by: Eric Blake <eblake@redhat.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+    Reviewed-by: Eric Blake <eblake@redhat.com>
+    Message-Id: <20210903174510.751630-3-philmd@redhat.com>
+    Signed-off-by: Laurent Vivier <laurent@vivier.eu>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ include/glib-compat.h | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/include/glib-compat.h b/include/glib-compat.h
+index 9e95c888f5..8d01a8c01f 100644
+--- a/include/glib-compat.h
++++ b/include/glib-compat.h
+@@ -68,6 +68,43 @@
+  * without generating warnings.
+  */
+ 
++/*
++ * g_memdup2_qemu:
++ * @mem: (nullable): the memory to copy.
++ * @byte_size: the number of bytes to copy.
++ *
++ * Allocates @byte_size bytes of memory, and copies @byte_size bytes into it
++ * from @mem. If @mem is %NULL it returns %NULL.
++ *
++ * This replaces g_memdup(), which was prone to integer overflows when
++ * converting the argument from a #gsize to a #guint.
++ *
++ * This static inline version is a backport of the new public API from
++ * GLib 2.68, kept internal to GLib for backport to older stable releases.
++ * See https://gitlab.gnome.org/GNOME/glib/-/issues/2319.
++ *
++ * Returns: (nullable): a pointer to the newly-allocated copy of the memory,
++ *          or %NULL if @mem is %NULL.
++ */
++static inline gpointer g_memdup2_qemu(gconstpointer mem, gsize byte_size)
++{
++#if GLIB_CHECK_VERSION(2, 68, 0)
++    return g_memdup2(mem, byte_size);
++#else
++    gpointer new_mem;
++
++    if (mem && byte_size != 0) {
++        new_mem = g_malloc(byte_size);
++        memcpy(new_mem, mem, byte_size);
++    } else {
++        new_mem = NULL;
++    }
++
++    return new_mem;
++#endif
++}
++#define g_memdup2(m, s) g_memdup2_qemu(m, s)
++
+ #if defined(G_OS_UNIX)
+ /*
+  * Note: The fallback implementation is not MT-safe, and it returns a copy of
+-- 
+2.41.0
+

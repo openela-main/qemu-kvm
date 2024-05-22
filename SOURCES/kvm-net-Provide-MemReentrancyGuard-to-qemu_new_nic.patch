@@ -1,16 +1,17 @@
-From 6faf4c2a88adb32367e26ef011c002b51a8be4a7 Mon Sep 17 00:00:00 2001
+From 2ae925a6d55a77627be8d1146f2b9ed139dbdb77 Mon Sep 17 00:00:00 2001
 From: Jon Maloy <jmaloy@redhat.com>
 Date: Thu, 23 Nov 2023 11:30:46 -0500
-Subject: [PATCH 1/5] net: Provide MemReentrancyGuard * to qemu_new_nic()
+Subject: [PATCH 1/4] net: Provide MemReentrancyGuard * to qemu_new_nic()
 
 RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 332: net: Provide MemReentrancyGuard * to qemu_new_nic()
-RH-Jira: RHEL-16095
+RH-MergeRequest: 331: net: Provide MemReentrancyGuard * to qemu_new_nic()
+RH-Jira: RHEL-7309
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
 RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
-RH-Commit: [1/2] 6440d74b952eb0e8e1ab7e18774ed4a12a2eafe2 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [1/2] bc963fb349b90288f547de97a5cbe9a74f856419 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
 
-Jira: https://issues.redhat.com/browse/RHEL-16095
+Jira: https://issues.redhat.com/browse/RHEL-7309
 CVE: CVE-2023-3019
 Upstream: Merged
 Conflicts: hw/net/hw/net/xen_nic.c seems to have undergone significant changes upstream,

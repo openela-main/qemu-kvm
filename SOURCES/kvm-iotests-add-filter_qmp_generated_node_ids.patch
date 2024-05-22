@@ -1,0 +1,49 @@
+From f164083416a9d09712b8cb8c654dd3b8988e6c5c Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 18 Jan 2024 09:48:21 -0500
+Subject: [PATCH 1/4] iotests: add filter_qmp_generated_node_ids()
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 352: monitor: only run coroutine commands in qemu_aio_context
+RH-Jira: RHEL-7353
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [1/4] cc276c8ef9e140203afc19fcd8b5b8e20577054d
+
+Add a filter function for QMP responses that contain QEMU's
+automatically generated node ids. The ids change between runs and must
+be masked in the reference output.
+
+The next commit will use this new function.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240118144823.1497953-2-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit da62b507a20510d819bcfbe8f5e573409b954006)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ tests/qemu-iotests/iotests.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index 2ef493755c..fd41f93421 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -521,6 +521,13 @@ def _filter(_key, value):
+ def filter_generated_node_ids(msg):
+     return re.sub("#block[0-9]+", "NODE_NAME", msg)
+ 
++def filter_qmp_generated_node_ids(qmsg):
++    def _filter(_key, value):
++        if is_str(value):
++            return filter_generated_node_ids(value)
++        return value
++    return filter_qmp(qmsg, _filter)
++
+ def filter_img_info(output, filename):
+     lines = []
+     for line in output.split('\n'):
+-- 
+2.39.3
+

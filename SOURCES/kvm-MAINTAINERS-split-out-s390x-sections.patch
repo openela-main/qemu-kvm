@@ -1,0 +1,181 @@
+From 440ee491240f2f02f9a6082d8aad98d88c1039dd Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 15 Jan 2024 14:00:04 +0100
+Subject: [PATCH 1/5] MAINTAINERS: split out s390x sections
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 348: s390x: Provide some more useful information if decryption of a PV image fails
+RH-Jira: RHEL-18214
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [1/5] a71a3c11922481f97c36570e361088d17474e481
+
+JIRA: https://issues.redhat.com/browse/RHEL-18214
+
+commit 56e34834029c7c6862cb0095d95ad83c50485f88
+Author: Cornelia Huck <cohuck@redhat.com>
+Date:   Wed Dec 22 11:55:48 2021 +0100
+
+    MAINTAINERS: split out s390x sections
+
+    Split out some more specialized devices etc., so that we can build
+    smarter lists of people to be put on cc: in the future.
+
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@redhat.com>
+    Acked-by: David Hildenbrand <david@redhat.com>
+    Acked-by: Christian Borntraeger <borntraeger@de.ibm.com>
+    Acked-by: Thomas Huth <thuth@redhat.com>
+    Acked-by: Halil Pasic <pasic@linux.ibm.com>
+    Acked-by: Eric Farman <farman@linux.ibm.com>
+    Message-Id: <20211222105548.356852-1-cohuck@redhat.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ MAINTAINERS | 85 ++++++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 74 insertions(+), 11 deletions(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 7543eb4d59..b893206fc3 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -297,7 +297,6 @@ M: David Hildenbrand <david@redhat.com>
+ S: Maintained
+ F: target/s390x/
+ F: target/s390x/tcg
+-F: target/s390x/cpu_models_*.[ch]
+ F: hw/s390x/
+ F: disas/s390.c
+ F: tests/tcg/s390x/
+@@ -396,16 +395,10 @@ M: Halil Pasic <pasic@linux.ibm.com>
+ M: Christian Borntraeger <borntraeger@de.ibm.com>
+ S: Supported
+ F: target/s390x/kvm/
+-F: target/s390x/ioinst.[ch]
+ F: target/s390x/machine.c
+ F: target/s390x/sigp.c
+-F: target/s390x/cpu_features*.[ch]
+-F: target/s390x/cpu_models.[ch]
+ F: hw/s390x/pv.c
+ F: include/hw/s390x/pv.h
+-F: hw/intc/s390_flic.c
+-F: hw/intc/s390_flic_kvm.c
+-F: include/hw/s390x/s390_flic.h
+ F: gdb-xml/s390*.xml
+ T: git https://github.com/borntraeger/qemu.git s390-next
+ L: qemu-s390x@nongnu.org
+@@ -1529,12 +1522,8 @@ S390 Virtio-ccw
+ M: Halil Pasic <pasic@linux.ibm.com>
+ M: Christian Borntraeger <borntraeger@de.ibm.com>
+ S: Supported
+-F: hw/char/sclp*.[hc]
+-F: hw/char/terminal3270.c
+ F: hw/s390x/
+ F: include/hw/s390x/
+-F: hw/watchdog/wdt_diag288.c
+-F: include/hw/watchdog/wdt_diag288.h
+ F: configs/devices/s390x-softmmu/default.mak
+ F: tests/avocado/machine_s390_ccw_virtio.py
+ T: git https://github.com/borntraeger/qemu.git s390-next
+@@ -1559,6 +1548,37 @@ F: hw/s390x/s390-pci*
+ F: include/hw/s390x/s390-pci*
+ L: qemu-s390x@nongnu.org
+ 
++S390 channel subsystem
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Supported
++F: hw/s390x/ccw-device.[ch]
++F: hw/s390x/css.c
++F: hw/s390x/css-bridge.c
++F: include/hw/s390x/css.h
++F: include/hw/s390x/css-bridge.h
++F: include/hw/s390x/ioinst.h
++F: target/s390x/ioinst.c
++L: qemu-s390x@nongnu.org
++
++S390 CPU models
++M: David Hildenbrand <david@redhat.com>
++S: Maintained
++F: target/s390x/cpu_features*.[ch]
++F: target/s390x/cpu_models.[ch]
++L: qemu-s390x@nongnu.org
++
++S390 SCLP-backed devices
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Supported
++F: include/hw/s390x/event-facility.h
++F: include/hw/s390x/sclp.h
++F: hw/char/sclp*.[hc]
++F: hw/s390x/event-facility.c
++F: hw/s390x/sclp*.c
++L: qemu-s390x@nongnu.org
++
+ X86 Machines
+ ------------
+ PC
+@@ -1956,6 +1976,7 @@ M: Halil Pasic <pasic@linux.ibm.com>
+ S: Supported
+ F: hw/s390x/virtio-ccw*.[hc]
+ F: hw/s390x/vhost-vsock-ccw.c
++F: hw/s390x/vhost-user-fs-ccw.c
+ T: git https://gitlab.com/cohuck/qemu.git s390-next
+ T: git https://github.com/borntraeger/qemu.git s390-next
+ L: qemu-s390x@nongnu.org
+@@ -2294,6 +2315,48 @@ F: hw/timer/mips_gictimer.c
+ F: include/hw/intc/mips_gic.h
+ F: include/hw/timer/mips_gictimer.h
+ 
++S390 3270 device
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Odd fixes
++F: include/hw/s390x/3270-ccw.h
++F: hw/char/terminal3270.c
++F: hw/s390x/3270-ccw.c
++L: qemu-s390x@nongnu.org
++
++S390 diag 288 watchdog
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Supported
++F: hw/watchdog/wdt_diag288.c
++F: include/hw/watchdog/wdt_diag288.h
++L: qemu-s390x@nongnu.org
++
++S390 storage key device
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Supported
++F: hw/s390x/storage-keys.h
++F: hw/390x/s390-skeys*.c
++L: qemu-s390x@nongnu.org
++
++S390 storage attribute device
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++S: Supported
++F: hw/s390x/storage-attributes.h
++F: hw/s390/s390-stattrib*.c
++L: qemu-s390x@nongnu.org
++
++S390 floating interrupt controller
++M: Halil Pasic <pasic@linux.ibm.com>
++M: Christian Borntraeger <borntraeger@linux.ibm.com>
++M: David Hildenbrand <david@redhat.com>
++S: Supported
++F: hw/intc/s390_flic*.c
++F: include/hw/s390x/s390_flic.h
++L: qemu-s390x@nongnu.org
++
+ Subsystems
+ ----------
+ Overall Audio backends
+-- 
+2.41.0
+

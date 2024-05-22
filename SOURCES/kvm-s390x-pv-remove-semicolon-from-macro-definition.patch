@@ -1,0 +1,51 @@
+From 52969f8a75ac7ba115e044cd94208984c18eee41 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 15 Jan 2024 14:00:04 +0100
+Subject: [PATCH 2/5] s390x/pv: remove semicolon from macro definition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 348: s390x: Provide some more useful information if decryption of a PV image fails
+RH-Jira: RHEL-18214
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [2/5] 52a04c945a584746ff30bed516ad97bab75ac821
+
+JIRA: https://issues.redhat.com/browse/RHEL-18214
+
+commit 36c182bbe680d64f0868522bb9256b5b8eccf280
+Author: Claudio Imbrenda <imbrenda@linux.ibm.com>
+Date:   Mon Oct 10 17:10:41 2022 +0200
+
+    s390x/pv: remove semicolon from macro definition
+
+    Remove spurious semicolon at the end of the macro s390_pv_cmd
+
+    Signed-off-by: Claudio Imbrenda <imbrenda@linux.ibm.com>
+    Acked-by: Cornelia Huck <cohuck@redhat.com>
+    Message-Id: <20221010151041.89071-1-imbrenda@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/pv.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/s390x/pv.c b/hw/s390x/pv.c
+index 749e5db1ce..8a1c71436b 100644
+--- a/hw/s390x/pv.c
++++ b/hw/s390x/pv.c
+@@ -51,7 +51,7 @@ static int __s390_pv_cmd(uint32_t cmd, const char *cmdname, void *data)
+  * This macro lets us pass the command as a string to the function so
+  * we can print it on an error.
+  */
+-#define s390_pv_cmd(cmd, data) __s390_pv_cmd(cmd, #cmd, data);
++#define s390_pv_cmd(cmd, data) __s390_pv_cmd(cmd, #cmd, data)
+ #define s390_pv_cmd_exit(cmd, data)    \
+ {                                      \
+     int rc;                            \
+-- 
+2.41.0
+

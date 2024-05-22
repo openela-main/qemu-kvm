@@ -1,0 +1,119 @@
+From 4f6f881de10e31cac4636d5fde4b7ed4c8affadb Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Thu, 4 Jan 2024 12:02:31 +0100
+Subject: [PATCH 3/3] hw/arm/virt: Do not load efi-virtio.rom for all
+ virtio-net-pci variants
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 344: hw/arm/virt: Do not load efi-virtio.rom for any virtio-net-pci variants
+RH-Jira: RHEL-14870
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Acked-by: Sebastian Ott <None>
+RH-Commit: [1/1] ffeaa78ad0a1cff5b49009dfb32d25e5cadc0e05
+
+Upstream: RHEL-only
+Brew: http://brewweb.engineering.redhat.com/brew/taskinfo?taskID=5785640
+
+Currently arm_rhel_compat just sets the romfile to "" for
+virtio-net-pci and not for transitional and non transitional
+variants. However, on aarch64 RHEL, efi-virtio.rom is not
+shipped so transitional and non-transitional variants cannot
+be used and the following error is obeserved:
+
+"Could not open option rom 'efi-virtio.rom': No such file or directory"
+
+In practice, we do not need any rom file for those virtio-net-pci
+variants either because edk2 already brings the full functionality.
+
+So let's change the applied compat to cover all the variants. While
+at it also change the way arm_rhel_compat is applied. Instead of
+applying it from the latest _virt_options(), which is error prone
+when upgrading the machine type, let's apply it before calling
+*virt_options in the non abstract machine class. That way the setting
+will apply to any machine type without any need to add it in any
+future machine types.
+
+We don't really care keeping non void romfiles for transitional and
+non transitional devices on previous machine types because this
+was not working anyway.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 42 ++++++++++++++++++++++++++++--------------
+ 1 file changed, 28 insertions(+), 14 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index dbf0a6d62f..46c72a9611 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -108,11 +108,39 @@
+     DEFINE_VIRT_MACHINE_LATEST(major, minor, false)
+ #endif /* disabled for RHEL */
+ 
++/*
++ * This variable is for changes to properties that are RHEL specific,
++ * different to the current upstream and to be applied to the latest
++ * machine type. They may be overriden by older machine compats.
++ *
++ * virtio-net-pci variant romfiles are not needed because edk2 does
++ * fully support the pxe boot. Besides virtio romfiles are not shipped
++ * on rhel/aarch64.
++ */
++GlobalProperty arm_rhel_compat[] = {
++    {"virtio-net-pci", "romfile", "" },
++    {"virtio-net-pci-transitional", "romfile", "" },
++    {"virtio-net-pci-non-transitional", "romfile", "" },
++};
++const size_t arm_rhel_compat_len = G_N_ELEMENTS(arm_rhel_compat);
++
++/*
++ * This cannot be called from the rhel_virt_class_init() because
++ * TYPE_RHEL_MACHINE is abstract and mc->compat_props g_ptr_array_new()
++ * only is called on virt-rhelm.n.s non abstract class init.
++ */
++static void arm_rhel_compat_set(MachineClass *mc)
++{
++    compat_props_add(mc->compat_props, arm_rhel_compat,
++                     arm_rhel_compat_len);
++}
++
+ #define DEFINE_RHEL_MACHINE_LATEST(m, n, s, latest)                     \
+     static void rhel##m##n##s##_virt_class_init(ObjectClass *oc,        \
+                                                 void *data)             \
+     {                                                                   \
+         MachineClass *mc = MACHINE_CLASS(oc);                           \
++        arm_rhel_compat_set(mc);                                        \
+         rhel##m##n##s##_virt_options(mc);                               \
+         mc->desc = "RHEL " # m "." # n "." # s " ARM Virtual Machine";  \
+         if (latest) {                                                   \
+@@ -136,19 +164,6 @@
+ #define DEFINE_RHEL_MACHINE(major, minor, subminor)             \
+     DEFINE_RHEL_MACHINE_LATEST(major, minor, subminor, false)
+ 
+-/* This variable is for changes to properties that are RHEL specific,
+- * different to the current upstream and to be applied to the latest
+- * machine type.
+- */
+-GlobalProperty arm_rhel_compat[] = {
+-    {
+-        .driver   = "virtio-net-pci",
+-        .property = "romfile",
+-        .value    = "",
+-    },
+-};
+-const size_t arm_rhel_compat_len = G_N_ELEMENTS(arm_rhel_compat);
+-
+ /* Number of external interrupt lines to configure the GIC with */
+ #define NUM_IRQS 256
+ 
+@@ -3240,7 +3255,6 @@ type_init(rhel_machine_init);
+ 
+ static void rhel860_virt_options(MachineClass *mc)
+ {
+-    compat_props_add(mc->compat_props, arm_rhel_compat, arm_rhel_compat_len);
+ }
+ DEFINE_RHEL_MACHINE_AS_LATEST(8, 6, 0)
+ 
+-- 
+2.41.0
+

@@ -1,18 +1,19 @@
-From adbbc64db535d84fc24b576888f834841f54e8d3 Mon Sep 17 00:00:00 2001
+From f1480fe9a4054113ddacd218961e29f31c33d329 Mon Sep 17 00:00:00 2001
 From: Peter Xu <peterx@redhat.com>
 Date: Wed, 6 Sep 2023 16:29:23 -0400
-Subject: [PATCH 2/2] RHEL: Enable "x-not-migrate-acpi-index" for all pre-RHEL8
+Subject: [PATCH 2/3] RHEL: Enable "x-not-migrate-acpi-index" for all pre-RHEL8
  guests
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Peter Xu <peterx@redhat.com>
-RH-MergeRequest: 317: acpi: fix acpi_index migration
-RH-Jira: RHEL-2186
-RH-Acked-by: Ani Sinha <None>
+RH-MergeRequest: 343: acpi: fix acpi_index migration
+RH-Jira: RHEL-20189
 RH-Acked-by: Leonardo Brás <leobras@redhat.com>
-RH-Commit: [2/2] 961eee71e6f563aadf4a93082cd384d765d3e73b
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Prasad Pandit <None>
+RH-Commit: [2/2] 0a26a71236e68dd7feb5d2063254090e3852d6ba
 
 The acpi index migration is simply broken before for all pre-RHEL8
 branches.  Don't migrate it for all of them.
@@ -38,5 +39,5 @@ index 2724f6848a..6650a3d7b7 100644
  const size_t hw_compat_rhel_8_6_len = G_N_ELEMENTS(hw_compat_rhel_8_6);
  
 -- 
-2.37.3
+2.41.0
 

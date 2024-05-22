@@ -1,20 +1,20 @@
-From 71e2e6883aa9df8d6eeed7b02100de18c8a188cc Mon Sep 17 00:00:00 2001
+From 4aa08999f8502e9d6869352db89081319c2d7119 Mon Sep 17 00:00:00 2001
 From: Thomas Huth <thuth@redhat.com>
-Date: Thu, 23 Nov 2023 14:42:00 +0100
-Subject: [PATCH 5/5] target/s390x/arch_dump: Add arch cleanup function for PV
+Date: Fri, 17 Nov 2023 11:32:37 +0100
+Subject: [PATCH 3/3] target/s390x/arch_dump: Add arch cleanup function for PV
  dumps
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Thomas Huth <thuth@redhat.com>
-RH-MergeRequest: 328: Fix problem that secure execution guest remains in "paused" state after failed dump [8.9.z]
-RH-Jira: RHEL-17253
-RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 323: Fix problem that secure execution guest might remain in "paused" state after failed dump
+RH-Jira: RHEL-16696
 RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
-RH-Commit: [3/3] bf89f114bb5dd48fb9cdd96a63d2986bab090d20
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [3/3] 0bb389c9339b95f7ff6dc284526b0c8d5ef736b4
 
-JIRA: https://issues.redhat.com/browse/RHEL-17253
+JIRA: https://issues.redhat.com/browse/RHEL-16696
 
 commit d12a91e0baafce7b1cbacff7cf9339eeb0011732
 Author: Janosch Frank <frankja@linux.ibm.com>
@@ -80,5 +80,5 @@ index 7cdd4b7167..3b1f178dc3 100644
      return 0;
  }
 -- 
-2.41.0
+2.39.3
 

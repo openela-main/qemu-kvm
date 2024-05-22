@@ -1,16 +1,17 @@
-From 91657da5f5ebadfffe069feedf96342a1dd3d6a6 Mon Sep 17 00:00:00 2001
+From d58671091daf8c325a6f1cd87737d94b5fb51d12 Mon Sep 17 00:00:00 2001
 From: Jon Maloy <jmaloy@redhat.com>
 Date: Thu, 23 Nov 2023 11:30:46 -0500
-Subject: [PATCH 2/5] net: Update MemReentrancyGuard for NIC
+Subject: [PATCH 2/4] net: Update MemReentrancyGuard for NIC
 
 RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 332: net: Provide MemReentrancyGuard * to qemu_new_nic()
-RH-Jira: RHEL-16095
+RH-MergeRequest: 331: net: Provide MemReentrancyGuard * to qemu_new_nic()
+RH-Jira: RHEL-7309
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
 RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
-RH-Commit: [2/2] 849dd7ccd91e20bd1c700769e299943e2886bf63 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+RH-Acked-by: Jason Wang <jasowang@redhat.com>
+RH-Commit: [2/2] b116efe725dd838c2cab9bd2240112f3c6c46d6a (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
 
-Jira: https://issues.redhat.com/browse/RHEL-16095
+Jira: https://issues.redhat.com/browse/RHEL-7309
 CVE: CVE-2023-3019
 Upstream: Merged
 

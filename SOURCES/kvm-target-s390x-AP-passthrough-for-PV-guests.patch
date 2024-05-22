@@ -1,0 +1,194 @@
+From 885d04faf5edb787341aab6917fd2de743e029ac Mon Sep 17 00:00:00 2001
+From: Steffen Eiden <seiden@linux.ibm.com>
+Date: Wed, 23 Aug 2023 16:22:19 +0200
+Subject: [PATCH 5/5] target/s390x: AP-passthrough for PV guests
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 321: Enable Secure Execution Crypto Passthrough for KVM on s390x
+RH-Bugzilla: 2111390
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [5/5] 9bf3dfd78fb030a22db7bb756a2cb7f54a0a8d82
+
+Enabling AP-passthrough(AP-pt) for PV-guest by using the new CPU
+features for PV-AP-pt of KVM.
+
+As usual QEMU first checks which CPU features are available and then
+sets them if available and selected by user. An additional check is done
+to verify that PV-AP can only be enabled if "regular" AP-pt is enabled
+as well. Note that KVM itself does not enforce this restriction.
+
+Reviewed-by: Michael Mueller <mimu@linux.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Steffen Eiden <seiden@linux.ibm.com>
+Message-ID: <20230823142219.1046522-6-seiden@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 5ac951519c23d9eaf7dc9e2dcbcbc7d9a745ffe7)
+
+Conflicts:
+	target/s390x/gen-features.c
+	(simple contextual conflict due to missing S390_FEAT_PAIE)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ target/s390x/cpu_features.h         |  1 +
+ target/s390x/cpu_features_def.h.inc |  4 ++
+ target/s390x/cpu_models.c           |  2 +
+ target/s390x/gen-features.c         |  2 +
+ target/s390x/kvm/kvm.c              | 70 +++++++++++++++++++++++++++++
+ 5 files changed, 79 insertions(+)
+
+diff --git a/target/s390x/cpu_features.h b/target/s390x/cpu_features.h
+index 87463f064d..a9bd68a2e1 100644
+--- a/target/s390x/cpu_features.h
++++ b/target/s390x/cpu_features.h
+@@ -43,6 +43,7 @@ typedef enum {
+     S390_FEAT_TYPE_KDSA,
+     S390_FEAT_TYPE_SORTL,
+     S390_FEAT_TYPE_DFLTCC,
++    S390_FEAT_TYPE_UV_FEAT_GUEST,
+ } S390FeatType;
+ 
+ /* Definition of a CPU feature */
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index e86662bb3b..aa1f51f2a8 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -378,3 +378,7 @@ DEF_FEAT(DEFLATE_GHDT, "dfltcc-gdht", DFLTCC, 1, "DFLTCC GDHT")
+ DEF_FEAT(DEFLATE_CMPR, "dfltcc-cmpr", DFLTCC, 2, "DFLTCC CMPR")
+ DEF_FEAT(DEFLATE_XPND, "dfltcc-xpnd", DFLTCC, 4, "DFLTCC XPND")
+ DEF_FEAT(DEFLATE_F0, "dfltcc-f0", DFLTCC, 192, "DFLTCC format 0 parameter-block")
++
++/* Features exposed via the UV-CALL instruction */
++DEF_FEAT(UV_FEAT_AP, "appv", UV_FEAT_GUEST, 4, "AP instructions installed for secure guests")
++DEF_FEAT(UV_FEAT_AP_INTR, "appvi", UV_FEAT_GUEST, 5, "AP instructions interruption support for secure guests")
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 11e06cc51f..454485e706 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -467,6 +467,8 @@ static void check_consistency(const S390CPUModel *model)
+         { S390_FEAT_DIAG_318, S390_FEAT_EXTENDED_LENGTH_SCCB },
+         { S390_FEAT_NNPA, S390_FEAT_VECTOR },
+         { S390_FEAT_RDP, S390_FEAT_LOCAL_TLB_CLEARING },
++        { S390_FEAT_UV_FEAT_AP, S390_FEAT_AP },
++        { S390_FEAT_UV_FEAT_AP_INTR, S390_FEAT_UV_FEAT_AP },
+     };
+     int i;
+ 
+diff --git a/target/s390x/gen-features.c b/target/s390x/gen-features.c
+index 7cb1a6ec10..b789288c82 100644
+--- a/target/s390x/gen-features.c
++++ b/target/s390x/gen-features.c
+@@ -575,6 +575,8 @@ static uint16_t full_GEN16_GA1[] = {
+     S390_FEAT_BEAR_ENH,
+     S390_FEAT_RDP,
+     S390_FEAT_PAI,
++    S390_FEAT_UV_FEAT_AP,
++    S390_FEAT_UV_FEAT_AP_INTR,
+ };
+ 
+ 
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index eb8ca4c780..a963866ef4 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -2308,6 +2308,42 @@ static bool ap_enabled(const S390FeatBitmap features)
+     return test_bit(S390_FEAT_AP, features);
+ }
+ 
++static bool uv_feat_supported(void)
++{
++    return kvm_vm_check_attr(kvm_state, KVM_S390_VM_CPU_MODEL,
++                             KVM_S390_VM_CPU_PROCESSOR_UV_FEAT_GUEST);
++}
++
++static int query_uv_feat_guest(S390FeatBitmap features)
++{
++    struct kvm_s390_vm_cpu_uv_feat prop = {};
++    struct kvm_device_attr attr = {
++        .group = KVM_S390_VM_CPU_MODEL,
++        .attr = KVM_S390_VM_CPU_MACHINE_UV_FEAT_GUEST,
++        .addr = (uint64_t) &prop,
++    };
++    int rc;
++
++    /* AP support check is currently the only user of the UV feature test */
++    if (!(uv_feat_supported() && ap_available())) {
++        return 0;
++    }
++
++    rc = kvm_vm_ioctl(kvm_state, KVM_GET_DEVICE_ATTR, &attr);
++    if (rc) {
++        return  rc;
++    }
++
++    if (prop.ap) {
++        set_bit(S390_FEAT_UV_FEAT_AP, features);
++    }
++    if (prop.ap_intr) {
++        set_bit(S390_FEAT_UV_FEAT_AP_INTR, features);
++    }
++
++    return 0;
++}
++
+ static int kvm_to_feat[][2] = {
+     { KVM_S390_VM_CPU_FEAT_ESOP, S390_FEAT_ESOP },
+     { KVM_S390_VM_CPU_FEAT_SIEF2, S390_FEAT_SIE_F2 },
+@@ -2502,11 +2538,38 @@ void kvm_s390_get_host_cpu_model(S390CPUModel *model, Error **errp)
+         set_bit(S390_FEAT_DIAG_318, model->features);
+     }
+ 
++    /* Test for Ultravisor features that influence secure guest behavior */
++    query_uv_feat_guest(model->features);
++
+     /* strip of features that are not part of the maximum model */
+     bitmap_and(model->features, model->features, model->def->full_feat,
+                S390_FEAT_MAX);
+ }
+ 
++static int configure_uv_feat_guest(const S390FeatBitmap features)
++{
++    struct kvm_s390_vm_cpu_uv_feat uv_feat = {};
++    struct kvm_device_attr attribute = {
++        .group = KVM_S390_VM_CPU_MODEL,
++        .attr = KVM_S390_VM_CPU_PROCESSOR_UV_FEAT_GUEST,
++        .addr = (__u64) &uv_feat,
++    };
++
++    /* AP support check is currently the only user of the UV feature test */
++    if (!(uv_feat_supported() && ap_enabled(features))) {
++        return 0;
++    }
++
++    if (test_bit(S390_FEAT_UV_FEAT_AP, features)) {
++        uv_feat.ap = 1;
++    }
++    if (test_bit(S390_FEAT_UV_FEAT_AP_INTR, features)) {
++        uv_feat.ap_intr = 1;
++    }
++
++    return kvm_vm_ioctl(kvm_state, KVM_SET_DEVICE_ATTR, &attribute);
++}
++
+ static void kvm_s390_configure_apie(bool interpret)
+ {
+     uint64_t attr = interpret ? KVM_S390_VM_CRYPTO_ENABLE_APIE :
+@@ -2578,6 +2641,13 @@ void kvm_s390_apply_cpu_model(const S390CPUModel *model, Error **errp)
+     if (ap_enabled(model->features)) {
+         kvm_s390_configure_apie(true);
+     }
++
++    /* configure UV-features for the guest indicated via query / test_bit */
++    rc = configure_uv_feat_guest(model->features);
++    if (rc) {
++        error_setg(errp, "KVM: Error configuring CPU UV features %d", rc);
++        return;
++    }
+ }
+ 
+ void kvm_s390_restart_interrupt(S390CPU *cpu)
+-- 
+2.41.0
+

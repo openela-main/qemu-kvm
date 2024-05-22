@@ -1,0 +1,283 @@
+From 59f02a421ecdba6e856597367020926fc0cb5177 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 15 Jan 2024 18:52:30 +0100
+Subject: [PATCH 4/5] hw/s390x: Move KVM specific PV from hw/ to
+ target/s390x/kvm/
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 348: s390x: Provide some more useful information if decryption of a PV image fails
+RH-Jira: RHEL-18214
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [4/5] f6095bfdb89268007a0741665284955db4752d46
+
+JIRA: https://issues.redhat.com/browse/RHEL-18214
+
+commit f5f9c6ea11bc807664fdeb9354915c2c9cdcbd89
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Sat Jun 24 22:06:44 2023 +0200
+
+    hw/s390x: Move KVM specific PV from hw/ to target/s390x/kvm/
+
+    Protected Virtualization (PV) is not a real hardware device:
+    it is a feature of the firmware on s390x that is exposed to
+    userspace via the KVM interface.
+
+    Move the pv.c/pv.h files to target/s390x/kvm/ to make this clearer.
+
+    Suggested-by: Thomas Huth <thuth@redhat.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Message-Id: <20230624200644.23931-1-philmd@linaro.org>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Conflicts:
+    hw/s390x/ipl.c
+    hw/s390x/s390-virtio-ccw.c
+    target/s390x/diag.c
+    (simple contextual conflict due to differce with #include statements)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ MAINTAINERS                                 | 2 --
+ hw/s390x/ipl.c                              | 2 +-
+ hw/s390x/meson.build                        | 1 -
+ hw/s390x/s390-pci-kvm.c                     | 2 +-
+ hw/s390x/s390-virtio-ccw.c                  | 2 +-
+ hw/s390x/tod-kvm.c                          | 2 +-
+ target/s390x/arch_dump.c                    | 2 +-
+ target/s390x/cpu-sysemu.c                   | 2 +-
+ target/s390x/cpu_features.c                 | 2 +-
+ target/s390x/cpu_models.c                   | 2 +-
+ target/s390x/diag.c                         | 2 +-
+ target/s390x/helper.c                       | 2 +-
+ target/s390x/ioinst.c                       | 2 +-
+ target/s390x/kvm/kvm.c                      | 2 +-
+ target/s390x/kvm/meson.build                | 1 +
+ {hw/s390x => target/s390x/kvm}/pv.c         | 2 +-
+ {include/hw/s390x => target/s390x/kvm}/pv.h | 0
+ 17 files changed, 14 insertions(+), 16 deletions(-)
+ rename {hw/s390x => target/s390x/kvm}/pv.c (99%)
+ rename {include/hw/s390x => target/s390x/kvm}/pv.h (100%)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index b893206fc3..d74ca51154 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -397,8 +397,6 @@ S: Supported
+ F: target/s390x/kvm/
+ F: target/s390x/machine.c
+ F: target/s390x/sigp.c
+-F: hw/s390x/pv.c
+-F: include/hw/s390x/pv.h
+ F: gdb-xml/s390*.xml
+ T: git https://github.com/borntraeger/qemu.git s390-next
+ L: qemu-s390x@nongnu.org
+diff --git a/hw/s390x/ipl.c b/hw/s390x/ipl.c
+index 9051d8652d..c25e247426 100644
+--- a/hw/s390x/ipl.c
++++ b/hw/s390x/ipl.c
+@@ -27,7 +27,7 @@
+ #include "hw/s390x/vfio-ccw.h"
+ #include "hw/s390x/css.h"
+ #include "hw/s390x/ebcdic.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "ipl.h"
+ #include "qemu/error-report.h"
+ #include "qemu/config-file.h"
+diff --git a/hw/s390x/meson.build b/hw/s390x/meson.build
+index 6e6e47fcda..bb3b42f613 100644
+--- a/hw/s390x/meson.build
++++ b/hw/s390x/meson.build
+@@ -22,7 +22,6 @@ s390x_ss.add(when: 'CONFIG_KVM', if_true: files(
+   'tod-kvm.c',
+   's390-skeys-kvm.c',
+   's390-stattrib-kvm.c',
+-  'pv.c',
+   's390-pci-kvm.c',
+ ))
+ s390x_ss.add(when: 'CONFIG_TCG', if_true: files(
+diff --git a/hw/s390x/s390-pci-kvm.c b/hw/s390x/s390-pci-kvm.c
+index 9134fe185f..ff41e4106d 100644
+--- a/hw/s390x/s390-pci-kvm.c
++++ b/hw/s390x/s390-pci-kvm.c
+@@ -14,7 +14,7 @@
+ #include <linux/kvm.h>
+ 
+ #include "kvm/kvm_s390x.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "hw/s390x/s390-pci-bus.h"
+ #include "hw/s390x/s390-pci-kvm.h"
+ #include "hw/s390x/s390-pci-inst.h"
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 17146469ee..7bfa5b4e8f 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -40,7 +40,7 @@
+ #include "hw/qdev-properties.h"
+ #include "hw/s390x/tod.h"
+ #include "sysemu/sysemu.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "migration/blocker.h"
+ #include "qapi/visitor.h"
+ 
+diff --git a/hw/s390x/tod-kvm.c b/hw/s390x/tod-kvm.c
+index c804c979b5..9776cda50a 100644
+--- a/hw/s390x/tod-kvm.c
++++ b/hw/s390x/tod-kvm.c
+@@ -13,7 +13,7 @@
+ #include "qemu/module.h"
+ #include "sysemu/runstate.h"
+ #include "hw/s390x/tod.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "kvm/kvm_s390x.h"
+ 
+ static void kvm_s390_get_tod_raw(S390TOD *tod, Error **errp)
+diff --git a/target/s390x/arch_dump.c b/target/s390x/arch_dump.c
+index 3b1f178dc3..2554238c16 100644
+--- a/target/s390x/arch_dump.c
++++ b/target/s390x/arch_dump.c
+@@ -17,8 +17,8 @@
+ #include "s390x-internal.h"
+ #include "elf.h"
+ #include "sysemu/dump.h"
+-#include "hw/s390x/pv.h"
+ #include "kvm/kvm_s390x.h"
++#include "target/s390x/kvm/pv.h"
+ 
+ struct S390xUserRegsStruct {
+     uint64_t psw[2];
+diff --git a/target/s390x/cpu-sysemu.c b/target/s390x/cpu-sysemu.c
+index 5471e01ee8..547287a949 100644
+--- a/target/s390x/cpu-sysemu.c
++++ b/target/s390x/cpu-sysemu.c
+@@ -32,7 +32,7 @@
+ #include "qapi/qapi-visit-run-state.h"
+ #include "sysemu/hw_accel.h"
+ 
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "hw/boards.h"
+ #include "sysemu/sysemu.h"
+ #include "sysemu/tcg.h"
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index 2e4e11d264..ebb155ce1c 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -15,7 +15,7 @@
+ #include "qemu/module.h"
+ #include "cpu_features.h"
+ #ifndef CONFIG_USER_ONLY
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #endif
+ 
+ #define DEF_FEAT(_FEAT, _NAME, _TYPE, _BIT, _DESC) \
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index e7c586c76e..100c5e7b3a 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -22,7 +22,7 @@
+ #include "qemu/qemu-print.h"
+ #ifndef CONFIG_USER_ONLY
+ #include "sysemu/sysemu.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #endif
+ 
+ #define CPUDEF_INIT(_type, _gen, _ec_ga, _mha_pow, _hmfai, _name, _desc) \
+diff --git a/target/s390x/diag.c b/target/s390x/diag.c
+index 76b01dcd68..7c8714cc27 100644
+--- a/target/s390x/diag.c
++++ b/target/s390x/diag.c
+@@ -19,9 +19,9 @@
+ #include "sysemu/cpus.h"
+ #include "hw/s390x/ipl.h"
+ #include "hw/s390x/s390-virtio-ccw.h"
+-#include "hw/s390x/pv.h"
+ #include "sysemu/kvm.h"
+ #include "kvm/kvm_s390x.h"
++#include "target/s390x/kvm/pv.h"
+ 
+ int handle_diag_288(CPUS390XState *env, uint64_t r1, uint64_t r3)
+ {
+diff --git a/target/s390x/helper.c b/target/s390x/helper.c
+index 6e35473c7f..860977126a 100644
+--- a/target/s390x/helper.c
++++ b/target/s390x/helper.c
+@@ -24,7 +24,7 @@
+ #include "exec/gdbstub.h"
+ #include "qemu/timer.h"
+ #include "hw/s390x/ioinst.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ #include "sysemu/hw_accel.h"
+ #include "sysemu/runstate.h"
+ #include "sysemu/tcg.h"
+diff --git a/target/s390x/ioinst.c b/target/s390x/ioinst.c
+index bdae5090bc..409f3e3e63 100644
+--- a/target/s390x/ioinst.c
++++ b/target/s390x/ioinst.c
+@@ -16,7 +16,7 @@
+ #include "hw/s390x/ioinst.h"
+ #include "trace.h"
+ #include "hw/s390x/s390-pci-bus.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ 
+ /* All I/O instructions but chsc use the s format */
+ static uint64_t get_address_from_regs(CPUS390XState *env, uint32_t ipb,
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index a963866ef4..6d1a6324b9 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -51,7 +51,7 @@
+ #include "exec/memattrs.h"
+ #include "hw/s390x/s390-virtio-ccw.h"
+ #include "hw/s390x/s390-virtio-hcall.h"
+-#include "hw/s390x/pv.h"
++#include "target/s390x/kvm/pv.h"
+ 
+ #ifndef DEBUG_KVM
+ #define DEBUG_KVM  0
+diff --git a/target/s390x/kvm/meson.build b/target/s390x/kvm/meson.build
+index aef52b6686..739d5b9f54 100644
+--- a/target/s390x/kvm/meson.build
++++ b/target/s390x/kvm/meson.build
+@@ -1,5 +1,6 @@
+ 
+ s390x_ss.add(when: 'CONFIG_KVM', if_true: files(
++  'pv.c',
+   'kvm.c'
+ ), if_false: files(
+   'stubs.c'
+diff --git a/hw/s390x/pv.c b/target/s390x/kvm/pv.c
+similarity index 99%
+rename from hw/s390x/pv.c
+rename to target/s390x/kvm/pv.c
+index 8a1c71436b..e14db4f41a 100644
+--- a/hw/s390x/pv.c
++++ b/target/s390x/kvm/pv.c
+@@ -19,9 +19,9 @@
+ #include "qom/object_interfaces.h"
+ #include "exec/confidential-guest-support.h"
+ #include "hw/s390x/ipl.h"
+-#include "hw/s390x/pv.h"
+ #include "hw/s390x/sclp.h"
+ #include "target/s390x/kvm/kvm_s390x.h"
++#include "target/s390x/kvm/pv.h"
+ 
+ static bool info_valid;
+ static struct kvm_s390_pv_info_vm info_vm;
+diff --git a/include/hw/s390x/pv.h b/target/s390x/kvm/pv.h
+similarity index 100%
+rename from include/hw/s390x/pv.h
+rename to target/s390x/kvm/pv.h
+-- 
+2.41.0
+

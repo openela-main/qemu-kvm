@@ -1,0 +1,56 @@
+From 76e75a129e59a33103aa7d1d92074ddcef556980 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 12 Sep 2023 11:24:40 +0200
+Subject: [PATCH 3/5] redhat: Update linux-headers for kvm_s390_vm_cpu_uv_feat
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 321: Enable Secure Execution Crypto Passthrough for KVM on s390x
+RH-Bugzilla: 2111390
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [3/5] f1329f5ce5f66033ead7777384dcc1613cad1226
+
+Upstream Status: rhel-only
+
+This hunk is part of upstream commit da3c22c74a3c
+("linux-headers: Update to Linux v6.6-rc1"), but since that
+commit updates a lot of files and does not apply cleanly,
+we only focus on the necessary change here.
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ linux-headers/asm-s390/kvm.h | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/linux-headers/asm-s390/kvm.h b/linux-headers/asm-s390/kvm.h
+index f053b8304a..6706bdc5cc 100644
+--- a/linux-headers/asm-s390/kvm.h
++++ b/linux-headers/asm-s390/kvm.h
+@@ -158,6 +158,22 @@ struct kvm_s390_vm_cpu_subfunc {
+ 	__u8 reserved[1728];
+ };
+ 
++#define KVM_S390_VM_CPU_PROCESSOR_UV_FEAT_GUEST	6
++#define KVM_S390_VM_CPU_MACHINE_UV_FEAT_GUEST	7
++
++#define KVM_S390_VM_CPU_UV_FEAT_NR_BITS	64
++struct kvm_s390_vm_cpu_uv_feat {
++	union {
++		struct {
++			__u64 : 4;
++			__u64 ap : 1;		/* bit 4 */
++			__u64 ap_intr : 1;	/* bit 5 */
++			__u64 : 58;
++		};
++		__u64 feat;
++	};
++};
++
+ /* kvm attributes for crypto */
+ #define KVM_S390_VM_CRYPTO_ENABLE_AES_KW	0
+ #define KVM_S390_VM_CRYPTO_ENABLE_DEA_KW	1
+-- 
+2.41.0
+

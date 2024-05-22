@@ -1,0 +1,118 @@
+From 4069f8f55d070b5a1eb2bf894a517ea9fb648bbd Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Tue, 5 Mar 2024 11:36:15 -0500
+Subject: [PATCH 2/3] ui/clipboard: mark type as not available when there is no
+ data
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 353: ui/clipboard: mark type as not available when there is no data
+RH-Jira: RHEL-19628
+RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Commit: [2/2] fa0edf7a362a16978e2377cf61f36ff227d186b2 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-19628
+CVE: CVE-2023-6683
+Upstream: Merged
+Conflicts:
+         - The function g_memdup2() is used by this commit, but is not present in
+           this code version. It looks safe to introduce it in a preceding commit,
+           instead of reverting to the less safe g_memdup(), so that is what we do.
+         - There is a second upstream commit covering this CVE:
+           commit 9c416582611b ("ui/clipboard: add asserts for update and request")
+           which is based on several other previous commits not present in this version.
+           Re-applying these, or trying to adapt the code, is too intrusive and risky
+           given that it only introduces two diagnostic asserts which are not essential
+           for solving the CVE.
+           We therefore omit that commit.
+
+commit 405484b29f6548c7b86549b0f961b906337aa68a
+Author: Fiona Ebner <f.ebner@proxmox.com>
+Date:   Wed Jan 24 11:57:48 2024 +0100
+
+    ui/clipboard: mark type as not available when there is no data
+
+    With VNC, a client can send a non-extended VNC_MSG_CLIENT_CUT_TEXT
+    message with len=0. In qemu_clipboard_set_data(), the clipboard info
+    will be updated setting data to NULL (because g_memdup(data, size)
+    returns NULL when size is 0). If the client does not set the
+    VNC_ENCODING_CLIPBOARD_EXT feature when setting up the encodings, then
+    the 'request' callback for the clipboard peer is not initialized.
+    Later, because data is NULL, qemu_clipboard_request() can be reached
+    via vdagent_chr_write() and vdagent_clipboard_recv_request() and
+    there, the clipboard owner's 'request' callback will be attempted to
+    be called, but that is a NULL pointer.
+
+    In particular, this can happen when using the KRDC (22.12.3) VNC
+    client.
+
+    Another scenario leading to the same issue is with two clients (say
+    noVNC and KRDC):
+
+    The noVNC client sets the extension VNC_FEATURE_CLIPBOARD_EXT and
+    initializes its cbpeer.
+
+    The KRDC client does not, but triggers a vnc_client_cut_text() (note
+    it's not the _ext variant)). There, a new clipboard info with it as
+    the 'owner' is created and via qemu_clipboard_set_data() is called,
+    which in turn calls qemu_clipboard_update() with that info.
+
+    In qemu_clipboard_update(), the notifier for the noVNC client will be
+    called, i.e. vnc_clipboard_notify() and also set vs->cbinfo for the
+    noVNC client. The 'owner' in that clipboard info is the clipboard peer
+    for the KRDC client, which did not initialize the 'request' function.
+    That sounds correct to me, it is the owner of that clipboard info.
+
+    Then when noVNC sends a VNC_MSG_CLIENT_CUT_TEXT message (it did set
+    the VNC_FEATURE_CLIPBOARD_EXT feature correctly, so a check for it
+    passes), that clipboard info is passed to qemu_clipboard_request() and
+    the original segfault still happens.
+
+    Fix the issue by handling updates with size 0 differently. In
+    particular, mark in the clipboard info that the type is not available.
+
+    While at it, switch to g_memdup2(), because g_memdup() is deprecated.
+
+    Cc: qemu-stable@nongnu.org
+    Fixes: CVE-2023-6683
+    Reported-by: Markus Frank <m.frank@proxmox.com>
+    Suggested-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+    Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Tested-by: Markus Frank <m.frank@proxmox.com>
+    Message-ID: <20240124105749.204610-1-f.ebner@proxmox.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ ui/clipboard.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/ui/clipboard.c b/ui/clipboard.c
+index d7b008d62a..b8c795f2e2 100644
+--- a/ui/clipboard.c
++++ b/ui/clipboard.c
+@@ -123,9 +123,15 @@ void qemu_clipboard_set_data(QemuClipboardPeer *peer,
+     }
+ 
+     g_free(info->types[type].data);
+-    info->types[type].data = g_memdup(data, size);
+-    info->types[type].size = size;
+-    info->types[type].available = true;
++    if (size) {
++        info->types[type].data = g_memdup2(data, size);
++        info->types[type].size = size;
++        info->types[type].available = true;
++    } else {
++        info->types[type].data = NULL;
++        info->types[type].size = 0;
++        info->types[type].available = false;
++    }
+ 
+     if (update) {
+         qemu_clipboard_update(info);
+-- 
+2.41.0
+
