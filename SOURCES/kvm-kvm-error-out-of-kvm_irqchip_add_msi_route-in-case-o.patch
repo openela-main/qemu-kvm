@@ -1,0 +1,76 @@
+From 8a8fa4ab4dc05502550ca207926cd0c93a3341ea Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Apr 2024 12:43:49 +0200
+Subject: [PATCH] kvm: error out of kvm_irqchip_add_msi_route() in case of full
+ route table
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 374: kvm: error out of kvm_irqchip_add_msi_route() in case of full route table
+RH-Jira: RHEL-32990
+RH-Acked-by: Ani Sinha <anisinha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] df31f2d0cafe10a1ac22a2bebb85dc17c1e891e0
+
+RH-Jira: RHEL-32990
+
+subj is calling kvm_add_routing_entry() which simply extends
+  KVMState::irq_routes::entries[]
+but doesn't check if number of routes goes beyond limit the kernel
+is willing to accept. Which later leads toi the assert
+
+  qemu-kvm: ../accel/kvm/kvm-all.c:1833: kvm_irqchip_commit_routes: Assertion `ret == 0' failed
+
+typically it happens during guest boot for large enough guest
+
+Reproduced with:
+  ./qemu --enable-kvm -m 8G -smp 64 -machine pc \
+     `for b in {1..2}; do echo -n "-device pci-bridge,id=pci$b,chassis_nr=$b ";
+        for i in {0..31}; do touch /tmp/vblk$b$i;
+           echo -n "-drive file=/tmp/vblk$b$i,if=none,id=drive$b$i,format=raw
+                    -device virtio-blk-pci,drive=drive$b$i,bus=pci$b ";
+      done; done`
+
+While crash at boot time is bad, the same might happen at hotplug time
+which is unacceptable.
+So instead calling kvm_add_routing_entry() unconditionally, check first
+that number of routes won't exceed KVM_CAP_IRQ_ROUTING. This way virtio
+device insteads killin qemu, will gracefully fail to initialize device
+as expected with following warnings on console:
+    virtio-blk failed to set guest notifier (-28), ensure -accel kvm is set.
+    virtio_bus_start_ioeventfd: failed. Fallback to userspace (slower).
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ accel/kvm/kvm-all.c | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index e39a810a4e..f1a4564cbd 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2000,12 +2000,17 @@ int kvm_irqchip_add_msi_route(KVMRouteChange *c, int vector, PCIDevice *dev)
+         return -EINVAL;
+     }
+ 
+-    trace_kvm_irqchip_add_msi_route(dev ? dev->name : (char *)"N/A",
+-                                    vector, virq);
++    if (s->irq_routes->nr < s->gsi_count) {
++        trace_kvm_irqchip_add_msi_route(dev ? dev->name : (char *)"N/A",
++                                        vector, virq);
+ 
+-    kvm_add_routing_entry(s, &kroute);
+-    kvm_arch_add_msi_route_post(&kroute, vector, dev);
+-    c->changes++;
++        kvm_add_routing_entry(s, &kroute);
++        kvm_arch_add_msi_route_post(&kroute, vector, dev);
++        c->changes++;
++    } else {
++        kvm_irqchip_release_virq(s, virq);
++        return -ENOSPC;
++    }
+ 
+     return virq;
+ }
+-- 
+2.39.3
+

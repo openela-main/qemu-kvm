@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 8.2.0
-Release: 11%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.2
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -610,6 +610,10 @@ Patch175: kvm-Revert-chardev-use-a-child-source-for-qio-input-sour.patch
 Patch176: kvm-coroutine-cap-per-thread-local-pool-size.patch
 # For RHEL-28947 - Qemu crashing with "failed to set up stack guard page: Cannot allocate memory"
 Patch177: kvm-coroutine-reserve-5-000-mappings.patch
+# For RHEL-32837 - qemu-kvm running Vyatta hits assert when doing KVM_SET_GSI_ROUTING [rhel-9.4.z]
+Patch178: kvm-virtio-pci-fix-use-of-a-released-vector.patch
+# For RHEL-32990 - qemu crash with kvm_irqchip_commit_routes: Assertion `ret == 0' failed if booting with many virtio disks and vcpus [rhel-9.4.z]
+Patch179: kvm-kvm-error-out-of-kvm_irqchip_add_msi_route-in-case-o.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1671,6 +1675,16 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon May 20 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.2
+- kvm-kvm-error-out-of-kvm_irqchip_add_msi_route-in-case-o.patch [RHEL-32990]
+- Resolves: RHEL-32990
+  (qemu crash with kvm_irqchip_commit_routes: Assertion `ret == 0' failed if booting with many virtio disks and vcpus [rhel-9.4.z])
+
+* Thu Apr 18 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.1
+- kvm-virtio-pci-fix-use-of-a-released-vector.patch [RHEL-32837]
+- Resolves: RHEL-32837
+  (qemu-kvm running Vyatta hits assert when doing KVM_SET_GSI_ROUTING [rhel-9.4.z])
+
 * Tue Mar 26 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11
 - kvm-coroutine-cap-per-thread-local-pool-size.patch [RHEL-28947]
 - kvm-coroutine-reserve-5-000-mappings.patch [RHEL-28947]
