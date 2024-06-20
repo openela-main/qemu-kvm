@@ -1,0 +1,129 @@
+From 69d6b5f98d665fbcb86e42df40bcc5e9c79b397f Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 17 May 2024 21:50:14 -0500
+Subject: [PATCH 3/4] qio: Inherit follow_coroutine_ctx across TLS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 375: Fix regression on nbd+tls
+RH-Jira: RHEL-33754
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/4] 14ddea7e3c81898bb3fe4be51a40749d67a5c0c0 (ebblake/qemu-kvm)
+
+Since qemu 8.2, the combination of NBD + TLS + iothread crashes on an
+assertion failure:
+
+qemu-kvm: ../io/channel.c:534: void qio_channel_restart_read(void *): Assertion `qemu_get_current_aio_context() == qemu_coroutine_get_aio_context(co)' failed.
+
+It turns out that when we removed AioContext locking, we did so by
+having NBD tell its qio channels that it wanted to opt in to
+qio_channel_set_follow_coroutine_ctx(); but while we opted in on the
+main channel, we did not opt in on the TLS wrapper channel.
+qemu-iotests has coverage of NBD+iothread and NBD+TLS, but apparently
+no coverage of NBD+TLS+iothread, or we would have noticed this
+regression sooner.  (I'll add that in the next patch)
+
+But while we could manually opt in to the TLS channel in nbd/server.c
+(a one-line change), it is more generic if all qio channels that wrap
+other channels inherit the follow status, in the same way that they
+inherit feature bits.
+
+CC: Stefan Hajnoczi <stefanha@redhat.com>
+CC: Daniel P. Berrangé <berrange@redhat.com>
+CC: qemu-stable@nongnu.org
+Fixes: https://issues.redhat.com/browse/RHEL-34786
+Fixes: 06e0f098 ("io: follow coroutine AioContext in qio_channel_yield()", v8.2.0)
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Message-ID: <20240518025246.791593-5-eblake@redhat.com>
+(cherry picked from commit 199e84de1c903ba5aa1f7256310bbc4a20dd930b)
+Jira: https://issues.redhat.com/browse/RHEL-33754
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ io/channel-tls.c     | 26 +++++++++++++++-----------
+ io/channel-websock.c |  1 +
+ 2 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/io/channel-tls.c b/io/channel-tls.c
+index 58fe1aceee..a8ad89c3d1 100644
+--- a/io/channel-tls.c
++++ b/io/channel-tls.c
+@@ -69,37 +69,40 @@ qio_channel_tls_new_server(QIOChannel *master,
+                            const char *aclname,
+                            Error **errp)
+ {
+-    QIOChannelTLS *ioc;
++    QIOChannelTLS *tioc;
++    QIOChannel *ioc;
+ 
+-    ioc = QIO_CHANNEL_TLS(object_new(TYPE_QIO_CHANNEL_TLS));
++    tioc = QIO_CHANNEL_TLS(object_new(TYPE_QIO_CHANNEL_TLS));
++    ioc = QIO_CHANNEL(tioc);
+ 
+-    ioc->master = master;
++    tioc->master = master;
++    ioc->follow_coroutine_ctx = master->follow_coroutine_ctx;
+     if (qio_channel_has_feature(master, QIO_CHANNEL_FEATURE_SHUTDOWN)) {
+-        qio_channel_set_feature(QIO_CHANNEL(ioc), QIO_CHANNEL_FEATURE_SHUTDOWN);
++        qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
+     }
+     object_ref(OBJECT(master));
+ 
+-    ioc->session = qcrypto_tls_session_new(
++    tioc->session = qcrypto_tls_session_new(
+         creds,
+         NULL,
+         aclname,
+         QCRYPTO_TLS_CREDS_ENDPOINT_SERVER,
+         errp);
+-    if (!ioc->session) {
++    if (!tioc->session) {
+         goto error;
+     }
+ 
+     qcrypto_tls_session_set_callbacks(
+-        ioc->session,
++        tioc->session,
+         qio_channel_tls_write_handler,
+         qio_channel_tls_read_handler,
+-        ioc);
++        tioc);
+ 
+-    trace_qio_channel_tls_new_server(ioc, master, creds, aclname);
+-    return ioc;
++    trace_qio_channel_tls_new_server(tioc, master, creds, aclname);
++    return tioc;
+ 
+  error:
+-    object_unref(OBJECT(ioc));
++    object_unref(OBJECT(tioc));
+     return NULL;
+ }
+ 
+@@ -116,6 +119,7 @@ qio_channel_tls_new_client(QIOChannel *master,
+     ioc = QIO_CHANNEL(tioc);
+ 
+     tioc->master = master;
++    ioc->follow_coroutine_ctx = master->follow_coroutine_ctx;
+     if (qio_channel_has_feature(master, QIO_CHANNEL_FEATURE_SHUTDOWN)) {
+         qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
+     }
+diff --git a/io/channel-websock.c b/io/channel-websock.c
+index a12acc27cf..de39f0d182 100644
+--- a/io/channel-websock.c
++++ b/io/channel-websock.c
+@@ -883,6 +883,7 @@ qio_channel_websock_new_server(QIOChannel *master)
+     ioc = QIO_CHANNEL(wioc);
+ 
+     wioc->master = master;
++    ioc->follow_coroutine_ctx = master->follow_coroutine_ctx;
+     if (qio_channel_has_feature(master, QIO_CHANNEL_FEATURE_SHUTDOWN)) {
+         qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
+     }
+-- 
+2.39.3
+

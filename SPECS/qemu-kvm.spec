@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 8.2.0
-Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.2
+Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.3
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -614,6 +614,14 @@ Patch177: kvm-coroutine-reserve-5-000-mappings.patch
 Patch178: kvm-virtio-pci-fix-use-of-a-released-vector.patch
 # For RHEL-32990 - qemu crash with kvm_irqchip_commit_routes: Assertion `ret == 0' failed if booting with many virtio disks and vcpus [rhel-9.4.z]
 Patch179: kvm-kvm-error-out-of-kvm_irqchip_add_msi_route-in-case-o.patch
+# For RHEL-33754 - Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z]
+Patch180: kvm-nbd-server-do-not-poll-within-a-coroutine-context.patch
+# For RHEL-33754 - Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z]
+Patch181: kvm-nbd-server-Mark-negotiation-functions-as-coroutine_f.patch
+# For RHEL-33754 - Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z]
+Patch182: kvm-qio-Inherit-follow_coroutine_ctx-across-TLS.patch
+# For RHEL-33754 - Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z]
+Patch183: kvm-iotests-test-NBD-TLS-iothread.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1675,6 +1683,14 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Fri Jun 07 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.3
+- kvm-nbd-server-do-not-poll-within-a-coroutine-context.patch [RHEL-33754]
+- kvm-nbd-server-Mark-negotiation-functions-as-coroutine_f.patch [RHEL-33754]
+- kvm-qio-Inherit-follow_coroutine_ctx-across-TLS.patch [RHEL-33754]
+- kvm-iotests-test-NBD-TLS-iothread.patch [RHEL-33754]
+- Resolves: RHEL-33754
+  (Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z])
+
 * Mon May 20 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.2
 - kvm-kvm-error-out-of-kvm_irqchip_add_msi_route-in-case-o.patch [RHEL-32990]
 - Resolves: RHEL-32990
