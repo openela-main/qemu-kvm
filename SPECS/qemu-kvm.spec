@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 8.2.0
-Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.3
+Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.4
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -622,6 +622,14 @@ Patch181: kvm-nbd-server-Mark-negotiation-functions-as-coroutine_f.patch
 Patch182: kvm-qio-Inherit-follow_coroutine_ctx-across-TLS.patch
 # For RHEL-33754 - Qemu hang when quit dst vm after storage migration(nbd+tls) [rhel-9.4.z]
 Patch183: kvm-iotests-test-NBD-TLS-iothread.patch
+# For RHEL-35610
+Patch184: kvm-qcow2-Don-t-open-data_file-with-BDRV_O_NO_IO.patch
+# For RHEL-35610
+Patch185: kvm-iotests-244-Don-t-store-data-file-with-protocol-in-i.patch
+# For RHEL-35610
+Patch186: kvm-iotests-270-Don-t-store-data-file-with-json-prefix-i.patch
+# For RHEL-35610
+Patch187: kvm-block-Parse-filenames-only-when-explicitly-requested.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1683,6 +1691,10 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Wed Jun 19 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.4
+- Fixing CVE-2024-4467
+- Resolves: RHEL-35610
+
 * Fri Jun 07 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.3
 - kvm-nbd-server-do-not-poll-within-a-coroutine-context.patch [RHEL-33754]
 - kvm-nbd-server-Mark-negotiation-functions-as-coroutine_f.patch [RHEL-33754]
