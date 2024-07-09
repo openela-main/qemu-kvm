@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 49%{?rcrel}%{?dist}
+Release: 50%{?rcrel}%{?dist}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -847,6 +847,16 @@ Patch342: kvm-glib-compat-Introduce-g_memdup2-wrapper.patch
 Patch343: kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch
 # For RHEL-19496 - CVE-2023-6693 virt:rhel/qemu-kvm: QEMU: virtio-net: stack buffer overflow in virtio_net_flush_tx() [rhel-8]
 Patch344: kvm-virtio-net-correctly-copy-vnet-header-when-flushing-.patch
+# For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
+Patch345: kvm-qcow2-Don-t-open-data_file-with-BDRV_O_NO_IO.patch
+# For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
+Patch346: kvm-iotests-244-Don-t-store-data-file-with-protocol-in-i.patch
+# For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
+Patch347: kvm-iotests-270-Don-t-store-data-file-with-json-prefix-i.patch
+# For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
+Patch348: kvm-block-introduce-bdrv_open_file_child-helper.patch
+# For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
+Patch349: kvm-block-Parse-filenames-only-when-explicitly-requested.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2016,6 +2026,15 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Thu Jul 04 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-50
+- kvm-qcow2-Don-t-open-data_file-with-BDRV_O_NO_IO.patch [RHEL-35616]
+- kvm-iotests-244-Don-t-store-data-file-with-protocol-in-i.patch [RHEL-35616]
+- kvm-iotests-270-Don-t-store-data-file-with-json-prefix-i.patch [RHEL-35616]
+- kvm-block-introduce-bdrv_open_file_child-helper.patch [RHEL-35616]
+- kvm-block-Parse-filenames-only-when-explicitly-requested.patch [RHEL-35616]
+- Resolves: RHEL-35616
+  (CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z])
+
 * Thu Mar 14 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-49
 - kvm-glib-compat-Introduce-g_memdup2-wrapper.patch [RHEL-19628]
 - kvm-ui-clipboard-mark-type-as-not-available-when-there-i.patch [RHEL-19628]
