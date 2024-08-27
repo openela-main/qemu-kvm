@@ -1,0 +1,143 @@
+From 29328e9693aeae1c980a859d4966deda9f54242d Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Thu, 18 Jul 2024 09:36:06 -0400
+Subject: [PATCH 2/6] virtio-gpu: reset gfx resources in main thread
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 380: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability
+RH-Jira: RHEL-32276
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/6] a97eef1e6e85b44c08d17adcdc468e857e48a17e (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-32276
+CVE: CVE-2024-3446
+Upstream: Merged
+
+commit a41e2d97f92b48552988b3cc62dce79d62f60dcc
+Author: Marc-André Lureau <marcandre.lureau@redhat.com>
+Date:   Wed Jul 26 21:39:29 2023 +0400
+
+    virtio-gpu: reset gfx resources in main thread
+
+    Calling OpenGL from different threads can have bad consequences if not
+    carefully reviewed. It's not generally supported. In my case, I was
+    debugging a crash in glDeleteTextures from OPENGL32.DLL, where I asked
+    qemu for gl=es, and thus ANGLE implementation was expected. libepoxy did
+    resolution of the global pointer for glGenTexture to the GLES version
+    from the main thread. But it resolved glDeleteTextures to the GL
+    version, because it was done from a different thread without correct
+    context. Oops.
+
+    Let's stick to the main thread for GL calls by using a BH.
+
+    Note: I didn't use atomics for reset_finished check, assuming the BQL
+    will provide enough of sync, but I might be wrong.
+
+    Acked-by: Dongwon Kim <dongwon.kim@intel.com>
+    Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+    Message-Id: <20230726173929.690601-3-marcandre.lureau@redhat.com>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/display/virtio-gpu.c        | 35 +++++++++++++++++++++++++++++++---
+ include/hw/virtio/virtio-gpu.h |  3 +++
+ 2 files changed, 35 insertions(+), 3 deletions(-)
+
+diff --git a/hw/display/virtio-gpu.c b/hw/display/virtio-gpu.c
+index e230e5091f..c28ce1ea72 100644
+--- a/hw/display/virtio-gpu.c
++++ b/hw/display/virtio-gpu.c
+@@ -14,6 +14,7 @@
+ #include "qemu/osdep.h"
+ #include "qemu/units.h"
+ #include "qemu/iov.h"
++#include "sysemu/cpus.h"
+ #include "ui/console.h"
+ #include "trace.h"
+ #include "sysemu/dma.h"
+@@ -42,6 +43,7 @@ virtio_gpu_find_check_resource(VirtIOGPU *g, uint32_t resource_id,
+ 
+ static void virtio_gpu_cleanup_mapping(VirtIOGPU *g,
+                                        struct virtio_gpu_simple_resource *res);
++static void virtio_gpu_reset_bh(void *opaque);
+ 
+ void virtio_gpu_update_cursor_data(VirtIOGPU *g,
+                                    struct virtio_gpu_scanout *s,
+@@ -1336,6 +1338,8 @@ void virtio_gpu_device_realize(DeviceState *qdev, Error **errp)
+                                      &qdev->mem_reentrancy_guard);
+     g->cursor_bh = qemu_bh_new_guarded(virtio_gpu_cursor_bh, g,
+                                        &qdev->mem_reentrancy_guard);
++    g->reset_bh = qemu_bh_new(virtio_gpu_reset_bh, g);
++    qemu_cond_init(&g->reset_cond);
+     QTAILQ_INIT(&g->reslist);
+     QTAILQ_INIT(&g->cmdq);
+     QTAILQ_INIT(&g->fenceq);
+@@ -1347,19 +1351,44 @@ static void virtio_gpu_device_unrealize(DeviceState *qdev)
+ 
+     g_clear_pointer(&g->ctrl_bh, qemu_bh_delete);
+     g_clear_pointer(&g->cursor_bh, qemu_bh_delete);
++    g_clear_pointer(&g->reset_bh, qemu_bh_delete);
++    qemu_cond_destroy(&g->reset_cond);
+     virtio_gpu_base_device_unrealize(qdev);
+ }
+ 
+-void virtio_gpu_reset(VirtIODevice *vdev)
++static void virtio_gpu_reset_bh(void *opaque)
+ {
+-    VirtIOGPU *g = VIRTIO_GPU(vdev);
++    VirtIOGPU *g = VIRTIO_GPU(opaque);
+     struct virtio_gpu_simple_resource *res, *tmp;
+-    struct virtio_gpu_ctrl_command *cmd;
++    int i = 0;
+ 
+     QTAILQ_FOREACH_SAFE(res, &g->reslist, next, tmp) {
+         virtio_gpu_resource_destroy(g, res);
+     }
+ 
++    for (i = 0; i < g->parent_obj.conf.max_outputs; i++) {
++        dpy_gfx_replace_surface(g->parent_obj.scanout[i].con, NULL);
++    }
++
++    g->reset_finished = true;
++    qemu_cond_signal(&g->reset_cond);
++}
++
++void virtio_gpu_reset(VirtIODevice *vdev)
++{
++    VirtIOGPU *g = VIRTIO_GPU(vdev);
++    struct virtio_gpu_ctrl_command *cmd;
++
++    if (qemu_in_vcpu_thread()) {
++        g->reset_finished = false;
++        qemu_bh_schedule(g->reset_bh);
++        while (!g->reset_finished) {
++            qemu_cond_wait_iothread(&g->reset_cond);
++        }
++    } else {
++        virtio_gpu_reset_bh(g);
++    }
++
+     while (!QTAILQ_EMPTY(&g->cmdq)) {
+         cmd = QTAILQ_FIRST(&g->cmdq);
+         QTAILQ_REMOVE(&g->cmdq, cmd, next);
+diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
+index 4367d005f1..f3578c1325 100644
+--- a/include/hw/virtio/virtio-gpu.h
++++ b/include/hw/virtio/virtio-gpu.h
+@@ -166,6 +166,9 @@ struct VirtIOGPU {
+ 
+     QEMUBH *ctrl_bh;
+     QEMUBH *cursor_bh;
++    QEMUBH *reset_bh;
++    QemuCond reset_cond;
++    bool reset_finished;
+ 
+     QTAILQ_HEAD(, virtio_gpu_simple_resource) reslist;
+     QTAILQ_HEAD(, virtio_gpu_ctrl_command) cmdq;
+-- 
+2.39.3
+

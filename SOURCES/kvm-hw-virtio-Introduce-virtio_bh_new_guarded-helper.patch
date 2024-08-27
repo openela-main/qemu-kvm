@@ -1,0 +1,86 @@
+From 1b62d61c495bf4cd3a819ab8d1ef024d153e0ece Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Thu, 18 Jul 2024 09:40:29 -0400
+Subject: [PATCH 3/6] hw/virtio: Introduce virtio_bh_new_guarded() helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 380: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability
+RH-Jira: RHEL-32276
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/6] 1cbde7ddb8393b72e2e8d457b5e2d739116567a9 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-32276
+CVE: CVE-2024-3446
+Upstream: Merged
+
+commit ec0504b989ca61e03636384d3602b7bf07ffe4da
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Thu Apr 4 20:56:11 2024 +0200
+
+    hw/virtio: Introduce virtio_bh_new_guarded() helper
+
+    Introduce virtio_bh_new_guarded(), similar to qemu_bh_new_guarded()
+    but using the transport memory guard, instead of the device one
+    (there can only be one virtio device per virtio bus).
+
+    Inspired-by: Gerd Hoffmann <kraxel@redhat.com>
+    Reviewed-by: Gerd Hoffmann <kraxel@redhat.com>
+    Acked-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Message-Id: <20240409105537.18308-2-philmd@linaro.org>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/virtio/virtio.c         | 10 ++++++++++
+ include/hw/virtio/virtio.h |  7 +++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index ea7c079fb0..5ae9c44841 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -3874,3 +3874,13 @@ static void virtio_register_types(void)
+ }
+ 
+ type_init(virtio_register_types)
++
++QEMUBH *virtio_bh_new_guarded_full(DeviceState *dev,
++                                   QEMUBHFunc *cb, void *opaque,
++                                   const char *name)
++{
++    DeviceState *transport = qdev_get_parent_bus(dev)->parent;
++
++    return qemu_bh_new_full(cb, opaque, name,
++                            &transport->mem_reentrancy_guard);
++}
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 8bab9cfb75..731c631a81 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -22,6 +22,7 @@
+ #include "standard-headers/linux/virtio_config.h"
+ #include "standard-headers/linux/virtio_ring.h"
+ #include "qom/object.h"
++#include "block/aio.h"
+ 
+ /* A guest should never accept this.  It implies negotiation is broken. */
+ #define VIRTIO_F_BAD_FEATURE		30
+@@ -397,4 +398,10 @@ static inline bool virtio_device_disabled(VirtIODevice *vdev)
+ bool virtio_legacy_allowed(VirtIODevice *vdev);
+ bool virtio_legacy_check_disabled(VirtIODevice *vdev);
+ 
++QEMUBH *virtio_bh_new_guarded_full(DeviceState *dev,
++                                   QEMUBHFunc *cb, void *opaque,
++                                   const char *name);
++#define virtio_bh_new_guarded(dev, cb, opaque) \
++    virtio_bh_new_guarded_full((dev), (cb), (opaque), (stringify(cb)))
++
+ #endif
+-- 
+2.39.3
+

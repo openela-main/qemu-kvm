@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 50%{?rcrel}%{?dist}
+Release: 52%{?rcrel}%{?dist}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -857,6 +857,28 @@ Patch347: kvm-iotests-270-Don-t-store-data-file-with-json-prefix-i.patch
 Patch348: kvm-block-introduce-bdrv_open_file_child-helper.patch
 # For RHEL-35616 - CVE-2024-4467 virt:rhel/qemu-kvm: QEMU: 'qemu-img info' leads to host file read/write [rhel-8.10.z]
 Patch349: kvm-block-Parse-filenames-only-when-explicitly-requested.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch350: kvm-virtio-gpu-free-BHs-by-implementing-unrealize.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch351: kvm-virtio-gpu-reset-gfx-resources-in-main-thread.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch352: kvm-hw-virtio-Introduce-virtio_bh_new_guarded-helper.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch353: kvm-hw-display-virtio-gpu-Protect-from-DMA-re-entrancy-b.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch354: kvm-hw-char-virtio-serial-bus-Protect-from-DMA-re-entran.patch
+# For RHEL-32276 - CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8]
+Patch355: kvm-hw-virtio-virtio-crypto-Protect-from-DMA-re-entrancy.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch356: kvm-nbd-server-Plumb-in-new-args-to-nbd_client_add.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch357: kvm-nbd-server-CVE-2024-7409-Cap-default-max-connections.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch358: kvm-nbd-server-CVE-2024-7409-Drop-non-negotiating-client.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch359: kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch
+# For RHEL-50854 - vnc: increase max display size to 4K
+Patch360: kvm-vnc-increase-max-display-size.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2026,6 +2048,27 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Wed Aug 21 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-52.el8
+- kvm-nbd-server-Plumb-in-new-args-to-nbd_client_add.patch [RHEL-52611]
+- kvm-nbd-server-CVE-2024-7409-Cap-default-max-connections.patch [RHEL-52611]
+- kvm-nbd-server-CVE-2024-7409-Drop-non-negotiating-client.patch [RHEL-52611]
+- kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch [RHEL-52611]
+- kvm-vnc-increase-max-display-size.patch [RHEL-50854]
+- Resolves: RHEL-52611
+  (CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z])
+- Resolves: RHEL-50854
+  (vnc: increase max display size to 4K)
+
+* Mon Jul 29 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-51.el8
+- kvm-virtio-gpu-free-BHs-by-implementing-unrealize.patch [RHEL-32276]
+- kvm-virtio-gpu-reset-gfx-resources-in-main-thread.patch [RHEL-32276]
+- kvm-hw-virtio-Introduce-virtio_bh_new_guarded-helper.patch [RHEL-32276]
+- kvm-hw-display-virtio-gpu-Protect-from-DMA-re-entrancy-b.patch [RHEL-32276]
+- kvm-hw-char-virtio-serial-bus-Protect-from-DMA-re-entran.patch [RHEL-32276]
+- kvm-hw-virtio-virtio-crypto-Protect-from-DMA-re-entrancy.patch [RHEL-32276]
+- Resolves: RHEL-32276
+  (CVE-2024-3446 virt:rhel/qemu-kvm: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability [rhel-8])
+
 * Thu Jul 04 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-50
 - kvm-qcow2-Don-t-open-data_file-with-BDRV_O_NO_IO.patch [RHEL-35616]
 - kvm-iotests-244-Don-t-store-data-file-with-protocol-in-i.patch [RHEL-35616]

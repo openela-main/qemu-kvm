@@ -1,0 +1,62 @@
+From 2ecbd673a0e2191821ce88128587f709936ad765 Mon Sep 17 00:00:00 2001
+From: Jon Maloy <jmaloy@redhat.com>
+Date: Thu, 18 Jul 2024 09:21:27 -0400
+Subject: [PATCH 6/6] hw/virtio/virtio-crypto: Protect from DMA re-entrancy
+ bugs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 380: QEMU: virtio: DMA reentrancy issue leads to double free vulnerability
+RH-Jira: RHEL-32276
+RH-Acked-by: Gerd Hoffmann <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/6] 975ac4640fd8e7cbf3820757787ee7b1270173be (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-32276
+CVE: CVE-2024-3446
+Upstream: Merged
+
+commit f4729ec39ad97a42ceaa7b5697f84f440ea6e5dc
+Author: Philippe Mathieu-Daudé <philmd@linaro.org>
+Date:   Thu Apr 4 20:56:41 2024 +0200
+
+    hw/virtio/virtio-crypto: Protect from DMA re-entrancy bugs
+
+    Replace qemu_bh_new_guarded() by virtio_bh_new_guarded()
+    so the bus and device use the same guard. Otherwise the
+    DMA-reentrancy protection can be bypassed.
+
+    Fixes: CVE-2024-3446
+    Cc: qemu-stable@nongnu.org
+    Suggested-by: Alexander Bulekov <alxndr@bu.edu>
+    Reviewed-by: Gerd Hoffmann <kraxel@redhat.com>
+    Acked-by: Michael S. Tsirkin <mst@redhat.com>
+    Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+    Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+    Message-Id: <20240409105537.18308-5-philmd@linaro.org>
+
+Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+---
+ hw/virtio/virtio-crypto.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/virtio-crypto.c b/hw/virtio/virtio-crypto.c
+index 1be7bb543c..1741d4aba1 100644
+--- a/hw/virtio/virtio-crypto.c
++++ b/hw/virtio/virtio-crypto.c
+@@ -817,8 +817,8 @@ static void virtio_crypto_device_realize(DeviceState *dev, Error **errp)
+         vcrypto->vqs[i].dataq =
+                  virtio_add_queue(vdev, 1024, virtio_crypto_handle_dataq_bh);
+         vcrypto->vqs[i].dataq_bh =
+-                 qemu_bh_new_guarded(virtio_crypto_dataq_bh, &vcrypto->vqs[i],
+-                                     &dev->mem_reentrancy_guard);
++                 virtio_bh_new_guarded(dev, virtio_crypto_dataq_bh,
++                                       &vcrypto->vqs[i]);
+         vcrypto->vqs[i].vcrypto = vcrypto;
+     }
+ 
+-- 
+2.39.3
+
