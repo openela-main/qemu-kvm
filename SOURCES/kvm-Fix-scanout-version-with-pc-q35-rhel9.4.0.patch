@@ -1,0 +1,128 @@
+From ef212eb3026a2460f6502a76afa3baedeb74d975 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Marc-Andr=C3=A9=20Lureau?= <marcandre.lureau@redhat.com>
+Date: Tue, 6 Aug 2024 14:14:27 +0400
+Subject: [PATCH 1/5] Fix scanout version with pc-q35-rhel9.4.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-MergeRequest: 383: Fix scanout version with pc-q35-rhel9.4.0
+RH-Jira: RHEL-53565
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] ed2860cfb933654b0046c1b59f78d2e50146bd6c
+
+Resolves: https://issues.redhat.com/browse/RHEL-52940
+
+Introduce hw_compat_rhel_9_4_extra so that pc-q35-rhel9.4.0 has
+x-scanout-vmstate-version=1
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+---
+ hw/arm/virt.c              |  1 +
+ hw/core/machine.c          | 13 +++++++++++--
+ hw/i386/pc_piix.c          |  2 ++
+ hw/i386/pc_q35.c           |  3 +++
+ hw/s390x/s390-virtio-ccw.c |  1 +
+ include/hw/boards.h        |  3 +++
+ 6 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index e4a66affcb..851eff6b28 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3670,6 +3670,7 @@ type_init(rhel_machine_init);
+ 
+ static void rhel940_virt_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, hw_compat_rhel_9_4_extra, hw_compat_rhel_9_4_extra_len);
+ }
+ DEFINE_RHEL_MACHINE_AS_LATEST(9, 4, 0)
+ 
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index c8c460c916..fe0a28ef3b 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -64,6 +64,17 @@ const size_t hw_compat_7_2_len = G_N_ELEMENTS(hw_compat_7_2);
+ const char *rhel_old_machine_deprecation =
+     "machine types for previous major releases are deprecated";
+ 
++/*
++ * rhel_9_4_extra is used for <= 9.4 machines.
++ *
++ * (for compatibility and historical reasons, rhel_9_4 is used for <= 9.2 too)
++ */
++GlobalProperty hw_compat_rhel_9_4_extra[] = {
++    /* hw_compat_rhel_9_4_extra from hw_compat_8_2 */
++    { "virtio-gpu-device", "x-scanout-vmstate-version", "1" },
++};
++const size_t hw_compat_rhel_9_4_extra_len = G_N_ELEMENTS(hw_compat_rhel_9_4_extra);
++
+ GlobalProperty hw_compat_rhel_9_4[] = {
+   /* hw_compat_rhel_9_4 from hw_compat_8_0 */
+     { TYPE_VIRTIO_NET, "host_uso", "off"},
+@@ -81,8 +92,6 @@ GlobalProperty hw_compat_rhel_9_4[] = {
+      { "igb", "x-pcie-flr-init", "off" },
+   /* hw_compat_rhel_9_4 jira RHEL-24045 */
+      { "virtio-mem", "dynamic-memslots", "off" },
+-  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
+-    { "virtio-gpu-device", "x-scanout-vmstate-version", "1" },
+ };
+ const size_t hw_compat_rhel_9_4_len = G_N_ELEMENTS(hw_compat_rhel_9_4);
+ 
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 54d1c58bce..c846673d87 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1031,6 +1031,8 @@ static void pc_machine_rhel760_options(MachineClass *m)
+                                      "Use a different south bridge than PIIX3");
+ 
+ 
++    compat_props_add(m->compat_props, hw_compat_rhel_9_4_extra,
++                     hw_compat_rhel_9_4_extra_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_4,
+                      hw_compat_rhel_9_4_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_3,
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index cd5fb7380e..02bc3d515f 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -731,6 +731,9 @@ static void pc_q35_machine_rhel940_options(MachineClass *m)
+     m->desc = "RHEL-9.4.0 PC (Q35 + ICH9, 2009)";
+     pcmc->smbios_stream_product = "RHEL";
+     pcmc->smbios_stream_version = "9.4.0";
++
++    compat_props_add(m->compat_props, hw_compat_rhel_9_4_extra,
++                     hw_compat_rhel_9_4_extra_len);
+ }
+ 
+ DEFINE_PC_MACHINE(q35_rhel940, "pc-q35-rhel9.4.0", pc_q35_init_rhel940,
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 24f4773179..cc6087c37a 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1277,6 +1277,7 @@ static void ccw_machine_rhel940_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel940_class_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, hw_compat_rhel_9_4_extra, hw_compat_rhel_9_4_extra_len);
+ }
+ DEFINE_CCW_MACHINE(rhel940, "rhel9.4.0", true);
+ 
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 4edfdb0ddb..e6ae0e61cf 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -505,6 +505,9 @@ extern const size_t hw_compat_2_2_len;
+ extern GlobalProperty hw_compat_2_1[];
+ extern const size_t hw_compat_2_1_len;
+ 
++extern GlobalProperty hw_compat_rhel_9_4_extra[];
++extern const size_t hw_compat_rhel_9_4_extra_len;
++
+ extern GlobalProperty hw_compat_rhel_9_4[];
+ extern const size_t hw_compat_rhel_9_4_len;
+ 
+-- 
+2.39.3
+

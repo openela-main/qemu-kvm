@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 8.2.0
-Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.4
+Release: 11%{?rcrel}%{?dist}%{?cc_suffix}.6
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -630,6 +630,24 @@ Patch185: kvm-iotests-244-Don-t-store-data-file-with-protocol-in-i.patch
 Patch186: kvm-iotests-270-Don-t-store-data-file-with-json-prefix-i.patch
 # For RHEL-35610
 Patch187: kvm-block-Parse-filenames-only-when-explicitly-requested.patch
+# For RHEL-36181 - [RHEL9.5.0][stable_guest_abi]Failed to migrate VM with (qemu) qemu-kvm: Missing section footer for 0000:00:01.0/virtio-gpu qemu-kvm: load of migration failed: Invalid argument [rhel-9.4.0.z]
+Patch188: kvm-virtio-gpu-fix-scanout-migration-post-load.patch
+# For RHEL-36181 - [RHEL9.5.0][stable_guest_abi]Failed to migrate VM with (qemu) qemu-kvm: Missing section footer for 0000:00:01.0/virtio-gpu qemu-kvm: load of migration failed: Invalid argument [rhel-9.4.0.z]
+Patch189: kvm-virtio-gpu-fix-v2-migration.patch
+# For RHEL-36181 - [RHEL9.5.0][stable_guest_abi]Failed to migrate VM with (qemu) qemu-kvm: Missing section footer for 0000:00:01.0/virtio-gpu qemu-kvm: load of migration failed: Invalid argument [rhel-9.4.0.z]
+Patch190: kvm-rhel-9.4.0-machine-type-compat-for-virtio-gpu-migrat.patch
+# For RHEL-43261 - qemu-kvm: linux-aio: add support for IO_CMD_FDSYNC command [rhel-9.4.z]
+Patch191: kvm-linux-aio-add-IO_CMD_FDSYNC-command-support.patch
+# For RHEL-53565 - [RHEL9.4_to_RHEL9.5]When the VM is with only 9.4.0 (q35) machine type, still hit error of virtio-gpu issue [rhel-9.4.z]
+Patch192: kvm-Fix-scanout-version-with-pc-q35-rhel9.4.0.patch
+# For RHEL-52616 - CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.4.z]
+Patch193: kvm-nbd-server-Plumb-in-new-args-to-nbd_client_add.patch
+# For RHEL-52616 - CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.4.z]
+Patch194: kvm-nbd-server-CVE-2024-7409-Cap-default-max-connections.patch
+# For RHEL-52616 - CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.4.z]
+Patch195: kvm-nbd-server-CVE-2024-7409-Drop-non-negotiating-client.patch
+# For RHEL-52616 - CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.4.z]
+Patch196: kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1691,6 +1709,27 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Thu Aug 15 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.6
+- kvm-Fix-scanout-version-with-pc-q35-rhel9.4.0.patch [RHEL-53565]
+- kvm-nbd-server-Plumb-in-new-args-to-nbd_client_add.patch [RHEL-52616]
+- kvm-nbd-server-CVE-2024-7409-Cap-default-max-connections.patch [RHEL-52616]
+- kvm-nbd-server-CVE-2024-7409-Drop-non-negotiating-client.patch [RHEL-52616]
+- kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch [RHEL-52616]
+- Resolves: RHEL-53565
+  ([RHEL9.4_to_RHEL9.5]When the VM is with only 9.4.0 (q35) machine type, still hit error of virtio-gpu issue [rhel-9.4.z])
+- Resolves: RHEL-52616
+  (CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.4.z])
+
+* Mon Jul 15 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.5
+- kvm-virtio-gpu-fix-scanout-migration-post-load.patch [RHEL-36181]
+- kvm-virtio-gpu-fix-v2-migration.patch [RHEL-36181]
+- kvm-rhel-9.4.0-machine-type-compat-for-virtio-gpu-migrat.patch [RHEL-36181]
+- kvm-linux-aio-add-IO_CMD_FDSYNC-command-support.patch [RHEL-43261]
+- Resolves: RHEL-36181
+  ([RHEL9.5.0][stable_guest_abi]Failed to migrate VM with (qemu) qemu-kvm: Missing section footer for 0000:00:01.0/virtio-gpu qemu-kvm: load of migration failed: Invalid argument [rhel-9.4.0.z])
+- Resolves: RHEL-43261
+  (qemu-kvm: linux-aio: add support for IO_CMD_FDSYNC command [rhel-9.4.z])
+
 * Wed Jun 19 2024 Miroslav Rezanina <mrezanin@redhat.com> - 8.2.0-11.el9_4.4
 - Fixing CVE-2024-4467
 - Resolves: RHEL-35610
