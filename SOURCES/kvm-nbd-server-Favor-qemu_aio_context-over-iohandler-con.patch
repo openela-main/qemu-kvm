@@ -1,0 +1,161 @@
+From 00af174d1388ed2d2df7961ee78be6af3757a01c Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Wed, 30 Aug 2023 18:48:02 -0400
+Subject: [PATCH 1/3] nbd/server: Favor qemu_aio_context over iohandler context
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 398: nbd/server: CVE-2024-7409: Avoid use-after-free when closing server
+RH-Jira: RHEL-52611
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/3] 6ec0ef287fbc976175da83a0c14d9878e83affa2 (ebblake/qemu-kvm)
+
+DOWNSTREAM ONLY - but based on an idea originally included as a
+side-effect in the larger upstream patch 06e0f098 "io: follow
+coroutine AioContext in qio_channel_yield()", as well as handling the
+state of the qio TLS channel before it is associated with a block
+device as an alternative to 199e84de "qio: Inherit
+follow_coroutine_ctx across TLS".
+
+The NBD server code wants to use qio_channel_shutdown() followed by
+AIO_WAIT_WHILE() during nbd_server_free(), but cannot attach the ioc
+to an AioContext until the client has completed the handshake to the
+point that the server knows what block device to associate with the
+connection.  The qio code is set up to handle connections with no
+AioContext in the iohandler context, but this context is specifically
+designed to NOT make progress during AIO_WAIT_WHILE().  In order to
+prevent things from deadlocking, the qio channels handling NBD
+handshake MUST be in the qemu_aio_context, so that an early shutdown
+triggered by nbd-server-stop can make progress.
+
+Note that upstream handled the main qio channel by the use of
+qio_channel_set_follow_coroutine_ctx() in only one place in
+nbd/server.c; upstream handled the TLS channel by a more generic
+second patch that taught qio TLS channel to inherit the
+follow_coroutine_ctx status from its parent.  But since this patch is
+already downstream only, the minimal diff is achieved by manually
+setting the status of the TLS channel in NBD code, rather than
+backporting the qio inheritance code.  For testing that the second
+call to qio_channel_set_favor_qemu_aio_ctx() matters, I used this test
+setup (borrowing a pre-built PSK file for username alice from the
+libnbd project, and using IPv4 since this qemu is too old to support
+TLS over Unix sockets):
+
+$ # in terminal 1:
+$ qemu-system-x86_64 --nographic --nodefaults --qmp stdio \
+  --object tls-creds-psk,id=tls0,dir=/PATHTO/libnbd/tests,endpoint=server
+{"execute": "qmp_capabilities"}
+{"execute":"nbd-server-start","arguments":{"addr":{"type":"inet",
+  "data":{"host":"127.0.0.1","port":"10809"}},"tls-creds":"tls0"}}
+
+$ # in terminal 2:
+$ nbdsh -c 'h.set_uri_allow_local_file(True)' --opt-mode -u \
+  'nbds://alice@127.0.0.1/?tls-psk-file=/PATHTO/libnbd/tests/keys.psk' \
+  -c 'import time; time.sleep(15)'
+
+$ # in terminal 1, before 10 seconds elapse
+{"execute":"nbd-server-stop"}
+{"execute":"quit"}
+
+and observed that, when omitting the one-line TLS setting, qemu would
+hit the same deadlock with a TLS client as what I was observing for a
+non-TLS client without this entire patch.
+
+Jira: https://issues.redhat.com/browse/RHEL-52611
+Suggested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ include/io/channel.h | 16 ++++++++++++++++
+ io/channel.c         | 14 +++++++++++++-
+ nbd/server.c         |  2 ++
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/include/io/channel.h b/include/io/channel.h
+index 716235d496..f1ce19ea81 100644
+--- a/include/io/channel.h
++++ b/include/io/channel.h
+@@ -84,6 +84,7 @@ struct QIOChannel {
+     AioContext *ctx;
+     Coroutine *read_coroutine;
+     Coroutine *write_coroutine;
++    bool favor_qemu_aio_ctx;
+ #ifdef _WIN32
+     HANDLE event; /* For use with GSource on Win32 */
+ #endif
+@@ -498,6 +499,21 @@ int qio_channel_set_blocking(QIOChannel *ioc,
+                              bool enabled,
+                              Error **errp);
+ 
++/**
++ * qio_channel_set_favor_qemu_aio_ctx:
++ * @ioc: the channel object
++ * @enabled: whether to fall back to qemu_aio_context
++ *
++ * If @enabled is true, calls to qio_channel_yield() with no AioContext
++ * set use the qemu_aio_context instead of the global iohandler context.
++ *
++ * If @enabled is false, calls to qio_channel_yield() use the global iohandler
++ * AioContext. This is may be used by coroutines that run in the main loop and
++ * do not wish to respond to I/O during nested event loops. This is the
++ * default for compatibility with code that is not aware of AioContexts.
++ */
++void qio_channel_set_favor_qemu_aio_ctx(QIOChannel *ioc, bool enabled);
++
+ /**
+  * qio_channel_close:
+  * @ioc: the channel object
+diff --git a/io/channel.c b/io/channel.c
+index a8c7f11649..74704d0464 100644
+--- a/io/channel.c
++++ b/io/channel.c
+@@ -364,6 +364,12 @@ int qio_channel_set_blocking(QIOChannel *ioc,
+ }
+ 
+ 
++void qio_channel_set_favor_qemu_aio_ctx(QIOChannel *ioc, bool enabled)
++{
++    ioc->favor_qemu_aio_ctx = enabled;
++}
++
++
+ int qio_channel_close(QIOChannel *ioc,
+                       Error **errp)
+ {
+@@ -545,7 +551,13 @@ static void qio_channel_set_aio_fd_handlers(QIOChannel *ioc)
+         wr_handler = qio_channel_restart_write;
+     }
+ 
+-    ctx = ioc->ctx ? ioc->ctx : iohandler_get_aio_context();
++    if (ioc->ctx) {
++        ctx = ioc->ctx;
++    } else if (ioc->favor_qemu_aio_ctx) {
++        ctx = qemu_get_aio_context();
++    } else {
++        ctx = iohandler_get_aio_context();
++    }
+     qio_channel_set_aio_fd_handler(ioc, ctx, rd_handler, wr_handler, ioc);
+ }
+ 
+diff --git a/nbd/server.c b/nbd/server.c
+index 1265068f70..41a2003300 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -758,6 +758,7 @@ static QIOChannel *nbd_negotiate_handle_starttls(NBDClient *client,
+         return NULL;
+     }
+ 
++    qio_channel_set_favor_qemu_aio_ctx(QIO_CHANNEL(tioc), true);
+     qio_channel_set_name(QIO_CHANNEL(tioc), "nbd-server-tls");
+     trace_nbd_negotiate_handle_starttls_handshake();
+     data.loop = g_main_loop_new(g_main_context_default(), FALSE);
+@@ -1333,6 +1334,7 @@ static coroutine_fn int nbd_negotiate(NBDClient *client, Error **errp)
+      */
+ 
+     qio_channel_set_blocking(client->ioc, false, NULL);
++    qio_channel_set_favor_qemu_aio_ctx(client->ioc, true);
+ 
+     trace_nbd_negotiate_begin();
+     memcpy(buf, "NBDMAGIC", 8);
+-- 
+2.39.3
+

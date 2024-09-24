@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 52%{?rcrel}%{?dist}
+Release: 53%{?rcrel}%{?dist}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -879,6 +879,12 @@ Patch358: kvm-nbd-server-CVE-2024-7409-Drop-non-negotiating-client.patch
 Patch359: kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch
 # For RHEL-50854 - vnc: increase max display size to 4K
 Patch360: kvm-vnc-increase-max-display-size.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch361: kvm-nbd-server-Favor-qemu_aio_context-over-iohandler-con.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch362: kvm-iotests-test-NBD-TLS-iothread.patch
+# For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
+Patch363: kvm-nbd-server-CVE-2024-7409-Avoid-use-after-free-when-c.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2048,6 +2054,13 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Thu Sep 05 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-53.el8
+- kvm-nbd-server-Favor-qemu_aio_context-over-iohandler-con.patch [RHEL-52611]
+- kvm-iotests-test-NBD-TLS-iothread.patch [RHEL-52611]
+- kvm-nbd-server-CVE-2024-7409-Avoid-use-after-free-when-c.patch [RHEL-52611]
+- Resolves: RHEL-52611
+  (CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z])
+
 * Wed Aug 21 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-52.el8
 - kvm-nbd-server-Plumb-in-new-args-to-nbd_client_add.patch [RHEL-52611]
 - kvm-nbd-server-CVE-2024-7409-Cap-default-max-connections.patch [RHEL-52611]
