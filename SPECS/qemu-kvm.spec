@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 53%{?rcrel}%{?dist}
+Release: 53%{?rcrel}%{?dist}.2
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -885,6 +885,12 @@ Patch361: kvm-nbd-server-Favor-qemu_aio_context-over-iohandler-con.patch
 Patch362: kvm-iotests-test-NBD-TLS-iothread.patch
 # For RHEL-52611 - CVE-2024-7409 virt:rhel/qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-8.10.z]
 Patch363: kvm-nbd-server-CVE-2024-7409-Avoid-use-after-free-when-c.patch
+# For RHEL-60553 - Frequent VM pauses on OpenShift Virtualization with Portworx storage
+Patch364: kvm-block-move-bdrv_qiov_is_aligned-to-file-posix.patch
+# For RHEL-60553 - Frequent VM pauses on OpenShift Virtualization with Portworx storage
+Patch365: kvm-block-use-the-request-length-for-iov-alignment.patch
+# For RHEL-26197 - virtiofsd --help and manpage does not agree on --thread-pool-size default value
+Patch366: kvm-Fix-thread-pool-size-default-value-in-the-man-page.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2054,6 +2060,17 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Tue Oct 15 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.2
+- kvm-Fix-thread-pool-size-default-value-in-the-man-page.patch [RHEL-26197]
+- Resolves: RHEL-26197
+  (virtiofsd --help and manpage does not agree on --thread-pool-size default value)
+
+* Tue Oct 08 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.1
+- kvm-block-move-bdrv_qiov_is_aligned-to-file-posix.patch [RHEL-60553]
+- kvm-block-use-the-request-length-for-iov-alignment.patch [RHEL-60553]
+- Resolves: RHEL-60553
+  (Frequent VM pauses on OpenShift Virtualization with Portworx storage)
+
 * Thu Sep 05 2024 Miroslav Rezanina <mrezanin@redhat.com> - 6.2.0-53.el8
 - kvm-nbd-server-Favor-qemu_aio_context-over-iohandler-con.patch [RHEL-52611]
 - kvm-iotests-test-NBD-TLS-iothread.patch [RHEL-52611]

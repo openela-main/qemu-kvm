@@ -1,0 +1,36 @@
+From a707eff49800045d07afbcd8a74617c50b960151 Mon Sep 17 00:00:00 2001
+From: German Maglione <gmaglione@redhat.com>
+Date: Thu, 10 Oct 2024 13:23:25 +0200
+Subject: [PATCH] Fix thread-pool-size default value in the man page
+
+RH-Author: German Maglione <None>
+RH-MergeRequest: 417: Fix thread-pool-size default value in the man page
+RH-Jira: RHEL-26197
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/1] bdf22ed4600ac7f02a4b08c54f162b1f89c44a99
+
+The current --thread-pool-size default value is 0, let's reflect it
+in the man page.
+
+Signed-off-by: German Maglione <gmaglione@redhat.com>
+---
+ docs/tools/virtiofsd.rst | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docs/tools/virtiofsd.rst b/docs/tools/virtiofsd.rst
+index 07ac0be551..fb3d59c449 100644
+--- a/docs/tools/virtiofsd.rst
++++ b/docs/tools/virtiofsd.rst
+@@ -120,7 +120,7 @@ Options
+ .. option:: --thread-pool-size=NUM
+ 
+   Restrict the number of worker threads per request queue to NUM.  The default
+-  is 64.
++  is 0.
+ 
+ .. option:: --cache=none|auto|always
+ 
+-- 
+2.45.2
+

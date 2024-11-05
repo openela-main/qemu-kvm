@@ -1,0 +1,48 @@
+From 9009b674a01dc0cd92c319c87714b5aca6e639f8 Mon Sep 17 00:00:00 2001
+From: Keith Busch <kbusch@kernel.org>
+Date: Thu, 29 Sep 2022 13:05:23 -0700
+Subject: [PATCH 2/2] block: use the request length for iov alignment
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 411: block: Fix iov_len check in bdrv_qiov_is_aligned()
+RH-Jira: RHEL-60553
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [2/2] 0e01d51cfb21ca43283626c2367e5c5d0d531736
+
+An iov length needs to be aligned to the logical block size, which may
+be larger than the memory alignment.
+
+Tested-by: Jens Axboe <axboe@kernel.dk>
+Signed-off-by: Keith Busch <kbusch@kernel.org>
+Message-Id: <20220929200523.3218710-3-kbusch@meta.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 25474d90aa50bd32e0de395a33d8de42dd6f2aef)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/file-posix.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/block/file-posix.c b/block/file-posix.c
+index b404e1544f..b84c5725cc 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -2058,12 +2058,13 @@ static bool bdrv_qiov_is_aligned(BlockDriverState *bs, QEMUIOVector *qiov)
+ {
+     int i;
+     size_t alignment = bdrv_min_mem_align(bs);
++    size_t len = bs->bl.request_alignment;
+ 
+     for (i = 0; i < qiov->niov; i++) {
+         if ((uintptr_t) qiov->iov[i].iov_base % alignment) {
+             return false;
+         }
+-        if (qiov->iov[i].iov_len % alignment) {
++        if (qiov->iov[i].iov_len % len) {
+             return false;
+         }
+     }
+-- 
+2.45.2
+
