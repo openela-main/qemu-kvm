@@ -1,0 +1,46 @@
+From 80c1d78e31b2567d1c610c8939b75d159ff6ea27 Mon Sep 17 00:00:00 2001
+From: Pankaj Gupta <pankaj.gupta@amd.com>
+Date: Thu, 30 May 2024 06:16:13 -0500
+Subject: [PATCH 055/100] i386/sev: Replace error_report with error_setg
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [55/91] 1e15fc2458687e564af9fa5022c29e79ddc8edfd (bonzini/rhel-qemu-kvm)
+
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-2-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 18c453409a3a84cf7b2c764c5a03fb429a73bbeb)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/sev.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index d30b68c11e..67ed32e5ea 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -952,13 +952,13 @@ static int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+ 
+     if (sev_es_enabled()) {
+         if (!kvm_kernel_irqchip_allowed()) {
+-            error_report("%s: SEV-ES guests require in-kernel irqchip support",
+-                         __func__);
++            error_setg(errp, "%s: SEV-ES guests require in-kernel irqchip"
++                       "support", __func__);
+             goto err;
+         }
+ 
+         if (!(status.flags & SEV_STATUS_FLAGS_CONFIG_ES)) {
+-            error_report("%s: guest policy requires SEV-ES, but "
++            error_setg(errp, "%s: guest policy requires SEV-ES, but "
+                          "host SEV-ES support unavailable",
+                          __func__);
+             goto err;
+-- 
+2.39.3
+

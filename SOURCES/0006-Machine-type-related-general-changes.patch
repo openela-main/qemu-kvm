@@ -1,4 +1,4 @@
-From d9ff466c980d219ebf230ea24becce294c196f1f Mon Sep 17 00:00:00 2001
+From 8e6a30073f9c1a5d6294b2d16556522453e227e7 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 11 Jan 2019 09:54:45 +0100
 Subject: Machine type related general changes
@@ -25,6 +25,12 @@ Rebase notes (7.1.0):
 
 Rebase notes (8.1.0):
 - Do not modify unused vga-isa.c
+
+Rebase notes (9.0.0 rc0):
+- Updated smsbios handling
+
+Rebase notes (9.0.0 rc4):
+- Moving downstream compat changes
 
 Merged patches (6.1.0):
 - f2fb42a3c6 redhat: add missing entries in hw_compat_rhel_8_4
@@ -61,24 +67,27 @@ Merged patches (8.1.0):
 
 Merged patches (8.2.0):
 - 4ee284aca9 Add machine types compat bits. (partial)
+
+Merged patches (9.0.0 rc0):
+- 4b8fe42abc virtio-mem: default-enable "dynamic-memslots"
 ---
  hw/acpi/piix4.c              |   2 +-
  hw/arm/virt.c                |   2 +-
- hw/core/machine.c            | 267 +++++++++++++++++++++++++++++++++++
- hw/i386/pc_piix.c            |   2 +
- hw/i386/pc_q35.c             |   2 +
+ hw/core/machine.c            | 269 +++++++++++++++++++++++++++++++++++
+ hw/i386/fw_cfg.c             |   3 +-
  hw/net/rtl8139.c             |   4 +-
  hw/smbios/smbios.c           |  46 +++++-
  hw/timer/i8254_common.c      |   2 +-
  hw/usb/hcd-xhci-pci.c        |  59 ++++++--
  hw/usb/hcd-xhci-pci.h        |   1 +
+ hw/virtio/virtio-mem.c       |   3 +-
  include/hw/boards.h          |  40 ++++++
- include/hw/firmware/smbios.h |   5 +-
+ include/hw/firmware/smbios.h |   4 +-
  include/hw/i386/pc.h         |   3 +
- 13 files changed, 413 insertions(+), 22 deletions(-)
+ 13 files changed, 414 insertions(+), 24 deletions(-)
 
 diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
-index dd523d2e4c..5050c0ba97 100644
+index debe1adb84..e8ddcd716e 100644
 --- a/hw/acpi/piix4.c
 +++ b/hw/acpi/piix4.c
 @@ -245,7 +245,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
@@ -88,28 +97,28 @@ index dd523d2e4c..5050c0ba97 100644
 -    .minimum_version_id = 3,
 +    .minimum_version_id = 2,
      .post_load = vmstate_acpi_post_load,
-     .fields = (VMStateField[]) {
+     .fields = (const VMStateField[]) {
          VMSTATE_PCI_DEVICE(parent_obj, PIIX4PMState),
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index af9ea4dd1c..62f0f7d4d6 100644
+index 6c6d155002..36e9b4b4e9 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -1638,7 +1638,7 @@ static void virt_build_smbios(VirtMachineState *vms)
+@@ -1651,7 +1651,7 @@ static void virt_build_smbios(VirtMachineState *vms)
  
      smbios_set_defaults("QEMU", product,
-                         vmc->smbios_old_sys_ver ? "1.0" : mc->name, false,
--                        true, SMBIOS_ENTRY_POINT_TYPE_64);
-+                        true, NULL, NULL, SMBIOS_ENTRY_POINT_TYPE_64);
+                         vmc->smbios_old_sys_ver ? "1.0" : mc->name,
+-                        true);
++                        true, NULL, NULL);
  
      /* build the array of physical mem area from base_memmap */
      mem_array.address = vms->memmap[VIRT_MEM].base;
 diff --git a/hw/core/machine.c b/hw/core/machine.c
-index 0c17398141..446601ee30 100644
+index 37ede0e7d4..695cb89a46 100644
 --- a/hw/core/machine.c
 +++ b/hw/core/machine.c
-@@ -57,6 +57,273 @@ GlobalProperty hw_compat_7_2[] = {
+@@ -296,6 +296,275 @@ GlobalProperty hw_compat_2_1[] = {
  };
- const size_t hw_compat_7_2_len = G_N_ELEMENTS(hw_compat_7_2);
+ const size_t hw_compat_2_1_len = G_N_ELEMENTS(hw_compat_2_1);
  
 +/*
 + * RHEL only: machine types for previous major releases are deprecated
@@ -132,6 +141,8 @@ index 0c17398141..446601ee30 100644
 +     { "vfio-pci-nohotplug", "x-ramfb-migrate", "off" },
 +  /* hw_compat_rhel_9_4 from hw_compat_8_1 */
 +     { "igb", "x-pcie-flr-init", "off" },
++  /* hw_compat_rhel_9_4 jira RHEL-24045 */
++     { "virtio-mem", "dynamic-memslots", "off" },
 +};
 +const size_t hw_compat_rhel_9_4_len = G_N_ELEMENTS(hw_compat_rhel_9_4);
 +
@@ -378,37 +389,25 @@ index 0c17398141..446601ee30 100644
 +};
 +const size_t hw_compat_rhel_7_6_len = G_N_ELEMENTS(hw_compat_rhel_7_6);
 +
- GlobalProperty hw_compat_7_1[] = {
-     { "virtio-device", "queue_reset", "false" },
-     { "virtio-rng-pci", "vectors", "0" },
-diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index eace854335..2a9f465619 100644
---- a/hw/i386/pc_piix.c
-+++ b/hw/i386/pc_piix.c
-@@ -238,6 +238,8 @@ static void pc_init1(MachineState *machine,
-         smbios_set_defaults("QEMU", mc->desc,
-                             mc->name, pcmc->smbios_legacy_mode,
-                             pcmc->smbios_uuid_encoded,
-+                            pcmc->smbios_stream_product,
-+                            pcmc->smbios_stream_version,
-                             pcms->smbios_entry_point_type);
+ MachineState *current_machine;
+ 
+ static char *machine_get_kernel(Object *obj, Error **errp)
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index d802d2787f..c7aa39a13e 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -64,7 +64,8 @@ void fw_cfg_build_smbios(PCMachineState *pcms, FWCfgState *fw_cfg,
+     if (pcmc->smbios_defaults) {
+         /* These values are guest ABI, do not change */
+         smbios_set_defaults("QEMU", mc->desc, mc->name,
+-                            pcmc->smbios_uuid_encoded);
++                            pcmc->smbios_uuid_encoded,
++                            pcmc->smbios_stream_product, pcmc->smbios_stream_version);
      }
  
-diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index 4f3e5412f6..912cb0c0dc 100644
---- a/hw/i386/pc_q35.c
-+++ b/hw/i386/pc_q35.c
-@@ -206,6 +206,8 @@ static void pc_q35_init(MachineState *machine)
-         smbios_set_defaults("QEMU", mc->desc,
-                             mc->name, pcmc->smbios_legacy_mode,
-                             pcmc->smbios_uuid_encoded,
-+                            pcmc->smbios_stream_product,
-+                            pcmc->smbios_stream_version,
-                             pcms->smbios_entry_point_type);
-     }
- 
+     /* tell smbios about cpuid version and features */
 diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
-index 4af8c66266..7dc12907ab 100644
+index 897c86ec41..2d0db43f49 100644
 --- a/hw/net/rtl8139.c
 +++ b/hw/net/rtl8139.c
 @@ -3169,7 +3169,7 @@ static int rtl8139_pre_save(void *opaque)
@@ -431,20 +430,21 @@ index 4af8c66266..7dc12907ab 100644
          VMSTATE_UINT16(tally_counters.TxUndrn, RTL8139State),
  
 diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
-index 2a90601ac5..7bde23e59d 100644
+index eed5787b15..68608a3403 100644
 --- a/hw/smbios/smbios.c
 +++ b/hw/smbios/smbios.c
-@@ -58,6 +58,9 @@ static bool smbios_legacy = true;
- static bool smbios_uuid_encoded = true;
- /* end: legacy structures & constants for <= 2.0 machines */
+@@ -39,6 +39,10 @@ size_t usr_blobs_len;
+ static unsigned usr_table_max;
+ static unsigned usr_table_cnt;
  
 +/* Set to true for modern Windows 10 HardwareID-6 compat */
 +static bool smbios_type2_required;
 +
- 
++
  uint8_t *smbios_tables;
  size_t smbios_tables_len;
-@@ -670,7 +673,7 @@ static void smbios_build_type_1_table(void)
+ unsigned smbios_table_max;
+@@ -629,7 +633,7 @@ static void smbios_build_type_1_table(void)
  
  static void smbios_build_type_2_table(void)
  {
@@ -453,21 +453,17 @@ index 2a90601ac5..7bde23e59d 100644
  
      SMBIOS_TABLE_SET_STR(2, manufacturer_str, type2.manufacturer);
      SMBIOS_TABLE_SET_STR(2, product_str, type2.product);
-@@ -985,7 +988,10 @@ void smbios_set_cpuid(uint32_t version, uint32_t features)
+@@ -1018,16 +1022,52 @@ void smbios_set_default_processor_family(uint16_t processor_family)
  
  void smbios_set_defaults(const char *manufacturer, const char *product,
-                          const char *version, bool legacy_mode,
--                         bool uuid_encoded, SmbiosEntryPointType ep_type)
+                          const char *version,
+-                         bool uuid_encoded)
 +                         bool uuid_encoded,
 +                         const char *stream_product,
-+                         const char *stream_version,
-+                         SmbiosEntryPointType ep_type)
++                         const char *stream_version)
  {
      smbios_have_defaults = true;
-     smbios_legacy = legacy_mode;
-@@ -1006,11 +1012,45 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
-         g_free(smbios_entries);
-     }
+     smbios_uuid_encoded = uuid_encoded;
  
 +    /*
 +     * If @stream_product & @stream_version are non-NULL, then
@@ -494,12 +490,12 @@ index 2a90601ac5..7bde23e59d 100644
 +     *
 +     * We get 'System Manufacturer' and 'Baseboard Manufacturer'
 +     */
-     SMBIOS_SET_DEFAULT(type1.manufacturer, manufacturer);
-     SMBIOS_SET_DEFAULT(type1.product, product);
-     SMBIOS_SET_DEFAULT(type1.version, version);
-+    SMBIOS_SET_DEFAULT(type1.family, "Red Hat Enterprise Linux");
+     SMBIOS_SET_DEFAULT(smbios_type1.manufacturer, manufacturer);
+     SMBIOS_SET_DEFAULT(smbios_type1.product, product);
+     SMBIOS_SET_DEFAULT(smbios_type1.version, version);
++    SMBIOS_SET_DEFAULT(smbios_type1.family, "Red Hat Enterprise Linux");
 +    if (stream_version != NULL) {
-+        SMBIOS_SET_DEFAULT(type1.sku, stream_version);
++        SMBIOS_SET_DEFAULT(smbios_type1.sku, stream_version);
 +    }
      SMBIOS_SET_DEFAULT(type2.manufacturer, manufacturer);
 -    SMBIOS_SET_DEFAULT(type2.product, product);
@@ -513,20 +509,20 @@ index 2a90601ac5..7bde23e59d 100644
      SMBIOS_SET_DEFAULT(type3.manufacturer, manufacturer);
      SMBIOS_SET_DEFAULT(type3.version, version);
 diff --git a/hw/timer/i8254_common.c b/hw/timer/i8254_common.c
-index b25da448c8..0331e84398 100644
+index 28fdabc321..bad13ec224 100644
 --- a/hw/timer/i8254_common.c
 +++ b/hw/timer/i8254_common.c
 @@ -229,7 +229,7 @@ static const VMStateDescription vmstate_pit_common = {
      .pre_save = pit_dispatch_pre_save,
      .post_load = pit_dispatch_post_load,
-     .fields = (VMStateField[]) {
+     .fields = (const VMStateField[]) {
 -        VMSTATE_UINT32_V(channels[0].irq_disabled, PITCommonState, 3),
 +        VMSTATE_UINT32(channels[0].irq_disabled, PITCommonState), /* qemu-kvm's v2 had 'flags' here */
          VMSTATE_STRUCT_ARRAY(channels, PITCommonState, 3, 2,
                               vmstate_pit_channel, PITChannelState),
          VMSTATE_INT64(channels[0].next_transition_time,
 diff --git a/hw/usb/hcd-xhci-pci.c b/hw/usb/hcd-xhci-pci.c
-index 643d4643e4..529bad9366 100644
+index 4423983308..43b4b71fdf 100644
 --- a/hw/usb/hcd-xhci-pci.c
 +++ b/hw/usb/hcd-xhci-pci.c
 @@ -104,6 +104,33 @@ static int xhci_pci_vmstate_post_load(void *opaque, int version_id)
@@ -636,11 +632,26 @@ index 08f70ce97c..1be7527c1b 100644
  } XHCIPciState;
  
  #endif
+diff --git a/hw/virtio/virtio-mem.c b/hw/virtio/virtio-mem.c
+index ffd119ebac..0e2be2219c 100644
+--- a/hw/virtio/virtio-mem.c
++++ b/hw/virtio/virtio-mem.c
+@@ -1694,8 +1694,9 @@ static Property virtio_mem_properties[] = {
+ #endif
+     DEFINE_PROP_BOOL(VIRTIO_MEM_EARLY_MIGRATION_PROP, VirtIOMEM,
+                      early_migration, true),
++    /* RHEL: default-enable "dynamic-memslots" (jira RHEL-24045) */
+     DEFINE_PROP_BOOL(VIRTIO_MEM_DYNAMIC_MEMSLOTS_PROP, VirtIOMEM,
+-                     dynamic_memslots, false),
++                     dynamic_memslots, true),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index da85f86efb..4a21eddbf9 100644
+index 8b8f6d5c00..0466f9d0f3 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -503,4 +503,44 @@ extern const size_t hw_compat_2_2_len;
+@@ -512,4 +512,44 @@ extern const size_t hw_compat_2_2_len;
  extern GlobalProperty hw_compat_2_1[];
  extern const size_t hw_compat_2_1_len;
  
@@ -686,26 +697,25 @@ index da85f86efb..4a21eddbf9 100644
 +extern const char *rhel_old_machine_deprecation;
  #endif
 diff --git a/include/hw/firmware/smbios.h b/include/hw/firmware/smbios.h
-index 7f3259a630..d24b3ccd32 100644
+index 8d3fb2fb3b..d9d6d7a169 100644
 --- a/include/hw/firmware/smbios.h
 +++ b/include/hw/firmware/smbios.h
-@@ -294,7 +294,10 @@ void smbios_entry_add(QemuOpts *opts, Error **errp);
+@@ -332,7 +332,9 @@ void smbios_entry_add(QemuOpts *opts, Error **errp);
  void smbios_set_cpuid(uint32_t version, uint32_t features);
  void smbios_set_defaults(const char *manufacturer, const char *product,
-                          const char *version, bool legacy_mode,
--                         bool uuid_encoded, SmbiosEntryPointType ep_type);
+                          const char *version,
+-                         bool uuid_encoded);
 +                         bool uuid_encoded,
 +                         const char *stream_product,
-+                         const char *stream_version,
-+                         SmbiosEntryPointType ep_type);
- uint8_t *smbios_get_table_legacy(MachineState *ms, size_t *length);
++                         const char *stream_version);
+ void smbios_set_default_processor_family(uint16_t processor_family);
+ uint8_t *smbios_get_table_legacy(size_t *length, Error **errp);
  void smbios_get_tables(MachineState *ms,
-                        const struct smbios_phys_mem_area *mem_array,
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index a10ceeabbf..037942d233 100644
+index 27a68071d7..ebd8f973f2 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
-@@ -113,6 +113,9 @@ struct PCMachineClass {
+@@ -112,6 +112,9 @@ struct PCMachineClass {
      bool smbios_legacy_mode;
      bool smbios_uuid_encoded;
      SmbiosEntryPointType default_smbios_ep_type;

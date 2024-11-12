@@ -1,17 +1,17 @@
-From 4296c41178438f9dffa16c538b0c1a2e28944f4c Mon Sep 17 00:00:00 2001
+From 88adaeaecb1d7753aa8ac3da40f617d93eaf8bdc Mon Sep 17 00:00:00 2001
 From: Eric Blake <eblake@redhat.com>
 Date: Fri, 17 May 2024 21:50:15 -0500
-Subject: [PATCH 4/4] iotests: test NBD+TLS+iothread
+Subject: [PATCH 2/4] iotests: test NBD+TLS+iothread
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Eric Blake <eblake@redhat.com>
-RH-MergeRequest: 375: Fix regression on nbd+tls
-RH-Jira: RHEL-33754
+RH-MergeRequest: 244: qio: Inherit follow_coroutine_ctx across TLS
+RH-Jira: RHEL-33440
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [4/4] 5905c09466f4e65f3ff9973b41f42cbe1d75363c (ebblake/qemu-kvm)
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/2] 29c3128a158b7c49fa79c141a9adcc12693f7de4 (ebblake/centos-qemu-kvm)
 
 Prevent regressions when using NBD with TLS in the presence of
 iothreads, adding coverage the fix to qio channels made in the
@@ -27,7 +27,7 @@ Signed-off-by: Eric Blake <eblake@redhat.com>
 Message-ID: <20240531180639.1392905-6-eblake@redhat.com>
 Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
 (cherry picked from commit a73c99378022ebb785481e84cfe1e81097546268)
-Jira: https://issues.redhat.com/browse/RHEL-33754
+Jira: https://issues.redhat.com/browse/RHEL-33440
 Signed-off-by: Eric Blake <eblake@redhat.com>
 ---
  tests/qemu-iotests/tests/nbd-tls-iothread     | 168 ++++++++++++++++++

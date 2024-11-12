@@ -1,0 +1,73 @@
+From e74980be81d641736ea9d44d0fe9af02af63a220 Mon Sep 17 00:00:00 2001
+From: Michael Roth <michael.roth@amd.com>
+Date: Thu, 30 May 2024 06:16:40 -0500
+Subject: [PATCH 083/100] hw/i386: Add support for loading BIOS using
+ guest_memfd
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [83/91] 7b77d212ef7d83b66ad9d8348179ee84e64fb911 (bonzini/rhel-qemu-kvm)
+
+When guest_memfd is enabled, the BIOS is generally part of the initial
+encrypted guest image and will be accessed as private guest memory. Add
+the necessary changes to set up the associated RAM region with a
+guest_memfd backend to allow for this.
+
+Current support centers around using -bios to load the BIOS data.
+Support for loading the BIOS via pflash requires additional enablement
+since those interfaces rely on the use of ROM memory regions which make
+use of the KVM_MEM_READONLY memslot flag, which is not supported for
+guest_memfd-backed memslots.
+
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-29-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit fc7a69e177e4ba26d11fcf47b853f85115b35a11)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/x86-common.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/hw/i386/x86-common.c b/hw/i386/x86-common.c
+index 35fe6eabea..6cbb76c25c 100644
+--- a/hw/i386/x86-common.c
++++ b/hw/i386/x86-common.c
+@@ -969,8 +969,13 @@ void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+         (bios_size % 65536) != 0) {
+         goto bios_error;
+     }
+-    memory_region_init_ram(&x86ms->bios, NULL, "pc.bios", bios_size,
+-                           &error_fatal);
++    if (machine_require_guest_memfd(MACHINE(x86ms))) {
++        memory_region_init_ram_guest_memfd(&x86ms->bios, NULL, "pc.bios",
++                                           bios_size, &error_fatal);
++    } else {
++        memory_region_init_ram(&x86ms->bios, NULL, "pc.bios",
++                               bios_size, &error_fatal);
++    }
+     if (sev_enabled()) {
+         /*
+          * The concept of a "reset" simply doesn't exist for
+@@ -991,9 +996,11 @@ void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+     }
+     g_free(filename);
+ 
+-    /* map the last 128KB of the BIOS in ISA space */
+-    x86_isa_bios_init(&x86ms->isa_bios, rom_memory, &x86ms->bios,
+-                      !isapc_ram_fw);
++    if (!machine_require_guest_memfd(MACHINE(x86ms))) {
++        /* map the last 128KB of the BIOS in ISA space */
++        x86_isa_bios_init(&x86ms->isa_bios, rom_memory, &x86ms->bios,
++                          !isapc_ram_fw);
++    }
+ 
+     /* map all the bios at the top of memory */
+     memory_region_add_subregion(rom_memory,
+-- 
+2.39.3
+

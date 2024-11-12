@@ -1,14 +1,14 @@
-From ef01aeba9f6c4c886719261333a04bc32484f0d0 Mon Sep 17 00:00:00 2001
+From ae9ebfc4ebd6f146951f04cf9e12eeaaf4c2387e Mon Sep 17 00:00:00 2001
 From: Zhu Yangyang <zhuyangyang14@huawei.com>
 Date: Mon, 8 Apr 2024 11:00:43 -0500
-Subject: [PATCH 1/4] nbd/server: do not poll within a coroutine context
+Subject: [PATCH 1/2] nbd/server: do not poll within a coroutine context
 
 RH-Author: Eric Blake <eblake@redhat.com>
-RH-MergeRequest: 375: Fix regression on nbd+tls
-RH-Jira: RHEL-33754
-RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 239: avoid destination hang on NBD+TLS storage migration
+RH-Jira: RHEL-33440
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/4] 88ca2c90e0c412ba8c1cfd7ea91e01ec58220e9b (ebblake/qemu-kvm)
+RH-Commit: [1/2] 27963e92aacca8ed43994113b645f472fba8f8bc (ebblake/centos-qemu-kvm)
 
 Coroutines are not supposed to block. Instead, they should yield.
 
@@ -28,8 +28,9 @@ Signed-off-by: Zhu Yangyang <zhuyangyang14@huawei.com>
 Signed-off-by: Eric Blake <eblake@redhat.com>
 Message-ID: <20240408160214.1200629-5-eblake@redhat.com>
 Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+
+Jira: https://issues.redhat.com/browse/RHEL-33440
 (cherry picked from commit ae6d91a7e9b77abb029ed3fa9fad461422286942)
-Jira: https://issues.redhat.com/browse/RHEL-33754
 Signed-off-by: Eric Blake <eblake@redhat.com>
 ---
  nbd/client.c       | 28 ++++++++++++++++++++++++----

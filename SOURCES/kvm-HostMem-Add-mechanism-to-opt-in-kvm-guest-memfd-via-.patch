@@ -1,0 +1,139 @@
+From 93ea86ac8849ad9ca365b1646313dde9a34ba59c Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Wed, 20 Mar 2024 03:39:03 -0500
+Subject: [PATCH 031/100] HostMem: Add mechanism to opt in kvm guest memfd via
+ MachineState
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [31/91] 43ce32aef954479cdb736301d1adcb919602c321 (bonzini/rhel-qemu-kvm)
+
+Add a new member "guest_memfd" to memory backends. When it's set
+to true, it enables RAM_GUEST_MEMFD in ram_flags, thus private kvm
+guest_memfd will be allocated during RAMBlock allocation.
+
+Memory backend's @guest_memfd is wired with @require_guest_memfd
+field of MachineState. It avoid looking up the machine in phymem.c.
+
+MachineState::require_guest_memfd is supposed to be set by any VMs
+that requires KVM guest memfd as private memory, e.g., TDX VM.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Message-ID: <20240320083945.991426-8-michael.roth@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 37662d85b0b7dded0ebdf6747bef6c3bb7ed6a0c)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ backends/hostmem-file.c  | 1 +
+ backends/hostmem-memfd.c | 1 +
+ backends/hostmem-ram.c   | 1 +
+ backends/hostmem.c       | 1 +
+ hw/core/machine.c        | 5 +++++
+ include/hw/boards.h      | 2 ++
+ include/sysemu/hostmem.h | 1 +
+ 7 files changed, 12 insertions(+)
+
+diff --git a/backends/hostmem-file.c b/backends/hostmem-file.c
+index ac3e433cbd..3c69db7946 100644
+--- a/backends/hostmem-file.c
++++ b/backends/hostmem-file.c
+@@ -85,6 +85,7 @@ file_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
+     ram_flags |= fb->readonly ? RAM_READONLY_FD : 0;
+     ram_flags |= fb->rom == ON_OFF_AUTO_ON ? RAM_READONLY : 0;
+     ram_flags |= backend->reserve ? 0 : RAM_NORESERVE;
++    ram_flags |= backend->guest_memfd ? RAM_GUEST_MEMFD : 0;
+     ram_flags |= fb->is_pmem ? RAM_PMEM : 0;
+     ram_flags |= RAM_NAMED_FILE;
+     return memory_region_init_ram_from_file(&backend->mr, OBJECT(backend), name,
+diff --git a/backends/hostmem-memfd.c b/backends/hostmem-memfd.c
+index 3923ea9364..745ead0034 100644
+--- a/backends/hostmem-memfd.c
++++ b/backends/hostmem-memfd.c
+@@ -55,6 +55,7 @@ memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
+     name = host_memory_backend_get_name(backend);
+     ram_flags = backend->share ? RAM_SHARED : 0;
+     ram_flags |= backend->reserve ? 0 : RAM_NORESERVE;
++    ram_flags |= backend->guest_memfd ? RAM_GUEST_MEMFD : 0;
+     return memory_region_init_ram_from_fd(&backend->mr, OBJECT(backend), name,
+                                           backend->size, ram_flags, fd, 0, errp);
+ }
+diff --git a/backends/hostmem-ram.c b/backends/hostmem-ram.c
+index d121249f0f..f7d81af783 100644
+--- a/backends/hostmem-ram.c
++++ b/backends/hostmem-ram.c
+@@ -30,6 +30,7 @@ ram_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
+     name = host_memory_backend_get_name(backend);
+     ram_flags = backend->share ? RAM_SHARED : 0;
+     ram_flags |= backend->reserve ? 0 : RAM_NORESERVE;
++    ram_flags |= backend->guest_memfd ? RAM_GUEST_MEMFD : 0;
+     return memory_region_init_ram_flags_nomigrate(&backend->mr, OBJECT(backend),
+                                                   name, backend->size,
+                                                   ram_flags, errp);
+diff --git a/backends/hostmem.c b/backends/hostmem.c
+index 81a72ce40b..eb9682b4a8 100644
+--- a/backends/hostmem.c
++++ b/backends/hostmem.c
+@@ -277,6 +277,7 @@ static void host_memory_backend_init(Object *obj)
+     /* TODO: convert access to globals to compat properties */
+     backend->merge = machine_mem_merge(machine);
+     backend->dump = machine_dump_guest_core(machine);
++    backend->guest_memfd = machine_require_guest_memfd(machine);
+     backend->reserve = true;
+     backend->prealloc_threads = machine->smp.cpus;
+ }
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 92609aae27..07b994e136 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -1480,6 +1480,11 @@ bool machine_mem_merge(MachineState *machine)
+     return machine->mem_merge;
+ }
+ 
++bool machine_require_guest_memfd(MachineState *machine)
++{
++    return machine->require_guest_memfd;
++}
++
+ static char *cpu_slot_to_string(const CPUArchId *cpu)
+ {
+     GString *s = g_string_new(NULL);
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index cca62f906b..815a1c4b26 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -36,6 +36,7 @@ bool machine_usb(MachineState *machine);
+ int machine_phandle_start(MachineState *machine);
+ bool machine_dump_guest_core(MachineState *machine);
+ bool machine_mem_merge(MachineState *machine);
++bool machine_require_guest_memfd(MachineState *machine);
+ HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine);
+ void machine_set_cpu_numa_node(MachineState *machine,
+                                const CpuInstanceProperties *props,
+@@ -372,6 +373,7 @@ struct MachineState {
+     char *dt_compatible;
+     bool dump_guest_core;
+     bool mem_merge;
++    bool require_guest_memfd;
+     bool usb;
+     bool usb_disabled;
+     char *firmware;
+diff --git a/include/sysemu/hostmem.h b/include/sysemu/hostmem.h
+index 0e411aaa29..04b884bf42 100644
+--- a/include/sysemu/hostmem.h
++++ b/include/sysemu/hostmem.h
+@@ -74,6 +74,7 @@ struct HostMemoryBackend {
+     uint64_t size;
+     bool merge, dump, use_canonical_path;
+     bool prealloc, is_mapped, share, reserve;
++    bool guest_memfd;
+     uint32_t prealloc_threads;
+     ThreadContext *prealloc_context;
+     DECLARE_BITMAP(host_nodes, MAX_NODES + 1);
+-- 
+2.39.3
+

@@ -1,4 +1,4 @@
-From faae70a870156f86a5cf55ca967b15d7612941ff Mon Sep 17 00:00:00 2001
+From ea7dff3dbf979d7d8a85a16cf5187235143e1048 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,7 +13,7 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-This rebase is based on qemu-kvm-8.1.0-5.el9
+This rebase is based on qemu-kvm-8.2.0-11.el9
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 --
@@ -82,6 +82,12 @@ Rebase changes (8.2.0):
 - Removed --disable-hax (upstream)
 - Added --disable-plugins configure option
 - Fixing frh.py strings
+
+Rebase notes (9.0.0):
+- Fixed qemu-kvm binary location change
+- Remove hppa-firmware64.img
+- Package stp files for utilities
+- Download subprojects on local build
 
 Merged patches (6.0.0):
  - 605758c902 Limit build on Power to qemu-img and qemu-ga only
@@ -193,14 +199,17 @@ Merged patches (8.1.0):
 Merged patches (8.2.0):
 - cd9efa221d Enable qemu-kvm-device-usb-redirec for aarch64
 
+Merged patches (9.0.0 rc0):
+- 25de053dbf spec: Enable zstd
+
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 ---
- .distro/Makefile                        |  100 +
+ .distro/Makefile                        |  101 +
  .distro/Makefile.common                 |   42 +
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 4909 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 5170 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
  .distro/scripts/frh.py                  |    4 +-
@@ -211,7 +220,7 @@ Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 16 files changed, 5168 insertions(+), 6 deletions(-)
+ 16 files changed, 5430 insertions(+), 6 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests

@@ -1,4 +1,4 @@
-From 776bff1be5e98982a9bbc8345ff27274ff5b8c0f Mon Sep 17 00:00:00 2001
+From 2f9fdd21ecf2810d0d83a8125ce0cc1e75dbb13a Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Fri, 20 Aug 2021 18:25:12 +0200
 Subject: qcow2: Deprecation warning when opening v2 images rw
@@ -44,7 +44,7 @@ Rebase notes (6.1.0):
  2 files changed, 7 insertions(+)
 
 diff --git a/block/qcow2.c b/block/qcow2.c
-index 13e032bd5e..7968735346 100644
+index 956128b409..0e8b2f7518 100644
 --- a/block/qcow2.c
 +++ b/block/qcow2.c
 @@ -1358,6 +1358,12 @@ qcow2_do_open(BlockDriverState *bs, QDict *options, int flags,

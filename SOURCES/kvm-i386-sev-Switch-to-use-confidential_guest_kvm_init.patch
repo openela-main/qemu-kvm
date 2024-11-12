@@ -1,0 +1,268 @@
+From 5540bb5ca052531563df1ade68995e268ae65224 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Thu, 29 Feb 2024 01:00:36 -0500
+Subject: [PATCH 012/100] i386/sev: Switch to use confidential_guest_kvm_init()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [12/91] 6f5f8d1b818826f7ee4b6ae527963ef23c97f531 (bonzini/rhel-qemu-kvm)
+
+Use confidential_guest_kvm_init() instead of calling SEV
+specific sev_kvm_init(). This allows the introduction of multiple
+confidential-guest-support subclasses for different x86 vendors.
+
+As a bonus, stubs are not needed anymore since there is no
+direct call from target/i386/kvm/kvm.c to SEV code.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Message-Id: <20240229060038.606591-1-xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 637c95b37b106c2eeba313e0abb38ec12e918a59)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/kvm.c       |  10 +--
+ target/i386/kvm/meson.build |   2 -
+ target/i386/kvm/sev-stub.c  |  21 ------
+ target/i386/sev.c           | 127 ++++++++++++++++++------------------
+ target/i386/sev.h           |   2 -
+ 5 files changed, 69 insertions(+), 93 deletions(-)
+ delete mode 100644 target/i386/kvm/sev-stub.c
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 5f30b649a0..e271652620 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -2543,10 +2543,12 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
+      * mechanisms are supported in future (e.g. TDX), they'll need
+      * their own initialization either here or elsewhere.
+      */
+-    ret = sev_kvm_init(ms->cgs, &local_err);
+-    if (ret < 0) {
+-        error_report_err(local_err);
+-        return ret;
++    if (ms->cgs) {
++        ret = confidential_guest_kvm_init(ms->cgs, &local_err);
++        if (ret < 0) {
++            error_report_err(local_err);
++            return ret;
++        }
+     }
+ 
+     has_xcrs = kvm_check_extension(s, KVM_CAP_XCRS);
+diff --git a/target/i386/kvm/meson.build b/target/i386/kvm/meson.build
+index 84d9143e60..e7850981e6 100644
+--- a/target/i386/kvm/meson.build
++++ b/target/i386/kvm/meson.build
+@@ -7,8 +7,6 @@ i386_kvm_ss.add(files(
+ 
+ i386_kvm_ss.add(when: 'CONFIG_XEN_EMU', if_true: files('xen-emu.c'))
+ 
+-i386_kvm_ss.add(when: 'CONFIG_SEV', if_false: files('sev-stub.c'))
+-
+ i386_system_ss.add(when: 'CONFIG_HYPERV', if_true: files('hyperv.c'), if_false: files('hyperv-stub.c'))
+ 
+ i386_system_ss.add_all(when: 'CONFIG_KVM', if_true: i386_kvm_ss)
+diff --git a/target/i386/kvm/sev-stub.c b/target/i386/kvm/sev-stub.c
+deleted file mode 100644
+index 1be5341e8a..0000000000
+--- a/target/i386/kvm/sev-stub.c
++++ /dev/null
+@@ -1,21 +0,0 @@
+-/*
+- * QEMU SEV stub
+- *
+- * Copyright Advanced Micro Devices 2018
+- *
+- * Authors:
+- *      Brijesh Singh <brijesh.singh@amd.com>
+- *
+- * This work is licensed under the terms of the GNU GPL, version 2 or later.
+- * See the COPYING file in the top-level directory.
+- *
+- */
+-
+-#include "qemu/osdep.h"
+-#include "sev.h"
+-
+-int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+-{
+-    /* If we get here, cgs must be some non-SEV thing */
+-    return 0;
+-}
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index 72930ff0dc..b8f79d34d1 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -353,63 +353,6 @@ static void sev_guest_set_kernel_hashes(Object *obj, bool value, Error **errp)
+     sev->kernel_hashes = value;
+ }
+ 
+-static void
+-sev_guest_class_init(ObjectClass *oc, void *data)
+-{
+-    object_class_property_add_str(oc, "sev-device",
+-                                  sev_guest_get_sev_device,
+-                                  sev_guest_set_sev_device);
+-    object_class_property_set_description(oc, "sev-device",
+-            "SEV device to use");
+-    object_class_property_add_str(oc, "dh-cert-file",
+-                                  sev_guest_get_dh_cert_file,
+-                                  sev_guest_set_dh_cert_file);
+-    object_class_property_set_description(oc, "dh-cert-file",
+-            "guest owners DH certificate (encoded with base64)");
+-    object_class_property_add_str(oc, "session-file",
+-                                  sev_guest_get_session_file,
+-                                  sev_guest_set_session_file);
+-    object_class_property_set_description(oc, "session-file",
+-            "guest owners session parameters (encoded with base64)");
+-    object_class_property_add_bool(oc, "kernel-hashes",
+-                                   sev_guest_get_kernel_hashes,
+-                                   sev_guest_set_kernel_hashes);
+-    object_class_property_set_description(oc, "kernel-hashes",
+-            "add kernel hashes to guest firmware for measured Linux boot");
+-}
+-
+-static void
+-sev_guest_instance_init(Object *obj)
+-{
+-    SevGuestState *sev = SEV_GUEST(obj);
+-
+-    sev->sev_device = g_strdup(DEFAULT_SEV_DEVICE);
+-    sev->policy = DEFAULT_GUEST_POLICY;
+-    object_property_add_uint32_ptr(obj, "policy", &sev->policy,
+-                                   OBJ_PROP_FLAG_READWRITE);
+-    object_property_add_uint32_ptr(obj, "handle", &sev->handle,
+-                                   OBJ_PROP_FLAG_READWRITE);
+-    object_property_add_uint32_ptr(obj, "cbitpos", &sev->cbitpos,
+-                                   OBJ_PROP_FLAG_READWRITE);
+-    object_property_add_uint32_ptr(obj, "reduced-phys-bits",
+-                                   &sev->reduced_phys_bits,
+-                                   OBJ_PROP_FLAG_READWRITE);
+-}
+-
+-/* sev guest info */
+-static const TypeInfo sev_guest_info = {
+-    .parent = TYPE_CONFIDENTIAL_GUEST_SUPPORT,
+-    .name = TYPE_SEV_GUEST,
+-    .instance_size = sizeof(SevGuestState),
+-    .instance_finalize = sev_guest_finalize,
+-    .class_init = sev_guest_class_init,
+-    .instance_init = sev_guest_instance_init,
+-    .interfaces = (InterfaceInfo[]) {
+-        { TYPE_USER_CREATABLE },
+-        { }
+-    }
+-};
+-
+ bool
+ sev_enabled(void)
+ {
+@@ -906,20 +849,15 @@ sev_vm_state_change(void *opaque, bool running, RunState state)
+     }
+ }
+ 
+-int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
++static int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+ {
+-    SevGuestState *sev
+-        = (SevGuestState *)object_dynamic_cast(OBJECT(cgs), TYPE_SEV_GUEST);
++    SevGuestState *sev = SEV_GUEST(cgs);
+     char *devname;
+     int ret, fw_error, cmd;
+     uint32_t ebx;
+     uint32_t host_cbitpos;
+     struct sev_user_data_status status = {};
+ 
+-    if (!sev) {
+-        return 0;
+-    }
+-
+     ret = ram_block_discard_disable(true);
+     if (ret) {
+         error_report("%s: cannot disable RAM discard", __func__);
+@@ -1384,6 +1322,67 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
+     return ret;
+ }
+ 
++static void
++sev_guest_class_init(ObjectClass *oc, void *data)
++{
++    ConfidentialGuestSupportClass *klass = CONFIDENTIAL_GUEST_SUPPORT_CLASS(oc);
++
++    klass->kvm_init = sev_kvm_init;
++
++    object_class_property_add_str(oc, "sev-device",
++                                  sev_guest_get_sev_device,
++                                  sev_guest_set_sev_device);
++    object_class_property_set_description(oc, "sev-device",
++            "SEV device to use");
++    object_class_property_add_str(oc, "dh-cert-file",
++                                  sev_guest_get_dh_cert_file,
++                                  sev_guest_set_dh_cert_file);
++    object_class_property_set_description(oc, "dh-cert-file",
++            "guest owners DH certificate (encoded with base64)");
++    object_class_property_add_str(oc, "session-file",
++                                  sev_guest_get_session_file,
++                                  sev_guest_set_session_file);
++    object_class_property_set_description(oc, "session-file",
++            "guest owners session parameters (encoded with base64)");
++    object_class_property_add_bool(oc, "kernel-hashes",
++                                   sev_guest_get_kernel_hashes,
++                                   sev_guest_set_kernel_hashes);
++    object_class_property_set_description(oc, "kernel-hashes",
++            "add kernel hashes to guest firmware for measured Linux boot");
++}
++
++static void
++sev_guest_instance_init(Object *obj)
++{
++    SevGuestState *sev = SEV_GUEST(obj);
++
++    sev->sev_device = g_strdup(DEFAULT_SEV_DEVICE);
++    sev->policy = DEFAULT_GUEST_POLICY;
++    object_property_add_uint32_ptr(obj, "policy", &sev->policy,
++                                   OBJ_PROP_FLAG_READWRITE);
++    object_property_add_uint32_ptr(obj, "handle", &sev->handle,
++                                   OBJ_PROP_FLAG_READWRITE);
++    object_property_add_uint32_ptr(obj, "cbitpos", &sev->cbitpos,
++                                   OBJ_PROP_FLAG_READWRITE);
++    object_property_add_uint32_ptr(obj, "reduced-phys-bits",
++                                   &sev->reduced_phys_bits,
++                                   OBJ_PROP_FLAG_READWRITE);
++}
++
++/* sev guest info */
++static const TypeInfo sev_guest_info = {
++    .parent = TYPE_CONFIDENTIAL_GUEST_SUPPORT,
++    .name = TYPE_SEV_GUEST,
++    .instance_size = sizeof(SevGuestState),
++    .instance_finalize = sev_guest_finalize,
++    .class_init = sev_guest_class_init,
++    .instance_init = sev_guest_instance_init,
++    .interfaces = (InterfaceInfo[]) {
++        { TYPE_USER_CREATABLE },
++        { }
++    }
++};
++
+ static void
+ sev_register_types(void)
+ {
+diff --git a/target/i386/sev.h b/target/i386/sev.h
+index e7499c95b1..9e10d09539 100644
+--- a/target/i386/sev.h
++++ b/target/i386/sev.h
+@@ -57,6 +57,4 @@ int sev_inject_launch_secret(const char *hdr, const char *secret,
+ int sev_es_save_reset_vector(void *flash_ptr, uint64_t flash_size);
+ void sev_es_set_reset_vector(CPUState *cpu);
+ 
+-int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp);
+-
+ #endif
+-- 
+2.39.3
+

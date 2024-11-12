@@ -1,0 +1,61 @@
+From aeaa7061139202448d466b7e18682081f9cd2097 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Thu, 29 Feb 2024 01:36:54 -0500
+Subject: [PATCH 035/100] kvm/tdx: Don't complain when converting vMMIO region
+ to shared
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [35/91] c42870771d7af5badc2e10d42be9b5620d72f95d (bonzini/rhel-qemu-kvm)
+
+Because vMMIO region needs to be shared region, guest TD may explicitly
+convert such region from private to shared.  Don't complain such
+conversion.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Message-ID: <20240229063726.610065-34-xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit c5d9425ef4da9f43fc0903905ad415456d1ab843)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ accel/kvm/kvm-all.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 09164e346c..6efaff90a7 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2927,9 +2927,22 @@ int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private)
+     }
+ 
+     if (!memory_region_has_guest_memfd(mr)) {
+-        error_report("Converting non guest_memfd backed memory region "
+-                     "(0x%"HWADDR_PRIx" ,+ 0x%"HWADDR_PRIx") to %s",
+-                     start, size, to_private ? "private" : "shared");
++        /*
++         * Because vMMIO region must be shared, guest TD may convert vMMIO
++         * region to shared explicitly.  Don't complain such case.  See
++         * memory_region_type() for checking if the region is MMIO region.
++         */
++        if (!to_private &&
++            !memory_region_is_ram(mr) &&
++            !memory_region_is_ram_device(mr) &&
++            !memory_region_is_rom(mr) &&
++            !memory_region_is_romd(mr)) {
++		    ret = 0;
++        } else {
++            error_report("Convert non guest_memfd backed memory region "
++                        "(0x%"HWADDR_PRIx" ,+ 0x%"HWADDR_PRIx") to %s",
++                        start, size, to_private ? "private" : "shared");
++        }
+         goto out_unref;
+     }
+ 
+-- 
+2.39.3
+

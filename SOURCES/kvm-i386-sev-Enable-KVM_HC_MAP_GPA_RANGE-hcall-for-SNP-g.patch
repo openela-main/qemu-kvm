@@ -1,0 +1,54 @@
+From 0612c7ed587422ec7e07c27c8ca11b89c7aa8b02 Mon Sep 17 00:00:00 2001
+From: Michael Roth <michael.roth@amd.com>
+Date: Thu, 30 May 2024 06:16:43 -0500
+Subject: [PATCH 077/100] i386/sev: Enable KVM_HC_MAP_GPA_RANGE hcall for SNP
+ guests
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [77/91] 3c494eb54499c24121cc2c47045626478b8bb41e (bonzini/rhel-qemu-kvm)
+
+KVM will forward GHCB page-state change requests to userspace in the
+form of KVM_HC_MAP_GPA_RANGE, so make sure the hypercall handling is
+enabled for SNP guests.
+
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-32-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e3cddff93c1f88fea3b26841e792dc0be6b6fae8)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/sev.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index eaf5fc6c6b..abb63062ac 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -14,6 +14,7 @@
+ #include "qemu/osdep.h"
+ 
+ #include <linux/kvm.h>
++#include <linux/kvm_para.h>
+ #include <linux/psp-sev.h>
+ 
+ #include <sys/ioctl.h>
+@@ -758,6 +759,10 @@ sev_snp_launch_start(SevCommonState *sev_common)
+     trace_kvm_sev_snp_launch_start(start->policy,
+                                    sev_snp_guest->guest_visible_workarounds);
+ 
++    if (!kvm_enable_hypercall(BIT_ULL(KVM_HC_MAP_GPA_RANGE))) {
++            return 1;
++    }
++
+     rc = sev_ioctl(sev_common->sev_fd, KVM_SEV_SNP_LAUNCH_START,
+                    start, &fw_error);
+     if (rc < 0) {
+-- 
+2.39.3
+

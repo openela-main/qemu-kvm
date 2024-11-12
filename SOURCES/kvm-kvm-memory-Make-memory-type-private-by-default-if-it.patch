@@ -1,0 +1,56 @@
+From f9dc55dd179bb534d589af371c5c2a7886bd461e Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Wed, 20 Mar 2024 03:39:11 -0500
+Subject: [PATCH 030/100] kvm/memory: Make memory type private by default if it
+ has guest memfd backend
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [30/91] 5e21edf844b5629ee32c4075843b028561b97ae2 (bonzini/rhel-qemu-kvm)
+
+KVM side leaves the memory to shared by default, which may incur the
+overhead of paging conversion on the first visit of each page. Because
+the expectation is that page is likely to private for the VMs that
+require private memory (has guest memfd).
+
+Explicitly set the memory to private when memory region has valid
+guest memfd backend.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Message-ID: <20240320083945.991426-16-michael.roth@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit bd3bcf6962b664ca3bf9c60fdcc4534e8e3d0641)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ accel/kvm/kvm-all.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 5ef55e4dd7..3f99efc8cc 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -1431,6 +1431,16 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
+                     strerror(-err));
+             abort();
+         }
++
++        if (memory_region_has_guest_memfd(mr)) {
++            err = kvm_set_memory_attributes_private(start_addr, slot_size);
++            if (err) {
++                error_report("%s: failed to set memory attribute private: %s",
++                             __func__, strerror(-err));
++                exit(1);
++            }
++        }
++
+         start_addr += slot_size;
+         ram_start_offset += slot_size;
+         ram += slot_size;
+-- 
+2.39.3
+

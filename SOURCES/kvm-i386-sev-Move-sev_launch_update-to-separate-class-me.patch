@@ -1,0 +1,91 @@
+From a170ba2c7dbf2775eb9047779d3643a2a81bb372 Mon Sep 17 00:00:00 2001
+From: Pankaj Gupta <pankaj.gupta@amd.com>
+Date: Thu, 30 May 2024 06:16:17 -0500
+Subject: [PATCH 057/100] i386/sev: Move sev_launch_update to separate class
+ method
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [57/91] 4f31e7afaec6f2c2a7c06cda4d7d27d4037e53e0 (bonzini/rhel-qemu-kvm)
+
+When sev-snp-guest objects are introduced there will be a number of
+differences in how the launch data is handled compared to the existing
+sev-guest object. Move sev_launch_start() to a class method to make it
+easier to implement SNP-specific launch update functionality later.
+
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-6-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 6600f1ac0c81cbe67faf048ea07f78542dea925f)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/sev.c | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index 33e606eea0..b2aa0d6f99 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -69,6 +69,8 @@ struct SevCommonState {
+ struct SevCommonStateClass {
+     X86ConfidentialGuestClass parent_class;
+ 
++    /* public */
++    int (*launch_start)(SevCommonState *sev_common);
+ };
+ 
+ /**
+@@ -632,16 +634,16 @@ sev_read_file_base64(const char *filename, guchar **data, gsize *len)
+ }
+ 
+ static int
+-sev_launch_start(SevGuestState *sev_guest)
++sev_launch_start(SevCommonState *sev_common)
+ {
+     gsize sz;
+     int ret = 1;
+     int fw_error, rc;
++    SevGuestState *sev_guest = SEV_GUEST(sev_common);
+     struct kvm_sev_launch_start start = {
+         .handle = sev_guest->handle, .policy = sev_guest->policy
+     };
+     guchar *session = NULL, *dh_cert = NULL;
+-    SevCommonState *sev_common = SEV_COMMON(sev_guest);
+ 
+     if (sev_guest->session_file) {
+         if (sev_read_file_base64(sev_guest->session_file, &session, &sz) < 0) {
+@@ -862,6 +864,7 @@ static int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     uint32_t ebx;
+     uint32_t host_cbitpos;
+     struct sev_user_data_status status = {};
++    SevCommonStateClass *klass = SEV_COMMON_GET_CLASS(cgs);
+ 
+     ret = ram_block_discard_disable(true);
+     if (ret) {
+@@ -952,7 +955,7 @@ static int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+         goto err;
+     }
+ 
+-    sev_launch_start(SEV_GUEST(sev_common));
++    ret = klass->launch_start(sev_common);
+     if (ret) {
+         error_setg(errp, "%s: failed to create encryption context", __func__);
+         goto err;
+@@ -1451,6 +1454,10 @@ static void sev_guest_set_legacy_vm_type(Object *obj, bool value, Error **errp)
+ static void
+ sev_guest_class_init(ObjectClass *oc, void *data)
+ {
++    SevCommonStateClass *klass = SEV_COMMON_CLASS(oc);
++
++    klass->launch_start = sev_launch_start;
++
+     object_class_property_add_str(oc, "dh-cert-file",
+                                   sev_guest_get_dh_cert_file,
+                                   sev_guest_set_dh_cert_file);
+-- 
+2.39.3
+

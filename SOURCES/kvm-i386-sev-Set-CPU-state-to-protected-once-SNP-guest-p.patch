@@ -1,0 +1,47 @@
+From c7649ac1b958dc48de50f32b1ad80d84b17945a8 Mon Sep 17 00:00:00 2001
+From: Michael Roth <michael.roth@amd.com>
+Date: Thu, 30 May 2024 06:16:29 -0500
+Subject: [PATCH 069/100] i386/sev: Set CPU state to protected once SNP guest
+ payload is finalized
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [69/91] 09280f987a186511ec7d62c3f340b2148e8556d7 (bonzini/rhel-qemu-kvm)
+
+Once KVM_SNP_LAUNCH_FINISH is called the vCPU state is copied into the
+vCPU's VMSA page and measured/encrypted. Any attempt to read/write CPU
+state afterward will only be acting on the initial data and so are
+effectively no-ops.
+
+Set the vCPU state to protected at this point so that QEMU don't
+continue trying to re-sync vCPU data during guest runtime.
+
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-18-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 3d44fdff60ea66fbd7a33f5d32b50843cd80f48a)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/sev.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index ef2e592ca7..e84e4395a5 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -997,6 +997,7 @@ sev_snp_launch_finish(SevCommonState *sev_common)
+         exit(1);
+     }
+ 
++    kvm_mark_guest_state_protected();
+     sev_set_guest_state(sev_common, SEV_STATE_RUNNING);
+ 
+     /* add migration blocker */
+-- 
+2.39.3
+

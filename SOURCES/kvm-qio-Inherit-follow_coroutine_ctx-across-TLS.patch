@@ -1,17 +1,17 @@
-From 69d6b5f98d665fbcb86e42df40bcc5e9c79b397f Mon Sep 17 00:00:00 2001
+From fef17d3466deba9b4d581604de1c64c210d1a454 Mon Sep 17 00:00:00 2001
 From: Eric Blake <eblake@redhat.com>
 Date: Fri, 17 May 2024 21:50:14 -0500
-Subject: [PATCH 3/4] qio: Inherit follow_coroutine_ctx across TLS
+Subject: [PATCH 1/4] qio: Inherit follow_coroutine_ctx across TLS
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Eric Blake <eblake@redhat.com>
-RH-MergeRequest: 375: Fix regression on nbd+tls
-RH-Jira: RHEL-33754
+RH-MergeRequest: 244: qio: Inherit follow_coroutine_ctx across TLS
+RH-Jira: RHEL-33440
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [3/4] 14ddea7e3c81898bb3fe4be51a40749d67a5c0c0 (ebblake/qemu-kvm)
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/2] 447b144638a1f032fa036838f5f1839628389fe5 (ebblake/centos-qemu-kvm)
 
 Since qemu 8.2, the combination of NBD + TLS + iothread crashes on an
 assertion failure:
@@ -41,7 +41,7 @@ Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
 Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
 Message-ID: <20240518025246.791593-5-eblake@redhat.com>
 (cherry picked from commit 199e84de1c903ba5aa1f7256310bbc4a20dd930b)
-Jira: https://issues.redhat.com/browse/RHEL-33754
+Jira: https://issues.redhat.com/browse/RHEL-33440
 Signed-off-by: Eric Blake <eblake@redhat.com>
 ---
  io/channel-tls.c     | 26 +++++++++++++++-----------
@@ -49,7 +49,7 @@ Signed-off-by: Eric Blake <eblake@redhat.com>
  2 files changed, 16 insertions(+), 11 deletions(-)
 
 diff --git a/io/channel-tls.c b/io/channel-tls.c
-index 58fe1aceee..a8ad89c3d1 100644
+index 1d9c9c72bf..67b9700006 100644
 --- a/io/channel-tls.c
 +++ b/io/channel-tls.c
 @@ -69,37 +69,40 @@ qio_channel_tls_new_server(QIOChannel *master,

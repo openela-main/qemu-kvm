@@ -1,0 +1,30 @@
+From ba574acacf679850e337ec2d5e7836b8277cf393 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Thu, 18 Apr 2024 15:04:28 +0200
+Subject: x86: rhel 9.4.0 machine type compat fix
+
+Fix up the compatibility for 9.4.0. Ensure that pc-q35-rhel9.4.0
+still uses SMBIOS 3.X by default.
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/i386/pc_q35.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 2b54944c0f..2f11f9af7d 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -734,6 +734,9 @@ static void pc_q35_machine_rhel940_options(MachineClass *m)
+     pcmc->smbios_stream_product = "RHEL";
+     pcmc->smbios_stream_version = "9.4.0";
+ 
++    /* From pc_q35_8_2_machine_options() - use SMBIOS 3.X by default */
++    pcmc->default_smbios_ep_type = SMBIOS_ENTRY_POINT_TYPE_64;
++
+     compat_props_add(m->compat_props, hw_compat_rhel_9_5,
+ 		     hw_compat_rhel_9_5_len);
+ }
+-- 
+2.39.3
+

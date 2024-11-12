@@ -1,0 +1,125 @@
+From 1a0aa9bbdad63d72628002740410b8a28282a96e Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Wed, 31 Jul 2024 14:32:04 +0200
+Subject: [PATCH 093/100] scsi-disk: Use positive return value for status in
+ dma_readv/writev
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 261: scsi-block: Fix error handling with r/werror=stop
+RH-Jira: RHEL-50000
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/4] a0b3e7bfd7b7059c0ec3706f2eb1698c1d430b08 (kmwolf/centos-qemu-kvm)
+
+In some error cases, scsi_block_sgio_complete() never calls the passed
+callback, but directly completes the request. This leads to bugs because
+its error paths are not exact copies of what the callback would normally
+do.
+
+In preparation to fix this, allow passing positive return values to the
+callbacks that represent the status code that should be used to complete
+the request.
+
+scsi_handle_rw_error() already handles positive values for its ret
+parameter because scsi_block_sgio_complete() calls directly into it.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+Message-ID: <20240731123207.27636-2-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit cfe0880835cd364b590ffd27ef8dbd2ad8838bc5)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-disk.c | 21 ++++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 4bd7af9d0c..bed2c8746c 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -62,6 +62,10 @@ OBJECT_DECLARE_TYPE(SCSIDiskState, SCSIDiskClass, SCSI_DISK_BASE)
+ 
+ struct SCSIDiskClass {
+     SCSIDeviceClass parent_class;
++    /*
++     * Callbacks receive ret == 0 for success. Errors are represented either as
++     * negative errno values, or as positive SAM status codes.
++     */
+     DMAIOFunc       *dma_readv;
+     DMAIOFunc       *dma_writev;
+     bool            (*need_fua_emulation)(SCSICommand *cmd);
+@@ -261,7 +265,7 @@ static bool scsi_disk_req_check_error(SCSIDiskReq *r, int ret, bool acct_failed)
+         return true;
+     }
+ 
+-    if (ret < 0) {
++    if (ret != 0) {
+         return scsi_handle_rw_error(r, ret, acct_failed);
+     }
+ 
+@@ -338,7 +342,7 @@ static void scsi_write_do_fua(SCSIDiskReq *r)
+ static void scsi_dma_complete_noio(SCSIDiskReq *r, int ret)
+ {
+     assert(r->req.aiocb == NULL);
+-    if (scsi_disk_req_check_error(r, ret, false)) {
++    if (scsi_disk_req_check_error(r, ret, ret > 0)) {
+         goto done;
+     }
+ 
+@@ -363,9 +367,10 @@ static void scsi_dma_complete(void *opaque, int ret)
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
++    /* ret > 0 is accounted for in scsi_disk_req_check_error() */
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+-    } else {
++    } else if (ret == 0) {
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     }
+     scsi_dma_complete_noio(r, ret);
+@@ -381,7 +386,7 @@ static void scsi_read_complete_noio(SCSIDiskReq *r, int ret)
+            qemu_get_current_aio_context());
+ 
+     assert(r->req.aiocb == NULL);
+-    if (scsi_disk_req_check_error(r, ret, false)) {
++    if (scsi_disk_req_check_error(r, ret, ret > 0)) {
+         goto done;
+     }
+ 
+@@ -402,9 +407,10 @@ static void scsi_read_complete(void *opaque, int ret)
+     assert(r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
++    /* ret > 0 is accounted for in scsi_disk_req_check_error() */
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+-    } else {
++    } else if (ret == 0) {
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+         trace_scsi_disk_read_complete(r->req.tag, r->qiov.size);
+     }
+@@ -512,7 +518,7 @@ static void scsi_write_complete_noio(SCSIDiskReq *r, int ret)
+            qemu_get_current_aio_context());
+ 
+     assert (r->req.aiocb == NULL);
+-    if (scsi_disk_req_check_error(r, ret, false)) {
++    if (scsi_disk_req_check_error(r, ret, ret > 0)) {
+         goto done;
+     }
+ 
+@@ -540,9 +546,10 @@ static void scsi_write_complete(void * opaque, int ret)
+     assert (r->req.aiocb != NULL);
+     r->req.aiocb = NULL;
+ 
++    /* ret > 0 is accounted for in scsi_disk_req_check_error() */
+     if (ret < 0) {
+         block_acct_failed(blk_get_stats(s->qdev.conf.blk), &r->acct);
+-    } else {
++    } else if (ret == 0) {
+         block_acct_done(blk_get_stats(s->qdev.conf.blk), &r->acct);
+     }
+     scsi_write_complete_noio(r, ret);
+-- 
+2.39.3
+

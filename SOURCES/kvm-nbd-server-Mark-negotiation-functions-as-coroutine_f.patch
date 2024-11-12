@@ -1,14 +1,14 @@
-From d1dd79b558fb9b23ae14165ec8edf0085e927091 Mon Sep 17 00:00:00 2001
+From af6f51ad3482513e3ac047eb203f9dc623d47088 Mon Sep 17 00:00:00 2001
 From: Eric Blake <eblake@redhat.com>
 Date: Mon, 8 Apr 2024 11:00:44 -0500
-Subject: [PATCH 2/4] nbd/server: Mark negotiation functions as coroutine_fn
+Subject: [PATCH 2/2] nbd/server: Mark negotiation functions as coroutine_fn
 
 RH-Author: Eric Blake <eblake@redhat.com>
-RH-MergeRequest: 375: Fix regression on nbd+tls
-RH-Jira: RHEL-33754
-RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 239: avoid destination hang on NBD+TLS storage migration
+RH-Jira: RHEL-33440
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/4] 6dc8ecca16df5ae5cc6dc36e7b96f991396fcf24 (ebblake/qemu-kvm)
+RH-Commit: [2/2] acf61b854f80365993d24bcd1d110ed3518b22fa (ebblake/centos-qemu-kvm)
 
 nbd_negotiate() is already marked coroutine_fn.  And given the fix in
 the previous patch to have nbd_negotiate_handle_starttls not create
@@ -23,8 +23,9 @@ Message-ID: <20240408160214.1200629-6-eblake@redhat.com>
 Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
 [eblake: drop one spurious coroutine_fn marking]
 Signed-off-by: Eric Blake <eblake@redhat.com>
+
+Jira: https://issues.redhat.com/browse/RHEL-33440
 (cherry picked from commit 4fa333e08dd96395a99ea8dd9e4c73a29dd23344)
-Jira: https://issues.redhat.com/browse/RHEL-33754
 Signed-off-by: Eric Blake <eblake@redhat.com>
 ---
  nbd/server.c | 102 +++++++++++++++++++++++++++++----------------------

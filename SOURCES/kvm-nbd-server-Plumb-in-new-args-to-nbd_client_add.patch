@@ -1,16 +1,16 @@
-From c8c7dc7a445892a820223be2e7617a790e0400f5 Mon Sep 17 00:00:00 2001
+From 70acef52a99e5114699f5fa58de5f0b5c031b880 Mon Sep 17 00:00:00 2001
 From: Eric Blake <eblake@redhat.com>
 Date: Wed, 7 Aug 2024 08:50:01 -0500
-Subject: [PATCH 2/5] nbd/server: Plumb in new args to nbd_client_add()
+Subject: [PATCH 097/100] nbd/server: Plumb in new args to nbd_client_add()
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Eric Blake <eblake@redhat.com>
-RH-MergeRequest: 386: nbd/server: fix CVE-2024-7409 (qemu crash on nbd-server-stop) [rhel-9.4.z]
-RH-Jira: RHEL-52616
+RH-MergeRequest: 262: nbd/server: fix CVE-2024-7409 (qemu crash on nbd-server-stop)
+RH-Jira: RHEL-52617
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/4] 658d80c80a1163fcad456a34ec20d7828273a36c (ebblake/qemu-kvm)
+RH-Commit: [1/4] 7614e294e1f5b7861386950ae994bea166d19950 (redhat/centos-stream/src/qemu-kvm)
 
 Upcoming patches to fix a CVE need to track an opaque pointer passed
 in by the owner of a client object, as well as request for a time
@@ -28,7 +28,7 @@ Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
 Signed-off-by: Eric Blake <eblake@redhat.com>
 
 (cherry picked from commit fb1c2aaa981e0a2fa6362c9985f1296b74f055ac)
-Jira: https://issues.redhat.com/browse/RHEL-52616
+Jira: https://issues.redhat.com/browse/RHEL-52617
 Signed-off-by: Eric Blake <eblake@redhat.com>
 ---
  blockdev-nbd.c      |  6 ++++--
@@ -156,10 +156,10 @@ index 892797bb11..e50012499f 100644
 +    return client->owner;
 +}
 diff --git a/qemu-nbd.c b/qemu-nbd.c
-index bac0b5e3ec..01b4a63c31 100644
+index d7b3ccab21..48e2fa5858 100644
 --- a/qemu-nbd.c
 +++ b/qemu-nbd.c
-@@ -389,7 +389,9 @@ static void nbd_accept(QIONetListener *listener, QIOChannelSocket *cioc,
+@@ -390,7 +390,9 @@ static void nbd_accept(QIONetListener *listener, QIOChannelSocket *cioc,
  
      nb_fds++;
      nbd_update_server_watch();

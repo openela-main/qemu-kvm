@@ -1,35 +1,27 @@
-From c2eafeb32a256cbafb0e65c0380acb478181326e Mon Sep 17 00:00:00 2001
-From: Jon Maloy <jmaloy@redhat.com>
-Date: Wed, 5 Jun 2024 19:56:51 -0400
+From 16c2e9e339a4c83055fd39e032fa16a0e732ed17 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 25 Apr 2024 14:49:40 +0200
 Subject: [PATCH 2/4] iotests/244: Don't store data-file with protocol in image
 
-RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 2: EMBARGOED CVE-2024-4467 for rhel-9.4.z (PRDSC)
-RH-Jira: https://issues.redhat.com/browse/RHEL-35610
+RH-Author: Hana Czenczek <hczenczek@redhat.com>
+RH-MergeRequest: 1: CVE 2024-4467 (PRDSC)
+RH-Jira: RHEL-35611
 RH-CVE: CVE-2024-4467
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Acked-by: Hanna Czenczek <hczenczek@redhat.com>
-RH-Commit: [2/4] ddef095945aa55bb0aacc2a2cb58f9e12ad20d5e
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Commit: [2/4] 92e00dab8be1570b13172353d77d2af44cb4e22b
 
-commit 92e00dab8be1570b13172353d77d2af44cb4e22b
-Author: Kevin Wolf <kwolf@redhat.com>
-Date:   Thu Apr 25 14:49:40 2024 +0200
+We want to disable filename parsing for data files because it's too easy
+to abuse in malicious image files. Make the test ready for the change by
+passing the data file explicitly in command line options.
 
-    iotests/244: Don't store data-file with protocol in image
-
-    We want to disable filename parsing for data files because it's too easy
-    to abuse in malicious image files. Make the test ready for the change by
-    passing the data file explicitly in command line options.
-
-    Signed-off-by: Kevin Wolf <kwolf@redhat.com>
-    Reviewed-by: Eric Blake <eblake@redhat.com>
-    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
-    Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
-    Upstream: N/A, embargoed
-    Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
-
-Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Upstream: N/A, embargoed
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
 ---
  tests/qemu-iotests/244 | 19 ++++++++++++++++---
  1 file changed, 16 insertions(+), 3 deletions(-)

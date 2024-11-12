@@ -1,0 +1,64 @@
+From 0e3934e89ad1dda21681f64ff38da69b07d1b531 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Mon, 6 May 2024 15:06:22 -0400
+Subject: [PATCH 3/5] aio: warn about iohandler_ctx special casing
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 248: Revert "monitor: use aio_co_reschedule_self()"
+RH-Jira: RHEL-34618 RHEL-38697
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/2] cc316d70b2c187ee0412d6560ca1a03e381a69c1 (kmwolf/centos-qemu-kvm)
+
+The main loop has two AioContexts: qemu_aio_context and iohandler_ctx.
+The main loop runs them both, but nested aio_poll() calls on
+qemu_aio_context exclude iohandler_ctx.
+
+Which one should qemu_get_current_aio_context() return when called from
+the main loop? Document that it's always qemu_aio_context.
+
+This has subtle effects on functions that use
+qemu_get_current_aio_context(). For example, aio_co_reschedule_self()
+does not work when moving from iohandler_ctx to qemu_aio_context because
+qemu_get_current_aio_context() does not differentiate these two
+AioContexts.
+
+Document this in order to reduce the chance of future bugs.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240506190622.56095-3-stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e669e800fc9ef8806af5c5578249ab758a4f8a5a)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/block/aio.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 8378553eb9..4ee81936ed 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -629,6 +629,9 @@ void aio_co_schedule(AioContext *ctx, Coroutine *co);
+  *
+  * Move the currently running coroutine to new_ctx. If the coroutine is already
+  * running in new_ctx, do nothing.
++ *
++ * Note that this function cannot reschedule from iohandler_ctx to
++ * qemu_aio_context.
+  */
+ void coroutine_fn aio_co_reschedule_self(AioContext *new_ctx);
+ 
+@@ -661,6 +664,9 @@ void aio_co_enter(AioContext *ctx, Coroutine *co);
+  * If called from an IOThread this will be the IOThread's AioContext.  If
+  * called from the main thread or with the "big QEMU lock" taken it
+  * will be the main loop AioContext.
++ *
++ * Note that the return value is never the main loop's iohandler_ctx and the
++ * return value is the main loop AioContext instead.
+  */
+ AioContext *qemu_get_current_aio_context(void);
+ 
+-- 
+2.39.3
+

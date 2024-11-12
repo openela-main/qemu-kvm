@@ -1,0 +1,106 @@
+From bd5cace452183053e356a27317c759ecfe0391aa Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Wed, 31 Jul 2024 14:32:07 +0200
+Subject: [PATCH 096/100] scsi-disk: Always report RESERVATION_CONFLICT to
+ guest
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 261: scsi-block: Fix error handling with r/werror=stop
+RH-Jira: RHEL-50000
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [4/4] eb4142071e5cbe385a949a6c48b0c8f8c6086918 (kmwolf/centos-qemu-kvm)
+
+In the case of scsi-block, RESERVATION_CONFLICT is not a backend error,
+but indicates that the guest tried to make a request that it isn't
+allowed to execute. Pass the error to the guest so that it can decide
+what to do with it.
+
+Without this, if we stop the VM in response to a RESERVATION_CONFLICT
+(as is the default policy in management software such as oVirt or
+KubeVirt), it can happen that the VM cannot be resumed any more because
+every attempt to resume it immediately runs into the same error and
+stops the VM again.
+
+One case that expects RESERVATION_CONFLICT errors to be visible in the
+guest is running the validation tests in Windows 2019's Failover Cluster
+Manager, which intentionally tries to execute invalid requests to see if
+they are properly rejected.
+
+Buglink: https://issues.redhat.com/browse/RHEL-50000
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+Message-ID: <20240731123207.27636-5-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 9da6bd39f92434f55573acd017841b195c60188f)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-disk.c | 35 ++++++++++++++++++++++++++++++-----
+ 1 file changed, 30 insertions(+), 5 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index b4062ac2ff..91ccf37fef 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -202,7 +202,7 @@ static bool scsi_handle_rw_error(SCSIDiskReq *r, int ret, bool acct_failed)
+     SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, r->req.dev);
+     SCSIDiskClass *sdc = (SCSIDiskClass *) object_get_class(OBJECT(s));
+     SCSISense sense = SENSE_CODE(NO_SENSE);
+-    int error = 0;
++    int error;
+     bool req_has_sense = false;
+     BlockErrorAction action;
+     int status;
+@@ -213,11 +213,35 @@ static bool scsi_handle_rw_error(SCSIDiskReq *r, int ret, bool acct_failed)
+     } else {
+         /* A passthrough command has completed with nonzero status.  */
+         status = ret;
+-        if (status == CHECK_CONDITION) {
++        switch (status) {
++        case CHECK_CONDITION:
+             req_has_sense = true;
+             error = scsi_sense_buf_to_errno(r->req.sense, sizeof(r->req.sense));
+-        } else {
++            break;
++        case RESERVATION_CONFLICT:
++            /*
++             * Don't apply the error policy, always report to the guest.
++             *
++             * This is a passthrough code path, so it's not a backend error, but
++             * a response to an invalid guest request.
++             *
++             * Windows Failover Cluster validation intentionally sends invalid
++             * requests to verify that reservations work as intended. It is
++             * crucial that it sees the resulting errors.
++             *
++             * Treating a reservation conflict as a guest-side error is obvious
++             * when a pr-manager is in use. Without one, the situation is less
++             * clear, but there might be nothing that can be fixed on the host
++             * (like in the above example), and we don't want to be stuck in a
++             * loop where resuming the VM and retrying the request immediately
++             * stops it again. So always reporting is still the safer option in
++             * this case, too.
++             */
++            error = 0;
++            break;
++        default:
+             error = EINVAL;
++            break;
+         }
+     }
+ 
+@@ -227,8 +251,9 @@ static bool scsi_handle_rw_error(SCSIDiskReq *r, int ret, bool acct_failed)
+      * are usually retried immediately, so do not post them to QMP and
+      * do not account them as failed I/O.
+      */
+-    if (req_has_sense &&
+-        scsi_sense_buf_is_guest_recoverable(r->req.sense, sizeof(r->req.sense))) {
++    if (!error || (req_has_sense &&
++                   scsi_sense_buf_is_guest_recoverable(r->req.sense,
++                                                       sizeof(r->req.sense)))) {
+         action = BLOCK_ERROR_ACTION_REPORT;
+         acct_failed = false;
+     } else {
+-- 
+2.39.3
+

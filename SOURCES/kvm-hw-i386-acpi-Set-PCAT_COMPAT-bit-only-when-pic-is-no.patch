@@ -1,0 +1,51 @@
+From 7bb1f124413891bc5d2187f12cd19da6e794904b Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Wed, 3 Apr 2024 10:59:53 -0400
+Subject: [PATCH 010/100] hw/i386/acpi: Set PCAT_COMPAT bit only when pic is
+ not disabled
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [10/91] 62110e4bf52cb3e106c8d2a902bbd31548beba00 (bonzini/rhel-qemu-kvm)
+
+A value 1 of PCAT_COMPAT (bit 0) of MADT.Flags indicates that the system
+also has a PC-AT-compatible dual-8259 setup, i.e., the PIC.  When PIC
+is not enabled (pic=off) for x86 machine, the PCAT_COMPAT bit needs to
+be cleared.  The PIC probe should then print:
+
+   [    0.155970] Using NULL legacy PIC
+
+However, no such log printed in guest kernel unless PCAT_COMPAT is
+cleared.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Message-ID: <20240403145953.3082491-1-xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 292dd287e78e0cbafde9d1522c729349d132d844)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/acpi-common.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/acpi-common.c b/hw/i386/acpi-common.c
+index 20f19269da..0cc2919bb8 100644
+--- a/hw/i386/acpi-common.c
++++ b/hw/i386/acpi-common.c
+@@ -107,7 +107,9 @@ void acpi_build_madt(GArray *table_data, BIOSLinker *linker,
+     acpi_table_begin(&table, table_data);
+     /* Local APIC Address */
+     build_append_int_noprefix(table_data, APIC_DEFAULT_ADDRESS, 4);
+-    build_append_int_noprefix(table_data, 1 /* PCAT_COMPAT */, 4); /* Flags */
++    /* Flags. bit 0: PCAT_COMPAT */
++    build_append_int_noprefix(table_data,
++                              x86ms->pic != ON_OFF_AUTO_OFF ? 1 : 0 , 4);
+ 
+     for (i = 0; i < apic_ids->len; i++) {
+         pc_madt_cpu_entry(i, apic_ids, table_data, false);
+-- 
+2.39.3
+

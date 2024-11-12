@@ -1,0 +1,53 @@
+From 9bf1d368c4b53139db39649833d475e097fc98d1 Mon Sep 17 00:00:00 2001
+From: Bernhard Beschow <shentey@gmail.com>
+Date: Mon, 22 Apr 2024 22:06:22 +0200
+Subject: [PATCH 039/100] hw/i386/pc_sysfw: Remove unused parameter from
+ pc_isa_bios_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [39/91] c0019dc2706a8e3f40486fd4a4c0dd1fbe23237b (bonzini/rhel-qemu-kvm)
+
+Signed-off-by: Bernhard Beschow <shentey@gmail.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-ID: <20240422200625.2768-2-shentey@gmail.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit f4b63768b91811cdcf1fb7b270587123251dfea5)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc_sysfw.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/hw/i386/pc_sysfw.c b/hw/i386/pc_sysfw.c
+index ef7dea9798..59c7a81692 100644
+--- a/hw/i386/pc_sysfw.c
++++ b/hw/i386/pc_sysfw.c
+@@ -41,8 +41,7 @@
+ #define FLASH_SECTOR_SIZE 4096
+ 
+ static void pc_isa_bios_init(MemoryRegion *rom_memory,
+-                             MemoryRegion *flash_mem,
+-                             int ram_size)
++                             MemoryRegion *flash_mem)
+ {
+     int isa_bios_size;
+     MemoryRegion *isa_bios;
+@@ -186,7 +185,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
+ 
+         if (i == 0) {
+             flash_mem = pflash_cfi01_get_memory(system_flash);
+-            pc_isa_bios_init(rom_memory, flash_mem, size);
++            pc_isa_bios_init(rom_memory, flash_mem);
+ 
+             /* Encrypt the pflash boot ROM */
+             if (sev_enabled()) {
+-- 
+2.39.3
+

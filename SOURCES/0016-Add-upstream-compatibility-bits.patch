@@ -1,0 +1,121 @@
+From 59470e8ab849f22b407f55292e540e16a8cad01a Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 20 Mar 2024 05:34:32 -0400
+Subject: Add upstream compatibility bits
+
+Adding new compats structure for changes introduced during rebase to QEMU 9.0.0.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+---
+
+Rebase notes (9.0.0 rc2):
+- Add aw-bits setting for aarch compat record (overwritten for 9.4 and older)
+---
+ hw/arm/virt.c              |  3 +++
+ hw/core/machine.c          | 10 ++++++++++
+ hw/i386/pc_piix.c          |  3 ++-
+ hw/i386/pc_q35.c           |  3 +++
+ hw/s390x/s390-virtio-ccw.c |  1 +
+ include/hw/boards.h        |  3 +++
+ 6 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 22bc345137..f1af9495c6 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -144,6 +144,8 @@ GlobalProperty arm_rhel_compat[] = {
+     {"virtio-net-pci", "romfile", "" },
+     {"virtio-net-pci-transitional", "romfile", "" },
+     {"virtio-net-pci-non-transitional", "romfile", "" },
++    /* arm_rhel_compat from arm_virt_compat, added for 9.0.0 rebase */
++    { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
+ };
+ const size_t arm_rhel_compat_len = G_N_ELEMENTS(arm_rhel_compat);
+ 
+@@ -3728,6 +3730,7 @@ type_init(rhel_machine_init);
+ 
+ static void rhel940_virt_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, hw_compat_rhel_9_5, hw_compat_rhel_9_5_len);
+ }
+ DEFINE_RHEL_MACHINE_AS_LATEST(9, 4, 0)
+ 
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 695cb89a46..0f256d9633 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -302,6 +302,16 @@ const size_t hw_compat_2_1_len = G_N_ELEMENTS(hw_compat_2_1);
+ const char *rhel_old_machine_deprecation =
+     "machine types for previous major releases are deprecated";
+ 
++GlobalProperty hw_compat_rhel_9_5[] = {
++  /* hw_compat_rhel_9_5 from hw_compat_8_2 */
++    { "migration", "zero-page-detection", "legacy"},
++  /* hw_compat_rhel_9_5 from hw_compat_8_2 */
++    { TYPE_VIRTIO_IOMMU_PCI, "granule", "4k" },
++  /* hw_compat_rhel_9_5 from hw_compat_8_2 */
++    { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "64" },
++};
++const size_t hw_compat_rhel_9_5_len = G_N_ELEMENTS(hw_compat_rhel_9_5);
++
+ GlobalProperty hw_compat_rhel_9_4[] = {
+   /* hw_compat_rhel_9_4 from hw_compat_8_0 */
+     { TYPE_VIRTIO_NET, "host_uso", "off"},
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index a647262d63..6b260682eb 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1015,7 +1015,8 @@ static void pc_machine_rhel760_options(MachineClass *m)
+     object_class_property_set_description(oc, "x-south-bridge",
+                                      "Use a different south bridge than PIIX3");
+ 
+-
++    compat_props_add(m->compat_props, hw_compat_rhel_9_5,
++		     hw_compat_rhel_9_5_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_4,
+                      hw_compat_rhel_9_4_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_3,
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index e872dc7e46..2b54944c0f 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -733,6 +733,9 @@ static void pc_q35_machine_rhel940_options(MachineClass *m)
+     m->desc = "RHEL-9.4.0 PC (Q35 + ICH9, 2009)";
+     pcmc->smbios_stream_product = "RHEL";
+     pcmc->smbios_stream_version = "9.4.0";
++
++    compat_props_add(m->compat_props, hw_compat_rhel_9_5,
++		     hw_compat_rhel_9_5_len);
+ }
+ 
+ DEFINE_PC_MACHINE(q35_rhel940, "pc-q35-rhel9.4.0", pc_q35_init_rhel940,
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index ff753a29e0..9ad54682c6 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -1282,6 +1282,7 @@ static void ccw_machine_rhel940_instance_options(MachineState *machine)
+ 
+ static void ccw_machine_rhel940_class_options(MachineClass *mc)
+ {
++    compat_props_add(mc->compat_props, hw_compat_rhel_9_5, hw_compat_rhel_9_5_len);
+ }
+ DEFINE_CCW_MACHINE(rhel940, "rhel9.4.0", true);
+ 
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 46b8725c41..cca62f906b 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -514,6 +514,9 @@ extern const size_t hw_compat_2_2_len;
+ extern GlobalProperty hw_compat_2_1[];
+ extern const size_t hw_compat_2_1_len;
+ 
++extern GlobalProperty hw_compat_rhel_9_5[];
++extern const size_t hw_compat_rhel_9_5_len;
++
+ extern GlobalProperty hw_compat_rhel_9_4[];
+ extern const size_t hw_compat_rhel_9_4_len;
+ 
+-- 
+2.39.3
+

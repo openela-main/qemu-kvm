@@ -1,0 +1,116 @@
+From 652793962000d6906e219ceae36348a476b78c28 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 31 May 2024 12:44:44 +0200
+Subject: [PATCH 065/100] i386/sev: Add a class method to determine KVM VM type
+ for SNP guests
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [65/91] c6cbeac0a6f691138df212b80efaa9b1143fdaa8 (bonzini/rhel-qemu-kvm)
+
+SEV guests can use either KVM_X86_DEFAULT_VM, KVM_X86_SEV_VM,
+or KVM_X86_SEV_ES_VM depending on the configuration and what
+the host kernel supports. SNP guests on the other hand can only
+ever use KVM_X86_SNP_VM, so split determination of VM type out
+into a separate class method that can be set accordingly for
+sev-guest vs. sev-snp-guest objects and add handling for SNP.
+
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-14-pankaj.gupta@amd.com>
+[Remove unnecessary function pointer declaration. - Paolo]
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a808132f6d8e855bd83a400570ec91d2e00bebe3)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/kvm.c |  1 +
+ target/i386/sev.c     | 15 ++++++++++++---
+ 2 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 408568d053..75e75d9772 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -166,6 +166,7 @@ static const char *vm_type_name[] = {
+     [KVM_X86_DEFAULT_VM] = "default",
+     [KVM_X86_SEV_VM] = "SEV",
+     [KVM_X86_SEV_ES_VM] = "SEV-ES",
++    [KVM_X86_SNP_VM] = "SEV-SNP",
+ };
+ 
+ bool kvm_is_vm_type_supported(int type)
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index c3daaf1ad5..072cc4f853 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -885,6 +885,11 @@ out:
+     return sev_common->kvm_type;
+ }
+ 
++static int sev_snp_kvm_type(X86ConfidentialGuest *cg)
++{
++    return KVM_X86_SNP_VM;
++}
++
+ static int sev_common_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+ {
+     char *devname;
+@@ -894,6 +899,8 @@ static int sev_common_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     struct sev_user_data_status status = {};
+     SevCommonState *sev_common = SEV_COMMON(cgs);
+     SevCommonStateClass *klass = SEV_COMMON_GET_CLASS(cgs);
++    X86ConfidentialGuestClass *x86_klass =
++                               X86_CONFIDENTIAL_GUEST_GET_CLASS(cgs);
+ 
+     sev_common->state = SEV_STATE_UNINIT;
+ 
+@@ -964,7 +971,7 @@ static int sev_common_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     }
+ 
+     trace_kvm_sev_init();
+-    if (sev_kvm_type(X86_CONFIDENTIAL_GUEST(sev_common)) == KVM_X86_DEFAULT_VM) {
++    if (x86_klass->kvm_type(X86_CONFIDENTIAL_GUEST(sev_common)) == KVM_X86_DEFAULT_VM) {
+         cmd = sev_es_enabled() ? KVM_SEV_ES_INIT : KVM_SEV_INIT;
+ 
+         ret = sev_ioctl(sev_common->sev_fd, cmd, NULL, &fw_error);
+@@ -1441,10 +1448,8 @@ static void
+ sev_common_class_init(ObjectClass *oc, void *data)
+ {
+     ConfidentialGuestSupportClass *klass = CONFIDENTIAL_GUEST_SUPPORT_CLASS(oc);
+-    X86ConfidentialGuestClass *x86_klass = X86_CONFIDENTIAL_GUEST_CLASS(oc);
+ 
+     klass->kvm_init = sev_common_kvm_init;
+-    x86_klass->kvm_type = sev_kvm_type;
+ 
+     object_class_property_add_str(oc, "sev-device",
+                                   sev_common_get_sev_device,
+@@ -1529,10 +1534,12 @@ static void
+ sev_guest_class_init(ObjectClass *oc, void *data)
+ {
+     SevCommonStateClass *klass = SEV_COMMON_CLASS(oc);
++    X86ConfidentialGuestClass *x86_klass = X86_CONFIDENTIAL_GUEST_CLASS(oc);
+ 
+     klass->launch_start = sev_launch_start;
+     klass->launch_finish = sev_launch_finish;
+     klass->kvm_init = sev_kvm_init;
++    x86_klass->kvm_type = sev_kvm_type;
+ 
+     object_class_property_add_str(oc, "dh-cert-file",
+                                   sev_guest_get_dh_cert_file,
+@@ -1770,8 +1777,10 @@ static void
+ sev_snp_guest_class_init(ObjectClass *oc, void *data)
+ {
+     SevCommonStateClass *klass = SEV_COMMON_CLASS(oc);
++    X86ConfidentialGuestClass *x86_klass = X86_CONFIDENTIAL_GUEST_CLASS(oc);
+ 
+     klass->kvm_init = sev_snp_kvm_init;
++    x86_klass->kvm_type = sev_snp_kvm_type;
+ 
+     object_class_property_add(oc, "policy", "uint64",
+                               sev_snp_guest_get_policy,
+-- 
+2.39.3
+

@@ -1,0 +1,165 @@
+From 226cf6c3d3e2fd1a35422043dbe0b73d1216df83 Mon Sep 17 00:00:00 2001
+From: Brijesh Singh <brijesh.singh@amd.com>
+Date: Thu, 30 May 2024 06:16:36 -0500
+Subject: [PATCH 073/100] hw/i386/sev: Add support to encrypt BIOS when SEV-SNP
+ is enabled
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [73/91] 844afd322c12c3e8992cf6ec692c94e70747bd0c (bonzini/rhel-qemu-kvm)
+
+As with SEV, an SNP guest requires that the BIOS be part of the initial
+encrypted/measured guest payload. Extend sev_encrypt_flash() to handle
+the SNP case and plumb through the GPA of the BIOS location since this
+is needed for SNP.
+
+Signed-off-by: Brijesh Singh <brijesh.singh@amd.com>
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-25-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 77d1abd91e5352ad30ae2f83790f95fa6a3c0b6b)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc_sysfw.c            | 12 +++++++-----
+ hw/i386/x86-common.c          |  2 +-
+ include/hw/i386/x86.h         |  2 +-
+ target/i386/sev-sysemu-stub.c |  2 +-
+ target/i386/sev.c             |  5 +++--
+ target/i386/sev.h             |  2 +-
+ 6 files changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/hw/i386/pc_sysfw.c b/hw/i386/pc_sysfw.c
+index 9b8671c441..7cdbafc8d2 100644
+--- a/hw/i386/pc_sysfw.c
++++ b/hw/i386/pc_sysfw.c
+@@ -148,6 +148,8 @@ static void pc_system_flash_map(PCMachineState *pcms,
+     assert(PC_MACHINE_GET_CLASS(pcms)->pci_enabled);
+ 
+     for (i = 0; i < ARRAY_SIZE(pcms->flash); i++) {
++        hwaddr gpa;
++
+         system_flash = pcms->flash[i];
+         blk = pflash_cfi01_get_blk(system_flash);
+         if (!blk) {
+@@ -177,11 +179,11 @@ static void pc_system_flash_map(PCMachineState *pcms,
+         }
+ 
+         total_size += size;
++        gpa = 0x100000000ULL - total_size; /* where the flash is mapped */
+         qdev_prop_set_uint32(DEVICE(system_flash), "num-blocks",
+                              size / FLASH_SECTOR_SIZE);
+         sysbus_realize_and_unref(SYS_BUS_DEVICE(system_flash), &error_fatal);
+-        sysbus_mmio_map(SYS_BUS_DEVICE(system_flash), 0,
+-                        0x100000000ULL - total_size);
++        sysbus_mmio_map(SYS_BUS_DEVICE(system_flash), 0, gpa);
+ 
+         if (i == 0) {
+             flash_mem = pflash_cfi01_get_memory(system_flash);
+@@ -196,7 +198,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
+             if (sev_enabled()) {
+                 flash_ptr = memory_region_get_ram_ptr(flash_mem);
+                 flash_size = memory_region_size(flash_mem);
+-                x86_firmware_configure(flash_ptr, flash_size);
++                x86_firmware_configure(gpa, flash_ptr, flash_size);
+             }
+         }
+     }
+@@ -249,7 +251,7 @@ void pc_system_firmware_init(PCMachineState *pcms,
+     pc_system_flash_cleanup_unused(pcms);
+ }
+ 
+-void x86_firmware_configure(void *ptr, int size)
++void x86_firmware_configure(hwaddr gpa, void *ptr, int size)
+ {
+     int ret;
+ 
+@@ -270,6 +272,6 @@ void x86_firmware_configure(void *ptr, int size)
+             exit(1);
+         }
+ 
+-        sev_encrypt_flash(ptr, size, &error_fatal);
++        sev_encrypt_flash(gpa, ptr, size, &error_fatal);
+     }
+ }
+diff --git a/hw/i386/x86-common.c b/hw/i386/x86-common.c
+index 67b03c913a..35fe6eabea 100644
+--- a/hw/i386/x86-common.c
++++ b/hw/i386/x86-common.c
+@@ -981,7 +981,7 @@ void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+          */
+         void *ptr = memory_region_get_ram_ptr(&x86ms->bios);
+         load_image_size(filename, ptr, bios_size);
+-        x86_firmware_configure(ptr, bios_size);
++        x86_firmware_configure(0x100000000ULL - bios_size, ptr, bios_size);
+     } else {
+         memory_region_set_readonly(&x86ms->bios, !isapc_ram_fw);
+         ret = rom_add_file_fixed(bios_name, (uint32_t)(-bios_size), -1);
+diff --git a/include/hw/i386/x86.h b/include/hw/i386/x86.h
+index b006f16b8d..d43cb3908e 100644
+--- a/include/hw/i386/x86.h
++++ b/include/hw/i386/x86.h
+@@ -154,6 +154,6 @@ void ioapic_init_gsi(GSIState *gsi_state, Object *parent);
+ DeviceState *ioapic_init_secondary(GSIState *gsi_state);
+ 
+ /* pc_sysfw.c */
+-void x86_firmware_configure(void *ptr, int size);
++void x86_firmware_configure(hwaddr gpa, void *ptr, int size);
+ 
+ #endif
+diff --git a/target/i386/sev-sysemu-stub.c b/target/i386/sev-sysemu-stub.c
+index fc1c57c411..d5bf886e79 100644
+--- a/target/i386/sev-sysemu-stub.c
++++ b/target/i386/sev-sysemu-stub.c
+@@ -42,7 +42,7 @@ void qmp_sev_inject_launch_secret(const char *packet_header, const char *secret,
+     error_setg(errp, "SEV is not available in this QEMU");
+ }
+ 
+-int sev_encrypt_flash(uint8_t *ptr, uint64_t len, Error **errp)
++int sev_encrypt_flash(hwaddr gpa, uint8_t *ptr, uint64_t len, Error **errp)
+ {
+     g_assert_not_reached();
+ }
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index 06401f0526..7b5c4b4874 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -1484,7 +1484,7 @@ static int sev_snp_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+ }
+ 
+ int
+-sev_encrypt_flash(uint8_t *ptr, uint64_t len, Error **errp)
++sev_encrypt_flash(hwaddr gpa, uint8_t *ptr, uint64_t len, Error **errp)
+ {
+     SevCommonState *sev_common = SEV_COMMON(MACHINE(qdev_get_machine())->cgs);
+ 
+@@ -1841,7 +1841,8 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
+     /* zero the excess data so the measurement can be reliably calculated */
+     memset(padded_ht->padding, 0, sizeof(padded_ht->padding));
+ 
+-    if (sev_encrypt_flash((uint8_t *)padded_ht, sizeof(*padded_ht), errp) < 0) {
++    if (sev_encrypt_flash(area->base, (uint8_t *)padded_ht,
++                          sizeof(*padded_ht), errp) < 0) {
+         ret = false;
+     }
+ 
+diff --git a/target/i386/sev.h b/target/i386/sev.h
+index cc12824dd6..858005a119 100644
+--- a/target/i386/sev.h
++++ b/target/i386/sev.h
+@@ -59,7 +59,7 @@ uint32_t sev_get_cbit_position(void);
+ uint32_t sev_get_reduced_phys_bits(void);
+ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp);
+ 
+-int sev_encrypt_flash(uint8_t *ptr, uint64_t len, Error **errp);
++int sev_encrypt_flash(hwaddr gpa, uint8_t *ptr, uint64_t len, Error **errp);
+ int sev_inject_launch_secret(const char *hdr, const char *secret,
+                              uint64_t gpa, Error **errp);
+ 
+-- 
+2.39.3
+

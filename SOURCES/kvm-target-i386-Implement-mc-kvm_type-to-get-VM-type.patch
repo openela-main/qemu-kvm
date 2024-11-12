@@ -1,0 +1,192 @@
+From 4a811f54cdb3c9329f193ea43c76ed4eb1b14c19 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Tue, 19 Mar 2024 15:29:33 +0100
+Subject: [PATCH 022/100] target/i386: Implement mc->kvm_type() to get VM type
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [22/91] d58cf6ead2de37852adc15c7642166904403453f (bonzini/rhel-qemu-kvm)
+
+KVM is introducing a new API to create confidential guests, which
+will be used by TDX and SEV-SNP but is also available for SEV and
+SEV-ES.  The API uses the VM type argument to KVM_CREATE_VM to
+identify which confidential computing technology to use.
+
+Since there are no other expected uses of VM types, delegate
+mc->kvm_type() for x86 boards to the confidential-guest-support
+object pointed to by ms->cgs.
+
+For example, if a sev-guest object is specified to confidential-guest-support,
+like,
+
+  qemu -machine ...,confidential-guest-support=sev0 \
+       -object sev-guest,id=sev0,...
+
+it will check if a VM type KVM_X86_SEV_VM or KVM_X86_SEV_ES_VM
+is supported, and if so use them together with the KVM_SEV_INIT2
+function of the KVM_MEMORY_ENCRYPT_OP ioctl. If not, it will fall back to
+KVM_SEV_INIT and KVM_SEV_ES_INIT.
+
+This is a preparatory work towards TDX and SEV-SNP support, but it
+will also enable support for VMSA features such as DebugSwap, which
+are only available via KVM_SEV_INIT2.
+
+Co-developed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit ee88612df1e8d6c2bfec75bff3f9482ea44acec1)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/x86.c                    | 11 ++++++++
+ target/i386/confidential-guest.h | 19 ++++++++++++++
+ target/i386/kvm/kvm.c            | 44 ++++++++++++++++++++++++++++++++
+ target/i386/kvm/kvm_i386.h       |  2 ++
+ 4 files changed, 76 insertions(+)
+
+diff --git a/hw/i386/x86.c b/hw/i386/x86.c
+index 84a4801977..3d5b51e92d 100644
+--- a/hw/i386/x86.c
++++ b/hw/i386/x86.c
+@@ -1381,6 +1381,16 @@ static void machine_set_sgx_epc(Object *obj, Visitor *v, const char *name,
+     qapi_free_SgxEPCList(list);
+ }
+ 
++static int x86_kvm_type(MachineState *ms, const char *vm_type)
++{
++    /*
++     * No x86 machine has a kvm-type property.  If one is added that has
++     * it, it should call kvm_get_vm_type() directly or not use it at all.
++     */
++    assert(vm_type == NULL);
++    return kvm_enabled() ? kvm_get_vm_type(ms) : 0;
++}
++
+ static void x86_machine_initfn(Object *obj)
+ {
+     X86MachineState *x86ms = X86_MACHINE(obj);
+@@ -1405,6 +1415,7 @@ static void x86_machine_class_init(ObjectClass *oc, void *data)
+     mc->cpu_index_to_instance_props = x86_cpu_index_to_props;
+     mc->get_default_cpu_node_id = x86_get_default_cpu_node_id;
+     mc->possible_cpu_arch_ids = x86_possible_cpu_arch_ids;
++    mc->kvm_type = x86_kvm_type;
+     x86mc->save_tsc_khz = true;
+     x86mc->fwcfg_dma_enabled = true;
+     nc->nmi_monitor_handler = x86_nmi;
+diff --git a/target/i386/confidential-guest.h b/target/i386/confidential-guest.h
+index ca12d5a8fb..532e172a60 100644
+--- a/target/i386/confidential-guest.h
++++ b/target/i386/confidential-guest.h
+@@ -36,5 +36,24 @@ struct X86ConfidentialGuest {
+ struct X86ConfidentialGuestClass {
+     /* <private> */
+     ConfidentialGuestSupportClass parent;
++
++    /* <public> */
++    int (*kvm_type)(X86ConfidentialGuest *cg);
+ };
++
++/**
++ * x86_confidential_guest_kvm_type:
++ *
++ * Calls #X86ConfidentialGuestClass.unplug callback of @plug_handler.
++ */
++static inline int x86_confidential_guest_kvm_type(X86ConfidentialGuest *cg)
++{
++    X86ConfidentialGuestClass *klass = X86_CONFIDENTIAL_GUEST_GET_CLASS(cg);
++
++    if (klass->kvm_type) {
++        return klass->kvm_type(cg);
++    } else {
++        return 0;
++    }
++}
+ #endif
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index a12207a8ee..1f0ab12c2e 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -31,6 +31,7 @@
+ #include "sysemu/kvm_int.h"
+ #include "sysemu/runstate.h"
+ #include "kvm_i386.h"
++#include "../confidential-guest.h"
+ #include "sev.h"
+ #include "xen-emu.h"
+ #include "hyperv.h"
+@@ -161,6 +162,49 @@ static KVMMSRHandlers msr_handlers[KVM_MSR_FILTER_MAX_RANGES];
+ static RateLimit bus_lock_ratelimit_ctrl;
+ static int kvm_get_one_msr(X86CPU *cpu, int index, uint64_t *value);
+ 
++static const char *vm_type_name[] = {
++    [KVM_X86_DEFAULT_VM] = "default",
++};
++
++bool kvm_is_vm_type_supported(int type)
++{
++    uint32_t machine_types;
++
++    /*
++     * old KVM doesn't support KVM_CAP_VM_TYPES but KVM_X86_DEFAULT_VM
++     * is always supported
++     */
++    if (type == KVM_X86_DEFAULT_VM) {
++        return true;
++    }
++
++    machine_types = kvm_check_extension(KVM_STATE(current_machine->accelerator),
++                                        KVM_CAP_VM_TYPES);
++    return !!(machine_types & BIT(type));
++}
++
++int kvm_get_vm_type(MachineState *ms)
++{
++    int kvm_type = KVM_X86_DEFAULT_VM;
++
++    if (ms->cgs) {
++        if (!object_dynamic_cast(OBJECT(ms->cgs), TYPE_X86_CONFIDENTIAL_GUEST)) {
++            error_report("configuration type %s not supported for x86 guests",
++                         object_get_typename(OBJECT(ms->cgs)));
++            exit(1);
++        }
++        kvm_type = x86_confidential_guest_kvm_type(
++            X86_CONFIDENTIAL_GUEST(ms->cgs));
++    }
++
++    if (!kvm_is_vm_type_supported(kvm_type)) {
++        error_report("vm-type %s not supported by KVM", vm_type_name[kvm_type]);
++        exit(1);
++    }
++
++    return kvm_type;
++}
++
+ bool kvm_has_smm(void)
+ {
+     return kvm_vm_check_extension(kvm_state, KVM_CAP_X86_SMM);
+diff --git a/target/i386/kvm/kvm_i386.h b/target/i386/kvm/kvm_i386.h
+index 30fedcffea..6b44844d95 100644
+--- a/target/i386/kvm/kvm_i386.h
++++ b/target/i386/kvm/kvm_i386.h
+@@ -37,6 +37,7 @@ bool kvm_hv_vpindex_settable(void);
+ bool kvm_enable_sgx_provisioning(KVMState *s);
+ bool kvm_hyperv_expand_features(X86CPU *cpu, Error **errp);
+ 
++int kvm_get_vm_type(MachineState *ms);
+ void kvm_arch_reset_vcpu(X86CPU *cs);
+ void kvm_arch_after_reset_vcpu(X86CPU *cpu);
+ void kvm_arch_do_init_vcpu(X86CPU *cs);
+@@ -49,6 +50,7 @@ void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask);
+ 
+ #ifdef CONFIG_KVM
+ 
++bool kvm_is_vm_type_supported(int type);
+ bool kvm_has_adjust_clock_stable(void);
+ bool kvm_has_exception_payload(void);
+ void kvm_synchronize_all_tsc(void);
+-- 
+2.39.3
+

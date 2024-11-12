@@ -1,0 +1,40 @@
+From 127f3c60668e1bd08ec00856a317cb841adf0440 Mon Sep 17 00:00:00 2001
+From: Michael Roth <michael.roth@amd.com>
+Date: Thu, 30 May 2024 06:16:23 -0500
+Subject: [PATCH 063/100] i386/cpu: Set SEV-SNP CPUID bit when SNP enabled
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [63/91] 0f834a6897c5cdc0e29a5b1862e621f8ce309657 (bonzini/rhel-qemu-kvm)
+
+SNP guests will rely on this bit to determine certain feature support.
+
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-12-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7831221941cccbde922412c1550ed8b4bce7c361)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 489c853b42..13737cd703 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -6822,6 +6822,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (sev_enabled()) {
+             *eax = 0x2;
+             *eax |= sev_es_enabled() ? 0x8 : 0;
++            *eax |= sev_snp_enabled() ? 0x10 : 0;
+             *ebx = sev_get_cbit_position() & 0x3f; /* EBX[5:0] */
+             *ebx |= (sev_get_reduced_phys_bits() & 0x3f) << 6; /* EBX[11:6] */
+         }
+-- 
+2.39.3
+

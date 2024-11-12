@@ -1,0 +1,90 @@
+From 0f0a3a860a07addea21a0282556a5022b9cb8b2c Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Thu, 29 Feb 2024 01:00:35 -0500
+Subject: [PATCH 011/100] confidential guest support: Add kvm_init() and
+ kvm_reset() in class
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [11/91] 21d2178178bf181a8e4d0b051f64bd983f0d0cf1 (bonzini/rhel-qemu-kvm)
+
+Different confidential VMs in different architectures all have the same
+needs to do their specific initialization (and maybe resetting) stuffs
+with KVM. Currently each of them exposes individual *_kvm_init()
+functions and let machine code or kvm code to call it.
+
+To facilitate the introduction of confidential guest technology from
+different x86 vendors, add two virtual functions, kvm_init() and kvm_reset()
+in ConfidentialGuestSupportClass, and expose two helpers functions for
+invodking them.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Message-Id: <20240229060038.606591-1-xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 41a605944e3fecae43ca18ded95ec31f28e0c7fe)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ include/exec/confidential-guest-support.h | 34 ++++++++++++++++++++++-
+ 1 file changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/include/exec/confidential-guest-support.h b/include/exec/confidential-guest-support.h
+index ba2dd4b5df..e5b188cffb 100644
+--- a/include/exec/confidential-guest-support.h
++++ b/include/exec/confidential-guest-support.h
+@@ -23,7 +23,10 @@
+ #include "qom/object.h"
+ 
+ #define TYPE_CONFIDENTIAL_GUEST_SUPPORT "confidential-guest-support"
+-OBJECT_DECLARE_SIMPLE_TYPE(ConfidentialGuestSupport, CONFIDENTIAL_GUEST_SUPPORT)
++OBJECT_DECLARE_TYPE(ConfidentialGuestSupport,
++                    ConfidentialGuestSupportClass,
++                    CONFIDENTIAL_GUEST_SUPPORT)
++
+ 
+ struct ConfidentialGuestSupport {
+     Object parent;
+@@ -55,8 +58,37 @@ struct ConfidentialGuestSupport {
+ 
+ typedef struct ConfidentialGuestSupportClass {
+     ObjectClass parent;
++
++    int (*kvm_init)(ConfidentialGuestSupport *cgs, Error **errp);
++    int (*kvm_reset)(ConfidentialGuestSupport *cgs, Error **errp);
+ } ConfidentialGuestSupportClass;
+ 
++static inline int confidential_guest_kvm_init(ConfidentialGuestSupport *cgs,
++                                              Error **errp)
++{
++    ConfidentialGuestSupportClass *klass;
++
++    klass = CONFIDENTIAL_GUEST_SUPPORT_GET_CLASS(cgs);
++    if (klass->kvm_init) {
++        return klass->kvm_init(cgs, errp);
++    }
++
++    return 0;
++}
++
++static inline int confidential_guest_kvm_reset(ConfidentialGuestSupport *cgs,
++                                               Error **errp)
++{
++    ConfidentialGuestSupportClass *klass;
++
++    klass = CONFIDENTIAL_GUEST_SUPPORT_GET_CLASS(cgs);
++    if (klass->kvm_reset) {
++        return klass->kvm_reset(cgs, errp);
++    }
++
++    return 0;
++}
++
+ #endif /* !CONFIG_USER_ONLY */
+ 
+ #endif /* QEMU_CONFIDENTIAL_GUEST_SUPPORT_H */
+-- 
+2.39.3
+

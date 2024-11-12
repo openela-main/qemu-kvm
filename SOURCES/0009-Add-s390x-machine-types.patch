@@ -1,4 +1,4 @@
-From 3623043d4a923bf9f541d439c76e7874cf0fa81d Mon Sep 17 00:00:00 2001
+From 04178c77cfe188b4eed9c08a0bf66842e61fe5dc Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 19 Oct 2018 13:47:32 +0200
 Subject: Add s390x machine types
@@ -49,18 +49,18 @@ Merged patches (8.2.0):
  4 files changed, 174 insertions(+)
 
 diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
-index 7262725d2e..984891b82a 100644
+index b1dcb3857f..ff753a29e0 100644
 --- a/hw/s390x/s390-virtio-ccw.c
 +++ b/hw/s390x/s390-virtio-ccw.c
-@@ -855,6 +855,7 @@ bool css_migration_enabled(void)
+@@ -859,6 +859,7 @@ bool css_migration_enabled(void)
      }                                                                         \
      type_init(ccw_machine_register_##suffix)
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
- static void ccw_machine_8_2_instance_options(MachineState *machine)
+ static void ccw_machine_9_0_instance_options(MachineState *machine)
  {
  }
-@@ -1256,6 +1257,164 @@ static void ccw_machine_2_4_class_options(MachineClass *mc)
+@@ -1272,6 +1273,164 @@ static void ccw_machine_2_4_class_options(MachineClass *mc)
      compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
  }
  DEFINE_CCW_MACHINE(2_4, "2.4", false);
@@ -226,7 +226,7 @@ index 7262725d2e..984891b82a 100644
  static void ccw_machine_register_types(void)
  {
 diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
-index a63d990e4e..198b81f2c0 100644
+index 8ed3bb6a27..370b3b3065 100644
 --- a/target/s390x/cpu_models.c
 +++ b/target/s390x/cpu_models.c
 @@ -46,6 +46,9 @@
@@ -239,7 +239,7 @@ index a63d990e4e..198b81f2c0 100644
  static S390CPUDef s390_cpu_defs[] = {
      CPUDEF_INIT(0x2064, 7, 1, 38, 0x00000000U, "z900", "IBM zSeries 900 GA1"),
      CPUDEF_INIT(0x2064, 7, 2, 38, 0x00000000U, "z900.2", "IBM zSeries 900 GA2"),
-@@ -856,22 +859,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
+@@ -866,22 +869,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
  static void s390_base_cpu_model_class_init(ObjectClass *oc, void *data)
  {
      S390CPUClass *xcc = S390_CPU_CLASS(oc);
@@ -284,10 +284,10 @@ index d7b8912989..1a806a97c4 100644
  
  /* CPU model based on a CPU definition */
 diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
-index 87a4480c05..28c1b0486c 100644
+index 0728bfcc20..ca2e5d91e2 100644
 --- a/target/s390x/cpu_models_sysemu.c
 +++ b/target/s390x/cpu_models_sysemu.c
-@@ -60,6 +60,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
+@@ -59,6 +59,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
      CpuDefinitionInfo *info;
      char *name = g_strdup(object_class_get_name(klass));
      S390CPUClass *scc = S390_CPU_CLASS(klass);
@@ -295,7 +295,7 @@ index 87a4480c05..28c1b0486c 100644
  
      /* strip off the -s390x-cpu */
      g_strrstr(name, "-" TYPE_S390_CPU)[0] = 0;
-@@ -69,6 +70,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
+@@ -68,6 +69,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
      info->migration_safe = scc->is_migration_safe;
      info->q_static = scc->is_static;
      info->q_typename = g_strdup(object_class_get_name(klass));

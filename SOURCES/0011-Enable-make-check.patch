@@ -1,4 +1,4 @@
-From 66a0510405e5142a1f9e38e0770aa0f10aed3e03 Mon Sep 17 00:00:00 2001
+From 5768cf6811842e5c59da3b752f60659a9d6b5ba1 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 2 Sep 2020 09:39:41 +0200
 Subject: Enable make check
@@ -63,10 +63,10 @@ Merged patches (8.1.0):
  13 files changed, 33 insertions(+), 30 deletions(-)
 
 diff --git a/tests/avocado/replay_kernel.py b/tests/avocado/replay_kernel.py
-index c37afa662c..61c95a2198 100644
+index 10d99403a4..c3422ea1e4 100644
 --- a/tests/avocado/replay_kernel.py
 +++ b/tests/avocado/replay_kernel.py
-@@ -153,7 +153,7 @@ def test_aarch64_virt(self):
+@@ -166,7 +166,7 @@ def test_aarch64_virt(self):
          """
          :avocado: tags=arch:aarch64
          :avocado: tags=machine:virt
@@ -76,7 +76,7 @@ index c37afa662c..61c95a2198 100644
          kernel_url = ('https://archives.fedoraproject.org/pub/archive/fedora'
                        '/linux/releases/29/Everything/aarch64/os/images/pxeboot'
 diff --git a/tests/avocado/reverse_debugging.py b/tests/avocado/reverse_debugging.py
-index 4cce5a5598..e9248a04a2 100644
+index 92855a02a5..87822074b6 100644
 --- a/tests/avocado/reverse_debugging.py
 +++ b/tests/avocado/reverse_debugging.py
 @@ -230,7 +230,7 @@ def test_aarch64_virt(self):
@@ -120,7 +120,7 @@ index 15fd87b2c1..f0d9d89c93 100644
          kernel_path = self._grab_aarch64_kernel()
          kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
 diff --git a/tests/qemu-iotests/meson.build b/tests/qemu-iotests/meson.build
-index 53847cb98f..a2abdb650e 100644
+index fad340ad59..3c0d5241f6 100644
 --- a/tests/qemu-iotests/meson.build
 +++ b/tests/qemu-iotests/meson.build
 @@ -51,21 +51,21 @@ foreach format, speed: qemu_iotests_formats
@@ -163,7 +163,7 @@ index 53847cb98f..a2abdb650e 100644
 +#  endforeach
  endforeach
 diff --git a/tests/qemu-iotests/testenv.py b/tests/qemu-iotests/testenv.py
-index 3ff38f2661..cab9a2bd6c 100644
+index 588f30a4f1..3929a3634f 100644
 --- a/tests/qemu-iotests/testenv.py
 +++ b/tests/qemu-iotests/testenv.py
 @@ -244,6 +244,9 @@ def __init__(self, source_dir: str, build_dir: str,
@@ -216,7 +216,7 @@ index 663bb6c485..2efc43e3f7 100644
                     "-device intel-hda,id=" HDA_ID CODEC_DEVICES);
  
 diff --git a/tests/qtest/libqos/meson.build b/tests/qtest/libqos/meson.build
-index 90aae42a22..9bc4e41af0 100644
+index 3aed6efcb8..119613237e 100644
 --- a/tests/qtest/libqos/meson.build
 +++ b/tests/qtest/libqos/meson.build
 @@ -44,7 +44,7 @@ libqos_srcs = files(
@@ -242,10 +242,10 @@ index 8ac95b89f7..cd2102555c 100644
  
      qtest_outl(s, 0xcf8, 0x8000f840); /* PMBASE */
 diff --git a/tests/qtest/meson.build b/tests/qtest/meson.build
-index 47dabf91d0..0bdfa3a821 100644
+index 36c5c13a7b..a2887d6057 100644
 --- a/tests/qtest/meson.build
 +++ b/tests/qtest/meson.build
-@@ -97,7 +97,6 @@ qtests_i386 = \
+@@ -101,7 +101,6 @@ qtests_i386 = \
     'drive_del-test',
     'tco-test',
     'cpu-plug-test',
@@ -254,7 +254,7 @@ index 47dabf91d0..0bdfa3a821 100644
     'migration-test',
     'test-x86-cpuid-compat',
 diff --git a/tests/qtest/virtio-net-failover.c b/tests/qtest/virtio-net-failover.c
-index 0d40bc1f2d..4c633c1584 100644
+index 73dfabc272..a9dd304781 100644
 --- a/tests/qtest/virtio-net-failover.c
 +++ b/tests/qtest/virtio-net-failover.c
 @@ -26,6 +26,7 @@

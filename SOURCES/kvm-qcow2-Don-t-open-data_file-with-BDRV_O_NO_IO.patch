@@ -1,44 +1,36 @@
-From 6e39b4c13c0eacb35e81874b09e6b6411266c631 Mon Sep 17 00:00:00 2001
-From: Jon Maloy <jmaloy@redhat.com>
-Date: Wed, 5 Jun 2024 19:56:51 -0400
+From 97739ee2ed20856fe395248d399dfc7f9ab4f33d Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 11 Apr 2024 15:06:01 +0200
 Subject: [PATCH 1/4] qcow2: Don't open data_file with BDRV_O_NO_IO
 
-RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 2: EMBARGOED CVE-2024-4467 for rhel-9.4.z (PRDSC)
-RH-Jira: https://issues.redhat.com/browse/RHEL-35610
+RH-Author: Hana Czenczek <hczenczek@redhat.com>
+RH-MergeRequest: 1: CVE 2024-4467 (PRDSC)
+RH-Jira: RHEL-35611
 RH-CVE: CVE-2024-4467
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Acked-by: Hanna Czenczek <hczenczek@redhat.com>
-RH-Commit: [1/4] 1000359b05c706f3c5155a9481692352be333129
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Commit: [1/4] f9843ce5c519901654a7d8ba43ee95ce25ca13c2
 
-commit f9843ce5c519901654a7d8ba43ee95ce25ca13c2
-Author: Kevin Wolf <kwolf@redhat.com>
-Date:   Thu Apr 11 15:06:01 2024 +0200
+One use case for 'qemu-img info' is verifying that untrusted images
+don't reference an unwanted external file, be it as a backing file or an
+external data file. To make sure that calling 'qemu-img info' can't
+already have undesired side effects with a malicious image, just don't
+open the data file at all with BDRV_O_NO_IO. If nothing ever tries to do
+I/O, we don't need to have it open.
 
-    qcow2: Don't open data_file with BDRV_O_NO_IO
+This changes the output of iotests case 061, which used 'qemu-img info'
+to show that opening an image with an invalid data file fails. After
+this patch, it succeeds. Replace this part of the test with a qemu-io
+call, but keep the final 'qemu-img info' to show that the invalid data
+file is correctly displayed in the output.
 
-    One use case for 'qemu-img info' is verifying that untrusted images
-    don't reference an unwanted external file, be it as a backing file or an
-    external data file. To make sure that calling 'qemu-img info' can't
-    already have undesired side effects with a malicious image, just don't
-    open the data file at all with BDRV_O_NO_IO. If nothing ever tries to do
-    I/O, we don't need to have it open.
-
-    This changes the output of iotests case 061, which used 'qemu-img info'
-    to show that opening an image with an invalid data file fails. After
-    this patch, it succeeds. Replace this part of the test with a qemu-io
-    call, but keep the final 'qemu-img info' to show that the invalid data
-    file is correctly displayed in the output.
-
-    Signed-off-by: Kevin Wolf <kwolf@redhat.com>
-    Reviewed-by: Eric Blake <eblake@redhat.com>
-    Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
-    Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
-    Upstream: N/A, embargoed
-    Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
-
-Signed-off-by: Jon Maloy <jmaloy@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Upstream: N/A, embargoed
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
 ---
  block/qcow2.c              | 17 ++++++++++++++++-
  tests/qemu-iotests/061     |  6 ++++--
@@ -46,7 +38,7 @@ Signed-off-by: Jon Maloy <jmaloy@redhat.com>
  3 files changed, 26 insertions(+), 5 deletions(-)
 
 diff --git a/block/qcow2.c b/block/qcow2.c
-index d91b7b91d3..b269cfc78f 100644
+index 0ebd455dc8..a4cffb628c 100644
 --- a/block/qcow2.c
 +++ b/block/qcow2.c
 @@ -1642,7 +1642,22 @@ qcow2_do_open(BlockDriverState *bs, QDict *options, int flags,

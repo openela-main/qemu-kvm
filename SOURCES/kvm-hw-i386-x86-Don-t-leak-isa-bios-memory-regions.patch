@@ -1,0 +1,133 @@
+From ebf08d2a822576acfa60fbd5f552d26de1e4c4be Mon Sep 17 00:00:00 2001
+From: Bernhard Beschow <shentey@gmail.com>
+Date: Wed, 8 May 2024 19:55:04 +0200
+Subject: [PATCH 040/100] hw/i386/x86: Don't leak "isa-bios" memory regions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [40/91] bb595357c6cc2d5a80bf3873853c69553c5feee5 (bonzini/rhel-qemu-kvm)
+
+Fix the leaking in x86_bios_rom_init() and pc_isa_bios_init() by adding an
+"isa_bios" attribute to X86MachineState.
+
+Suggested-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Bernhard Beschow <shentey@gmail.com>
+Message-ID: <20240508175507.22270-4-shentey@gmail.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit 32d3ee87a17fc91e981a23dba94855bff89f5920)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc_sysfw.c    | 7 +++----
+ hw/i386/x86.c         | 9 ++++-----
+ include/hw/i386/x86.h | 7 +++++++
+ 3 files changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/hw/i386/pc_sysfw.c b/hw/i386/pc_sysfw.c
+index 59c7a81692..82d37cb376 100644
+--- a/hw/i386/pc_sysfw.c
++++ b/hw/i386/pc_sysfw.c
+@@ -40,11 +40,10 @@
+ 
+ #define FLASH_SECTOR_SIZE 4096
+ 
+-static void pc_isa_bios_init(MemoryRegion *rom_memory,
++static void pc_isa_bios_init(MemoryRegion *isa_bios, MemoryRegion *rom_memory,
+                              MemoryRegion *flash_mem)
+ {
+     int isa_bios_size;
+-    MemoryRegion *isa_bios;
+     uint64_t flash_size;
+     void *flash_ptr, *isa_bios_ptr;
+ 
+@@ -52,7 +51,6 @@ static void pc_isa_bios_init(MemoryRegion *rom_memory,
+ 
+     /* map the last 128KB of the BIOS in ISA space */
+     isa_bios_size = MIN(flash_size, 128 * KiB);
+-    isa_bios = g_malloc(sizeof(*isa_bios));
+     memory_region_init_ram(isa_bios, NULL, "isa-bios", isa_bios_size,
+                            &error_fatal);
+     memory_region_add_subregion_overlap(rom_memory,
+@@ -136,6 +134,7 @@ void pc_system_flash_cleanup_unused(PCMachineState *pcms)
+ static void pc_system_flash_map(PCMachineState *pcms,
+                                 MemoryRegion *rom_memory)
+ {
++    X86MachineState *x86ms = X86_MACHINE(pcms);
+     hwaddr total_size = 0;
+     int i;
+     BlockBackend *blk;
+@@ -185,7 +184,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
+ 
+         if (i == 0) {
+             flash_mem = pflash_cfi01_get_memory(system_flash);
+-            pc_isa_bios_init(rom_memory, flash_mem);
++            pc_isa_bios_init(&x86ms->isa_bios, rom_memory, flash_mem);
+ 
+             /* Encrypt the pflash boot ROM */
+             if (sev_enabled()) {
+diff --git a/hw/i386/x86.c b/hw/i386/x86.c
+index 6d3c72f124..457e8a34a5 100644
+--- a/hw/i386/x86.c
++++ b/hw/i386/x86.c
+@@ -1133,7 +1133,7 @@ void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+ {
+     const char *bios_name;
+     char *filename;
+-    MemoryRegion *bios, *isa_bios;
++    MemoryRegion *bios;
+     int bios_size, isa_bios_size;
+     ssize_t ret;
+ 
+@@ -1173,14 +1173,13 @@ void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+ 
+     /* map the last 128KB of the BIOS in ISA space */
+     isa_bios_size = MIN(bios_size, 128 * KiB);
+-    isa_bios = g_malloc(sizeof(*isa_bios));
+-    memory_region_init_alias(isa_bios, NULL, "isa-bios", bios,
++    memory_region_init_alias(&x86ms->isa_bios, NULL, "isa-bios", bios,
+                              bios_size - isa_bios_size, isa_bios_size);
+     memory_region_add_subregion_overlap(rom_memory,
+                                         0x100000 - isa_bios_size,
+-                                        isa_bios,
++                                        &x86ms->isa_bios,
+                                         1);
+-    memory_region_set_readonly(isa_bios, !isapc_ram_fw);
++    memory_region_set_readonly(&x86ms->isa_bios, !isapc_ram_fw);
+ 
+     /* map all the bios at the top of memory */
+     memory_region_add_subregion(rom_memory,
+diff --git a/include/hw/i386/x86.h b/include/hw/i386/x86.h
+index cb07618d19..a07de79167 100644
+--- a/include/hw/i386/x86.h
++++ b/include/hw/i386/x86.h
+@@ -18,6 +18,7 @@
+ #define HW_I386_X86_H
+ 
+ #include "exec/hwaddr.h"
++#include "exec/memory.h"
+ 
+ #include "hw/boards.h"
+ #include "hw/intc/ioapic.h"
+@@ -52,6 +53,12 @@ struct X86MachineState {
+     GMappedFile *initrd_mapped_file;
+     HotplugHandler *acpi_dev;
+ 
++    /*
++     * Map the upper 128 KiB of the BIOS just underneath the 1 MiB address
++     * boundary.
++     */
++    MemoryRegion isa_bios;
++
+     /* RAM information (sizes, addresses, configuration): */
+     ram_addr_t below_4g_mem_size, above_4g_mem_size;
+ 
+-- 
+2.39.3
+

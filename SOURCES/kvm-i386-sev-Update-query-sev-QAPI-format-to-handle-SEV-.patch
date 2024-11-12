@@ -1,0 +1,240 @@
+From a870e7c31d9605baea4741d82521612b6164c99b Mon Sep 17 00:00:00 2001
+From: Michael Roth <michael.roth@amd.com>
+Date: Thu, 30 May 2024 06:16:26 -0500
+Subject: [PATCH 066/100] i386/sev: Update query-sev QAPI format to handle
+ SEV-SNP
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [66/91] a19b3e226e857f3995176e7d2ef1ce2e4329a885 (bonzini/rhel-qemu-kvm)
+
+Most of the current 'query-sev' command is relevant to both legacy
+SEV/SEV-ES guests and SEV-SNP guests, with 2 exceptions:
+
+  - 'policy' is a 64-bit field for SEV-SNP, not 32-bit, and
+    the meaning of the bit positions has changed
+  - 'handle' is not relevant to SEV-SNP
+
+To address this, this patch adds a new 'sev-type' field that can be
+used as a discriminator to select between SEV and SEV-SNP-specific
+fields/formats without breaking compatibility for existing management
+tools (so long as management tools that add support for launching
+SEV-SNP guest update their handling of query-sev appropriately).
+
+The corresponding HMP command has also been fixed up similarly.
+
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Co-developed-by:Pankaj Gupta <pankaj.gupta@amd.com>
+Signed-off-by: Pankaj Gupta <pankaj.gupta@amd.com>
+Message-ID: <20240530111643.1091816-15-pankaj.gupta@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 59d3740cb4ac0f010ce35877572904f6297284b4)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ qapi/misc-target.json | 72 ++++++++++++++++++++++++++++++++++---------
+ target/i386/sev.c     | 55 +++++++++++++++++++++------------
+ target/i386/sev.h     |  3 ++
+ 3 files changed, 96 insertions(+), 34 deletions(-)
+
+diff --git a/qapi/misc-target.json b/qapi/misc-target.json
+index 4e0a6492a9..2d7d4d89bd 100644
+--- a/qapi/misc-target.json
++++ b/qapi/misc-target.json
+@@ -47,6 +47,50 @@
+            'send-update', 'receive-update' ],
+   'if': 'TARGET_I386' }
+ 
++##
++# @SevGuestType:
++#
++# An enumeration indicating the type of SEV guest being run.
++#
++# @sev: The guest is a legacy SEV or SEV-ES guest.
++#
++# @sev-snp: The guest is an SEV-SNP guest.
++#
++# Since: 6.2
++##
++{ 'enum': 'SevGuestType',
++  'data': [ 'sev', 'sev-snp' ],
++  'if': 'TARGET_I386' }
++
++##
++# @SevGuestInfo:
++#
++# Information specific to legacy SEV/SEV-ES guests.
++#
++# @policy: SEV policy value
++#
++# @handle: SEV firmware handle
++#
++# Since: 2.12
++##
++{ 'struct': 'SevGuestInfo',
++  'data': { 'policy': 'uint32',
++            'handle': 'uint32' },
++  'if': 'TARGET_I386' }
++
++##
++# @SevSnpGuestInfo:
++#
++# Information specific to SEV-SNP guests.
++#
++# @snp-policy: SEV-SNP policy value
++#
++# Since: 9.1
++##
++{ 'struct': 'SevSnpGuestInfo',
++  'data': { 'snp-policy': 'uint64' },
++  'if': 'TARGET_I386' }
++
+ ##
+ # @SevInfo:
+ #
+@@ -60,25 +104,25 @@
+ #
+ # @build-id: SEV FW build id
+ #
+-# @policy: SEV policy value
+-#
+ # @state: SEV guest state
+ #
+-# @handle: SEV firmware handle
++# @sev-type: Type of SEV guest being run
+ #
+ # Since: 2.12
+ ##
+-{ 'struct': 'SevInfo',
+-    'data': { 'enabled': 'bool',
+-              'api-major': 'uint8',
+-              'api-minor' : 'uint8',
+-              'build-id' : 'uint8',
+-              'policy' : 'uint32',
+-              'state' : 'SevState',
+-              'handle' : 'uint32'
+-            },
+-  'if': 'TARGET_I386'
+-}
++{ 'union': 'SevInfo',
++  'base': { 'enabled': 'bool',
++            'api-major': 'uint8',
++            'api-minor' : 'uint8',
++            'build-id' : 'uint8',
++            'state' : 'SevState',
++            'sev-type' : 'SevGuestType' },
++  'discriminator': 'sev-type',
++  'data': {
++      'sev': 'SevGuestInfo',
++      'sev-snp': 'SevSnpGuestInfo' },
++  'if': 'TARGET_I386' }
++
+ 
+ ##
+ # @query-sev:
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index 072cc4f853..43d1c48bd9 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -363,25 +363,27 @@ static SevInfo *sev_get_info(void)
+ {
+     SevInfo *info;
+     SevCommonState *sev_common = SEV_COMMON(MACHINE(qdev_get_machine())->cgs);
+-    SevGuestState *sev_guest =
+-        (SevGuestState *)object_dynamic_cast(OBJECT(sev_common),
+-                                             TYPE_SEV_GUEST);
+ 
+     info = g_new0(SevInfo, 1);
+     info->enabled = sev_enabled();
+ 
+     if (info->enabled) {
+-        if (sev_guest) {
+-            info->handle = sev_guest->handle;
+-        }
+         info->api_major = sev_common->api_major;
+         info->api_minor = sev_common->api_minor;
+         info->build_id = sev_common->build_id;
+         info->state = sev_common->state;
+-        /* we only report the lower 32-bits of policy for SNP, ok for now... */
+-        info->policy =
+-            (uint32_t)object_property_get_uint(OBJECT(sev_common),
+-                                               "policy", NULL);
++
++        if (sev_snp_enabled()) {
++            info->sev_type = SEV_GUEST_TYPE_SEV_SNP;
++            info->u.sev_snp.snp_policy =
++                object_property_get_uint(OBJECT(sev_common), "policy", NULL);
++        } else {
++            info->sev_type = SEV_GUEST_TYPE_SEV;
++            info->u.sev.handle = SEV_GUEST(sev_common)->handle;
++            info->u.sev.policy =
++                (uint32_t)object_property_get_uint(OBJECT(sev_common),
++                                                   "policy", NULL);
++        }
+     }
+ 
+     return info;
+@@ -404,20 +406,33 @@ void hmp_info_sev(Monitor *mon, const QDict *qdict)
+ {
+     SevInfo *info = sev_get_info();
+ 
+-    if (info && info->enabled) {
+-        monitor_printf(mon, "handle: %d\n", info->handle);
+-        monitor_printf(mon, "state: %s\n", SevState_str(info->state));
+-        monitor_printf(mon, "build: %d\n", info->build_id);
+-        monitor_printf(mon, "api version: %d.%d\n",
+-                       info->api_major, info->api_minor);
++    if (!info || !info->enabled) {
++        monitor_printf(mon, "SEV is not enabled\n");
++        goto out;
++    }
++
++    monitor_printf(mon, "SEV type: %s\n", SevGuestType_str(info->sev_type));
++    monitor_printf(mon, "state: %s\n", SevState_str(info->state));
++    monitor_printf(mon, "build: %d\n", info->build_id);
++    monitor_printf(mon, "api version: %d.%d\n", info->api_major,
++                   info->api_minor);
++
++    if (sev_snp_enabled()) {
+         monitor_printf(mon, "debug: %s\n",
+-                       info->policy & SEV_POLICY_NODBG ? "off" : "on");
+-        monitor_printf(mon, "key-sharing: %s\n",
+-                       info->policy & SEV_POLICY_NOKS ? "off" : "on");
++                       info->u.sev_snp.snp_policy & SEV_SNP_POLICY_DBG ? "on"
++                                                                       : "off");
++        monitor_printf(mon, "SMT allowed: %s\n",
++                       info->u.sev_snp.snp_policy & SEV_SNP_POLICY_SMT ? "on"
++                                                                       : "off");
+     } else {
+-        monitor_printf(mon, "SEV is not enabled\n");
++        monitor_printf(mon, "handle: %d\n", info->u.sev.handle);
++        monitor_printf(mon, "debug: %s\n",
++                       info->u.sev.policy & SEV_POLICY_NODBG ? "off" : "on");
++        monitor_printf(mon, "key-sharing: %s\n",
++                       info->u.sev.policy & SEV_POLICY_NOKS ? "off" : "on");
+     }
+ 
++out:
+     qapi_free_SevInfo(info);
+ }
+ 
+diff --git a/target/i386/sev.h b/target/i386/sev.h
+index 94295ee74f..5dc4767b1e 100644
+--- a/target/i386/sev.h
++++ b/target/i386/sev.h
+@@ -31,6 +31,9 @@
+ #define SEV_POLICY_DOMAIN       0x10
+ #define SEV_POLICY_SEV          0x20
+ 
++#define SEV_SNP_POLICY_SMT      0x10000
++#define SEV_SNP_POLICY_DBG      0x80000
++
+ typedef struct SevKernelLoaderContext {
+     char *setup_data;
+     size_t setup_size;
+-- 
+2.39.3
+

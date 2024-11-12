@@ -1,0 +1,68 @@
+From f572a40924c7138072e387111d0f092185972477 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Thu, 9 May 2024 19:00:39 +0200
+Subject: [PATCH 044/100] i386: correctly select code in hw/i386 that depends
+ on other components
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [44/91] 1327a5eb2b91edacf56cc4e93255cad456abbbeb (bonzini/rhel-qemu-kvm)
+
+fw_cfg.c and vapic.c are currently included unconditionally but
+depend on other components.  vapic.c depends on the local APIC,
+while fw_cfg.c includes a piece of AML builder code that depends
+on CONFIG_ACPI.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Message-ID: <20240509170044.190795-9-pbonzini@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7974e51342775c87f6e759a8c525db1045ddfa24)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/fw_cfg.c    | 2 ++
+ hw/i386/meson.build | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
+index 283c3f4c16..7f97d40616 100644
+--- a/hw/i386/fw_cfg.c
++++ b/hw/i386/fw_cfg.c
+@@ -204,6 +204,7 @@ void fw_cfg_build_feature_control(MachineState *ms, FWCfgState *fw_cfg)
+     fw_cfg_add_file(fw_cfg, "etc/msr_feature_control", val, sizeof(*val));
+ }
+ 
++#ifdef CONFIG_ACPI
+ void fw_cfg_add_acpi_dsdt(Aml *scope, FWCfgState *fw_cfg)
+ {
+     /*
+@@ -230,3 +231,4 @@ void fw_cfg_add_acpi_dsdt(Aml *scope, FWCfgState *fw_cfg)
+     aml_append(dev, aml_name_decl("_CRS", crs));
+     aml_append(scope, dev);
+ }
++#endif
+diff --git a/hw/i386/meson.build b/hw/i386/meson.build
+index d8b70ef3e9..d9da676038 100644
+--- a/hw/i386/meson.build
++++ b/hw/i386/meson.build
+@@ -1,12 +1,12 @@
+ i386_ss = ss.source_set()
+ i386_ss.add(files(
+   'fw_cfg.c',
+-  'vapic.c',
+   'e820_memory_layout.c',
+   'multiboot.c',
+   'x86.c',
+ ))
+ 
++i386_ss.add(when: 'CONFIG_APIC', if_true: files('vapic.c'))
+ i386_ss.add(when: 'CONFIG_X86_IOMMU', if_true: files('x86-iommu.c'),
+                                       if_false: files('x86-iommu-stub.c'))
+ i386_ss.add(when: 'CONFIG_AMD_IOMMU', if_true: files('amd_iommu.c'),
+-- 
+2.39.3
+

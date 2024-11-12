@@ -1,0 +1,194 @@
+From 33cc1b469689ee2bb7c4f745189472c74a0a98ab Mon Sep 17 00:00:00 2001
+From: Chao Peng <chao.p.peng@linux.intel.com>
+Date: Wed, 20 Mar 2024 03:39:08 -0500
+Subject: [PATCH 034/100] kvm: handle KVM_EXIT_MEMORY_FAULT
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [34/91] 59c672f6b19a3afcb61878775eb6425c6fdea6d5 (bonzini/rhel-qemu-kvm)
+
+Upon an KVM_EXIT_MEMORY_FAULT exit, userspace needs to do the memory
+conversion on the RAMBlock to turn the memory into desired attribute,
+switching between private and shared.
+
+Currently only KVM_MEMORY_EXIT_FLAG_PRIVATE in flags is valid when
+KVM_EXIT_MEMORY_FAULT happens.
+
+Note, KVM_EXIT_MEMORY_FAULT makes sense only when the RAMBlock has
+guest_memfd memory backend.
+
+Note, KVM_EXIT_MEMORY_FAULT returns with -EFAULT, so special handling is
+added.
+
+When page is converted from shared to private, the original shared
+memory can be discarded via ram_block_discard_range(). Note, shared
+memory can be discarded only when it's not back'ed by hugetlb because
+hugetlb is supposed to be pre-allocated and no need for discarding.
+
+Signed-off-by: Chao Peng <chao.p.peng@linux.intel.com>
+Co-developed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+
+Message-ID: <20240320083945.991426-13-michael.roth@amd.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit c15e5684071d93174e446be318f49d8d59b15d6d)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ accel/kvm/kvm-all.c    | 98 +++++++++++++++++++++++++++++++++++++-----
+ accel/kvm/trace-events |  2 +
+ include/sysemu/kvm.h   |  2 +
+ 3 files changed, 92 insertions(+), 10 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 3f99efc8cc..09164e346c 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2900,6 +2900,69 @@ static void kvm_eat_signals(CPUState *cpu)
+     } while (sigismember(&chkset, SIG_IPI));
+ }
+ 
++int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private)
++{
++    MemoryRegionSection section;
++    ram_addr_t offset;
++    MemoryRegion *mr;
++    RAMBlock *rb;
++    void *addr;
++    int ret = -1;
++
++    trace_kvm_convert_memory(start, size, to_private ? "shared_to_private" : "private_to_shared");
++
++    if (!QEMU_PTR_IS_ALIGNED(start, qemu_real_host_page_size()) ||
++        !QEMU_PTR_IS_ALIGNED(size, qemu_real_host_page_size())) {
++        return -1;
++    }
++
++    if (!size) {
++        return -1;
++    }
++
++    section = memory_region_find(get_system_memory(), start, size);
++    mr = section.mr;
++    if (!mr) {
++        return -1;
++    }
++
++    if (!memory_region_has_guest_memfd(mr)) {
++        error_report("Converting non guest_memfd backed memory region "
++                     "(0x%"HWADDR_PRIx" ,+ 0x%"HWADDR_PRIx") to %s",
++                     start, size, to_private ? "private" : "shared");
++        goto out_unref;
++    }
++
++    if (to_private) {
++        ret = kvm_set_memory_attributes_private(start, size);
++    } else {
++        ret = kvm_set_memory_attributes_shared(start, size);
++    }
++    if (ret) {
++        goto out_unref;
++    }
++
++    addr = memory_region_get_ram_ptr(mr) + section.offset_within_region;
++    rb = qemu_ram_block_from_host(addr, false, &offset);
++
++    if (to_private) {
++        if (rb->page_size != qemu_real_host_page_size()) {
++            /*
++             * shared memory is backed by hugetlb, which is supposed to be
++             * pre-allocated and doesn't need to be discarded
++             */
++            goto out_unref;
++        }
++        ret = ram_block_discard_range(rb, offset, size);
++    } else {
++        ret = ram_block_discard_guest_memfd_range(rb, offset, size);
++    }
++
++out_unref:
++    memory_region_unref(mr);
++    return ret;
++}
++
+ int kvm_cpu_exec(CPUState *cpu)
+ {
+     struct kvm_run *run = cpu->kvm_run;
+@@ -2967,18 +3030,20 @@ int kvm_cpu_exec(CPUState *cpu)
+                 ret = EXCP_INTERRUPT;
+                 break;
+             }
+-            fprintf(stderr, "error: kvm run failed %s\n",
+-                    strerror(-run_ret));
++            if (!(run_ret == -EFAULT && run->exit_reason == KVM_EXIT_MEMORY_FAULT)) {
++                fprintf(stderr, "error: kvm run failed %s\n",
++                        strerror(-run_ret));
+ #ifdef TARGET_PPC
+-            if (run_ret == -EBUSY) {
+-                fprintf(stderr,
+-                        "This is probably because your SMT is enabled.\n"
+-                        "VCPU can only run on primary threads with all "
+-                        "secondary threads offline.\n");
+-            }
++                if (run_ret == -EBUSY) {
++                    fprintf(stderr,
++                            "This is probably because your SMT is enabled.\n"
++                            "VCPU can only run on primary threads with all "
++                            "secondary threads offline.\n");
++                }
+ #endif
+-            ret = -1;
+-            break;
++                ret = -1;
++                break;
++            }
+         }
+ 
+         trace_kvm_run_exit(cpu->cpu_index, run->exit_reason);
+@@ -3061,6 +3126,19 @@ int kvm_cpu_exec(CPUState *cpu)
+                 break;
+             }
+             break;
++        case KVM_EXIT_MEMORY_FAULT:
++            trace_kvm_memory_fault(run->memory_fault.gpa,
++                                   run->memory_fault.size,
++                                   run->memory_fault.flags);
++            if (run->memory_fault.flags & ~KVM_MEMORY_EXIT_FLAG_PRIVATE) {
++                error_report("KVM_EXIT_MEMORY_FAULT: Unknown flag 0x%" PRIx64,
++                             (uint64_t)run->memory_fault.flags);
++                ret = -1;
++                break;
++            }
++            ret = kvm_convert_memory(run->memory_fault.gpa, run->memory_fault.size,
++                                     run->memory_fault.flags & KVM_MEMORY_EXIT_FLAG_PRIVATE);
++            break;
+         default:
+             ret = kvm_arch_handle_exit(cpu, run);
+             break;
+diff --git a/accel/kvm/trace-events b/accel/kvm/trace-events
+index e8c52cb9e7..681ccb667d 100644
+--- a/accel/kvm/trace-events
++++ b/accel/kvm/trace-events
+@@ -31,3 +31,5 @@ kvm_cpu_exec(void) ""
+ kvm_interrupt_exit_request(void) ""
+ kvm_io_window_exit(void) ""
+ kvm_run_exit_system_event(int cpu_index, uint32_t event_type) "cpu_index %d, system_even_type %"PRIu32
++kvm_convert_memory(uint64_t start, uint64_t size, const char *msg) "start 0x%" PRIx64 " size 0x%" PRIx64 " %s"
++kvm_memory_fault(uint64_t start, uint64_t size, uint64_t flags) "start 0x%" PRIx64 " size 0x%" PRIx64 " flags 0x%" PRIx64
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 9e4ab7ae89..74f23dff9c 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -542,4 +542,6 @@ int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp);
+ int kvm_set_memory_attributes_private(hwaddr start, uint64_t size);
+ int kvm_set_memory_attributes_shared(hwaddr start, uint64_t size);
+ 
++int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private);
++
+ #endif
+-- 
+2.39.3
+

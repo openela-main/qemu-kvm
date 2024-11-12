@@ -1,13 +1,14 @@
-From 9d00965910d5a7818ffe55b18d3e9dd4c7210e1b Mon Sep 17 00:00:00 2001
+From 287ebf9f0b8a62dc49fd7802472c1ae57f653e44 Mon Sep 17 00:00:00 2001
 From: Prasad Pandit <pjp@fedoraproject.org>
 Date: Thu, 25 Apr 2024 12:34:12 +0530
-Subject: [PATCH 4/4] linux-aio: add IO_CMD_FDSYNC command support
+Subject: [PATCH 1/5] linux-aio: add IO_CMD_FDSYNC command support
 
 RH-Author: Prasad Pandit <None>
-RH-MergeRequest: 378: linux-aio: add IO_CMD_FDSYNC command support
-RH-Jira: RHEL-43261
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/1] 3b80d4a162aad1a87322078a7d7b060a9496035b
+RH-MergeRequest: 249: linux-aio: add IO_CMD_FDSYNC command support
+RH-Jira: RHEL-42411
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/1] 9beff6506d2eca7741b1c11b5acdc19b635c7c75 (pjp/cs-qemu-kvm)
 
 Libaio defines IO_CMD_FDSYNC command to sync all outstanding
 asynchronous I/O operations, by flushing out file data to the
@@ -18,7 +19,7 @@ pthreads, and destroying these pthreads results in TLB flushes.
 In a real-time guest environment, TLB flushes cause a latency
 spike. This patch helps to avoid such spikes.
 
-Jira: https://issues.redhat.com/browse/RHEL-43261
+Jira: https://issues.redhat.com/browse/RHEL-42411
 Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
 Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
 Message-ID: <20240425070412.37248-1-ppandit@redhat.com>
@@ -110,7 +111,7 @@ index ec05d946f3..e3b5ec9aba 100644
 +    return (ret == -EINVAL) ? false : true;
 +}
 diff --git a/include/block/raw-aio.h b/include/block/raw-aio.h
-index 0f63c2800c..3166903a56 100644
+index 20e000b8ef..626706827f 100644
 --- a/include/block/raw-aio.h
 +++ b/include/block/raw-aio.h
 @@ -60,6 +60,7 @@ void laio_cleanup(LinuxAioState *s);

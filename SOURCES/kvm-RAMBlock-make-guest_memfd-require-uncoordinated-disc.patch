@@ -1,0 +1,82 @@
+From bd289293604d6f33e9fb89196f0b19117ce81f89 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Wed, 20 Mar 2024 17:45:29 +0100
+Subject: [PATCH 032/100] RAMBlock: make guest_memfd require uncoordinated
+ discard
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [32/91] 0c005849026c334737b88cbd20a0ac237dfca37e (bonzini/rhel-qemu-kvm)
+
+Some subsystems like VFIO might disable ram block discard, but guest_memfd
+uses discard operations to implement conversions between private and
+shared memory.  Because of this, sequences like the following can result
+in stale IOMMU mappings:
+
+1. allocate shared page
+2. convert page shared->private
+3. discard shared page
+4. convert page private->shared
+5. allocate shared page
+6. issue DMA operations against that shared page
+
+This is not a use-after-free, because after step 3 VFIO is still pinning
+the page.  However, DMA operations in step 6 will hit the old mapping
+that was allocated in step 1.
+
+Address this by taking ram_block_discard_is_enabled() into account when
+deciding whether or not to discard pages.
+
+Since kvm_convert_memory()/guest_memfd doesn't implement a
+RamDiscardManager handler to convey and replay discard operations,
+this is a case of uncoordinated discard, which is blocked/released
+by ram_block_discard_require().  Interestingly, this function had
+no use so far.
+
+Alternative approaches would be to block discard of shared pages, but
+this would cause guests to consume twice the memory if they use VFIO;
+or to implement a RamDiscardManager and only block uncoordinated
+discard, i.e. use ram_block_coordinated_discard_require().
+
+[Commit message mostly by Michael Roth <michael.roth@amd.com>]
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 852f0048f3ea9f14de18eb279a99fccb6d250e8f)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ system/physmem.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/system/physmem.c b/system/physmem.c
+index f5dfa20e57..5ebcf5be11 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -1846,6 +1846,13 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
+         assert(kvm_enabled());
+         assert(new_block->guest_memfd < 0);
+ 
++        if (ram_block_discard_require(true) < 0) {
++            error_setg_errno(errp, errno,
++                             "cannot set up private guest memory: discard currently blocked");
++            error_append_hint(errp, "Are you using assigned devices?\n");
++            goto out_free;
++        }
++
+         new_block->guest_memfd = kvm_create_guest_memfd(new_block->max_length,
+                                                         0, errp);
+         if (new_block->guest_memfd < 0) {
+@@ -2109,6 +2116,7 @@ static void reclaim_ramblock(RAMBlock *block)
+ 
+     if (block->guest_memfd >= 0) {
+         close(block->guest_memfd);
++        ram_block_discard_require(false);
+     }
+ 
+     g_free(block);
+-- 
+2.39.3
+

@@ -1,0 +1,106 @@
+From c1e615d6b8f609b72a94ffe6d31a9848a41744ef Mon Sep 17 00:00:00 2001
+From: Bernhard Beschow <shentey@gmail.com>
+Date: Tue, 30 Apr 2024 17:06:39 +0200
+Subject: [PATCH 038/100] hw/i386: Have x86_bios_rom_init() take
+ X86MachineState rather than MachineState
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [38/91] 59f388b1dffc5d0aa2f0fff768194d755bc3efbb (bonzini/rhel-qemu-kvm)
+
+The function creates and leaks two MemoryRegion objects regarding the BIOS which
+will be moved into X86MachineState in the next steps to avoid the leakage.
+
+Signed-off-by: Bernhard Beschow <shentey@gmail.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-ID: <20240430150643.111976-3-shentey@gmail.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit 848351840148f8c3b53ddf6210194506547d3ffd)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/microvm.c     | 2 +-
+ hw/i386/pc_sysfw.c    | 4 ++--
+ hw/i386/x86.c         | 4 ++--
+ include/hw/i386/x86.h | 2 +-
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/hw/i386/microvm.c b/hw/i386/microvm.c
+index 61a772dfe6..fec63cacfa 100644
+--- a/hw/i386/microvm.c
++++ b/hw/i386/microvm.c
+@@ -278,7 +278,7 @@ static void microvm_devices_init(MicrovmMachineState *mms)
+     default_firmware = x86_machine_is_acpi_enabled(x86ms)
+             ? MICROVM_BIOS_FILENAME
+             : MICROVM_QBOOT_FILENAME;
+-    x86_bios_rom_init(MACHINE(mms), default_firmware, get_system_memory(), true);
++    x86_bios_rom_init(x86ms, default_firmware, get_system_memory(), true);
+ }
+ 
+ static void microvm_memory_init(MicrovmMachineState *mms)
+diff --git a/hw/i386/pc_sysfw.c b/hw/i386/pc_sysfw.c
+index 3efabbbab2..ef7dea9798 100644
+--- a/hw/i386/pc_sysfw.c
++++ b/hw/i386/pc_sysfw.c
+@@ -206,7 +206,7 @@ void pc_system_firmware_init(PCMachineState *pcms,
+     BlockBackend *pflash_blk[ARRAY_SIZE(pcms->flash)];
+ 
+     if (!pcmc->pci_enabled) {
+-        x86_bios_rom_init(MACHINE(pcms), "bios.bin", rom_memory, true);
++        x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, true);
+         return;
+     }
+ 
+@@ -227,7 +227,7 @@ void pc_system_firmware_init(PCMachineState *pcms,
+ 
+     if (!pflash_blk[0]) {
+         /* Machine property pflash0 not set, use ROM mode */
+-        x86_bios_rom_init(MACHINE(pcms), "bios.bin", rom_memory, false);
++        x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, false);
+     } else {
+         if (kvm_enabled() && !kvm_readonly_mem_enabled()) {
+             /*
+diff --git a/hw/i386/x86.c b/hw/i386/x86.c
+index 2a4f3ee285..6d3c72f124 100644
+--- a/hw/i386/x86.c
++++ b/hw/i386/x86.c
+@@ -1128,7 +1128,7 @@ void x86_load_linux(X86MachineState *x86ms,
+     nb_option_roms++;
+ }
+ 
+-void x86_bios_rom_init(MachineState *ms, const char *default_firmware,
++void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+                        MemoryRegion *rom_memory, bool isapc_ram_fw)
+ {
+     const char *bios_name;
+@@ -1138,7 +1138,7 @@ void x86_bios_rom_init(MachineState *ms, const char *default_firmware,
+     ssize_t ret;
+ 
+     /* BIOS load */
+-    bios_name = ms->firmware ?: default_firmware;
++    bios_name = MACHINE(x86ms)->firmware ?: default_firmware;
+     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
+     if (filename) {
+         bios_size = get_image_size(filename);
+diff --git a/include/hw/i386/x86.h b/include/hw/i386/x86.h
+index 4dc30dcb4d..cb07618d19 100644
+--- a/include/hw/i386/x86.h
++++ b/include/hw/i386/x86.h
+@@ -116,7 +116,7 @@ void x86_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
+ void x86_cpu_unplug_cb(HotplugHandler *hotplug_dev,
+                        DeviceState *dev, Error **errp);
+ 
+-void x86_bios_rom_init(MachineState *ms, const char *default_firmware,
++void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
+                        MemoryRegion *rom_memory, bool isapc_ram_fw);
+ 
+ void x86_load_linux(X86MachineState *x86ms,
+-- 
+2.39.3
+

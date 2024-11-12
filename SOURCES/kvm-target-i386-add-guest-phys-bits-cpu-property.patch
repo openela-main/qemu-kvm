@@ -1,0 +1,124 @@
+From 090c64ea622534ff2ae6c9b66cdf0b1ddb58bf26 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Mon, 18 Mar 2024 16:53:36 +0100
+Subject: [PATCH 002/100] target/i386: add guest-phys-bits cpu property
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 245: SEV-SNP support
+RH-Jira: RHEL-39544
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [2/91] 6603e842012dc484e1f571ea0a77b59095f37003 (bonzini/rhel-qemu-kvm)
+
+Allows to set guest-phys-bits (cpuid leaf 80000008, eax[23:16])
+via -cpu $model,guest-phys-bits=$nr.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Message-ID: <20240318155336.156197-3-kraxel@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 513ba32dccc659c80722b3a43233b26eaa50309a)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc.c      |  2 ++
+ target/i386/cpu.c | 22 ++++++++++++++++++++++
+ target/i386/cpu.h |  8 ++++++++
+ 3 files changed, 32 insertions(+)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 648762d908..b9fde3cec1 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -349,6 +349,8 @@ GlobalProperty pc_rhel_compat[] = {
+ const size_t pc_rhel_compat_len = G_N_ELEMENTS(pc_rhel_compat);
+ 
+ GlobalProperty pc_rhel_9_5_compat[] = {
++    /* pc_rhel_9_5_compat from pc_compat_pc_9_0 (backported from 9.1) */
++    { TYPE_X86_CPU, "guest-phys-bits", "0" },
+ };
+ const size_t pc_rhel_9_5_compat_len = G_N_ELEMENTS(pc_rhel_9_5_compat);
+ 
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index be7b0663cd..a7f71422ea 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -6591,6 +6591,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (env->features[FEAT_8000_0001_EDX] & CPUID_EXT2_LM) {
+             /* 64 bit processor */
+              *eax |= (cpu_x86_virtual_addr_width(env) << 8);
++             *eax |= (cpu->guest_phys_bits << 16);
+         }
+         *ebx = env->features[FEAT_8000_0008_EBX];
+         if (cs->nr_cores * cs->nr_threads > 1) {
+@@ -7350,6 +7351,14 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+         goto out;
+     }
+ 
++    if (cpu->guest_phys_bits == -1) {
++        /*
++         * If it was not set by the user, or by the accelerator via
++         * cpu_exec_realizefn, clear.
++         */
++        cpu->guest_phys_bits = 0;
++    }
++
+     if (cpu->ucode_rev == 0) {
+         /*
+          * The default is the same as KVM's. Note that this check
+@@ -7400,6 +7409,14 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+         if (cpu->phys_bits == 0) {
+             cpu->phys_bits = TCG_PHYS_ADDR_BITS;
+         }
++        if (cpu->guest_phys_bits &&
++            (cpu->guest_phys_bits > cpu->phys_bits ||
++            cpu->guest_phys_bits < 32)) {
++            error_setg(errp, "guest-phys-bits should be between 32 and %u "
++                             " (but is %u)",
++                             cpu->phys_bits, cpu->guest_phys_bits);
++            return;
++        }
+     } else {
+         /* For 32 bit systems don't use the user set value, but keep
+          * phys_bits consistent with what we tell the guest.
+@@ -7408,6 +7425,10 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+             error_setg(errp, "phys-bits is not user-configurable in 32 bit");
+             return;
+         }
++        if (cpu->guest_phys_bits != 0) {
++            error_setg(errp, "guest-phys-bits is not user-configurable in 32 bit");
++            return;
++        }
+ 
+         if (env->features[FEAT_1_EDX] & (CPUID_PSE36 | CPUID_PAE)) {
+             cpu->phys_bits = 36;
+@@ -7908,6 +7929,7 @@ static Property x86_cpu_properties[] = {
+     DEFINE_PROP_BOOL("x-force-features", X86CPU, force_features, false),
+     DEFINE_PROP_BOOL("kvm", X86CPU, expose_kvm, true),
+     DEFINE_PROP_UINT32("phys-bits", X86CPU, phys_bits, 0),
++    DEFINE_PROP_UINT32("guest-phys-bits", X86CPU, guest_phys_bits, -1),
+     DEFINE_PROP_BOOL("host-phys-bits", X86CPU, host_phys_bits, false),
+     DEFINE_PROP_UINT8("host-phys-bits-limit", X86CPU, host_phys_bits_limit, 0),
+     DEFINE_PROP_BOOL("fill-mtrr-mask", X86CPU, fill_mtrr_mask, true),
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 6b05738079..6112e27bfd 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2027,6 +2027,14 @@ struct ArchCPU {
+     /* Number of physical address bits supported */
+     uint32_t phys_bits;
+ 
++    /*
++     * Number of guest physical address bits available. Usually this is
++     * identical to host physical address bits. With NPT or EPT 4-level
++     * paging, guest physical address space might be restricted to 48 bits
++     * even if the host cpu supports more physical address bits.
++     */
++    uint32_t guest_phys_bits;
++
+     /* in order to simplify APIC support, we leave this pointer to the
+        user */
+     struct DeviceState *apic_state;
+-- 
+2.39.3
+

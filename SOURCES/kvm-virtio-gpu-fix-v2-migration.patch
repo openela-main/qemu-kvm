@@ -1,17 +1,17 @@
-From 7741a7d1c1d719ff681f73a023f27d5951b98882 Mon Sep 17 00:00:00 2001
+From 97d039841728570b54d11ee7e5322743f519d861 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Marc-Andr=C3=A9=20Lureau?= <marcandre.lureau@redhat.com>
 Date: Thu, 16 May 2024 12:40:22 +0400
-Subject: [PATCH 2/4] virtio-gpu: fix v2 migration
+Subject: [PATCH 3/4] virtio-gpu: fix v2 migration
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Marc-André Lureau <marcandre.lureau@redhat.com>
-RH-MergeRequest: 377: virtio-gpu: fix scanout migration post-load
-RH-Jira: RHEL-36181
+RH-MergeRequest: 246: virtio-gpu: fix v2 migration
+RH-Jira: RHEL-34621
 RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/3] 482c37c10ac7e5e8a6c36ac2eb806ac02beeefdc
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Commit: [1/2] 187370bc6198a4ed0e4763314f8113ffcd21eb36 (marcandre.lureau-rh/qemu-kvm-centos)
 
 Commit dfcf74fa ("virtio-gpu: fix scanout migration post-load") broke
 forward/backward version migration. Versioning of nested VMSD structures
@@ -27,7 +27,7 @@ Tested-by: Fiona Ebner <f.ebner@proxmox.com>
 [fixed long lines]
 Signed-off-by: Fabiano Rosas <farosas@suse.de>
 
-[ Move the hw-compat from 8.2 to 8.1 ]
+Jira: https://issues.redhat.com/browse/RHEL-34621
 Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
 (cherry picked from commit 40a23ef643664b5c1021a9789f9d680b6294fb50)
 ---
@@ -37,22 +37,22 @@ Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
  3 files changed, 24 insertions(+), 8 deletions(-)
 
 diff --git a/hw/core/machine.c b/hw/core/machine.c
-index 309f6ba685..a0843ab93e 100644
+index 0f256d9633..cf1d7faaaf 100644
 --- a/hw/core/machine.c
 +++ b/hw/core/machine.c
-@@ -37,6 +37,7 @@ GlobalProperty hw_compat_8_1[] = {
-     { "ramfb", "x-migrate", "off" },
-     { "vfio-pci-nohotplug", "x-ramfb-migrate", "off" },
-     { "igb", "x-pcie-flr-init", "off" },
+@@ -37,6 +37,7 @@ GlobalProperty hw_compat_8_2[] = {
+     { "migration", "zero-page-detection", "legacy"},
+     { TYPE_VIRTIO_IOMMU_PCI, "granule", "4k" },
+     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "64" },
 +    { "virtio-gpu-device", "x-scanout-vmstate-version", "1" },
  };
- const size_t hw_compat_8_1_len = G_N_ELEMENTS(hw_compat_8_1);
+ const size_t hw_compat_8_2_len = G_N_ELEMENTS(hw_compat_8_2);
  
 diff --git a/hw/display/virtio-gpu.c b/hw/display/virtio-gpu.c
-index bc485d60ea..9d35a016ae 100644
+index ae831b6b3e..d60b1b2973 100644
 --- a/hw/display/virtio-gpu.c
 +++ b/hw/display/virtio-gpu.c
-@@ -1168,10 +1168,17 @@ static void virtio_gpu_cursor_bh(void *opaque)
+@@ -1166,10 +1166,17 @@ static void virtio_gpu_cursor_bh(void *opaque)
      virtio_gpu_handle_cursor(&g->parent_obj.parent_obj, g->cursor_vq);
  }
  
@@ -72,7 +72,7 @@ index bc485d60ea..9d35a016ae 100644
      .fields = (const VMStateField[]) {
          VMSTATE_UINT32(resource_id, struct virtio_gpu_scanout),
          VMSTATE_UINT32(width, struct virtio_gpu_scanout),
-@@ -1183,12 +1190,18 @@ static const VMStateDescription vmstate_virtio_gpu_scanout = {
+@@ -1181,12 +1188,18 @@ static const VMStateDescription vmstate_virtio_gpu_scanout = {
          VMSTATE_UINT32(cursor.hot_y, struct virtio_gpu_scanout),
          VMSTATE_UINT32(cursor.pos.x, struct virtio_gpu_scanout),
          VMSTATE_UINT32(cursor.pos.y, struct virtio_gpu_scanout),
@@ -97,7 +97,7 @@ index bc485d60ea..9d35a016ae 100644
          VMSTATE_END_OF_LIST()
      },
  };
-@@ -1668,6 +1681,7 @@ static Property virtio_gpu_properties[] = {
+@@ -1659,6 +1672,7 @@ static Property virtio_gpu_properties[] = {
      DEFINE_PROP_BIT("blob", VirtIOGPU, parent_obj.conf.flags,
                      VIRTIO_GPU_FLAG_BLOB_ENABLED, false),
      DEFINE_PROP_SIZE("hostmem", VirtIOGPU, parent_obj.conf.hostmem, 0),
@@ -106,7 +106,7 @@ index bc485d60ea..9d35a016ae 100644
  };
  
 diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
-index 9a13afb34e..18500432c6 100644
+index ed44cdad6b..842315d51d 100644
 --- a/include/hw/virtio/virtio-gpu.h
 +++ b/include/hw/virtio/virtio-gpu.h
 @@ -177,6 +177,7 @@ typedef struct VGPUDMABuf {
