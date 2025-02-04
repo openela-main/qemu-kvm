@@ -1,0 +1,98 @@
+From 0f824a811ff30b2d8bd78eb97ee835598c6be65f Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Jun 2024 18:30:44 -0400
+Subject: [PATCH 09/11] tests/migration-tests: migration_event_wait()
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 419: migration: New postcopy state, and some cleanups [rhel-9.5.z]
+RH-Jira: RHEL-63874
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [9/11] 417c600dfc6acbc125a82c1b56c9637041555c15
+
+Introduce a small helper to wait for a migration event, generalized from
+the incoming migration path.  Make the helper easier to use by allowing it
+to keep waiting until the expected event is received.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+
+(cherry picked from commit d444e5673c223241bd2edbc207b02cc1b2114b71)
+
+JIRA: https://issues.redhat.com/browse/RHEL-63874
+Y-JIRA: https://issues.redhat.com/browse/RHEL-38485
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ tests/qtest/migration-helpers.c | 31 ++++++++++++++++++++++---------
+ tests/qtest/migration-helpers.h |  2 ++
+ 2 files changed, 24 insertions(+), 9 deletions(-)
+
+diff --git a/tests/qtest/migration-helpers.c b/tests/qtest/migration-helpers.c
+index 50a6bc2569..31d83ab970 100644
+--- a/tests/qtest/migration-helpers.c
++++ b/tests/qtest/migration-helpers.c
+@@ -98,7 +98,7 @@ void migrate_set_capability(QTestState *who, const char *capability,
+ void migrate_incoming_qmp(QTestState *to, const char *uri, const char *fmt, ...)
+ {
+     va_list ap;
+-    QDict *args, *rsp, *data;
++    QDict *args, *rsp;
+ 
+     va_start(ap, fmt);
+     args = qdict_from_vjsonf_nofail(fmt, ap);
+@@ -121,14 +121,7 @@ void migrate_incoming_qmp(QTestState *to, const char *uri, const char *fmt, ...)
+     g_assert(qdict_haskey(rsp, "return"));
+     qobject_unref(rsp);
+ 
+-    rsp = qtest_qmp_eventwait_ref(to, "MIGRATION");
+-    g_assert(qdict_haskey(rsp, "data"));
+-
+-    data = qdict_get_qdict(rsp, "data");
+-    g_assert(qdict_haskey(data, "status"));
+-    g_assert_cmpstr(qdict_get_str(data, "status"), ==, "setup");
+-
+-    qobject_unref(rsp);
++    migration_event_wait(to, "setup");
+ }
+ 
+ /*
+@@ -324,3 +317,23 @@ void migration_test_add(const char *path, void (*fn)(void))
+     qtest_add_data_func_full(path, test, migration_test_wrapper,
+                              migration_test_destroy);
+ }
++
++/*
++ * Wait for a "MIGRATION" event.  This is what Libvirt uses to track
++ * migration status changes.
++ */
++void migration_event_wait(QTestState *s, const char *target)
++{
++    QDict *response, *data;
++    const char *status;
++    bool found;
++
++    do {
++        response = qtest_qmp_eventwait_ref(s, "MIGRATION");
++        data = qdict_get_qdict(response, "data");
++        g_assert(data);
++        status = qdict_get_str(data, "status");
++        found = (strcmp(status, target) == 0);
++        qobject_unref(response);
++    } while (!found);
++}
+diff --git a/tests/qtest/migration-helpers.h b/tests/qtest/migration-helpers.h
+index 3bf7ded1b9..83f277c054 100644
+--- a/tests/qtest/migration-helpers.h
++++ b/tests/qtest/migration-helpers.h
+@@ -53,4 +53,6 @@ char *find_common_machine_version(const char *mtype, const char *var1,
+ char *resolve_machine_version(const char *alias, const char *var1,
+                               const char *var2);
+ void migration_test_add(const char *path, void (*fn)(void));
++void migration_event_wait(QTestState *s, const char *target);
++
+ #endif /* MIGRATION_HELPERS_H */
+-- 
+2.39.3
+

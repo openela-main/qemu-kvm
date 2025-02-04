@@ -1,0 +1,94 @@
+From a35f4af0c143c0b6655bb1123e1734a5a9dd890e Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Jun 2024 18:30:41 -0400
+Subject: [PATCH 06/11] migration/docs: Update postcopy recover session for
+ SETUP phase
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 419: migration: New postcopy state, and some cleanups [rhel-9.5.z]
+RH-Jira: RHEL-63874
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/11] f84c228f019a30f23313cbfe7cb39ca8aa0aee84
+
+Firstly, the "Paused" state was added in the wrong place before. The state
+machine section was describing PostcopyState, rather than MigrationStatus.
+Drop the Paused state descriptions.
+
+Then in the postcopy recover session, add more information on the state
+machine for MigrationStatus in the lines.  Add the new RECOVER_SETUP phase.
+
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+[fix typo s/reconnects/reconnect]
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+
+(cherry picked from commit 21e89f7ad526f0dddfc722e615bfb0fcdb705c87)
+
+JIRA: https://issues.redhat.com/browse/RHEL-63874
+Y-JIRA: https://issues.redhat.com/browse/RHEL-38485
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ docs/devel/migration/postcopy.rst | 31 ++++++++++++++++---------------
+ 1 file changed, 16 insertions(+), 15 deletions(-)
+
+diff --git a/docs/devel/migration/postcopy.rst b/docs/devel/migration/postcopy.rst
+index 6c51e96d79..82e7a848c6 100644
+--- a/docs/devel/migration/postcopy.rst
++++ b/docs/devel/migration/postcopy.rst
+@@ -99,17 +99,6 @@ ADVISE->DISCARD->LISTEN->RUNNING->END
+     (although it can't do the cleanup it would do as it
+     finishes a normal migration).
+ 
+- - Paused
+-
+-    Postcopy can run into a paused state (normally on both sides when
+-    happens), where all threads will be temporarily halted mostly due to
+-    network errors.  When reaching paused state, migration will make sure
+-    the qemu binary on both sides maintain the data without corrupting
+-    the VM.  To continue the migration, the admin needs to fix the
+-    migration channel using the QMP command 'migrate-recover' on the
+-    destination node, then resume the migration using QMP command 'migrate'
+-    again on source node, with resume=true flag set.
+-
+  - End
+ 
+     The listen thread can now quit, and perform the cleanup of migration
+@@ -221,7 +210,8 @@ paused postcopy migration.
+ 
+ The recovery phase normally contains a few steps:
+ 
+-  - When network issue occurs, both QEMU will go into PAUSED state
++  - When network issue occurs, both QEMU will go into **POSTCOPY_PAUSED**
++    migration state.
+ 
+   - When the network is recovered (or a new network is provided), the admin
+     can setup the new channel for migration using QMP command
+@@ -229,9 +219,20 @@ The recovery phase normally contains a few steps:
+ 
+   - On source host, the admin can continue the interrupted postcopy
+     migration using QMP command 'migrate' with resume=true flag set.
+-
+-  - After the connection is re-established, QEMU will continue the postcopy
+-    migration on both sides.
++    Source QEMU will go into **POSTCOPY_RECOVER_SETUP** state trying to
++    re-establish the channels.
++
++  - When both sides of QEMU successfully reconnect using a new or fixed up
++    channel, they will go into **POSTCOPY_RECOVER** state, some handshake
++    procedure will be needed to properly synchronize the VM states between
++    the two QEMUs to continue the postcopy migration.  For example, there
++    can be pages sent right during the window when the network is
++    interrupted, then the handshake will guarantee pages lost in-flight
++    will be resent again.
++
++  - After a proper handshake synchronization, QEMU will continue the
++    postcopy migration on both sides and go back to **POSTCOPY_ACTIVE**
++    state.  Postcopy migration will continue.
+ 
+ During a paused postcopy migration, the VM can logically still continue
+ running, and it will not be impacted from any page access to pages that
+-- 
+2.39.3
+

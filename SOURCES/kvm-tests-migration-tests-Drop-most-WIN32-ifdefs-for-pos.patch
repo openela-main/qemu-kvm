@@ -1,0 +1,102 @@
+From 13f85a7187ed25b41c6064b94fdcc798e3bf61a0 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Jun 2024 18:30:42 -0400
+Subject: [PATCH 07/11] tests/migration-tests: Drop most WIN32 ifdefs for
+ postcopy failure tests
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 419: migration: New postcopy state, and some cleanups [rhel-9.5.z]
+RH-Jira: RHEL-63874
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/11] 86500403d1f4baef170d3bc6f6a9cd34862c9076
+
+Most of them are not needed, we can stick with one ifdef inside
+postcopy_recover_fail() so as to cover the scm right tricks only.
+The tests won't run on windows anyway due to has_uffd always false.
+
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+
+(cherry picked from commit 0fd397359540a6622c5f2164e76fc2cefd811f2a)
+
+JIRA: https://issues.redhat.com/browse/RHEL-63874
+Y-JIRA: https://issues.redhat.com/browse/RHEL-38485
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ tests/qtest/migration-test.c | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/tests/qtest/migration-test.c b/tests/qtest/migration-test.c
+index 1d2cee87ea..0808300f5b 100644
+--- a/tests/qtest/migration-test.c
++++ b/tests/qtest/migration-test.c
+@@ -1460,9 +1460,9 @@ static void wait_for_postcopy_status(QTestState *one, const char *status)
+                                                   "completed", NULL });
+ }
+ 
+-#ifndef _WIN32
+ static void postcopy_recover_fail(QTestState *from, QTestState *to)
+ {
++#ifndef _WIN32
+     int ret, pair1[2], pair2[2];
+     char c;
+ 
+@@ -1524,8 +1524,8 @@ static void postcopy_recover_fail(QTestState *from, QTestState *to)
+     close(pair1[1]);
+     close(pair2[0]);
+     close(pair2[1]);
++#endif
+ }
+-#endif /* _WIN32 */
+ 
+ static void test_postcopy_recovery_common(MigrateCommon *args)
+ {
+@@ -1565,7 +1565,6 @@ static void test_postcopy_recovery_common(MigrateCommon *args)
+     wait_for_postcopy_status(to, "postcopy-paused");
+     wait_for_postcopy_status(from, "postcopy-paused");
+ 
+-#ifndef _WIN32
+     if (args->postcopy_recovery_test_fail) {
+         /*
+          * Test when a wrong socket specified for recover, and then the
+@@ -1574,7 +1573,6 @@ static void test_postcopy_recovery_common(MigrateCommon *args)
+         postcopy_recover_fail(from, to);
+         /* continue with a good recovery */
+     }
+-#endif /* _WIN32 */
+ 
+     /*
+      * Create a new socket to emulate a new channel that is different
+@@ -1612,7 +1610,6 @@ static void test_postcopy_recovery_compress(void)
+     test_postcopy_recovery_common(&args);
+ }
+ 
+-#ifndef _WIN32
+ static void test_postcopy_recovery_double_fail(void)
+ {
+     MigrateCommon args = {
+@@ -1621,7 +1618,6 @@ static void test_postcopy_recovery_double_fail(void)
+ 
+     test_postcopy_recovery_common(&args);
+ }
+-#endif /* _WIN32 */
+ 
+ #ifdef CONFIG_GNUTLS
+ static void test_postcopy_recovery_tls_psk(void)
+@@ -3595,10 +3591,8 @@ int main(int argc, char **argv)
+             migration_test_add("/migration/postcopy/recovery/compress/plain",
+                                test_postcopy_recovery_compress);
+         }
+-#ifndef _WIN32
+         migration_test_add("/migration/postcopy/recovery/double-failures",
+                            test_postcopy_recovery_double_fail);
+-#endif /* _WIN32 */
+         if (is_x86) {
+             migration_test_add("/migration/postcopy/suspend",
+                                test_postcopy_suspend);
+-- 
+2.39.3
+

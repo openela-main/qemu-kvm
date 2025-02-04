@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.0.0
-Release: 10%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 10%{?rcrel}%{?dist}%{?cc_suffix}.2
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -432,6 +432,30 @@ Patch136: kvm-nbd-server-CVE-2024-7409-Close-stray-clients-at-serv.patch
 Patch137: kvm-qemu-guest-agent-Update-the-logfile-path-of-qga-fsfr.patch
 # For RHEL-52617 - CVE-2024-7409 qemu-kvm: Denial of Service via Improper Synchronization in QEMU NBD Server During Socket Closure [rhel-9.5]
 Patch138: kvm-nbd-server-CVE-2024-7409-Avoid-use-after-free-when-c.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch139: kvm-migration-multifd-Avoid-the-final-FLUSH-in-complete.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch140: kvm-migration-Rename-thread-debug-names.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch141: kvm-migration-Use-MigrationStatus-instead-of-int.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch142: kvm-migration-Cleanup-incoming-migration-setup-state-cha.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch143: kvm-migration-postcopy-Add-postcopy-recover-setup-phase.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch144: kvm-migration-docs-Update-postcopy-recover-session-for-S.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch145: kvm-tests-migration-tests-Drop-most-WIN32-ifdefs-for-pos.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch146: kvm-tests-migration-tests-Always-enable-migration-events.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch147: kvm-tests-migration-tests-migration_event_wait.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch148: kvm-tests-migration-tests-Verify-postcopy-recover-setup-.patch
+# For RHEL-63874 - Failure to resume paused post-copy migration is undetectable [rhel-9.5.z]
+Patch149: kvm-tests-migration-tests-Cover-postcopy-failure-on-reco.patch
+# For RHEL-73006 - qemu-kvm: vhost: reports error while updating IOTLB entries [rhel-9.5.z]
+Patch150: kvm-vhost-fail-device-start-if-iotlb-update-fails.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1498,6 +1522,26 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Wed Jan 15 2025 Miroslav Rezanina <mrezanin@redhat.com> - 9.0.0-10.el9_5.2
+- kvm-vhost-fail-device-start-if-iotlb-update-fails.patch [RHEL-73006]
+- Resolves: RHEL-73006
+  (qemu-kvm: vhost: reports error while updating IOTLB entries [rhel-9.5.z])
+
+* Mon Nov 04 2024 Miroslav Rezanina <mrezanin@redhat.com> - 9.0.0-10.el9_5.1
+- kvm-migration-multifd-Avoid-the-final-FLUSH-in-complete.patch [RHEL-63874]
+- kvm-migration-Rename-thread-debug-names.patch [RHEL-63874]
+- kvm-migration-Use-MigrationStatus-instead-of-int.patch [RHEL-63874]
+- kvm-migration-Cleanup-incoming-migration-setup-state-cha.patch [RHEL-63874]
+- kvm-migration-postcopy-Add-postcopy-recover-setup-phase.patch [RHEL-63874]
+- kvm-migration-docs-Update-postcopy-recover-session-for-S.patch [RHEL-63874]
+- kvm-tests-migration-tests-Drop-most-WIN32-ifdefs-for-pos.patch [RHEL-63874]
+- kvm-tests-migration-tests-Always-enable-migration-events.patch [RHEL-63874]
+- kvm-tests-migration-tests-migration_event_wait.patch [RHEL-63874]
+- kvm-tests-migration-tests-Verify-postcopy-recover-setup-.patch [RHEL-63874]
+- kvm-tests-migration-tests-Cover-postcopy-failure-on-reco.patch [RHEL-63874]
+- Resolves: RHEL-63874
+  (Failure to resume paused post-copy migration is undetectable [rhel-9.5.z])
+
 * Mon Sep 02 2024 Miroslav Rezanina <mrezanin@redhat.com> - 9.0.0-10
 - kvm-nbd-server-CVE-2024-7409-Avoid-use-after-free-when-c.patch [RHEL-52617]
 - Resolves: RHEL-52617

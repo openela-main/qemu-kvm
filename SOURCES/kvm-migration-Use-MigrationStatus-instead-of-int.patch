@@ -1,0 +1,146 @@
+From 04b4c59f81eb7547c6baa5e269c795b98ddce3ef Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Jun 2024 18:30:38 -0400
+Subject: [PATCH 03/11] migration: Use MigrationStatus instead of int
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 419: migration: New postcopy state, and some cleanups [rhel-9.5.z]
+RH-Jira: RHEL-63874
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/11] 47e144753584750732f716b13c172cd67806cb17
+
+QEMU uses "int" in most cases even if it stores MigrationStatus.  I don't
+know why, so let's try to do that right and see what blows up..
+
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+
+(cherry picked from commit a5c24e13e9f176901058b460e61425756322f3e8)
+
+JIRA: https://issues.redhat.com/browse/RHEL-63874
+Y-JIRA: https://issues.redhat.com/browse/RHEL-38485
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ migration/migration.c | 24 +++++++-----------------
+ migration/migration.h |  9 +++++----
+ 2 files changed, 12 insertions(+), 21 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 4e9d3522be..b6cf04e043 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -390,7 +390,7 @@ void migration_incoming_state_destroy(void)
+     yank_unregister_instance(MIGRATION_YANK_INSTANCE);
+ }
+ 
+-static void migrate_generate_event(int new_state)
++static void migrate_generate_event(MigrationStatus new_state)
+ {
+     if (migrate_events()) {
+         qapi_event_send_migration(new_state);
+@@ -1294,8 +1294,6 @@ static void fill_destination_migration_info(MigrationInfo *info)
+     }
+ 
+     switch (mis->state) {
+-    case MIGRATION_STATUS_NONE:
+-        return;
+     case MIGRATION_STATUS_SETUP:
+     case MIGRATION_STATUS_CANCELLING:
+     case MIGRATION_STATUS_CANCELLED:
+@@ -1311,6 +1309,8 @@ static void fill_destination_migration_info(MigrationInfo *info)
+         info->has_status = true;
+         fill_destination_postcopy_migration_info(info);
+         break;
++    default:
++        return;
+     }
+     info->status = mis->state;
+ }
+@@ -1349,7 +1349,8 @@ void qmp_migrate_start_postcopy(Error **errp)
+ 
+ /* shared migration helpers */
+ 
+-void migrate_set_state(int *state, int old_state, int new_state)
++void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
++                       MigrationStatus new_state)
+ {
+     assert(new_state < MIGRATION_STATUS__MAX);
+     if (qatomic_cmpxchg(state, old_state, new_state) == old_state) {
+@@ -1555,7 +1556,7 @@ bool migration_in_postcopy(void)
+     }
+ }
+ 
+-bool migration_postcopy_is_alive(int state)
++bool migration_postcopy_is_alive(MigrationStatus state)
+ {
+     switch (state) {
+     case MIGRATION_STATUS_POSTCOPY_ACTIVE:
+@@ -1600,20 +1601,9 @@ bool migration_is_idle(void)
+     case MIGRATION_STATUS_COMPLETED:
+     case MIGRATION_STATUS_FAILED:
+         return true;
+-    case MIGRATION_STATUS_SETUP:
+-    case MIGRATION_STATUS_CANCELLING:
+-    case MIGRATION_STATUS_ACTIVE:
+-    case MIGRATION_STATUS_POSTCOPY_ACTIVE:
+-    case MIGRATION_STATUS_COLO:
+-    case MIGRATION_STATUS_PRE_SWITCHOVER:
+-    case MIGRATION_STATUS_DEVICE:
+-    case MIGRATION_STATUS_WAIT_UNPLUG:
++    default:
+         return false;
+-    case MIGRATION_STATUS__MAX:
+-        g_assert_not_reached();
+     }
+-
+-    return false;
+ }
+ 
+ bool migration_is_active(void)
+diff --git a/migration/migration.h b/migration/migration.h
+index 8045e39c26..bc9c802595 100644
+--- a/migration/migration.h
++++ b/migration/migration.h
+@@ -160,7 +160,7 @@ struct MigrationIncomingState {
+     /* PostCopyFD's for external userfaultfds & handlers of shared memory */
+     GArray   *postcopy_remote_fds;
+ 
+-    int state;
++    MigrationStatus state;
+ 
+     /*
+      * The incoming migration coroutine, non-NULL during qemu_loadvm_state().
+@@ -298,7 +298,7 @@ struct MigrationState {
+     /* params from 'migrate-set-parameters' */
+     MigrationParameters parameters;
+ 
+-    int state;
++    MigrationStatus state;
+ 
+     /* State related to return path */
+     struct {
+@@ -467,7 +467,8 @@ struct MigrationState {
+     bool rdma_migration;
+ };
+ 
+-void migrate_set_state(int *state, int old_state, int new_state);
++void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
++                       MigrationStatus new_state);
+ 
+ void migration_fd_process_incoming(QEMUFile *f);
+ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp);
+@@ -487,7 +488,7 @@ int migrate_init(MigrationState *s, Error **errp);
+ bool migration_is_blocked(Error **errp);
+ /* True if outgoing migration has entered postcopy phase */
+ bool migration_in_postcopy(void);
+-bool migration_postcopy_is_alive(int state);
++bool migration_postcopy_is_alive(MigrationStatus state);
+ MigrationState *migrate_get_current(void);
+ bool migration_has_failed(MigrationState *);
+ bool migrate_mode_is_cpr(MigrationState *);
+-- 
+2.39.3
+

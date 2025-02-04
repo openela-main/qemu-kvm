@@ -1,0 +1,89 @@
+From d913ecc85156d25f2df5317615eef7144aa26af5 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 19 Jun 2024 18:30:39 -0400
+Subject: [PATCH 04/11] migration: Cleanup incoming migration setup state
+ change
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 419: migration: New postcopy state, and some cleanups [rhel-9.5.z]
+RH-Jira: RHEL-63874
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/11] d485ab0a9d091ce98f1487fd8a3882f8b0130747
+
+Destination QEMU can setup incoming ports for two purposes: either a fresh
+new incoming migration, in which QEMU will switch to SETUP for channel
+establishment, or a paused postcopy migration, in which QEMU will stay in
+POSTCOPY_PAUSED until kicking off the RECOVER phase.
+
+Now the state machine worked on dest node for the latter, only because
+migrate_set_state() implicitly will become a noop if the current state
+check failed.  It wasn't clear at all.
+
+Clean it up by providing a helper migration_incoming_state_setup() doing
+proper checks over current status.  Postcopy-paused will be explicitly
+checked now, and then we can bail out for unknown states.
+
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+
+(cherry picked from commit 4dd5f7b8d568116b3ce594b0055a47c6db50f49c)
+
+JIRA: https://issues.redhat.com/browse/RHEL-63874
+Y-JIRA: https://issues.redhat.com/browse/RHEL-38485
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ migration/migration.c | 28 ++++++++++++++++++++++++++--
+ 1 file changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index b6cf04e043..21f20a8e1c 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -595,6 +595,29 @@ bool migrate_uri_parse(const char *uri, MigrationChannel **channel,
+     return true;
+ }
+ 
++static bool
++migration_incoming_state_setup(MigrationIncomingState *mis, Error **errp)
++{
++    MigrationStatus current = mis->state;
++
++    if (current == MIGRATION_STATUS_POSTCOPY_PAUSED) {
++        /*
++         * Incoming postcopy migration will stay in PAUSED state even if
++         * reconnection happened.
++         */
++        return true;
++    }
++
++    if (current != MIGRATION_STATUS_NONE) {
++        error_setg(errp, "Illegal migration incoming state: %s",
++                   MigrationStatus_str(current));
++        return false;
++    }
++
++    migrate_set_state(&mis->state, current, MIGRATION_STATUS_SETUP);
++    return true;
++}
++
+ static void qemu_start_incoming_migration(const char *uri, bool has_channels,
+                                           MigrationChannelList *channels,
+                                           Error **errp)
+@@ -633,8 +656,9 @@ static void qemu_start_incoming_migration(const char *uri, bool has_channels,
+         return;
+     }
+ 
+-    migrate_set_state(&mis->state, MIGRATION_STATUS_NONE,
+-                      MIGRATION_STATUS_SETUP);
++    if (!migration_incoming_state_setup(mis, errp)) {
++        return;
++    }
+ 
+     if (addr->transport == MIGRATION_ADDRESS_TYPE_SOCKET) {
+         SocketAddress *saddr = &addr->u.socket;
+-- 
+2.39.3
+
