@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.0.0
-Release: 10%{?rcrel}%{?dist}%{?cc_suffix}.2
+Release: 10%{?rcrel}%{?dist}%{?cc_suffix}.3
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -456,6 +456,8 @@ Patch148: kvm-tests-migration-tests-Verify-postcopy-recover-setup-.patch
 Patch149: kvm-tests-migration-tests-Cover-postcopy-failure-on-reco.patch
 # For RHEL-73006 - qemu-kvm: vhost: reports error while updating IOTLB entries [rhel-9.5.z]
 Patch150: kvm-vhost-fail-device-start-if-iotlb-update-fails.patch
+# For RHEL-84866 - Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: waitpkg [rhel-9.5.z]
+Patch151: kvm-target-i386-fix-feature-dependency-for-WAITPKG.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1522,6 +1524,11 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Mar 31 2025 Jon Maloy <jmaloy@redhat.com> - 9.0.0-10.el9_5.3
+- kvm-target-i386-fix-feature-dependency-for-WAITPKG.patch [RHEL-84866]
+- Resolves: RHEL-84866
+  (Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: waitpkg [rhel-9.5.z])
+
 * Wed Jan 15 2025 Miroslav Rezanina <mrezanin@redhat.com> - 9.0.0-10.el9_5.2
 - kvm-vhost-fail-device-start-if-iotlb-update-fails.patch [RHEL-73006]
 - Resolves: RHEL-73006
