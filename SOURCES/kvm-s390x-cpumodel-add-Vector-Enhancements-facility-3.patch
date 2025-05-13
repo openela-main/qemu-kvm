@@ -1,0 +1,56 @@
+From 8f781722a638bce5472ddc47af7b85da28fc4c9d Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:44 +0100
+Subject: [PATCH 09/19] s390x/cpumodel: add Vector Enhancements facility 3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [9/16] 5dd3aa305276bb7b75feb570d669bd0a9ab224dd (thuth/qemu-kvm-cs9)
+
+The Vector Enhancements facility 3 introduces new instructions and
+extends support for doubleword/quadword elements.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+Message-ID: <20241206122751.189721-9-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 0b2c66a3fa5ccecf26ea011d97d65a986b42b4d8)
+---
+ target/s390x/cpu_features_def.h.inc | 1 +
+ target/s390x/cpu_models.c           | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index 09872ab3d8..0b7be0e6e9 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -116,6 +116,7 @@ DEF_FEAT(BEAR_ENH, "beareh", STFL, 193, "BEAR-enhancement facility")
+ DEF_FEAT(RDP, "rdp", STFL, 194, "Reset-DAT-protection facility")
+ DEF_FEAT(PAI, "pai", STFL, 196, "Processor-Activity-Instrumentation facility")
+ DEF_FEAT(PAIE, "paie", STFL, 197, "Processor-Activity-Instrumentation extension-1")
++DEF_FEAT(VECTOR_ENH3, "vxeh3", STFL, 198, "Vector Enhancements facility 3")
+ DEF_FEAT(CCF_BASE, "ccf-base", STFL, 201, "Concurrent-Functions facility")
+ 
+ /* Features exposed via SCLP SCCB Byte 80 - 98  (bit numbers relative to byte-80) */
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 1a7627b010..05a2d15a70 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -461,6 +461,8 @@ static void check_consistency(const S390CPUModel *model)
+         { S390_FEAT_VECTOR_PACKED_DECIMAL_ENH, S390_FEAT_VECTOR_PACKED_DECIMAL },
+         { S390_FEAT_VECTOR_PACKED_DECIMAL_ENH2, S390_FEAT_VECTOR_PACKED_DECIMAL_ENH },
+         { S390_FEAT_VECTOR_ENH, S390_FEAT_VECTOR },
++        { S390_FEAT_VECTOR_ENH2, S390_FEAT_VECTOR_ENH },
++        { S390_FEAT_VECTOR_ENH3, S390_FEAT_VECTOR_ENH2 },
+         { S390_FEAT_INSTRUCTION_EXEC_PROT, S390_FEAT_SIDE_EFFECT_ACCESS_ESOP2 },
+         { S390_FEAT_SIDE_EFFECT_ACCESS_ESOP2, S390_FEAT_ESOP },
+         { S390_FEAT_CMM_NT, S390_FEAT_CMM },
+-- 
+2.39.3
+

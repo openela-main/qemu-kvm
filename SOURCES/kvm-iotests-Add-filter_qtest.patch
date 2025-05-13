@@ -1,0 +1,113 @@
+From 1597f6bec5764608fead44fccdf2822846a506ef Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 4 Feb 2025 22:14:05 +0100
+Subject: [PATCH 21/23] iotests: Add filter_qtest()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 339: QMP command for block device reactivation after migration
+RH-Jira: RHEL-54296 RHEL-78397
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [20/22] 7b62d4e707582e94a2ca92f27fb217a721cdad0c (kmwolf/centos-qemu-kvm)
+
+The open-coded form of this filter has been copied into enough tests
+that it's better to move it into iotests.py.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Acked-by: Fabiano Rosas <farosas@suse.de>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20250204211407.381505-15-kwolf@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ed26db83673f4a190332d2a378e2f6e342b8904d)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/041                        | 4 +---
+ tests/qemu-iotests/165                        | 4 +---
+ tests/qemu-iotests/iotests.py                 | 4 ++++
+ tests/qemu-iotests/tests/copy-before-write    | 3 +--
+ tests/qemu-iotests/tests/migrate-bitmaps-test | 7 +++----
+ 5 files changed, 10 insertions(+), 12 deletions(-)
+
+diff --git a/tests/qemu-iotests/041 b/tests/qemu-iotests/041
+index 98d17b1388..8452845f44 100755
+--- a/tests/qemu-iotests/041
++++ b/tests/qemu-iotests/041
+@@ -1100,10 +1100,8 @@ class TestRepairQuorum(iotests.QMPTestCase):
+ 
+         # Check the full error message now
+         self.vm.shutdown()
+-        log = self.vm.get_log()
+-        log = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', log)
++        log = iotests.filter_qtest(self.vm.get_log())
+         log = re.sub(r'^Formatting.*\n', '', log)
+-        log = re.sub(r'\n\[I \+\d+\.\d+\] CLOSED\n?$', '', log)
+         log = re.sub(r'^%s: ' % os.path.basename(iotests.qemu_prog), '', log)
+ 
+         self.assertEqual(log,
+diff --git a/tests/qemu-iotests/165 b/tests/qemu-iotests/165
+index b24907a62f..b3b1709d71 100755
+--- a/tests/qemu-iotests/165
++++ b/tests/qemu-iotests/165
+@@ -82,9 +82,7 @@ class TestPersistentDirtyBitmap(iotests.QMPTestCase):
+         self.vm.shutdown()
+ 
+         #catch 'Persistent bitmaps are lost' possible error
+-        log = self.vm.get_log()
+-        log = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', log)
+-        log = re.sub(r'\[I \+\d+\.\d+\] CLOSED\n?$', '', log)
++        log = iotests.filter_qtest(self.vm.get_log())
+         if log:
+             print(log)
+ 
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index ea48af4a7b..1a42aa1416 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -701,6 +701,10 @@ def _filter(_key, value):
+ def filter_nbd_exports(output: str) -> str:
+     return re.sub(r'((min|opt|max) block): [0-9]+', r'\1: XXX', output)
+ 
++def filter_qtest(output: str) -> str:
++    output = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', output)
++    output = re.sub(r'\n?\[I \+\d+\.\d+\] CLOSED\n?$', '', output)
++    return output
+ 
+ Msg = TypeVar('Msg', Dict[str, Any], List[Any], str)
+ 
+diff --git a/tests/qemu-iotests/tests/copy-before-write b/tests/qemu-iotests/tests/copy-before-write
+index d33bea577d..498c558008 100755
+--- a/tests/qemu-iotests/tests/copy-before-write
++++ b/tests/qemu-iotests/tests/copy-before-write
+@@ -95,8 +95,7 @@ class TestCbwError(iotests.QMPTestCase):
+ 
+         self.vm.shutdown()
+         log = self.vm.get_log()
+-        log = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', log)
+-        log = re.sub(r'\[I \+\d+\.\d+\] CLOSED\n?$', '', log)
++        log = iotests.filter_qtest(log)
+         log = iotests.filter_qemu_io(log)
+         return log
+ 
+diff --git a/tests/qemu-iotests/tests/migrate-bitmaps-test b/tests/qemu-iotests/tests/migrate-bitmaps-test
+index f98e721e97..8fb4099201 100755
+--- a/tests/qemu-iotests/tests/migrate-bitmaps-test
++++ b/tests/qemu-iotests/tests/migrate-bitmaps-test
+@@ -122,11 +122,10 @@ class TestDirtyBitmapMigration(iotests.QMPTestCase):
+ 
+         # catch 'Could not reopen qcow2 layer: Bitmap already exists'
+         # possible error
+-        log = self.vm_a.get_log()
+-        log = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', log)
+-        log = re.sub(r'^(wrote .* bytes at offset .*\n.*KiB.*ops.*sec.*\n){3}',
++        log = iotests.filter_qtest(self.vm_a.get_log())
++        log = re.sub(r'^(wrote .* bytes at offset .*\n'
++                     r'.*KiB.*ops.*sec.*\n?){3}',
+                      '', log)
+-        log = re.sub(r'\[I \+\d+\.\d+\] CLOSED\n?$', '', log)
+         self.assertEqual(log, '')
+ 
+         # test that bitmap is still persistent
+-- 
+2.48.1
+

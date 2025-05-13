@@ -1,4 +1,4 @@
-From ea7dff3dbf979d7d8a85a16cf5187235143e1048 Mon Sep 17 00:00:00 2001
+From cbd36e2ba7f3e96ce441c7cfbf92017a7ba3bfe8 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,7 +13,7 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-This rebase is based on qemu-kvm-8.2.0-11.el9
+This rebase is based on qemu-kvm-9.0.0-10.el9
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 --
@@ -88,6 +88,10 @@ Rebase notes (9.0.0):
 - Remove hppa-firmware64.img
 - Package stp files for utilities
 - Download subprojects on local build
+
+Rebase notes (9.1.0 rc0):
+- Explicit BuildRequires for python3-tomli
+- Removed --disable-avx512f configure option
 
 Merged patches (6.0.0):
  - 605758c902 Limit build on Power to qemu-img and qemu-ga only
@@ -209,18 +213,18 @@ Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 5170 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 5351 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
  .distro/scripts/frh.py                  |    4 +-
- .distro/scripts/process-patches.sh      |    4 +
+ .distro/scripts/process-patches.sh      |    6 +-
  .gitignore                              |    1 +
  README.systemtap                        |   43 +
  scripts/qemu-guest-agent/fsfreeze-hook  |    2 +-
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 16 files changed, 5430 insertions(+), 6 deletions(-)
+ 16 files changed, 5612 insertions(+), 7 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests

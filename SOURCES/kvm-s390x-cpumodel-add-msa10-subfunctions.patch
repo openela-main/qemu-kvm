@@ -1,0 +1,133 @@
+From c479543e70213d3638e78122a3ff32a7fbf2cfb5 Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:37 +0100
+Subject: [PATCH 02/19] s390x/cpumodel: add msa10 subfunctions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [2/16] 9b27810af579a1814c195a8c9453d4a95f3b0654 (thuth/qemu-kvm-cs9)
+
+MSA10 introduces new AES XTS subfunctions.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+Message-ID: <20241206122751.189721-2-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 1029cd5b9827ba6aa7f5e02eed1928a928e2fa5e)
+---
+ target/s390x/cpu_features.c         |  2 ++
+ target/s390x/cpu_features_def.h.inc |  6 ++++++
+ target/s390x/cpu_models.c           |  4 ++++
+ target/s390x/gen-features.c         | 20 ++++++++++++++++++++
+ 4 files changed, 32 insertions(+)
+
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index cb4e2b8920..a3c239595a 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -252,6 +252,8 @@ static S390FeatGroupDef s390_feature_groups[] = {
+     FEAT_GROUP_INIT("msa8", MSA_EXT_8, "Message-security-assist-extension 8 facility"),
+     FEAT_GROUP_INIT("msa9", MSA_EXT_9, "Message-security-assist-extension 9 facility"),
+     FEAT_GROUP_INIT("msa9_pckmo", MSA_EXT_9_PCKMO, "Message-security-assist-extension 9 PCKMO subfunctions"),
++    FEAT_GROUP_INIT("msa10", MSA_EXT_10, "Message-security-assist-extension 10 facility"),
++    FEAT_GROUP_INIT("msa10_pckmo", MSA_EXT_10_PCKMO, "Message-security-assist-extension 10 PCKMO subfunctions"),
+     FEAT_GROUP_INIT("mepochptff", MULTIPLE_EPOCH_PTFF, "PTFF enhancements introduced with Multiple-epoch facility"),
+     FEAT_GROUP_INIT("esort", ENH_SORT, "Enhanced-sort facility"),
+     FEAT_GROUP_INIT("deflate", DEFLATE_CONVERSION, "Deflate-conversion facility"),
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index c53ac13352..104d186c3f 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -233,6 +233,10 @@ DEF_FEAT(KM_XTS_AES_128, "km-xts-aes-128", KM, 50, "KM XTS-AES-128")
+ DEF_FEAT(KM_XTS_AES_256, "km-xts-aes-256", KM, 52, "KM XTS-AES-256")
+ DEF_FEAT(KM_XTS_EAES_128, "km-xts-eaes-128", KM, 58, "KM XTS-Encrypted-AES-128")
+ DEF_FEAT(KM_XTS_EAES_256, "km-xts-eaes-256", KM, 60, "KM XTS-Encrypted-AES-256")
++DEF_FEAT(KM_FULL_XTS_AES_128, "km-full-xts-aes-128", KM, 82, "KM Full-XTS-AES-128")
++DEF_FEAT(KM_FULL_XTS_AES_256, "km-full-xts-aes-256", KM, 84, "KM Full-XTS-AES-256")
++DEF_FEAT(KM_FULL_XTS_EAES_128, "km-full-xts-eaes-128", KM, 90, "KM Full-XTS-Encrypted-AES-128")
++DEF_FEAT(KM_FULL_XTS_EAES_256, "km-full-xts-eaes-256", KM, 92, "KM Full-XTS-Encrypted-AES-256")
+ 
+ /* Features exposed via the KIMD instruction. */
+ DEF_FEAT(KIMD_SHA_1, "kimd-sha-1", KIMD, 1, "KIMD SHA-1")
+@@ -264,6 +268,8 @@ DEF_FEAT(PCKMO_ETDEA_256, "pckmo-etdea-192", PCKMO, 3, "PCKMO Encrypted-TDEA-192
+ DEF_FEAT(PCKMO_AES_128, "pckmo-aes-128", PCKMO, 18, "PCKMO Encrypted-AES-128-Key")
+ DEF_FEAT(PCKMO_AES_192, "pckmo-aes-192", PCKMO, 19, "PCKMO Encrypted-AES-192-Key")
+ DEF_FEAT(PCKMO_AES_256, "pckmo-aes-256", PCKMO, 20, "PCKMO Encrypted-AES-256-Key")
++DEF_FEAT(PCKMO_AES_XTS_128_DK, "pckmo-aes-xts-128-dk", PCKMO, 21, "PCKMO Encrypt-AES-XTS-128-Double-Key")
++DEF_FEAT(PCKMO_AES_XTS_256_DK, "pckmo-aes-xts-256-dk", PCKMO, 22, "PCKMO Encrypt-AES-XTS-256-Double-Key")
+ DEF_FEAT(PCKMO_ECC_P256, "pckmo-ecc-p256", PCKMO, 32, "PCKMO Encrypt-ECC-P256-Key")
+ DEF_FEAT(PCKMO_ECC_P384, "pckmo-ecc-p384", PCKMO, 33, "PCKMO Encrypt-ECC-P384-Key")
+ DEF_FEAT(PCKMO_ECC_P521, "pckmo-ecc-p521", PCKMO, 34, "PCKMO Encrypt-ECC-P521-Key")
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 9ee30310c6..313640ca12 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -480,6 +480,10 @@ static void check_consistency(const S390CPUModel *model)
+         { S390_FEAT_KLMD_SHA3_512, S390_FEAT_MSA },
+         { S390_FEAT_KLMD_SHAKE_128, S390_FEAT_MSA },
+         { S390_FEAT_KLMD_SHAKE_256, S390_FEAT_MSA },
++        { S390_FEAT_KM_FULL_XTS_AES_128, S390_FEAT_MSA_EXT_4 },
++        { S390_FEAT_KM_FULL_XTS_AES_256, S390_FEAT_MSA_EXT_4 },
++        { S390_FEAT_KM_FULL_XTS_EAES_128, S390_FEAT_MSA_EXT_4 },
++        { S390_FEAT_KM_FULL_XTS_EAES_256, S390_FEAT_MSA_EXT_4 },
+         { S390_FEAT_PRNO_TRNG_QRTCR, S390_FEAT_MSA_EXT_5 },
+         { S390_FEAT_PRNO_TRNG, S390_FEAT_MSA_EXT_5 },
+         { S390_FEAT_SIE_KSS, S390_FEAT_SIE_F2 },
+diff --git a/target/s390x/gen-features.c b/target/s390x/gen-features.c
+index 2b2bfc3736..06c3bf64f3 100644
+--- a/target/s390x/gen-features.c
++++ b/target/s390x/gen-features.c
+@@ -246,6 +246,16 @@
+     S390_FEAT_PCKMO_ECC_ED25519, \
+     S390_FEAT_PCKMO_ECC_ED448
+ 
++#define S390_FEAT_GROUP_MSA_EXT_10 \
++    S390_FEAT_KM_FULL_XTS_AES_128, \
++    S390_FEAT_KM_FULL_XTS_AES_256, \
++    S390_FEAT_KM_FULL_XTS_EAES_128, \
++    S390_FEAT_KM_FULL_XTS_EAES_256
++
++#define S390_FEAT_GROUP_MSA_EXT_10_PCKMO \
++    S390_FEAT_PCKMO_AES_XTS_128_DK, \
++    S390_FEAT_PCKMO_AES_XTS_256_DK
++
+ #define S390_FEAT_GROUP_ENH_SORT \
+     S390_FEAT_ESORT_BASE, \
+     S390_FEAT_SORTL_SFLR, \
+@@ -307,10 +317,18 @@ static uint16_t group_MSA_EXT_9[] = {
+     S390_FEAT_GROUP_MSA_EXT_9,
+ };
+ 
++static uint16_t group_MSA_EXT_10[] = {
++    S390_FEAT_GROUP_MSA_EXT_10,
++};
++
+ static uint16_t group_MSA_EXT_9_PCKMO[] = {
+     S390_FEAT_GROUP_MSA_EXT_9_PCKMO,
+ };
+ 
++static uint16_t group_MSA_EXT_10_PCKMO[] = {
++    S390_FEAT_GROUP_MSA_EXT_10_PCKMO,
++};
++
+ static uint16_t group_ENH_SORT[] = {
+     S390_FEAT_GROUP_ENH_SORT,
+ };
+@@ -858,6 +876,8 @@ static FeatGroupDefSpec FeatGroupDef[] = {
+     FEAT_GROUP_INITIALIZER(MSA_EXT_8),
+     FEAT_GROUP_INITIALIZER(MSA_EXT_9),
+     FEAT_GROUP_INITIALIZER(MSA_EXT_9_PCKMO),
++    FEAT_GROUP_INITIALIZER(MSA_EXT_10),
++    FEAT_GROUP_INITIALIZER(MSA_EXT_10_PCKMO),
+     FEAT_GROUP_INITIALIZER(MULTIPLE_EPOCH_PTFF),
+     FEAT_GROUP_INITIALIZER(ENH_SORT),
+     FEAT_GROUP_INITIALIZER(DEFLATE_CONVERSION),
+-- 
+2.39.3
+

@@ -1,0 +1,56 @@
+From bc3752c831177ce5a57121b6a7f6753e024b211c Mon Sep 17 00:00:00 2001
+From: Tao Su <tao1.su@linux.intel.com>
+Date: Thu, 31 Oct 2024 16:52:32 +0800
+Subject: [PATCH 07/11] target/i386: Add AVX512 state when AVX10 is supported
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 281: Add support for the AVX10.1, SHA512, SM3 and SM4 instruction sets.
+RH-Jira: RHEL-30316 RHEL-45111
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/9] 6c1875f13c0d3224e8afe7d03ef3681285f85c98 (bonzini/rhel-qemu-kvm)
+
+AVX10 state enumeration in CPUID leaf D and enabling in XCR0 register
+are identical to AVX512 state regardless of the supported vector lengths.
+
+Given that some E-cores will support AVX10 but not support AVX512, add
+AVX512 state components to guest when AVX10 is enabled.
+
+Based on a patch by Tao Su <tao1.su@linux.intel.com>
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Tested-by: Xuelian Guo <xuelian.guo@intel.com>
+Signed-off-by: Tao Su <tao1.su@linux.intel.com>
+Link: https://lore.kernel.org/r/20241031085233.425388-8-tao1.su@linux.intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 0d7475be3b402c25d74c5a4573cbeb733c8f3559)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 71d1f362e2..5042cbaa0e 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -7142,7 +7142,15 @@ static bool cpuid_has_xsave_feature(CPUX86State *env, const ExtSaveArea *esa)
+         return false;
+     }
+ 
+-    return (env->features[esa->feature] & esa->bits);
++    if (env->features[esa->feature] & esa->bits) {
++        return true;
++    }
++    if (esa->feature == FEAT_7_0_EBX && esa->bits == CPUID_7_0_EBX_AVX512F
++        && (env->features[FEAT_7_1_EDX] & CPUID_7_1_EDX_AVX10)) {
++        return true;
++    }
++
++    return false;
+ }
+ 
+ static void x86_cpu_reset_hold(Object *obj, ResetType type)
+-- 
+2.48.0
+

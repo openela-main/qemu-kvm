@@ -1,0 +1,65 @@
+From 621bad5cbfd7585f7bcef8bb4fcb17ab7ba52baa Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 27 Aug 2024 15:27:51 -0400
+Subject: [PATCH 4/4] vl: use qmp_device_add() in qemu_create_cli_devices()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 316: qdev-monitor: avoid QemuOpts in QMP device_add
+RH-Jira: RHEL-39948
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [4/4] e653aca40742b262e36e4d8dc554a54235e40e99 (stefanha/centos-stream-qemu-kvm)
+
+qemu_create_cli_devices() should use qmp_device_add() to match the
+behavior of the QMP monitor. A comment explained that libvirt changes
+implementing strict CLI syntax were needed.
+
+Peter Krempa <pkrempa@redhat.com> has confirmed that modern libvirt uses
+the same JSON for -device (CLI) and device_add (QMP). Go ahead and use
+qmp_device_add().
+
+Cc: Peter Krempa <pkrempa@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240827192751.948633-3-stefanha@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 11bf1d6aa06138e93b274e942d6992af63ffc510)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ system/vl.c | 14 ++++----------
+ 1 file changed, 4 insertions(+), 10 deletions(-)
+
+diff --git a/system/vl.c b/system/vl.c
+index 5359231bf5..900d471f5e 100644
+--- a/system/vl.c
++++ b/system/vl.c
+@@ -2661,17 +2661,11 @@ static void qemu_create_cli_devices(void)
+     qemu_opts_foreach(qemu_find_opts("device"),
+                       device_init_func, NULL, &error_fatal);
+     QTAILQ_FOREACH(opt, &device_opts, next) {
+-        DeviceState *dev;
++        QObject *ret_data = NULL;
++
+         loc_push_restore(&opt->loc);
+-        /*
+-         * TODO Eventually we should call qmp_device_add() here to make sure it
+-         * behaves the same, but QMP still has to accept incorrectly typed
+-         * options until libvirt is fixed and we want to be strict on the CLI
+-         * from the start, so call qdev_device_add_from_qdict() directly for
+-         * now.
+-         */
+-        dev = qdev_device_add_from_qdict(opt->opts, true, &error_fatal);
+-        object_unref(OBJECT(dev));
++        qmp_device_add(opt->opts, &ret_data, &error_fatal);
++        assert(ret_data == NULL); /* error_fatal aborts */
+         loc_pop(&opt->loc);
+     }
+     rom_reset_order_override();
+-- 
+2.39.3
+

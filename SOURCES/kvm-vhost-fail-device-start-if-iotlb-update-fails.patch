@@ -1,13 +1,13 @@
-From 2052d94ffccde5d6eb5af8cca77aaf8bba650c68 Mon Sep 17 00:00:00 2001
+From f9b6f2440117eaa4c57a3b924ba935580ef2ecf1 Mon Sep 17 00:00:00 2001
 From: Prasad Pandit <pjp@fedoraproject.org>
 Date: Thu, 7 Nov 2024 17:02:47 +0530
-Subject: [PATCH] vhost: fail device start if iotlb update fails
+Subject: [PATCH 18/19] vhost: fail device start if iotlb update fails
 
 RH-Author: Prasad Pandit <None>
-RH-MergeRequest: 426: vhost: fail device start if iotlb update fails
-RH-Jira: RHEL-73006
-RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
-RH-Commit: [1/1] a96478385297d0559dd7dcaebd1834141bb5fb75
+RH-MergeRequest: 309: vhost: fail device start if iotlb update fails
+RH-Jira: RHEL-27832
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] c10d1b2d3414285c2feec8760eb8e63e186fd564 (pjp/cs-qemu-kvm)
 
 While starting a vhost device, updating iotlb entries
 via 'vhost_device_iotlb_miss' may return an error.
@@ -17,7 +17,7 @@ via 'vhost_device_iotlb_miss' may return an error.
 
 Fail device start when such an error occurs.
 
-Jira: https://issues.redhat.com/browse/RHEL-73006
+Jira: https://issues.redhat.com/browse/RHEL-27832
 Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
 Message-Id: <20241107113247.46532-1-ppandit@redhat.com>
 Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
@@ -30,10 +30,10 @@ Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
  1 file changed, 12 insertions(+), 1 deletion(-)
 
 diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
-index f50180e60e..da0f10c4dc 100644
+index 06fc71746e..e25fdce3dd 100644
 --- a/hw/virtio/vhost.c
 +++ b/hw/virtio/vhost.c
-@@ -2074,11 +2074,22 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev, bool vrings)
+@@ -2151,11 +2151,22 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev, bool vrings)
           * vhost-kernel code requires for this.*/
          for (i = 0; i < hdev->nvqs; ++i) {
              struct vhost_virtqueue *vq = hdev->vqs + i;

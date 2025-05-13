@@ -1,0 +1,56 @@
+From f6cefb05d503f1082a483bd57b10f764f160ac71 Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:47 +0100
+Subject: [PATCH 12/19] s390x/cpumodel: add
+ Ineffective-nonconstrained-transaction facility
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [12/16] 0b6f6157f96303f11e65db8a11d7ca1fbdeef238 (thuth/qemu-kvm-cs9)
+
+This facility indicates reduced support for noncontrained
+transactional-execution.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+Message-ID: <20241206122751.189721-12-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 12417b713c1fffc26c680e99e3429f055eb9af2e)
+---
+ target/s390x/cpu_features_def.h.inc | 1 +
+ target/s390x/cpu_models.c           | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index df154d145f..2c1d1cd98a 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -112,6 +112,7 @@ DEF_FEAT(MSA_EXT_9, "msa9-base", STFL, 155, "Message-security-assist-extension-9
+ DEF_FEAT(ETOKEN, "etoken", STFL, 156, "Etoken facility")
+ DEF_FEAT(UNPACK, "unpack", STFL, 161, "Unpack facility")
+ DEF_FEAT(NNPA, "nnpa", STFL, 165, "NNPA facility")
++DEF_FEAT(INEFF_NC_TX, "ineff_nc_tx", STFL, 170, "Ineffective-nonconstrained-transaction facility")
+ DEF_FEAT(VECTOR_PACKED_DECIMAL_ENH2, "vxpdeh2", STFL, 192, "Vector-Packed-Decimal-Enhancement facility 2")
+ DEF_FEAT(BEAR_ENH, "beareh", STFL, 193, "BEAR-enhancement facility")
+ DEF_FEAT(RDP, "rdp", STFL, 194, "Reset-DAT-protection facility")
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 262e3daf3e..32b5bb7509 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -515,6 +515,7 @@ static void check_consistency(const S390CPUModel *model)
+         { S390_FEAT_PFCR_CSDSTG, S390_FEAT_CCF_BASE },
+         { S390_FEAT_PFCR_CSTST, S390_FEAT_CCF_BASE },
+         { S390_FEAT_PFCR_CSTSTG, S390_FEAT_CCF_BASE },
++        { S390_FEAT_INEFF_NC_TX, S390_FEAT_TRANSACTIONAL_EXE },
+     };
+     int i;
+ 
+-- 
+2.39.3
+

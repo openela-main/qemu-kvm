@@ -1,0 +1,80 @@
+From 04cfa8cf613e924c40c457d8373763a650568813 Mon Sep 17 00:00:00 2001
+From: Dehan Meng <demeng@redhat.com>
+Date: Wed, 25 Dec 2024 16:37:44 +0800
+Subject: [PATCH 3/4] qemu-ga: Optimize freeze-hook script logic of logging
+ error
+
+RH-Author: 6-dehan <demeng@redhat.com>
+RH-MergeRequest: 323: qemu-ga: Optimize freeze-hook script logic of logging error
+RH-Jira: RHEL-52278
+RH-Acked-by: Konstantin Kostiuk <None>
+RH-Acked-by: Yan Vugenfirer <None>
+RH-Commit: [1/1] 8ec4bf5d91ccd8f4b8a14c9dccfdc7a30db80834 (6-dehan/centos-qemu-kvm)
+
+Make sure the error log of fsfreeze hooks
+when freeze/thaw/snapshot could be logged
+to system logs if the default logfile of
+qga can't be written or other situations
+
+Reviewed-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+Reviewed-by: Yan Vugenfirer <yvugenfi@redhat.com>
+Signed-off-by: Dehan Meng <demeng@redhat.com>
+---
+ scripts/qemu-guest-agent/fsfreeze-hook | 36 +++++++++++++++++++++++---
+ 1 file changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/scripts/qemu-guest-agent/fsfreeze-hook b/scripts/qemu-guest-agent/fsfreeze-hook
+index 70536ba3e3..d5d8d4daf8 100755
+--- a/scripts/qemu-guest-agent/fsfreeze-hook
++++ b/scripts/qemu-guest-agent/fsfreeze-hook
+@@ -19,15 +19,43 @@ is_ignored_file() {
+     return 1
+ }
+ 
++USE_SYSLOG=0
++# if log file is not writable, fallback to syslog
++[ ! -w "$LOGFILE" ] && USE_SYSLOG=1
++# try to update log file and fallback to syslog if it fails
++touch "$LOGFILE" &>/dev/null || USE_SYSLOG=1
++
++# Ensure the log file is writable, fallback to syslog if not
++log_message() {
++    local message="$1"
++    if [ "$USE_SYSLOG" -eq 0 ]; then
++        printf "%s: %s\n" "$(date)" "$message" >>"$LOGFILE"
++    else
++        logger -t qemu-ga-freeze-hook "$message"
++    fi
++}
++
+ # Iterate executables in directory "fsfreeze-hook.d" with the specified args
+ [ ! -d "$FSFREEZE_D" ] && exit 0
++
+ for file in "$FSFREEZE_D"/* ; do
+     is_ignored_file "$file" && continue
+     [ -x "$file" ] || continue
+-    printf "$(date): execute $file $@\n" >>$LOGFILE
+-    "$file" "$@" >>$LOGFILE 2>&1
+-    STATUS=$?
+-    printf "$(date): $file finished with status=$STATUS\n" >>$LOGFILE
++
++    log_message "Executing $file $@"
++    if [ "$USE_SYSLOG" -eq 0 ]; then
++        "$file" "$@" >>"$LOGFILE" 2>&1
++        STATUS=$?
++    else
++        "$file" "$@" 2>&1 | logger -t qemu-ga-freeze-hook
++        STATUS=${PIPESTATUS[0]}
++    fi
++
++    if [ $STATUS -ne 0 ]; then
++        log_message "Error: $file finished with status=$STATUS"
++    else
++        log_message "$file finished successfully"
++    fi
+ done
+ 
+ exit 0
+-- 
+2.39.3
+

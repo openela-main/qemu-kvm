@@ -1,0 +1,48 @@
+From 2cd838efaf2345497efab21fee689ff43d511f1c Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Thu, 23 Jan 2025 08:12:35 -0500
+Subject: [PATCH 11/11] tests/qtest: disable most pauth tests
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 330: arm: disable pauth for virt-rhel9*
+RH-Jira: RHEL-75782
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Kashyap Chamarthy <None>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [2/2] 373738aec33bf2dcaa47563b3c06595b21dca5be (seott1/cos-qemu-kvm)
+
+Since pauth is disabled for virt-rhel9* machine types (aliased via virt)
+the following assertions will trigger and need to be disabled as well:
+    assert_has_feature_enabled(qts, cpu_type, "pauth");
+    assert_set_feature(qts, cpu_type, "pauth-impdef", true);
+    assert_set_feature(qts, cpu_type, "pauth-qarma3", true);
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+JIRA: https://issues.redhat.com/browse/RHEL-75782
+---
+ tests/qtest/arm-cpu-features.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/qtest/arm-cpu-features.c b/tests/qtest/arm-cpu-features.c
+index 3016e6233c..6b680578a6 100644
+--- a/tests/qtest/arm-cpu-features.c
++++ b/tests/qtest/arm-cpu-features.c
+@@ -416,6 +416,7 @@ static void sve_tests_sve_off_kvm(const void *data)
+ 
+ static void pauth_tests_default(QTestState *qts, const char *cpu_type)
+ {
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     assert_has_feature_enabled(qts, cpu_type, "pauth");
+     assert_has_feature_disabled(qts, cpu_type, "pauth-impdef");
+     assert_has_feature_disabled(qts, cpu_type, "pauth-qarma3");
+@@ -425,6 +426,7 @@ static void pauth_tests_default(QTestState *qts, const char *cpu_type)
+     assert_set_feature(qts, cpu_type, "pauth-impdef", false);
+     assert_set_feature(qts, cpu_type, "pauth-qarma3", true);
+     assert_set_feature(qts, cpu_type, "pauth-qarma3", false);
++#endif /* disabled for RHEL */
+     assert_error(qts, cpu_type,
+                  "cannot enable pauth-impdef or pauth-qarma3 without pauth",
+                  "{ 'pauth': false, 'pauth-impdef': true }");
+-- 
+2.48.0
+

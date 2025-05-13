@@ -1,0 +1,71 @@
+From df7e7db91357db9f4abd07d2bc5fb44216a2f286 Mon Sep 17 00:00:00 2001
+From: Jared Rossi <jrossi@linux.ibm.com>
+Date: Fri, 17 Jan 2025 16:22:35 -0500
+Subject: [PATCH 1/4] pc-bios/s390-ccw: Abort IPL on invalid loadparm
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 332: Fix boot problems when falling back from network to another boot device on s390x  [RHEL9]
+RH-Jira: RHEL-72716
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/4] 4d19e5051374f8939bc86c5fc9eb02dede6d83d3 (thuth/qemu-kvm-cs)
+
+Because the loadparm specifies an exact kernel the user wants to boot, if the
+loadparm is invalid it must represent a misconfiguration of the guest. Thus we
+should abort the IPL immediately, without attempting to use other devices, to
+avoid booting into an unintended guest image.
+
+Signed-off-by: Jared Rossi <jrossi@linux.ibm.com>
+Message-ID: <20250117212235.1324063-2-jrossi@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 64fa0de46ee3cc972af5d3ce8c5dc0db8198cd2b)
+---
+ pc-bios/s390-ccw/bootmap.c | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/pc-bios/s390-ccw/bootmap.c b/pc-bios/s390-ccw/bootmap.c
+index 56f2f75640..0f8baa0198 100644
+--- a/pc-bios/s390-ccw/bootmap.c
++++ b/pc-bios/s390-ccw/bootmap.c
+@@ -336,8 +336,7 @@ static int run_eckd_boot_script(block_number_t bmt_block_nr,
+ 
+     debug_print_int("loadparm", loadparm);
+     if (loadparm >= MAX_BOOT_ENTRIES) {
+-        puts("loadparm value greater than max number of boot entries allowed");
+-        return -EINVAL;
++        panic("loadparm value greater than max number of boot entries allowed");
+     }
+ 
+     memset(sec, FREE_SPACE_FILLER, sizeof(sec));
+@@ -348,8 +347,8 @@ static int run_eckd_boot_script(block_number_t bmt_block_nr,
+ 
+     block_nr = gen_eckd_block_num(&bmt->entry[loadparm].xeckd, ldipl);
+     if (block_nr == NULL_BLOCK_NR) {
+-        puts("Cannot find Boot Map Table Entry");
+-        return -EIO;
++        printf("The requested boot entry (%d) is invalid\n", loadparm);
++        panic("Invalid loadparm");
+     }
+ 
+     memset(sec, FREE_SPACE_FILLER, sizeof(sec));
+@@ -792,8 +791,12 @@ static int ipl_scsi(void)
+ 
+     debug_print_int("loadparm", loadparm);
+     if (loadparm >= MAX_BOOT_ENTRIES) {
+-        puts("loadparm value greater than max number of boot entries allowed");
+-        return -EINVAL;
++        panic("loadparm value greater than max number of boot entries allowed");
++    }
++
++    if (!valid_entries[loadparm]) {
++        printf("The requested boot entry (%d) is invalid\n", loadparm);
++        panic("Invalid loadparm");
+     }
+ 
+     return zipl_run(&prog_table->entry[loadparm].scsi);
+-- 
+2.48.0
+

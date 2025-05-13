@@ -1,0 +1,88 @@
+From 0d5a636211e9f21547a077c8c5ab244b59f747f3 Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:39 +0100
+Subject: [PATCH 04/19] s390x/cpumodel: add msa12 changes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [4/16] 32004bb7366a66319c54a0f23ad16f2ad093aa5e (thuth/qemu-kvm-cs9)
+
+MSA12 changes the KIMD/KLMD instruction format for SHA3/SHAKE.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+Message-ID: <20241206122751.189721-4-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 496fc02e0e532f8917fa96e45fa531231e821c31)
+---
+ target/s390x/cpu_features.c         | 1 +
+ target/s390x/cpu_features_def.h.inc | 1 +
+ target/s390x/gen-features.c         | 8 ++++++++
+ 3 files changed, 10 insertions(+)
+
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index 36930feccd..0e0b37ab95 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -256,6 +256,7 @@ static S390FeatGroupDef s390_feature_groups[] = {
+     FEAT_GROUP_INIT("msa10_pckmo", MSA_EXT_10_PCKMO, "Message-security-assist-extension 10 PCKMO subfunctions"),
+     FEAT_GROUP_INIT("msa11", MSA_EXT_11, "Message-security-assist-extension 11 facility"),
+     FEAT_GROUP_INIT("msa11_pckmo", MSA_EXT_11_PCKMO, "Message-security-assist-extension 11 PCKMO subfunctions"),
++    FEAT_GROUP_INIT("msa12", MSA_EXT_12, "Message-security-assist-extension 12 facility"),
+     FEAT_GROUP_INIT("mepochptff", MULTIPLE_EPOCH_PTFF, "PTFF enhancements introduced with Multiple-epoch facility"),
+     FEAT_GROUP_INIT("esort", ENH_SORT, "Enhanced-sort facility"),
+     FEAT_GROUP_INIT("deflate", DEFLATE_CONVERSION, "Deflate-conversion facility"),
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index 15ea51fc54..2e5dc96984 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -90,6 +90,7 @@ DEF_FEAT(EDAT_2, "edat2", STFL, 78, "Enhanced-DAT facility 2")
+ DEF_FEAT(DFP_PACKED_CONVERSION, "dfppc", STFL, 80, "Decimal-floating-point packed-conversion facility")
+ DEF_FEAT(PPA15, "ppa15", STFL, 81, "PPA15 is installed")
+ DEF_FEAT(BPB, "bpb", STFL, 82, "Branch prediction blocking")
++DEF_FEAT(MSA_EXT_12, "msa12-base", STFL, 86, "Message-security-assist-extension-12 facility (excluding subfunctions)")
+ DEF_FEAT(VECTOR, "vx", STFL, 129, "Vector facility")
+ DEF_FEAT(INSTRUCTION_EXEC_PROT, "iep", STFL, 130, "Instruction-execution-protection facility")
+ DEF_FEAT(SIDE_EFFECT_ACCESS_ESOP2, "sea_esop2", STFL, 131, "Side-effect-access facility and Enhanced-suppression-on-protection facility 2")
+diff --git a/target/s390x/gen-features.c b/target/s390x/gen-features.c
+index d6305f945a..ab9ad51d5e 100644
+--- a/target/s390x/gen-features.c
++++ b/target/s390x/gen-features.c
+@@ -270,6 +270,9 @@
+     S390_FEAT_PCKMO_HMAC_512, \
+     S390_FEAT_PCKMO_HMAC_1024
+ 
++#define S390_FEAT_GROUP_MSA_EXT_12 \
++    S390_FEAT_MSA_EXT_12
++
+ #define S390_FEAT_GROUP_ENH_SORT \
+     S390_FEAT_ESORT_BASE, \
+     S390_FEAT_SORTL_SFLR, \
+@@ -339,6 +342,10 @@ static uint16_t group_MSA_EXT_11[] = {
+     S390_FEAT_GROUP_MSA_EXT_11,
+ };
+ 
++static uint16_t group_MSA_EXT_12[] = {
++    S390_FEAT_GROUP_MSA_EXT_12,
++};
++
+ static uint16_t group_MSA_EXT_9_PCKMO[] = {
+     S390_FEAT_GROUP_MSA_EXT_9_PCKMO,
+ };
+@@ -902,6 +909,7 @@ static FeatGroupDefSpec FeatGroupDef[] = {
+     FEAT_GROUP_INITIALIZER(MSA_EXT_10_PCKMO),
+     FEAT_GROUP_INITIALIZER(MSA_EXT_11),
+     FEAT_GROUP_INITIALIZER(MSA_EXT_11_PCKMO),
++    FEAT_GROUP_INITIALIZER(MSA_EXT_12),
+     FEAT_GROUP_INITIALIZER(MULTIPLE_EPOCH_PTFF),
+     FEAT_GROUP_INITIALIZER(ENH_SORT),
+     FEAT_GROUP_INITIALIZER(DEFLATE_CONVERSION),
+-- 
+2.39.3
+

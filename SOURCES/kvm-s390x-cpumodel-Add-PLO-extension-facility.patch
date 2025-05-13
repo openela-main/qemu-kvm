@@ -1,0 +1,221 @@
+From 67be3df75a0e2e3c0986bb8e482d8e4220dcbb44 Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:50 +0100
+Subject: [PATCH 15/19] s390x/cpumodel: Add PLO-extension facility
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [15/16] 73ba29ed81fe2cab1419fb63b12a37c568a2d3ca (thuth/qemu-kvm-cs9)
+
+The PLO-extension facility introduces numerous locking related
+subfunctions.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+Message-ID: <20241206122751.189721-15-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 393c835e341e8921d1d6ae45da308e85176c4f00)
+---
+ target/s390x/cpu_features.c         |  1 +
+ target/s390x/cpu_features_def.h.inc | 39 +++++++++++++++++++++++++
+ target/s390x/cpu_models.c           | 38 ++++++++++++++++++++++++
+ target/s390x/gen-features.c         | 45 +++++++++++++++++++++++++++++
+ 4 files changed, 123 insertions(+)
+
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index 5f8b02f12c..4b5be6798e 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -240,6 +240,7 @@ void s390_get_deprecated_features(S390FeatBitmap features)
+ /* indexed by feature group number for easy lookup */
+ static S390FeatGroupDef s390_feature_groups[] = {
+     FEAT_GROUP_INIT("plo", PLO, "Perform-locked-operation facility"),
++    FEAT_GROUP_INIT("plo_ext", PLO_EXT, "PLO-extension facility"),
+     FEAT_GROUP_INIT("tods", TOD_CLOCK_STEERING, "Tod-clock-steering facility"),
+     FEAT_GROUP_INIT("gen13ptff", GEN13_PTFF, "PTFF enhancements introduced with z13"),
+     FEAT_GROUP_INIT("gen17ptff", GEN17_PTFF, "PTFF enhancements introduced with gen17"),
+diff --git a/target/s390x/cpu_features_def.h.inc b/target/s390x/cpu_features_def.h.inc
+index fe7e1bd19c..e23e603a79 100644
+--- a/target/s390x/cpu_features_def.h.inc
++++ b/target/s390x/cpu_features_def.h.inc
+@@ -93,6 +93,7 @@ DEF_FEAT(BPB, "bpb", STFL, 82, "Branch prediction blocking")
+ DEF_FEAT(MISC_INSTRUCTION_EXT4, "minste4", STFL, 84, "Miscellaneous-Instruction-Extensions Facility 4")
+ DEF_FEAT(SIF, "sif", STFL, 85, "Sequential-instruction-fetching facility")
+ DEF_FEAT(MSA_EXT_12, "msa12-base", STFL, 86, "Message-security-assist-extension-12 facility (excluding subfunctions)")
++DEF_FEAT(PLO_EXT, "plo-ext", STFL, 87, "PLO-extension facility")
+ DEF_FEAT(VECTOR, "vx", STFL, 129, "Vector facility")
+ DEF_FEAT(INSTRUCTION_EXEC_PROT, "iep", STFL, 130, "Instruction-execution-protection facility")
+ DEF_FEAT(SIDE_EFFECT_ACCESS_ESOP2, "sea_esop2", STFL, 131, "Side-effect-access facility and Enhanced-suppression-on-protection facility 2")
+@@ -180,6 +181,44 @@ DEF_FEAT(PLO_CSTST, "plo-cstst", PLO, 20, "PLO Compare and swap and triple store
+ DEF_FEAT(PLO_CSTSTG, "plo-cststg", PLO, 21, "PLO Compare and swap and triple store (64 bit in parameter list)")
+ DEF_FEAT(PLO_CSTSTGR, "plo-cststgr", PLO, 22, "PLO Compare and swap and triple store (64 bit in general registers)")
+ DEF_FEAT(PLO_CSTSTX, "plo-cststx", PLO, 23, "PLO Compare and swap and triple store (128 bit in parameter list)")
++DEF_FEAT(PLO_CLO, "plo-clo", PLO, 24, "PLO Compare and load (256 bit in parameter list)")
++DEF_FEAT(PLO_CSO, "plo-cso", PLO, 25, "PLO Compare and swap (256 bit in parameter list)")
++DEF_FEAT(PLO_DCSO, "plo-dcso", PLO, 26, "PLO Double compare and swap (256 bit in parameter list)")
++DEF_FEAT(PLO_CSSTO, "plo-cssto", PLO, 27, "PLO Compare and swap and store (256 bit in parameter list)")
++DEF_FEAT(PLO_CSDSTO, "plo-csdsto", PLO, 28, "PLO Compare and swap and double store (256 bit in parameter list)")
++DEF_FEAT(PLO_CSTSTO, "plo-cststo", PLO, 29, "PLO Compare and swap and trible store (256 bit in parameter list)")
++DEF_FEAT(PLO_TCS, "plo-tcs", PLO, 30, "Triple compare and swap (32 bit in parameter list)")
++DEF_FEAT(PLO_TCSG, "plo-tcsg", PLO, 31, "Triple compare and swap (64 bit in parameter list)")
++DEF_FEAT(PLO_TCSX, "plo-tcsx", PLO, 32, "Triple compare and swap (128 bit in parameter list)")
++DEF_FEAT(PLO_TCSO, "plo-tcso", PLO, 33, "Triple compare and swap (256 bit in parameter list)")
++DEF_FEAT(PLO_QCS, "plo-qcs", PLO, 34, "Quadruple compare and swap (32 bit in parameter list)")
++DEF_FEAT(PLO_QCSG, "plo-qcsg", PLO, 35, "Quadruple compare and swap (64 bit in parameter list)")
++DEF_FEAT(PLO_QCSX, "plo-qcsx", PLO, 36, "Quadruple compare and swap (128 bit in parameter list)")
++DEF_FEAT(PLO_QCSO, "plo-qcso", PLO, 37, "Quadruple compare and swap (256 bit in parameter list)")
++DEF_FEAT(PLO_LO, "plo-lo", PLO, 38, "Load (256 bit in parameter list)")
++DEF_FEAT(PLO_DLX, "plo-dlx", PLO, 39, "Double load (128 bit in parameter list)")
++DEF_FEAT(PLO_DLO, "plo-dlo", PLO, 40, "Double load (256 bit in parameter list)")
++DEF_FEAT(PLO_TL, "plo-tl", PLO, 41, "Triple load (32 bit in parameter list)")
++DEF_FEAT(PLO_TLG, "plo-tlg", PLO, 42, "Triple load (64 bit in parameter list)")
++DEF_FEAT(PLO_TLX, "plo-tlx", PLO, 43, "Triple load (128 bit in parameter list)")
++DEF_FEAT(PLO_TLO, "plo-tlo", PLO, 44, "Triple load (256 bit in parameter list)")
++DEF_FEAT(PLO_QL, "plo-ql", PLO, 45, "Quadruple load (32 bit in parameter list)")
++DEF_FEAT(PLO_QLG, "plo-qlg", PLO, 46, "Quadruple load (64 bit in parameter list)")
++DEF_FEAT(PLO_QLX, "plo-qlx", PLO, 47, "Quadruple load (128 bit in parameter list)")
++DEF_FEAT(PLO_QLO, "plo-qlo", PLO, 48, "Quadruple load (256 bit in parameter list)")
++DEF_FEAT(PLO_STO, "plo-sto", PLO, 49, "Store (256 bit in parameter list)")
++DEF_FEAT(PLO_DST, "plo-dst", PLO, 50, "Double store (32 bit in parameter list)")
++DEF_FEAT(PLO_DSTG, "plo-dstg", PLO, 51, "Double store (64 bit in parameter list)")
++DEF_FEAT(PLO_DSTX, "plo-dstx", PLO, 52, "Double store (128 bit in parameter list)")
++DEF_FEAT(PLO_DSTO, "plo-dsto", PLO, 53, "Double store (256 bit in parameter list)")
++DEF_FEAT(PLO_TST, "plo-tst", PLO, 54, "Triple store (32 bit in parameter list)")
++DEF_FEAT(PLO_TSTG, "plo-tstg", PLO, 55, "Triple store (64 bit in parameter list)")
++DEF_FEAT(PLO_TSTX, "plo-tstx", PLO, 56, "Triple store (128 bit in parameter list)")
++DEF_FEAT(PLO_TSTO, "plo-tsto", PLO, 57, "Triple store (256 bit in parameter list)")
++DEF_FEAT(PLO_QST, "plo-qst", PLO, 58, "Quadruple store (32 bit in parameter list)")
++DEF_FEAT(PLO_QSTG, "plo-qstg", PLO, 59, "Quadruple store (64 bit in parameter list)")
++DEF_FEAT(PLO_QSTX, "plo-qstx", PLO, 60, "Quadruple store (128 bit in parameter list)")
++DEF_FEAT(PLO_QSTO, "plo-qsto", PLO, 61, "Quadruple store (256 bit in parameter list)")
+ 
+ /* Features exposed via the PTFF instruction. */
+ DEF_FEAT(PTFF_QTO, "ptff-qto", PTFF, 1, "PTFF Query TOD Offset")
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index 32b5bb7509..d2798c0f38 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -516,6 +516,44 @@ static void check_consistency(const S390CPUModel *model)
+         { S390_FEAT_PFCR_CSTST, S390_FEAT_CCF_BASE },
+         { S390_FEAT_PFCR_CSTSTG, S390_FEAT_CCF_BASE },
+         { S390_FEAT_INEFF_NC_TX, S390_FEAT_TRANSACTIONAL_EXE },
++        { S390_FEAT_PLO_CLO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_CSO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DCSO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_CSSTO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_CSDSTO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_CSTSTO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TCS, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TCSG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TCSX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TCSO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QCS, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QCSG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QCSX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QCSO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_LO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DLX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DLO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TL, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TLG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TLX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TLO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QL, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QLG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QLX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QLO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_STO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DST, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DSTG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DSTX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_DSTO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TST, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TSTG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TSTX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_TSTO, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QST, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QSTG, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QSTX, S390_FEAT_PLO_EXT },
++        { S390_FEAT_PLO_QSTO, S390_FEAT_PLO_EXT },
+     };
+     int i;
+ 
+diff --git a/target/s390x/gen-features.c b/target/s390x/gen-features.c
+index 6d00ffcda7..680d45d303 100644
+--- a/target/s390x/gen-features.c
++++ b/target/s390x/gen-features.c
+@@ -46,6 +46,47 @@
+     S390_FEAT_PLO_CSTSTGR, \
+     S390_FEAT_PLO_CSTSTX
+ 
++#define S390_FEAT_GROUP_PLO_EXT \
++    S390_FEAT_PLO_EXT, \
++    S390_FEAT_PLO_CLO, \
++    S390_FEAT_PLO_CSO, \
++    S390_FEAT_PLO_DCSO, \
++    S390_FEAT_PLO_CSSTO, \
++    S390_FEAT_PLO_CSDSTO, \
++    S390_FEAT_PLO_CSTSTO, \
++    S390_FEAT_PLO_TCS, \
++    S390_FEAT_PLO_TCSG, \
++    S390_FEAT_PLO_TCSX, \
++    S390_FEAT_PLO_TCSO, \
++    S390_FEAT_PLO_QCS, \
++    S390_FEAT_PLO_QCSG, \
++    S390_FEAT_PLO_QCSX, \
++    S390_FEAT_PLO_QCSO, \
++    S390_FEAT_PLO_LO, \
++    S390_FEAT_PLO_DLX, \
++    S390_FEAT_PLO_DLO, \
++    S390_FEAT_PLO_TL, \
++    S390_FEAT_PLO_TLG, \
++    S390_FEAT_PLO_TLX, \
++    S390_FEAT_PLO_TLO, \
++    S390_FEAT_PLO_QL, \
++    S390_FEAT_PLO_QLG, \
++    S390_FEAT_PLO_QLX, \
++    S390_FEAT_PLO_QLO, \
++    S390_FEAT_PLO_STO, \
++    S390_FEAT_PLO_DST, \
++    S390_FEAT_PLO_DSTG, \
++    S390_FEAT_PLO_DSTX, \
++    S390_FEAT_PLO_DSTO, \
++    S390_FEAT_PLO_TST, \
++    S390_FEAT_PLO_TSTG, \
++    S390_FEAT_PLO_TSTX, \
++    S390_FEAT_PLO_TSTO, \
++    S390_FEAT_PLO_QST, \
++    S390_FEAT_PLO_QSTG, \
++    S390_FEAT_PLO_QSTX, \
++    S390_FEAT_PLO_QSTO
++
+ #define S390_FEAT_GROUP_TOD_CLOCK_STEERING \
+     S390_FEAT_TOD_CLOCK_STEERING, \
+     S390_FEAT_PTFF_QTO, \
+@@ -320,6 +361,9 @@
+ static uint16_t group_PLO[] = {
+     S390_FEAT_GROUP_PLO,
+ };
++static uint16_t group_PLO_EXT[] = {
++    S390_FEAT_GROUP_PLO_EXT,
++};
+ static uint16_t group_TOD_CLOCK_STEERING[] = {
+     S390_FEAT_GROUP_TOD_CLOCK_STEERING,
+ };
+@@ -936,6 +980,7 @@ typedef struct {
+  *******************************/
+ static FeatGroupDefSpec FeatGroupDef[] = {
+     FEAT_GROUP_INITIALIZER(PLO),
++    FEAT_GROUP_INITIALIZER(PLO_EXT),
+     FEAT_GROUP_INITIALIZER(TOD_CLOCK_STEERING),
+     FEAT_GROUP_INITIALIZER(GEN13_PTFF),
+     FEAT_GROUP_INITIALIZER(GEN17_PTFF),
+-- 
+2.39.3
+

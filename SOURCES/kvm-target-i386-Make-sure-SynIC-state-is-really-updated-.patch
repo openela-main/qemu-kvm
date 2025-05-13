@@ -1,0 +1,64 @@
+From a079f758233f53fbdcfbae78bb6c6ee7a610b374 Mon Sep 17 00:00:00 2001
+From: Vitaly Kuznetsov <vkuznets@redhat.com>
+Date: Tue, 7 Jan 2025 13:40:43 +0100
+Subject: [PATCH 1/4] target/i386: Make sure SynIC state is really updated
+ before KVM_RUN
+
+RH-Author: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-MergeRequest: 315: target/i386: Make sure SynIC state is really updated before KVM_RUN
+RH-Jira: RHEL-53073
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Maxim Levitsky <None>
+RH-Commit: [1/1] 24eb10f4c32a8dc348eaf32b7f19de19c30a9fca (vkuznets/qemu-kvm)
+
+'hyperv_synic' test from KVM unittests was observed to be flaky on certain
+hardware (hangs sometimes). Debugging shows that the problem happens in
+hyperv_sint_route_new() when the test tries to set up a new SynIC
+route. The function bails out on:
+
+ if (!synic->sctl_enabled) {
+         goto cleanup;
+ }
+
+but the test writes to HV_X64_MSR_SCONTROL just before it starts
+establishing SINT routes. Further investigation shows that
+synic_update() (called from async_synic_update()) happens after the SINT
+setup attempt and not before. Apparently, the comment before
+async_safe_run_on_cpu() in kvm_hv_handle_exit() does not correctly describe
+the guarantees async_safe_run_on_cpu() gives. In particular, async worked
+added to a CPU is actually processed from qemu_wait_io_event() which is not
+always called before KVM_RUN, i.e. kvm_cpu_exec() checks whether an exit
+request is pending for a CPU and if not, keeps running the vCPU until it
+meets an exit it can't handle internally. Hyper-V specific MSR writes are
+not automatically trigger an exit.
+
+Fix the issue by simply raising an exit request for the vCPU where SynIC
+update was queued. This is not a performance critical path as SynIC state
+does not get updated so often (and async_safe_run_on_cpu() is a big hammer
+anyways).
+
+Reported-by: Jan Richter <jarichte@redhat.com>
+Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+Link: https://lore.kernel.org/r/20240917160051.2637594-4-vkuznets@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit d3177e2e4353824a650434c57471615d43507500)
+Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+---
+ target/i386/kvm/hyperv.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/target/i386/kvm/hyperv.c b/target/i386/kvm/hyperv.c
+index b94f12acc2..70b89cacf9 100644
+--- a/target/i386/kvm/hyperv.c
++++ b/target/i386/kvm/hyperv.c
+@@ -80,6 +80,7 @@ int kvm_hv_handle_exit(X86CPU *cpu, struct kvm_hyperv_exit *exit)
+          * necessary because memory hierarchy is being changed
+          */
+         async_safe_run_on_cpu(CPU(cpu), async_synic_update, RUN_ON_CPU_NULL);
++        cpu_exit(CPU(cpu));
+ 
+         return EXCP_INTERRUPT;
+     case KVM_EXIT_HYPERV_HCALL: {
+-- 
+2.39.3
+

@@ -1,0 +1,131 @@
+From 16596225b9a4c686f6c0b0f5400681f3eed599ca Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 27 Aug 2024 15:27:50 -0400
+Subject: [PATCH 3/4] qdev-monitor: avoid QemuOpts in QMP device_add
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 316: qdev-monitor: avoid QemuOpts in QMP device_add
+RH-Jira: RHEL-39948
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [3/4] 1f6efb07255700e00243d067b5468b6840270ed0 (stefanha/centos-stream-qemu-kvm)
+
+The QMP device_add monitor command converts the QDict arguments to
+QemuOpts and then back again to QDict. This process only supports scalar
+types. Device properties like virtio-blk-pci's iothread-vq-mapping (an
+array of objects) are silently dropped by qemu_opts_from_qdict() during
+the QemuOpts conversion even though QAPI is capable of validating them.
+As a result, hotplugging virtio-blk-pci devices with the
+iothread-vq-mapping property does not work as expected (the property is
+ignored).
+
+Get rid of the QemuOpts conversion in qmp_device_add() and call
+qdev_device_add_from_qdict() with from_json=true. Using the QMP
+command's QDict arguments directly allows non-scalar properties.
+
+The HMP is also adjusted since qmp_device_add()'s now expects properly
+typed JSON arguments and cannot be used from HMP anymore. Move the code
+that was previously in qmp_device_add() (with QemuOpts conversion and
+from_json=false) into hmp_device_add() so that its behavior is
+unchanged.
+
+This patch changes the behavior of QMP device_add but not HMP
+device_add. QMP clients that sent incorrectly typed device_add QMP
+commands no longer work. This is a breaking change but clients should be
+using the correct types already. See the netdev_add QAPIfication in
+commit db2a380c8457 for similar reasoning and object-add in commit
+9151e59a8b6e. Unlike those commits, we continue to rely on 'gen': false
+for the time being.
+
+Markus helped me figure this out and even provided a draft patch. The
+code ended up very close to what he suggested.
+
+Suggested-by: Markus Armbruster <armbru@redhat.com>
+Cc: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20240827192751.948633-2-stefanha@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit be93fd53723cbdca675bd9ed112dae5cabbe1e91)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ system/qdev-monitor.c | 42 ++++++++++++++++++++++++++++--------------
+ 1 file changed, 28 insertions(+), 14 deletions(-)
+
+diff --git a/system/qdev-monitor.c b/system/qdev-monitor.c
+index 6af6ef7d66..8b27cc42b0 100644
+--- a/system/qdev-monitor.c
++++ b/system/qdev-monitor.c
+@@ -849,18 +849,9 @@ void hmp_info_qdm(Monitor *mon, const QDict *qdict)
+ 
+ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
+ {
+-    QemuOpts *opts;
+     DeviceState *dev;
+ 
+-    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, errp);
+-    if (!opts) {
+-        return;
+-    }
+-    if (!monitor_cur_is_qmp() && qdev_device_help(opts)) {
+-        qemu_opts_del(opts);
+-        return;
+-    }
+-    dev = qdev_device_add(opts, errp);
++    dev = qdev_device_add_from_qdict(qdict, true, errp);
+     if (!dev) {
+         /*
+          * Drain all pending RCU callbacks. This is done because
+@@ -872,9 +863,6 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
+          * to the user
+          */
+         drain_call_rcu();
+-
+-        qemu_opts_del(opts);
+-        return;
+     }
+     object_unref(OBJECT(dev));
+ }
+@@ -967,8 +955,34 @@ void qmp_device_del(const char *id, Error **errp)
+ void hmp_device_add(Monitor *mon, const QDict *qdict)
+ {
+     Error *err = NULL;
++    QemuOpts *opts;
++    DeviceState *dev;
+ 
+-    qmp_device_add((QDict *)qdict, NULL, &err);
++    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &err);
++    if (!opts) {
++        goto out;
++    }
++    if (qdev_device_help(opts)) {
++        qemu_opts_del(opts);
++        return;
++    }
++    dev = qdev_device_add(opts, &err);
++    if (!dev) {
++        /*
++         * Drain all pending RCU callbacks. This is done because
++         * some bus related operations can delay a device removal
++         * (in this case this can happen if device is added and then
++         * removed due to a configuration error)
++         * to a RCU callback, but user might expect that this interface
++         * will finish its job completely once qmp command returns result
++         * to the user
++         */
++        drain_call_rcu();
++
++        qemu_opts_del(opts);
++    }
++    object_unref(dev);
++out:
+     hmp_handle_error(mon, err);
+ }
+ 
+-- 
+2.39.3
+

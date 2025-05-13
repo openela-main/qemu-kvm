@@ -1,0 +1,87 @@
+From 592361992b26d7f357d45de2e9ee68c1cdb15ab0 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Wed, 15 Jan 2025 14:50:43 +0100
+Subject: [PATCH 2/3] vhost: Add stubs for the migration state transfer
+ interface
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 337: virtio-net: vhost-user: Implement internal migration
+RH-Jira: RHEL-78372
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/2] f9a24e45e618a22f867de0fd14e1000a9a38ba91 (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-78372
+
+Migration state transfer interface is only used by vhost-user-fs,
+so the interface needs to be defined only when vhost is built.
+
+But I need to use this interface with virtio-net and vhost is not always
+enabled, and to avoid undefined reference error during build, define stub
+functions for vhost_supports_device_state(), vhost_save_backend_state() and
+vhost_load_backend_state().
+
+Cc: Hanna Czenczek <hreitz@redhat.com>
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Message-Id: <20250115135044.799698-2-lvivier@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 3f65357313e0f928e0bd3ff868b705855d0405bc)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ include/hw/virtio/vhost.h | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/include/hw/virtio/vhost.h b/include/hw/virtio/vhost.h
+index d75faf46e9..1d524f85b9 100644
+--- a/include/hw/virtio/vhost.h
++++ b/include/hw/virtio/vhost.h
+@@ -363,7 +363,14 @@ static inline int vhost_reset_device(struct vhost_dev *hdev)
+  * Returns true if the device supports these commands, and false if it
+  * does not.
+  */
++#ifdef CONFIG_VHOST
+ bool vhost_supports_device_state(struct vhost_dev *dev);
++#else
++static inline bool vhost_supports_device_state(struct vhost_dev *dev)
++{
++    return false;
++}
++#endif
+ 
+ /**
+  * vhost_set_device_state_fd(): Begin transfer of internal state from/to
+@@ -446,7 +453,15 @@ int vhost_check_device_state(struct vhost_dev *dev, Error **errp);
+  *
+  * Returns 0 on success, and -errno otherwise.
+  */
++#ifdef CONFIG_VHOST
+ int vhost_save_backend_state(struct vhost_dev *dev, QEMUFile *f, Error **errp);
++#else
++static inline int vhost_save_backend_state(struct vhost_dev *dev, QEMUFile *f,
++                                           Error **errp)
++{
++    return -ENOSYS;
++}
++#endif
+ 
+ /**
+  * vhost_load_backend_state(): High-level function to load a vhost
+@@ -463,6 +478,14 @@ int vhost_save_backend_state(struct vhost_dev *dev, QEMUFile *f, Error **errp);
+  *
+  * Returns 0 on success, and -errno otherwise.
+  */
++#ifdef CONFIG_VHOST
+ int vhost_load_backend_state(struct vhost_dev *dev, QEMUFile *f, Error **errp);
++#else
++static inline int vhost_load_backend_state(struct vhost_dev *dev, QEMUFile *f,
++                                           Error **errp)
++{
++    return -ENOSYS;
++}
++#endif
+ 
+ #endif
+-- 
+2.48.1
+

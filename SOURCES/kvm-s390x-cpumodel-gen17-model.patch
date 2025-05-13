@@ -1,0 +1,107 @@
+From 1b45ebaf1903c54a37f5a4324242cb17caf1064e Mon Sep 17 00:00:00 2001
+From: Hendrik Brueckner <brueckner@linux.ibm.com>
+Date: Fri, 6 Dec 2024 13:27:51 +0100
+Subject: [PATCH 16/19] s390x/cpumodel: gen17 model
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 304: CPU model for new IBM Z gen17 hardware
+RH-Jira: RHEL-50212
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [16/16] c8cc00616e56ab99971aa930938b8ee36f9a909b (thuth/qemu-kvm-cs9)
+
+This commit introduces the definition of the gen17a/gen17b CPU model.
+
+Signed-off-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+Message-ID: <20241206122751.189721-16-brueckner@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 21b8db229901a51f16aebe342c0508f588ea5006)
+---
+ target/s390x/cpu_models.c   |  2 ++
+ target/s390x/gen-features.c | 33 +++++++++++++++++++++++++++++++++
+ 2 files changed, 35 insertions(+)
+
+diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
+index d2798c0f38..14c4d63a5a 100644
+--- a/target/s390x/cpu_models.c
++++ b/target/s390x/cpu_models.c
+@@ -97,6 +97,8 @@ static S390CPUDef s390_cpu_defs[] = {
+     CPUDEF_INIT(0x8562, 15, 1, 47, 0x08000000U, "gen15b", "IBM z15 T02 GA1"),
+     CPUDEF_INIT(0x3931, 16, 1, 47, 0x08000000U, "gen16a", "IBM 3931 GA1"),
+     CPUDEF_INIT(0x3932, 16, 1, 47, 0x08000000U, "gen16b", "IBM 3932 GA1"),
++    CPUDEF_INIT(0x9175, 17, 1, 47, 0x08000000U, "gen17a", "IBM 9175 GA1"),
++    CPUDEF_INIT(0x9176, 17, 1, 47, 0x08000000U, "gen17b", "IBM 9176 GA1"),
+ };
+ 
+ #define QEMU_MAX_CPU_TYPE 0x8561
+diff --git a/target/s390x/gen-features.c b/target/s390x/gen-features.c
+index 680d45d303..41840677ce 100644
+--- a/target/s390x/gen-features.c
++++ b/target/s390x/gen-features.c
+@@ -561,6 +561,13 @@ static uint16_t base_GEN15_GA1[] = {
+ 
+ #define base_GEN16_GA1 EmptyFeat
+ 
++static uint16_t base_GEN17_GA1[] = {
++    S390_FEAT_MISC_INSTRUCTION_EXT4,
++    S390_FEAT_SIF,
++    S390_FEAT_GROUP_MSA_EXT_12,
++    S390_FEAT_GROUP_PLO_EXT,
++};
++
+ /* Full features (in order of release)
+  * Automatically includes corresponding base features.
+  * Full features are all features this hardware supports even if kvm/QEMU do not
+@@ -715,6 +722,20 @@ static uint16_t full_GEN16_GA1[] = {
+     S390_FEAT_UV_FEAT_AP_INTR,
+ };
+ 
++static uint16_t full_GEN17_GA1[] = {
++    S390_FEAT_VECTOR_ENH3,
++    S390_FEAT_VECTOR_PACKED_DECIMAL_ENH3,
++    S390_FEAT_INEFF_NC_TX,
++    S390_FEAT_GROUP_GEN17_PTFF,
++    S390_FEAT_GROUP_MSA_EXT_10,
++    S390_FEAT_GROUP_MSA_EXT_10_PCKMO,
++    S390_FEAT_GROUP_MSA_EXT_11,
++    S390_FEAT_GROUP_MSA_EXT_11_PCKMO,
++    S390_FEAT_GROUP_MSA_EXT_13,
++    S390_FEAT_GROUP_MSA_EXT_13_PCKMO,
++    S390_FEAT_GROUP_CONCURRENT_FUNCTIONS,
++};
++
+ 
+ /* Default features (in order of release)
+  * Automatically includes corresponding base features.
+@@ -810,6 +831,17 @@ static uint16_t default_GEN16_GA1[] = {
+     S390_FEAT_PAIE,
+ };
+ 
++static uint16_t default_GEN17_GA1[] = {
++    S390_FEAT_VECTOR_ENH3,
++    S390_FEAT_VECTOR_PACKED_DECIMAL_ENH3,
++    S390_FEAT_GROUP_MSA_EXT_10,
++    S390_FEAT_GROUP_MSA_EXT_10_PCKMO,
++    S390_FEAT_GROUP_MSA_EXT_11,
++    S390_FEAT_GROUP_MSA_EXT_11_PCKMO,
++    S390_FEAT_GROUP_MSA_EXT_13,
++    S390_FEAT_GROUP_MSA_EXT_13_PCKMO,
++};
++
+ /* QEMU (CPU model) features */
+ 
+ static uint16_t qemu_V2_11[] = {
+@@ -958,6 +990,7 @@ static CpuFeatDefSpec CpuFeatDef[] = {
+     CPU_FEAT_INITIALIZER(GEN14_GA2),
+     CPU_FEAT_INITIALIZER(GEN15_GA1),
+     CPU_FEAT_INITIALIZER(GEN16_GA1),
++    CPU_FEAT_INITIALIZER(GEN17_GA1),
+ };
+ 
+ #define FEAT_GROUP_INITIALIZER(_name)                  \
+-- 
+2.39.3
+
