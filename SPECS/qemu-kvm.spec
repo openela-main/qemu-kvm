@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.1.0
-Release: 15%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 15%{?rcrel}%{?dist}%{?cc_suffix}.4
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -465,6 +465,16 @@ Patch147: kvm-iotests-Add-qsd-migrate-case.patch
 # For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
 # For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
 Patch148: kvm-iotests-Add-NBD-based-tests-for-inactive-nodes.patch
+# For RHEL-80622 - Allow libvirt to restart passt/vhost-user when the process is killed [rhel-9]
+Patch149: kvm-net-vhost-user-add-QAPI-events-to-report-connection-.patch
+# For RHEL-83000 - [qemu-guest-agent][RFE] Report CPU load average [rhel-9.6.z]
+Patch150: kvm-qga-implement-a-guest-get-load-command.patch
+# For RHEL-87734 - QEMU sends unaligned discards on 4K devices [rhel-9.6.z]
+Patch151: kvm-file-posix-probe-discard-alignment-on-Linux-block-de.patch
+# For RHEL-87734 - QEMU sends unaligned discards on 4K devices [rhel-9.6.z]
+Patch152: kvm-block-io-skip-head-tail-requests-on-EINVAL.patch
+# For RHEL-87734 - QEMU sends unaligned discards on 4K devices [rhel-9.6.z]
+Patch153: kvm-file-posix-Fix-crash-on-discard_granularity-0.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1531,6 +1541,23 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon May 05 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.4
+- kvm-file-posix-probe-discard-alignment-on-Linux-block-de.patch [RHEL-87734]
+- kvm-block-io-skip-head-tail-requests-on-EINVAL.patch [RHEL-87734]
+- kvm-file-posix-Fix-crash-on-discard_granularity-0.patch [RHEL-87734]
+- Resolves: RHEL-87734
+  (QEMU sends unaligned discards on 4K devices [rhel-9.6.z])
+
+* Thu Apr 03 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.3
+- kvm-qga-implement-a-guest-get-load-command.patch [RHEL-83000]
+- Resolves: RHEL-83000
+  ([qemu-guest-agent][RFE] Report CPU load average [rhel-9.6.z])
+
+* Thu Apr 03 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.2
+- kvm-net-vhost-user-add-QAPI-events-to-report-connection-.patch [RHEL-80622]
+- Resolves: RHEL-80622
+  (Allow libvirt to restart passt/vhost-user when the process is killed [rhel-9])
+
 * Mon Feb 17 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15
 - kvm-net-Fix-announce_self.patch [RHEL-73891]
 - kvm-migration-Add-helper-to-get-target-runstate.patch [RHEL-54296 RHEL-78397]
