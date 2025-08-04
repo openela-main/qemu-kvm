@@ -1,0 +1,110 @@
+From 31c0a5fb90575b85dc9510417d6b8317319d0b57 Mon Sep 17 00:00:00 2001
+From: Collin Walling <walling@linux.ibm.com>
+Date: Fri, 19 Jul 2024 14:17:41 -0400
+Subject: [PATCH 3/5] target/s390x: filter deprecated properties based on model
+ expansion type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 449: Fix for live-migrating guests from IBM z16 to z17 host machines
+RH-Jira: RHEL-88701
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/5] dd1889f1de28aa4c40df34fcad7898dc600374fd
+
+Currently, there is no way to execute the query-cpu-model-expansion
+command to retrieve a comprehenisve list of deprecated properties, as
+the result is dependent per-model. To enable this, the expansion output
+is modified as such:
+
+When reporting a "full" CPU model, show the *entire* list of deprecated
+properties regardless if they are supported on the model. A full
+expansion outputs all known CPU model properties anyway, so it makes
+sense to report all deprecated properties here too.
+
+This allows management apps to query a single model (e.g. host) to
+acquire the full list of deprecated properties.
+
+Additionally, when reporting a "static" CPU model, the command will
+only show deprecated properties that are a subset of the model's
+*enabled* properties. This is more accurate than how the query was
+handled before, which blindly reported deprecated properties that
+were never otherwise introduced for certain models.
+
+Acked-by: David Hildenbrand <david@redhat.com>
+Suggested-by: Jiri Denemark <jdenemar@redhat.com>
+Signed-off-by: Collin Walling <walling@linux.ibm.com>
+Message-ID: <20240719181741.35146-1-walling@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit eed0e8ffa38f0695c0519508f6e4f5a3297cbd67)
+---
+ qapi/machine-target.json         |  5 +++--
+ target/s390x/cpu_models_sysemu.c | 16 +++++++++-------
+ 2 files changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/qapi/machine-target.json b/qapi/machine-target.json
+index c93c811dbc..d32dc6958f 100644
+--- a/qapi/machine-target.json
++++ b/qapi/machine-target.json
+@@ -18,8 +18,9 @@
+ # @props: a dictionary of QOM properties to be applied
+ #
+ # @deprecated-props: a list of properties that are flagged as deprecated
+-#     by the CPU vendor.  These props are a subset of the full model's
+-#     definition list of properties. (since 9.1)
++#     by the CPU vendor.  These properties are either a subset of the
++#     properties enabled on the CPU model, or a set of properties
++#     deprecated across all models for the architecture.
+ #
+ # Since: 2.8
+ ##
+diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
+index 7ed94b4117..edb81769cd 100644
+--- a/target/s390x/cpu_models_sysemu.c
++++ b/target/s390x/cpu_models_sysemu.c
+@@ -183,11 +183,15 @@ static void cpu_info_from_model(CpuModelInfo *info, const S390CPUModel *model,
+                                 bool delta_changes)
+ {
+     QDict *qdict = qdict_new();
+-    S390FeatBitmap bitmap;
++    S390FeatBitmap bitmap, deprecated;
+ 
+     /* always fallback to the static base model */
+     info->name = g_strdup_printf("%s-base", model->def->name);
+ 
++    /* features flagged as deprecated */
++    bitmap_zero(deprecated, S390_FEAT_MAX);
++    s390_get_deprecated_features(deprecated);
++
+     if (delta_changes) {
+         /* features deleted from the base feature set */
+         bitmap_andnot(bitmap, model->def->base_feat, model->features,
+@@ -202,6 +206,9 @@ static void cpu_info_from_model(CpuModelInfo *info, const S390CPUModel *model,
+         if (!bitmap_empty(bitmap, S390_FEAT_MAX)) {
+             s390_feat_bitmap_to_ascii(bitmap, qdict, qdict_add_enabled_feat);
+         }
++
++        /* deprecated features that are a subset of the model's enabled features */
++        bitmap_and(deprecated, deprecated, model->features, S390_FEAT_MAX);
+     } else {
+         /* expand all features */
+         s390_feat_bitmap_to_ascii(model->features, qdict,
+@@ -217,12 +224,7 @@ static void cpu_info_from_model(CpuModelInfo *info, const S390CPUModel *model,
+         info->has_props = true;
+     }
+ 
+-    /* features flagged as deprecated */
+-    bitmap_zero(bitmap, S390_FEAT_MAX);
+-    s390_get_deprecated_features(bitmap);
+-
+-    bitmap_and(bitmap, bitmap, model->def->full_feat, S390_FEAT_MAX);
+-    s390_feat_bitmap_to_ascii(bitmap, &info->deprecated_props, list_add_feat);
++    s390_feat_bitmap_to_ascii(deprecated, &info->deprecated_props, list_add_feat);
+     info->has_deprecated_props = !!info->deprecated_props;
+ }
+ 
+-- 
+2.48.1
+

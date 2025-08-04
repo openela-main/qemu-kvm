@@ -1,0 +1,94 @@
+From 661c0fee958d993b5c8d4600998ba0fdbf43da11 Mon Sep 17 00:00:00 2001
+From: Konstantin Kostiuk <kkostiuk@redhat.com>
+Date: Wed, 18 Dec 2024 18:49:04 +0200
+Subject: [PATCH] qga: skip bind mounts in fs list
+
+RH-Author: Konstantin Kostiuk <None>
+RH-MergeRequest: 423: qga: skip bind mounts in fs list
+RH-Jira: RHEL-59214
+RH-Acked-by: yvugenfi <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/1] 2ebf2a4dba0e2da9d077c116accd12dc7f3dbcd1
+
+The filesystem list in build_fs_mount_list should skip bind mounts.
+This because we end up in locking situations when doing fsFreeze. Like
+mentioned in [1] and [2].
+
+Next to that, the build_fs_mount_list call did a fallback via
+build_fs_mount_list_from_mtab if mountinfo did not exist.
+There it skipped bind mounts, but this is broken for newer OS.
+This as mounts does not return the path of the bind mount but the
+underlying dev/partition, so S_ISDIR will never return true in
+dev_major_minor call.
+
+This patch simply checks the existing devmajor:devminor tuple in the
+mounts, and if it already exists, this means we have the same devices
+mounted again, a bind mount. So skip this.
+
+Same approach is used in open-vm-tools [3].
+
+[1]: https://gitlab.com/qemu-project/qemu/-/issues/592
+[2]: https://gitlab.com/qemu-project/qemu/-/issues/520
+[3]: https://github.com/vmware/open-vm-tools/commit/d58847b497e212737007958c945af1df22a8ab58
+
+Signed-off-by: Jean-Louis Dupond <jean-louis@dupond.be>
+Reviewed-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+Link: https://lore.kernel.org/r/20241002100634.162499-2-jean-louis@dupond.be
+Signed-off-by: Konstantin Kostiuk <kkostiuk@redhat.com>
+---
+ qga/commands-posix.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/qga/commands-posix.c b/qga/commands-posix.c
+index 75dbaab68e..dce0d1551f 100644
+--- a/qga/commands-posix.c
++++ b/qga/commands-posix.c
+@@ -668,6 +668,22 @@ static int dev_major_minor(const char *devpath,
+     return -1;
+ }
+ 
++/*
++ * Check if we already have the devmajor:devminor in the mounts
++ * If thats the case return true.
++ */
++static bool dev_exists(FsMountList *mounts, unsigned int devmajor, unsigned int devminor)
++{
++    FsMount *mount;
++
++    QTAILQ_FOREACH(mount, mounts, next) {
++        if (mount->devmajor == devmajor && mount->devminor == devminor) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ /*
+  * Walk the mount table and build a list of local file systems
+  */
+@@ -701,6 +717,10 @@ static void build_fs_mount_list_from_mtab(FsMountList *mounts, Error **errp)
+             /* Skip bind mounts */
+             continue;
+         }
++        if (dev_exists(mounts, devmajor, devminor)) {
++            /* Skip already existing devices (bind mounts) */
++            continue;
++        }
+ 
+         mount = g_new0(FsMount, 1);
+         mount->dirname = g_strdup(ment->mnt_dir);
+@@ -780,6 +800,11 @@ static void build_fs_mount_list(FsMountList *mounts, Error **errp)
+                 continue;
+             }
+         }
++        
++        if (dev_exists(mounts, devmajor, devminor)) {
++            /* Skip already existing devices (bind mounts) */
++            continue;
++        }
+ 
+         mount = g_new0(FsMount, 1);
+         mount->dirname = g_strdup(line + dir_s);
+-- 
+2.47.1
+

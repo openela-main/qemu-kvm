@@ -1,0 +1,136 @@
+From 1955d06f0ffcdcacdf1eec5c9fee99a2a9e81350 Mon Sep 17 00:00:00 2001
+From: Collin Walling <walling@linux.ibm.com>
+Date: Mon, 29 Apr 2024 15:10:58 -0400
+Subject: [PATCH 1/5] target/s390x: report deprecated-props in
+ cpu-model-expansion reply
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 449: Fix for live-migrating guests from IBM z16 to z17 host machines
+RH-Jira: RHEL-88701
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/5] 9cecba35e831615bc1c899730b4f32de0fd7ba83
+
+Retain a list of deprecated features disjoint from any particular
+CPU model. A query-cpu-model-expansion reply will now provide a list of
+properties (i.e. features) that are flagged as deprecated. Example:
+
+    {
+      "return": {
+        "model": {
+          "name": "z14.2-base",
+          "deprecated-props": [
+            "bpb",
+            "csske"
+          ],
+          "props": {
+            "pfmfi": false,
+            "exrl": true,
+            ...a lot more props...
+            "skey": false,
+            "vxpdeh2": false
+          }
+        }
+      }
+    }
+
+It is recommended that s390 guests operate with these features
+explicitly disabled to ensure compatibility with future hardware.
+
+Signed-off-by: Collin Walling <walling@linux.ibm.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Message-ID: <20240429191059.11806-2-walling@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 8aa2211e855df79ddd363e5f0d8c4d7d4c376e16)
+---
+ qapi/machine-target.json         |  7 ++++++-
+ target/s390x/cpu_features.c      | 14 ++++++++++++++
+ target/s390x/cpu_features.h      |  1 +
+ target/s390x/cpu_models_sysemu.c |  8 ++++++++
+ 4 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/qapi/machine-target.json b/qapi/machine-target.json
+index f5ec4bc172..c93c811dbc 100644
+--- a/qapi/machine-target.json
++++ b/qapi/machine-target.json
+@@ -17,11 +17,16 @@
+ # @name: the name of the CPU definition the model is based on
+ # @props: a dictionary of QOM properties to be applied
+ #
++# @deprecated-props: a list of properties that are flagged as deprecated
++#     by the CPU vendor.  These props are a subset of the full model's
++#     definition list of properties. (since 9.1)
++#
+ # Since: 2.8
+ ##
+ { 'struct': 'CpuModelInfo',
+   'data': { 'name': 'str',
+-            '*props': 'any' } }
++            '*props': 'any',
++            '*deprecated-props': ['str'] } }
+ 
+ ##
+ # @CpuModelExpansionType:
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index ebb155ce1c..40be75c90a 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -212,6 +212,20 @@ void s390_feat_bitmap_to_ascii(const S390FeatBitmap features, void *opaque,
+     };
+ }
+ 
++void s390_get_deprecated_features(S390FeatBitmap features)
++{
++    static const int feats[] = {
++         /* CSSKE is deprecated on newer generations */
++         S390_FEAT_CONDITIONAL_SSKE,
++         S390_FEAT_BPB,
++    };
++    int i;
++
++    for (i = 0; i < ARRAY_SIZE(feats); i++) {
++        set_bit(feats[i], features);
++    }
++}
++
+ #define FEAT_GROUP_INIT(_name, _group, _desc)        \
+     {                                                \
+         .name = _name,                               \
+diff --git a/target/s390x/cpu_features.h b/target/s390x/cpu_features.h
+index a9bd68a2e1..661a8cd6db 100644
+--- a/target/s390x/cpu_features.h
++++ b/target/s390x/cpu_features.h
+@@ -69,6 +69,7 @@ void s390_add_from_feat_block(S390FeatBitmap features, S390FeatType type,
+                           uint8_t *data);
+ void s390_feat_bitmap_to_ascii(const S390FeatBitmap features, void *opaque,
+                                void (*fn)(const char *name, void *opaque));
++void s390_get_deprecated_features(S390FeatBitmap features);
+ 
+ /* Definition of a CPU feature group */
+ typedef struct {
+diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
+index 6a04ccab1b..7ed94b4117 100644
+--- a/target/s390x/cpu_models_sysemu.c
++++ b/target/s390x/cpu_models_sysemu.c
+@@ -216,6 +216,14 @@ static void cpu_info_from_model(CpuModelInfo *info, const S390CPUModel *model,
+         info->props = QOBJECT(qdict);
+         info->has_props = true;
+     }
++
++    /* features flagged as deprecated */
++    bitmap_zero(bitmap, S390_FEAT_MAX);
++    s390_get_deprecated_features(bitmap);
++
++    bitmap_and(bitmap, bitmap, model->def->full_feat, S390_FEAT_MAX);
++    s390_feat_bitmap_to_ascii(bitmap, &info->deprecated_props, list_add_feat);
++    info->has_deprecated_props = !!info->deprecated_props;
+ }
+ 
+ CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
+-- 
+2.48.1
+

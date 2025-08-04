@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 53%{?rcrel}%{?dist}.2
+Release: 53%{?rcrel}%{?dist}.4
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -891,6 +891,18 @@ Patch364: kvm-block-move-bdrv_qiov_is_aligned-to-file-posix.patch
 Patch365: kvm-block-use-the-request-length-for-iov-alignment.patch
 # For RHEL-26197 - virtiofsd --help and manpage does not agree on --thread-pool-size default value
 Patch366: kvm-Fix-thread-pool-size-default-value-in-the-man-page.patch
+# For RHEL-59214 - qemu-ga cannot freeze filesystems with sentinelone
+Patch367: kvm-qga-skip-bind-mounts-in-fs-list.patch
+# For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
+Patch368: kvm-target-s390x-report-deprecated-props-in-cpu-model-ex.patch
+# For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
+Patch369: kvm-target-s390x-flag-te-and-cte-as-deprecated.patch
+# For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
+Patch370: kvm-target-s390x-filter-deprecated-properties-based-on-m.patch
+# For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
+Patch371: kvm-target-s390x-move-deprecated-props-to-CpuModelExpans.patch
+# For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
+Patch372: kvm-redhat-Adjust-indentation-in-qapi-machine-target.jso.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2060,6 +2072,20 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Mon May 05 2025 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.4
+- kvm-target-s390x-report-deprecated-props-in-cpu-model-ex.patch [RHEL-88701]
+- kvm-target-s390x-flag-te-and-cte-as-deprecated.patch [RHEL-88701]
+- kvm-target-s390x-filter-deprecated-properties-based-on-m.patch [RHEL-88701]
+- kvm-target-s390x-move-deprecated-props-to-CpuModelExpans.patch [RHEL-88701]
+- kvm-redhat-Adjust-indentation-in-qapi-machine-target.jso.patch [RHEL-88701]
+- Resolves: RHEL-88701
+  ([RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z])
+
+* Sun Jan 05 2025 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.3
+- kvm-qga-skip-bind-mounts-in-fs-list.patch [RHEL-59214]
+- Resolves: RHEL-59214
+  (qemu-ga cannot freeze filesystems with sentinelone)
+
 * Tue Oct 15 2024 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.2
 - kvm-Fix-thread-pool-size-default-value-in-the-man-page.patch [RHEL-26197]
 - Resolves: RHEL-26197

@@ -1,0 +1,44 @@
+From a851c0768ce192035014cce72d231a8df62dc011 Mon Sep 17 00:00:00 2001
+From: Collin Walling <walling@linux.ibm.com>
+Date: Mon, 29 Apr 2024 15:10:59 -0400
+Subject: [PATCH 2/5] target/s390x: flag te and cte as deprecated
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 449: Fix for live-migrating guests from IBM z16 to z17 host machines
+RH-Jira: RHEL-88701
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/5] d00d9654126596e31603ddec04ede4227b982739
+
+Add the CONSTRAINT_TRANSACTIONAL_EXE (cte) and TRANSACTIONAL_EXE (te)
+to the list of deprecated features.
+
+Signed-off-by: Collin Walling <walling@linux.ibm.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Message-ID: <20240429191059.11806-3-walling@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 6e55b32d45976a8e78cbd3bbdf6ed1148cb2662a)
+---
+ target/s390x/cpu_features.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/target/s390x/cpu_features.c b/target/s390x/cpu_features.c
+index 40be75c90a..59f1d6d81e 100644
+--- a/target/s390x/cpu_features.c
++++ b/target/s390x/cpu_features.c
+@@ -218,6 +218,9 @@ void s390_get_deprecated_features(S390FeatBitmap features)
+          /* CSSKE is deprecated on newer generations */
+          S390_FEAT_CONDITIONAL_SSKE,
+          S390_FEAT_BPB,
++         /* Deprecated on z16 */
++         S390_FEAT_CONSTRAINT_TRANSACTIONAL_EXE,
++         S390_FEAT_TRANSACTIONAL_EXE
+     };
+     int i;
+ 
+-- 
+2.48.1
+

@@ -1,0 +1,52 @@
+From 1c0887f9a108a237fc87834c87e9d0358dd98dd9 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Wed, 23 Apr 2025 12:54:42 +0200
+Subject: [PATCH 5/5] redhat: Adjust indentation in qapi/machine-target.json
+ for QEMU v6.2
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 449: Fix for live-migrating guests from IBM z16 to z17 host machines
+RH-Jira: RHEL-88701
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/5] 1a50aac42e2b8e2990f5a00f69117a58911c8107
+
+Upstream Status: RHEL-only
+JIRA: https://issues.redhat.com/browse/RHEL-88701
+
+The QAPI parser of QEMU v6.2 is stricter with the indentation rules,
+so we have to adjust the indentation with the colon of the previous
+line here.
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ qapi/machine-target.json | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/qapi/machine-target.json b/qapi/machine-target.json
+index 320688cd21..415e0fc3c6 100644
+--- a/qapi/machine-target.json
++++ b/qapi/machine-target.json
+@@ -210,11 +210,11 @@
+ # @model: the expanded CpuModelInfo.
+ #
+ # @deprecated-props: a list of properties that are flagged as deprecated
+-#     by the CPU vendor.  The list depends on the CpuModelExpansionType:
+-#     "static" properties are a subset of the enabled-properties for
+-#     the expanded model; "full" properties are a set of properties
+-#     that are deprecated across all models for the architecture.
+-#     (since: 9.1).
++#                    by the CPU vendor.  The list depends on the CpuModelExpansionType:
++#                    "static" properties are a subset of the enabled-properties for
++#                    the expanded model; "full" properties are a set of properties
++#                    that are deprecated across all models for the architecture.
++#                    (since: 9.1).
+ #
+ # Since: 2.8
+ ##
+-- 
+2.48.1
+
