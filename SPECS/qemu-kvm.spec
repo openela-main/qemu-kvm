@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.1.0
-Release: 15%{?rcrel}%{?dist}%{?cc_suffix}.4
+Release: 15%{?rcrel}%{?dist}%{?cc_suffix}.7
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -475,6 +475,74 @@ Patch151: kvm-file-posix-probe-discard-alignment-on-Linux-block-de.patch
 Patch152: kvm-block-io-skip-head-tail-requests-on-EINVAL.patch
 # For RHEL-87734 - QEMU sends unaligned discards on 4K devices [rhel-9.6.z]
 Patch153: kvm-file-posix-Fix-crash-on-discard_granularity-0.patch
+# For RHEL-92077 - Fix x86 M-type compats [rhel-9.6.z]
+Patch154: kvm-hw-i386-Fix-machine-type-compatibility.patch
+# For RHEL-95407 - Support multipath failover with scsi-block [rhel-9.6.z]
+Patch155: kvm-file-posix-Define-DM_MPATH_PROBE_PATHS.patch
+# For RHEL-95407 - Support multipath failover with scsi-block [rhel-9.6.z]
+Patch156: kvm-file-posix-Probe-paths-and-retry-SG_IO-on-potential-.patch
+# For RHEL-100767 - Video stuck after switchover phase when play one video during migration [rhel-9.6.z]
+Patch157: kvm-ui-vnc-Update-display-update-interval-when-VM-state-.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch158: kvm-include-qemu-compiler-add-QEMU_UNINITIALIZED-attribu.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch159: kvm-hw-virtio-virtio-avoid-cost-of-ftrivial-auto-var-ini.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch160: kvm-block-skip-automatic-zero-init-of-large-array-in-ioq.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch161: kvm-chardev-char-fd-skip-automatic-zero-init-of-large-ar.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch162: kvm-chardev-char-pty-skip-automatic-zero-init-of-large-a.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch163: kvm-chardev-char-socket-skip-automatic-zero-init-of-larg.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch164: kvm-hw-audio-ac97-skip-automatic-zero-init-of-large-arra.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch165: kvm-hw-audio-cs4231a-skip-automatic-zero-init-of-large-a.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch166: kvm-hw-audio-es1370-skip-automatic-zero-init-of-large-ar.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch167: kvm-hw-audio-gus-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch168: kvm-hw-audio-marvell_88w8618-skip-automatic-zero-init-of.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch169: kvm-hw-audio-sb16-skip-automatic-zero-init-of-large-arra.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch170: kvm-hw-audio-via-ac97-skip-automatic-zero-init-of-large-.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch171: kvm-hw-char-sclpconsole-lm-skip-automatic-zero-init-of-l.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch172: kvm-hw-dma-xlnx_csu_dma-skip-automatic-zero-init-of-larg.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch173: kvm-hw-display-vmware_vga-skip-automatic-zero-init-of-la.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch174: kvm-hw-hyperv-syndbg-skip-automatic-zero-init-of-large-a.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch175: kvm-hw-misc-aspeed_hace-skip-automatic-zero-init-of-larg.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch176: kvm-hw-net-rtl8139-skip-automatic-zero-init-of-large-arr.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch177: kvm-hw-net-tulip-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch178: kvm-hw-net-virtio-net-skip-automatic-zero-init-of-large-.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch179: kvm-hw-net-xgamc-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch180: kvm-hw-nvme-ctrl-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch181: kvm-hw-ppc-spapr_tpm_proxy-skip-automatic-zero-init-of-l.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch182: kvm-hw-usb-hcd-ohci-skip-automatic-zero-init-of-large-ar.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch183: kvm-hw-scsi-lsi53c895a-skip-automatic-zero-init-of-large.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch184: kvm-hw-scsi-megasas-skip-automatic-zero-init-of-large-ar.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch185: kvm-hw-ufs-lu-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch186: kvm-net-socket-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
+Patch187: kvm-net-stream-skip-automatic-zero-init-of-large-array.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1541,6 +1609,54 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Fri Jul 04 2025 Miroslav Rezanina <mrezanin@redhat.com> - 9.1.0-15.el9_6.7
+- kvm-ui-vnc-Update-display-update-interval-when-VM-state-.patch [RHEL-100767]
+- kvm-include-qemu-compiler-add-QEMU_UNINITIALIZED-attribu.patch [RHEL-99887]
+- kvm-hw-virtio-virtio-avoid-cost-of-ftrivial-auto-var-ini.patch [RHEL-99887]
+- kvm-block-skip-automatic-zero-init-of-large-array-in-ioq.patch [RHEL-99887]
+- kvm-chardev-char-fd-skip-automatic-zero-init-of-large-ar.patch [RHEL-99887]
+- kvm-chardev-char-pty-skip-automatic-zero-init-of-large-a.patch [RHEL-99887]
+- kvm-chardev-char-socket-skip-automatic-zero-init-of-larg.patch [RHEL-99887]
+- kvm-hw-audio-ac97-skip-automatic-zero-init-of-large-arra.patch [RHEL-99887]
+- kvm-hw-audio-cs4231a-skip-automatic-zero-init-of-large-a.patch [RHEL-99887]
+- kvm-hw-audio-es1370-skip-automatic-zero-init-of-large-ar.patch [RHEL-99887]
+- kvm-hw-audio-gus-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-hw-audio-marvell_88w8618-skip-automatic-zero-init-of.patch [RHEL-99887]
+- kvm-hw-audio-sb16-skip-automatic-zero-init-of-large-arra.patch [RHEL-99887]
+- kvm-hw-audio-via-ac97-skip-automatic-zero-init-of-large-.patch [RHEL-99887]
+- kvm-hw-char-sclpconsole-lm-skip-automatic-zero-init-of-l.patch [RHEL-99887]
+- kvm-hw-dma-xlnx_csu_dma-skip-automatic-zero-init-of-larg.patch [RHEL-99887]
+- kvm-hw-display-vmware_vga-skip-automatic-zero-init-of-la.patch [RHEL-99887]
+- kvm-hw-hyperv-syndbg-skip-automatic-zero-init-of-large-a.patch [RHEL-99887]
+- kvm-hw-misc-aspeed_hace-skip-automatic-zero-init-of-larg.patch [RHEL-99887]
+- kvm-hw-net-rtl8139-skip-automatic-zero-init-of-large-arr.patch [RHEL-99887]
+- kvm-hw-net-tulip-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-hw-net-virtio-net-skip-automatic-zero-init-of-large-.patch [RHEL-99887]
+- kvm-hw-net-xgamc-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-hw-nvme-ctrl-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-hw-ppc-spapr_tpm_proxy-skip-automatic-zero-init-of-l.patch [RHEL-99887]
+- kvm-hw-usb-hcd-ohci-skip-automatic-zero-init-of-large-ar.patch [RHEL-99887]
+- kvm-hw-scsi-lsi53c895a-skip-automatic-zero-init-of-large.patch [RHEL-99887]
+- kvm-hw-scsi-megasas-skip-automatic-zero-init-of-large-ar.patch [RHEL-99887]
+- kvm-hw-ufs-lu-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-net-socket-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- kvm-net-stream-skip-automatic-zero-init-of-large-array.patch [RHEL-99887]
+- Resolves: RHEL-100767
+  (Video stuck after switchover phase when play one video during migration [rhel-9.6.z])
+- Resolves: RHEL-99887
+  (-ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z])
+
+* Mon Jun 09 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.6
+- kvm-file-posix-Define-DM_MPATH_PROBE_PATHS.patch [RHEL-95407]
+- kvm-file-posix-Probe-paths-and-retry-SG_IO-on-potential-.patch [RHEL-95407]
+- Resolves: RHEL-95407
+  (Support multipath failover with scsi-block [rhel-9.6.z])
+
+* Mon May 26 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.5
+- kvm-hw-i386-Fix-machine-type-compatibility.patch [RHEL-92077]
+- Resolves: RHEL-92077
+  (Fix x86 M-type compats [rhel-9.6.z])
+
 * Mon May 05 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.4
 - kvm-file-posix-probe-discard-alignment-on-Linux-block-de.patch [RHEL-87734]
 - kvm-block-io-skip-head-tail-requests-on-EINVAL.patch [RHEL-87734]
