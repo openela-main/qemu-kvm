@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.1.0
-Release: 15%{?rcrel}%{?dist}%{?cc_suffix}.7
+Release: 15%{?rcrel}%{?dist}%{?cc_suffix}.9
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -543,6 +543,12 @@ Patch185: kvm-hw-ufs-lu-skip-automatic-zero-init-of-large-array.patch
 Patch186: kvm-net-socket-skip-automatic-zero-init-of-large-array.patch
 # For RHEL-99887 - -ftrivial-auto-var-init=zero reduced performance [rhel-9.6.z]
 Patch187: kvm-net-stream-skip-automatic-zero-init-of-large-array.patch
+# For RHEL-107314 - Improve VFIO mmapping performance with  huge  pfnmaps [rhel-9.6.z]
+Patch188: kvm-vfio-helpers-Refactor-vfio_region_mmap-error-handlin.patch
+# For RHEL-107314 - Improve VFIO mmapping performance with  huge  pfnmaps [rhel-9.6.z]
+Patch189: kvm-vfio-helpers-Align-mmaps.patch
+# For RHEL-108725 - Openstack guest becomes inaccessible via network when storage network on the hypervisor is disabled/lost [rhel-9.6.z]
+Patch190: kvm-rbd-Fix-.bdrv_get_specific_info-implementation.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1609,6 +1615,17 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Aug 18 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.9
+- kvm-rbd-Fix-.bdrv_get_specific_info-implementation.patch [RHEL-108725]
+- Resolves: RHEL-108725
+  (Openstack guest becomes inaccessible via network when storage network on the hypervisor is disabled/lost [rhel-9.6.z])
+
+* Tue Aug 05 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-15.el9_6.8
+- kvm-vfio-helpers-Refactor-vfio_region_mmap-error-handlin.patch [RHEL-107314]
+- kvm-vfio-helpers-Align-mmaps.patch [RHEL-107314]
+- Resolves: RHEL-107314
+  (Improve VFIO mmapping performance with  huge  pfnmaps [rhel-9.6.z])
+
 * Fri Jul 04 2025 Miroslav Rezanina <mrezanin@redhat.com> - 9.1.0-15.el9_6.7
 - kvm-ui-vnc-Update-display-update-interval-when-VM-state-.patch [RHEL-100767]
 - kvm-include-qemu-compiler-add-QEMU_UNINITIALIZED-attribu.patch [RHEL-99887]
