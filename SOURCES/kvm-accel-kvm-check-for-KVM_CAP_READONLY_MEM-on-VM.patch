@@ -1,0 +1,56 @@
+From 2b4558ec338adde1b9735128bb8d2f81db303a93 Mon Sep 17 00:00:00 2001
+From: Avadhut Naik <avnaik@redhat.com>
+Date: Wed, 23 Oct 2024 12:25:28 -0500
+Subject: [PATCH 01/38] accel/kvm: check for KVM_CAP_READONLY_MEM on VM
+
+RH-Author: avnaik1 <None>
+RH-MergeRequest: 276: accel/kvm: check for KVM_CAP_READONLY_MEM on VM
+RH-Jira: RHEL-58928
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [1/1] 1d392a9e47e68bb71dc44635c494d161585a885c (avnaik1/avnaik-qemu-kvm-fork)
+
+JIRA: https://issues.redhat.com/browse/RHEL-58928
+
+commit 64e0e63ea16aa0122dc0c41a0679da0ae4616208
+Author: Tom Dohrmann <erbse.13@gmx.de>
+Date:   Tue Sep 3 06:29:53 2024 +0000
+
+    accel/kvm: check for KVM_CAP_READONLY_MEM on VM
+
+    KVM_CAP_READONLY_MEM used to be a global capability, but with the
+    introduction of AMD SEV-SNP confidential VMs, this extension is not
+    always available on all VM types [1,2].
+
+    Query the extension on the VM level instead of on the KVM level.
+
+    [1] https://patchwork.kernel.org/project/kvm/patch/20240809190319.1710470-2-seanjc@google.com/
+    [2] https://patchwork.kernel.org/project/kvm/patch/20240902144219.3716974-1-erbse.13@gmx.de/
+
+    Cc: Paolo Bonzini <pbonzini@redhat.com>
+    Signed-off-by: Tom Dohrmann <erbse.13@gmx.de>
+    Link: https://lore.kernel.org/r/20240903062953.3926498-1-erbse.13@gmx.de
+    Cc: qemu-stable@nongnu.org
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Avadhut Naik <avnaik@redhat.com>
+---
+ accel/kvm/kvm-all.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 75d11a07b2..acc23092e7 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2603,7 +2603,7 @@ static int kvm_init(MachineState *ms)
+     }
+ 
+     kvm_readonly_mem_allowed =
+-        (kvm_check_extension(s, KVM_CAP_READONLY_MEM) > 0);
++        (kvm_vm_check_extension(s, KVM_CAP_READONLY_MEM) > 0);
+ 
+     kvm_resamplefds_allowed =
+         (kvm_check_extension(s, KVM_CAP_IRQFD_RESAMPLE) > 0);
+-- 
+2.39.3
+

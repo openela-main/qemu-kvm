@@ -1,0 +1,37 @@
+From 551632921a8330cff09e7d92429aa45cf51c75e6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 3 Jul 2024 18:45:58 +0100
+Subject: Increase deletion schedule to 4 releases
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Until RHEL 10 pc machine type is introduced, we have to keep
+7.6.0 machine types as a special exception to our normal rule of
+deleting machine types after 2 releases due to being a default
+machine type.
+
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+Rebase notes (9.1.0 rc0)
+  - New patch
+---
+ include/hw/boards.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 7f7eb4ec40..fd5a957cad 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -608,7 +608,7 @@ struct MachineState {
+  * How many RHEL major releases for each phase
+  * of the life cycle.
+  */
+-#define MACHINE_VER_DELETION_MAJOR 2
++#define MACHINE_VER_DELETION_MAJOR 4
+ #define MACHINE_VER_DEPRECATION_MAJOR 1
+ 
+ /*
+-- 
+2.39.3
+

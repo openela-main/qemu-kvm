@@ -1,0 +1,27 @@
+From 17c3bccf2f2804772ab60bf4f04d7437f13ed48a Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Wed, 4 Sep 2024 15:52:00 +0200
+Subject: arm: ensure compatibility of virt-rhel9*
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/arm/virt.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 3374d3b0bc..31a71a7f45 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3582,6 +3582,9 @@ DEFINE_VIRT_MACHINE(2, 6)
+ 
+ static void virt_rhel_machine_9_4_0_options(MachineClass *mc)
+ {
++    /* From virt_machine_9_0_options() */
++    mc->smbios_memory_device_size = 16 * GiB;
++
+     compat_props_add(mc->compat_props, hw_compat_rhel_10_0, hw_compat_rhel_10_0_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_9_5, hw_compat_rhel_9_5_len);
+ }
+-- 
+2.39.3
+

@@ -1,0 +1,49 @@
+From e789160acd34f9493696cf5f20eccd3ed4271ae5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Tue, 10 Jun 2025 13:36:42 +0100
+Subject: [PATCH 05/31] chardev/char-fd: skip automatic zero-init of large
+ array
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99889
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/30] 9745f9fa7d74d0a66de2826b93eea5f74b614de1
+
+The 'fd_chr_read' method has a 4k byte array used for copying
+data between the socket and device. Skip the automatic zero-init
+of this array to eliminate the performance overhead in the I/O
+hot path.
+
+The 'buf' array will be fully initialized when reading data off
+the network socket.
+
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-id: 20250610123709.835102-5-berrange@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit a503bdc22b91869e3bf45522e36b122889465306)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ chardev/char-fd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/chardev/char-fd.c b/chardev/char-fd.c
+index d2c4923359..8dd662c066 100644
+--- a/chardev/char-fd.c
++++ b/chardev/char-fd.c
+@@ -50,7 +50,7 @@ static gboolean fd_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
+     Chardev *chr = CHARDEV(opaque);
+     FDChardev *s = FD_CHARDEV(opaque);
+     int len;
+-    uint8_t buf[CHR_READ_BUF_LEN];
++    QEMU_UNINITIALIZED uint8_t buf[CHR_READ_BUF_LEN];
+     ssize_t ret;
+ 
+     len = sizeof(buf);
+-- 
+2.39.3
+

@@ -1,0 +1,60 @@
+From d36ac428991e700dd5cec62dfa16f1d414a9dda8 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Fri, 17 Jan 2025 05:50:54 -0500
+Subject: [PATCH 6/6] arm: disable pauth for virt-rhel9* in RHEL10
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 327: arm: disable pauth for virt-rhel9* in RHEL10
+RH-Jira: RHEL-71761
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Kashyap Chamarthy <None>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [1/1] fef388b1aafce66fa1a176739264bca49596bb94 (seott1/cos-qemu-kvm)
+
+RHEL9 kernels have pauth disabled while RHEL10 has it enabled,
+since qemu will setup the VM/VCPU with pauth when KVM supports it
+the guest visible ID registers will differ between RHEL9 and RHEL10
+(on a host with pauth support) leading to migration / upgrade failures.
+
+Fix this by disabling pauth for virt-rhel9* machine types in RHEL10.
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+JIRA: https://issues.redhat.com/browse/RHEL-71761
+---
+ hw/arm/virt.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 6d55bba241..55bd92e6d0 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -90,6 +90,16 @@ static GlobalProperty arm_virt_compat[] = {
+ };
+ static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
+ 
++/*
++ * RHEL9 kernels have pauth disabled while RHEL10 has it enabled,
++ * since qemu will setup the VM with pauth when KVM supports it we
++ * have to disable it for virt-rhel9* to support upgrades / migration.
++ */
++GlobalProperty arm_rhel9_compat[] = {
++    {TYPE_ARM_CPU, "pauth", "off", .optional = true},
++};
++const size_t arm_rhel9_compat_len = G_N_ELEMENTS(arm_rhel9_compat);
++
+ /*
+  * This variable is for changes to properties that are RHEL specific,
+  * different to the current upstream and to be applied to the latest
+@@ -3596,6 +3606,8 @@ static void virt_rhel_machine_9_6_0_options(MachineClass *mc)
+ {
+     virt_rhel_machine_10_0_0_options(mc);
+ 
++    compat_props_add(mc->compat_props, arm_rhel9_compat, arm_rhel9_compat_len);
++
+     /* NB: remember to move this line to the *latest* RHEL 9 machine */
+     compat_props_add(mc->compat_props, hw_compat_rhel_9, hw_compat_rhel_9_len);
+ }
+-- 
+2.39.3
+

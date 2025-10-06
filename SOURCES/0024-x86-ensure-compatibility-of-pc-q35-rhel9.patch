@@ -1,0 +1,28 @@
+From 6be70c681bf7a1b9666ed5896b5be8be7df2bf50 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Wed, 4 Sep 2024 15:46:53 +0200
+Subject: x86: ensure compatibility of pc-q35-rhel9*
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/i386/pc_q35.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 849b231a74..a05df61cfc 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -680,6 +680,10 @@ static void pc_q35_rhel_machine_9_4_0_options(MachineClass *m)
+     pcmc->smbios_stream_product = "RHEL";
+     pcmc->smbios_stream_version = "9.4.0";
+ 
++    /* From pc_q35_machine_9_0_options() */
++    pcmc->isa_bios_alias = false;
++    m->smbios_memory_device_size = 16 * GiB;
++
+     compat_props_add(m->compat_props, hw_compat_rhel_10_0,
+                      hw_compat_rhel_10_0_len);
+     compat_props_add(m->compat_props, hw_compat_rhel_9_5,
+-- 
+2.39.3
+

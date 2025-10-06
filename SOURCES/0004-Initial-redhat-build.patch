@@ -1,0 +1,146 @@
+From 7e57931a524e1e805ba8d68e75828e98c591e975 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 26 May 2021 10:56:02 +0200
+Subject: Initial redhat build
+
+This patch introduces redhat build structure in redhat subdirectory. In addition,
+several issues are fixed in QEMU tree:
+
+- Change of app name for sasl_server_init in VNC code from qemu to qemu-kvm
+ - As we use qemu-kvm as name in all places, this is updated to be consistent
+- Man page renamed from qemu to qemu-kvm
+ - man page is installed using make install so we have to fix it in qemu tree
+
+We disable make check due to issues with some of the tests.
+
+We are rebasing from qemu-kvm-9.0.0-8.el10.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+---
+Rebase notes (9.1.0 rc0):
+- Remove --disable-block-migration and --disable-pvrdma configure options (upstream)
+- Removed --disable-avx512f configure option
+- Removed qemu-vsmr-helper (changed upstream)
+---
+ .distro/Makefile                        |  101 ++
+ .distro/Makefile.common                 |   42 +
+ .distro/README.tests                    |   39 +
+ .distro/modules-load.conf               |    4 +
+ .distro/qemu-guest-agent.service        |    1 -
+ .distro/qemu-kvm.spec.template          | 1332 +++++++++++++++++++++++
+ .distro/rpminspect.yaml                 |    6 +-
+ .distro/scripts/extract_build_cmd.py    |   12 +
+ .distro/scripts/frh.py                  |    4 +-
+ .distro/scripts/process-patches.sh      |    6 +-
+ .gitignore                              |    1 +
+ README.systemtap                        |   43 +
+ scripts/qemu-guest-agent/fsfreeze-hook  |    2 +-
+ scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
+ scripts/systemtap/script.d/qemu_kvm.stp |    1 +
+ ui/vnc-auth-sasl.c                      |    2 +-
+ 16 files changed, 1593 insertions(+), 7 deletions(-)
+ create mode 100644 .distro/Makefile
+ create mode 100644 .distro/Makefile.common
+ create mode 100644 .distro/README.tests
+ create mode 100644 .distro/modules-load.conf
+ create mode 100644 .distro/qemu-kvm.spec.template
+ create mode 100644 README.systemtap
+ create mode 100644 scripts/systemtap/conf.d/qemu_kvm.conf
+ create mode 100644 scripts/systemtap/script.d/qemu_kvm.stp
+
+diff --git a/README.systemtap b/README.systemtap
+new file mode 100644
+index 0000000000..ad913fc990
+--- /dev/null
++++ b/README.systemtap
+@@ -0,0 +1,43 @@
++QEMU tracing using systemtap-initscript
++---------------------------------------
++
++You can capture QEMU trace data all the time using systemtap-initscript.  This
++uses SystemTap's flight recorder mode to trace all running guests to a
++fixed-size buffer on the host.  Old trace entries are overwritten by new
++entries when the buffer size wraps.
++
++1. Install the systemtap-initscript package:
++  # yum install systemtap-initscript
++
++2. Install the systemtap scripts and the conf file:
++  # cp /usr/share/qemu-kvm/systemtap/script.d/qemu_kvm.stp /etc/systemtap/script.d/
++  # cp /usr/share/qemu-kvm/systemtap/conf.d/qemu_kvm.conf /etc/systemtap/conf.d/
++
++The set of trace events to enable is given in qemu_kvm.stp.  This SystemTap
++script can be customized to add or remove trace events provided in
++/usr/share/systemtap/tapset/qemu-kvm-simpletrace.stp.
++
++SystemTap customizations can be made to qemu_kvm.conf to control the flight
++recorder buffer size and whether to store traces in memory only or disk too.
++See stap(1) for option documentation.
++
++3. Start the systemtap service.
++　# service systemtap start qemu_kvm
++
++4. Make the service start at boot time.
++　# chkconfig systemtap on
++
++5. Confirm that the service works.
++  # service systemtap status qemu_kvm
++  qemu_kvm is running...
++
++When you want to inspect the trace buffer, perform the following steps:
++
++1. Dump the trace buffer.
++  # staprun -A qemu_kvm >/tmp/trace.log
++
++2. Start the systemtap service because the preceding step stops the service.
++  # service systemtap start qemu_kvm
++
++3. Translate the trace record to readable format.
++  # /usr/share/qemu-kvm/simpletrace.py --no-header /usr/share/qemu-kvm/trace-events /tmp/trace.log
+diff --git a/scripts/qemu-guest-agent/fsfreeze-hook b/scripts/qemu-guest-agent/fsfreeze-hook
+index 13aafd4845..e9b84ec028 100755
+--- a/scripts/qemu-guest-agent/fsfreeze-hook
++++ b/scripts/qemu-guest-agent/fsfreeze-hook
+@@ -8,7 +8,7 @@
+ # request, it is issued with "thaw" argument after filesystem is thawed.
+ 
+ LOGFILE=/var/log/qga-fsfreeze-hook.log
+-FSFREEZE_D=$(dirname -- "$0")/fsfreeze-hook.d
++FSFREEZE_D=$(dirname -- "$(realpath $0)")/fsfreeze-hook.d
+ 
+ # Check whether file $1 is a backup or rpm-generated file and should be ignored
+ is_ignored_file() {
+diff --git a/scripts/systemtap/conf.d/qemu_kvm.conf b/scripts/systemtap/conf.d/qemu_kvm.conf
+new file mode 100644
+index 0000000000..372d8160a4
+--- /dev/null
++++ b/scripts/systemtap/conf.d/qemu_kvm.conf
+@@ -0,0 +1,4 @@
++# Force load uprobes (see BZ#1118352)
++stap -e 'probe process("/usr/libexec/qemu-kvm").function("main") { printf("") }' -c true
++
++qemu_kvm_OPT="-s4" # per-CPU buffer size, in megabytes
+diff --git a/scripts/systemtap/script.d/qemu_kvm.stp b/scripts/systemtap/script.d/qemu_kvm.stp
+new file mode 100644
+index 0000000000..c04abf9449
+--- /dev/null
++++ b/scripts/systemtap/script.d/qemu_kvm.stp
+@@ -0,0 +1 @@
++probe qemu.kvm.simpletrace.handle_qmp_command,qemu.kvm.simpletrace.monitor_protocol_*,qemu.kvm.simpletrace.migrate_set_state {}
+diff --git a/ui/vnc-auth-sasl.c b/ui/vnc-auth-sasl.c
+index 47fdae5b21..2a950caa2a 100644
+--- a/ui/vnc-auth-sasl.c
++++ b/ui/vnc-auth-sasl.c
+@@ -42,7 +42,7 @@
+ 
+ bool vnc_sasl_server_init(Error **errp)
+ {
+-    int saslErr = sasl_server_init(NULL, "qemu");
++    int saslErr = sasl_server_init(NULL, "qemu-kvm");
+ 
+     if (saslErr != SASL_OK) {
+         error_setg(errp, "Failed to initialize SASL auth: %s",
+-- 
+2.39.3
+

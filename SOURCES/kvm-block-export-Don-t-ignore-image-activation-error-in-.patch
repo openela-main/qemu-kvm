@@ -1,0 +1,50 @@
+From 7e3b7fff56e0f8f16a898e7d22789ffad4166aca Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 4 Feb 2025 22:14:01 +0100
+Subject: [PATCH 16/22] block/export: Don't ignore image activation error in
+ blk_exp_add()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 340: QMP command for block device reactivation after migration
+RH-Jira: RHEL-54670
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [16/22] 3318a1c7eb1707a8a0b01a0c6edbd69deada8ca7 (kmwolf/centos-qemu-kvm)
+
+Currently, block exports can't handle inactive images correctly.
+Incoming write requests would run into assertion failures. Make sure
+that we return an error when creating an export can't activate the
+image.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Acked-by: Fabiano Rosas <farosas@suse.de>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20250204211407.381505-11-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 69f28176ca0af850db23a1c6364f0c8525b20801)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/export/export.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/block/export/export.c b/block/export/export.c
+index 6d51ae8ed7..23a86efcdb 100644
+--- a/block/export/export.c
++++ b/block/export/export.c
+@@ -145,7 +145,11 @@ BlockExport *blk_exp_add(BlockExportOptions *export, Error **errp)
+      * ctx was acquired in the caller.
+      */
+     bdrv_graph_rdlock_main_loop();
+-    bdrv_activate(bs, NULL);
++    ret = bdrv_activate(bs, errp);
++    if (ret < 0) {
++        bdrv_graph_rdunlock_main_loop();
++        goto fail;
++    }
+     bdrv_graph_rdunlock_main_loop();
+ 
+     perm = BLK_PERM_CONSISTENT_READ;
+-- 
+2.39.3
+
