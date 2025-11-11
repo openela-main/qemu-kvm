@@ -1,0 +1,117 @@
+From f1ff9d3b379697a2d4627e9529067195841d86a8 Mon Sep 17 00:00:00 2001
+From: Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+Date: Sun, 4 May 2025 17:04:05 +0000
+Subject: [PATCH 25/57] hw/i386/amd_iommu: Allow migration when explicitly
+ create the AMDVI-PCI device
+
+RH-Author: John Allen <None>
+RH-MergeRequest: 380: Add ability to manually specify the AMDVI-PCI device
+RH-Jira: RHEL-70925
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/3] a42b88116e608a79b6fae13ebe3709874f2a853f (johnalle/qemu-kvm-fork)
+
+Add migration support for AMD IOMMU model by saving necessary AMDVIState
+parameters for MMIO registers, device table, command buffer, and event
+buffers.
+
+Also change devtab_len type from size_t to uint64_t to avoid 32-bit build
+issue.
+
+Signed-off-by: Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+Message-Id: <20250504170405.12623-3-suravee.suthikulpanit@amd.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 28931c2e1591deb4bfaaf744fdc8813e96c230f1)
+
+JIRA: https://issues.redhat.com/browse/RHEL-70925
+
+Signed-off-by: John Allen <johnalle@redhat.com>
+---
+ hw/i386/amd_iommu.c | 48 +++++++++++++++++++++++++++++++++++++++++++++
+ hw/i386/amd_iommu.h |  2 +-
+ 2 files changed, 49 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/amd_iommu.c b/hw/i386/amd_iommu.c
+index 6a5e76cfef..a34e0c5f59 100644
+--- a/hw/i386/amd_iommu.c
++++ b/hw/i386/amd_iommu.c
+@@ -1611,8 +1611,55 @@ static void amdvi_sysbus_reset(DeviceState *dev)
+     amdvi_init(s);
+ }
+ 
++static const VMStateDescription vmstate_amdvi_sysbus_migratable = {
++    .name = "amd-iommu",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .priority = MIG_PRI_IOMMU,
++    .fields = (VMStateField[]) {
++      /* Updated in  amdvi_handle_control_write() */
++      VMSTATE_BOOL(enabled, AMDVIState),
++      VMSTATE_BOOL(ga_enabled, AMDVIState),
++      VMSTATE_BOOL(ats_enabled, AMDVIState),
++      VMSTATE_BOOL(cmdbuf_enabled, AMDVIState),
++      VMSTATE_BOOL(completion_wait_intr, AMDVIState),
++      VMSTATE_BOOL(evtlog_enabled, AMDVIState),
++      VMSTATE_BOOL(evtlog_intr, AMDVIState),
++      /* Updated in amdvi_handle_devtab_write() */
++      VMSTATE_UINT64(devtab, AMDVIState),
++      VMSTATE_UINT64(devtab_len, AMDVIState),
++      /* Updated in amdvi_handle_cmdbase_write() */
++      VMSTATE_UINT64(cmdbuf, AMDVIState),
++      VMSTATE_UINT64(cmdbuf_len, AMDVIState),
++      /* Updated in amdvi_handle_cmdhead_write() */
++      VMSTATE_UINT32(cmdbuf_head, AMDVIState),
++      /* Updated in amdvi_handle_cmdtail_write() */
++      VMSTATE_UINT32(cmdbuf_tail, AMDVIState),
++      /* Updated in amdvi_handle_evtbase_write() */
++      VMSTATE_UINT64(evtlog, AMDVIState),
++      VMSTATE_UINT32(evtlog_len, AMDVIState),
++      /* Updated in amdvi_handle_evthead_write() */
++      VMSTATE_UINT32(evtlog_head, AMDVIState),
++      /* Updated in amdvi_handle_evttail_write() */
++      VMSTATE_UINT32(evtlog_tail, AMDVIState),
++      /* Updated in amdvi_handle_pprbase_write() */
++      VMSTATE_UINT64(ppr_log, AMDVIState),
++      VMSTATE_UINT32(pprlog_len, AMDVIState),
++      /* Updated in amdvi_handle_pprhead_write() */
++      VMSTATE_UINT32(pprlog_head, AMDVIState),
++      /* Updated in amdvi_handle_tailhead_write() */
++      VMSTATE_UINT32(pprlog_tail, AMDVIState),
++      /* MMIO registers */
++      VMSTATE_UINT8_ARRAY(mmior, AMDVIState, AMDVI_MMIO_SIZE),
++      VMSTATE_UINT8_ARRAY(romask, AMDVIState, AMDVI_MMIO_SIZE),
++      VMSTATE_UINT8_ARRAY(w1cmask, AMDVIState, AMDVI_MMIO_SIZE),
++      VMSTATE_END_OF_LIST()
++    }
++};
++
+ static void amdvi_sysbus_realize(DeviceState *dev, Error **errp)
+ {
++    DeviceClass *dc = (DeviceClass *) object_get_class(OBJECT(dev));
+     AMDVIState *s = AMD_IOMMU_DEVICE(dev);
+     MachineState *ms = MACHINE(qdev_get_machine());
+     PCMachineState *pcms = PC_MACHINE(ms);
+@@ -1634,6 +1681,7 @@ static void amdvi_sysbus_realize(DeviceState *dev, Error **errp)
+         }
+ 
+         s->pci = AMD_IOMMU_PCI(pdev);
++        dc->vmsd = &vmstate_amdvi_sysbus_migratable;
+     } else {
+         s->pci = AMD_IOMMU_PCI(object_new(TYPE_AMD_IOMMU_PCI));
+         /* This device should take care of IOMMU PCI properties */
+diff --git a/hw/i386/amd_iommu.h b/hw/i386/amd_iommu.h
+index ece71ff0b6..741dd9a910 100644
+--- a/hw/i386/amd_iommu.h
++++ b/hw/i386/amd_iommu.h
+@@ -329,7 +329,7 @@ struct AMDVIState {
+     bool excl_enabled;
+ 
+     hwaddr devtab;               /* base address device table    */
+-    size_t devtab_len;           /* device table length          */
++    uint64_t devtab_len;         /* device table length          */
+ 
+     hwaddr cmdbuf;               /* command buffer base address  */
+     uint64_t cmdbuf_len;         /* command buffer length        */
+-- 
+2.39.3
+

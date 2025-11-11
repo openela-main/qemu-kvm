@@ -1,17 +1,17 @@
-From 73f85b945f09ae118f2c1479110f2e34906e084b Mon Sep 17 00:00:00 2001
+From cf92fd8487195ac45bfbdad15168eaec70f3aaa9 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:39 +0100
-Subject: [PATCH 02/31] include/qemu/compiler: add QEMU_UNINITIALIZED attribute
+Subject: [PATCH 27/57] include/qemu/compiler: add QEMU_UNINITIALIZED attribute
  macro
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/30] 6b6151625fdf6636cbf352731906f643e2fbfd35
+RH-Commit: [1/30] 43c2412d318b6d8e0dcb0b37340640a9d90c3188 (stefanha/centos-stream-qemu-kvm)
 
 The QEMU_UNINITIALIZED macro is to be used to skip the default compiler
 variable initialization done by -ftrivial-auto-var-init=zero.

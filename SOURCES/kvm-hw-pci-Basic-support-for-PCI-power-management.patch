@@ -1,0 +1,242 @@
+From 98b0cd83c09d35a3da0ae142c09038174355e87e Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Tue, 25 Feb 2025 14:52:25 -0700
+Subject: [PATCH 2/7] hw/pci: Basic support for PCI power management
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 348: PCI: Implement basic PCI PM capability backing
+RH-Jira: RHEL-7301
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [2/6] 5faff6382c124711887704fff4f857e8f85e7be5 (eauger1/centos-qemu-kvm)
+
+Conflicts: contextual conflict in include/hw/pci/pci.h
+we don't have 449dca6ac93a ("pcie: enable Extended tag field support")
+downstream so we don't have x-pcie-ext-tag definition.
+
+The memory and IO BARs for devices are only accessible in the D0 power
+state.  In other power states the PCI spec defines that the device
+responds to TLPs and messages with an Unsupported Request response.
+
+To approximate this behavior, consider the BARs as unmapped when the
+device is not in the D0 power state.  This makes the BARs inaccessible
+and has the additional bonus for vfio-pci that we don't attempt to DMA
+map BARs for devices in a non-D0 power state.
+
+To support this, an interface is added for devices to register the PM
+capability, which allows central tracking to enforce valid transitions
+and unmap BARs in non-D0 states.
+
+NB. We currently have device models (eepro100 and pcie_pci_bridge)
+that register a PM capability but do not set wmask to enable writes to
+the power state field.  In order to maintain migration compatibility,
+this new helper does not manage the wmask to enable guest writes to
+initiate a power state change.  The contents and write access of the
+PM capability are still managed by the caller.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250225215237.3314011-2-alex.williamson@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 9461afd2008b0820fc45a6a7bc675df1b6791e4f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c                | 93 ++++++++++++++++++++++++++++++++++++-
+ hw/pci/trace-events         |  2 +
+ include/hw/pci/pci.h        |  3 ++
+ include/hw/pci/pci_device.h |  3 ++
+ 4 files changed, 99 insertions(+), 2 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 83c9d5b9ea..d774ae47d2 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -365,6 +365,84 @@ static void pci_msi_trigger(PCIDevice *dev, MSIMessage msg)
+                          attrs, NULL);
+ }
+ 
++/*
++ * Register and track a PM capability.  If wmask is also enabled for the power
++ * state field of the pmcsr register, guest writes may change the device PM
++ * state.  BAR access is only enabled while the device is in the D0 state.
++ * Return the capability offset or negative error code.
++ */
++int pci_pm_init(PCIDevice *d, uint8_t offset, Error **errp)
++{
++    int cap = pci_add_capability(d, PCI_CAP_ID_PM, offset, PCI_PM_SIZEOF, errp);
++
++    if (cap < 0) {
++        return cap;
++    }
++
++    d->pm_cap = cap;
++    d->cap_present |= QEMU_PCI_CAP_PM;
++
++    return cap;
++}
++
++static uint8_t pci_pm_state(PCIDevice *d)
++{
++    uint16_t pmcsr;
++
++    if (!(d->cap_present & QEMU_PCI_CAP_PM)) {
++        return 0;
++    }
++
++    pmcsr = pci_get_word(d->config + d->pm_cap + PCI_PM_CTRL);
++
++    return pmcsr & PCI_PM_CTRL_STATE_MASK;
++}
++
++/*
++ * Update the PM capability state based on the new value stored in config
++ * space respective to the old, pre-write state provided.  If the new value
++ * is rejected (unsupported or invalid transition) restore the old value.
++ * Return the resulting PM state.
++ */
++static uint8_t pci_pm_update(PCIDevice *d, uint32_t addr, int l, uint8_t old)
++{
++    uint16_t pmc;
++    uint8_t new;
++
++    if (!(d->cap_present & QEMU_PCI_CAP_PM) ||
++        !range_covers_byte(addr, l, d->pm_cap + PCI_PM_CTRL)) {
++        return old;
++    }
++
++    new = pci_pm_state(d);
++    if (new == old) {
++        return old;
++    }
++
++    pmc = pci_get_word(d->config + d->pm_cap + PCI_PM_PMC);
++
++    /*
++     * Transitions to D1 & D2 are only allowed if supported.  Devices may
++     * only transition to higher D-states or to D0.
++     */
++    if ((!(pmc & PCI_PM_CAP_D1) && new == 1) ||
++        (!(pmc & PCI_PM_CAP_D2) && new == 2) ||
++        (old && new && new < old)) {
++        pci_word_test_and_clear_mask(d->config + d->pm_cap + PCI_PM_CTRL,
++                                     PCI_PM_CTRL_STATE_MASK);
++        pci_word_test_and_set_mask(d->config + d->pm_cap + PCI_PM_CTRL,
++                                   old);
++        trace_pci_pm_bad_transition(d->name, pci_dev_bus_num(d),
++                                    PCI_SLOT(d->devfn), PCI_FUNC(d->devfn),
++                                    old, new);
++        return old;
++    }
++
++    trace_pci_pm_transition(d->name, pci_dev_bus_num(d), PCI_SLOT(d->devfn),
++                            PCI_FUNC(d->devfn), old, new);
++    return new;
++}
++
+ static void pci_reset_regions(PCIDevice *dev)
+ {
+     int r;
+@@ -404,6 +482,11 @@ static void pci_do_device_reset(PCIDevice *dev)
+                               pci_get_word(dev->wmask + PCI_INTERRUPT_LINE) |
+                               pci_get_word(dev->w1cmask + PCI_INTERRUPT_LINE));
+     dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
++    /* Default PM state is D0 */
++    if (dev->cap_present & QEMU_PCI_CAP_PM) {
++        pci_word_test_and_clear_mask(dev->config + dev->pm_cap + PCI_PM_CTRL,
++                                     PCI_PM_CTRL_STATE_MASK);
++    }
+     pci_reset_regions(dev);
+     pci_update_mappings(dev);
+ 
+@@ -1525,7 +1608,7 @@ static void pci_update_mappings(PCIDevice *d)
+             continue;
+ 
+         new_addr = pci_bar_address(d, i, r->type, r->size);
+-        if (!d->enabled) {
++        if (!d->enabled || pci_pm_state(d)) {
+             new_addr = PCI_BAR_UNMAPPED;
+         }
+ 
+@@ -1591,6 +1674,7 @@ uint32_t pci_default_read_config(PCIDevice *d,
+ 
+ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int l)
+ {
++    uint8_t new_pm_state, old_pm_state = pci_pm_state(d);
+     int i, was_irq_disabled = pci_irq_disabled(d);
+     uint32_t val = val_in;
+ 
+@@ -1603,11 +1687,16 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int
+         d->config[addr + i] = (d->config[addr + i] & ~wmask) | (val & wmask);
+         d->config[addr + i] &= ~(val & w1cmask); /* W1C: Write 1 to Clear */
+     }
++
++    new_pm_state = pci_pm_update(d, addr, l, old_pm_state);
++
+     if (ranges_overlap(addr, l, PCI_BASE_ADDRESS_0, 24) ||
+         ranges_overlap(addr, l, PCI_ROM_ADDRESS, 4) ||
+         ranges_overlap(addr, l, PCI_ROM_ADDRESS1, 4) ||
+-        range_covers_byte(addr, l, PCI_COMMAND))
++        range_covers_byte(addr, l, PCI_COMMAND) ||
++        !!new_pm_state != !!old_pm_state) {
+         pci_update_mappings(d);
++    }
+ 
+     if (ranges_overlap(addr, l, PCI_COMMAND, 2)) {
+         pci_update_irq_disabled(d, was_irq_disabled);
+diff --git a/hw/pci/trace-events b/hw/pci/trace-events
+index 19643aa8c6..c82a87ffdd 100644
+--- a/hw/pci/trace-events
++++ b/hw/pci/trace-events
+@@ -1,6 +1,8 @@
+ # See docs/devel/tracing.rst for syntax documentation.
+ 
+ # pci.c
++pci_pm_bad_transition(const char *dev, uint32_t bus, uint32_t slot, uint32_t func, uint8_t old, uint8_t new) "%s %02x:%02x.%x REJECTED PM transition D%d->D%d"
++pci_pm_transition(const char *dev, uint32_t bus, uint32_t slot, uint32_t func, uint8_t old, uint8_t new) "%s %02x:%02x.%x PM transition D%d->D%d"
+ pci_update_mappings_del(const char *dev, uint32_t bus, uint32_t slot, uint32_t func, int bar, uint64_t addr, uint64_t size) "%s %02x:%02x.%x %d,0x%"PRIx64"+0x%"PRIx64
+ pci_update_mappings_add(const char *dev, uint32_t bus, uint32_t slot, uint32_t func, int bar, uint64_t addr, uint64_t size) "%s %02x:%02x.%x %d,0x%"PRIx64"+0x%"PRIx64
+ pci_route_irq(int dev_irq, const char *dev_path, int parent_irq, const char *parent_path) "IRQ %d @%s -> IRQ %d @%s"
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index 45365ae085..afeb5a2263 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -213,6 +213,8 @@ enum {
+     QEMU_PCIE_ERR_UNC_MASK = (1 << QEMU_PCIE_ERR_UNC_MASK_BITNR),
+ #define QEMU_PCIE_ARI_NEXTFN_1_BITNR 12
+     QEMU_PCIE_ARI_NEXTFN_1 = (1 << QEMU_PCIE_ARI_NEXTFN_1_BITNR),
++#define QEMU_PCI_CAP_PM_BITNR 14
++    QEMU_PCI_CAP_PM = (1 << QEMU_PCI_CAP_PM_BITNR),
+ };
+ 
+ typedef struct PCIINTxRoute {
+@@ -680,5 +682,6 @@ static inline void pci_irq_pulse(PCIDevice *pci_dev)
+ MSIMessage pci_get_msi_message(PCIDevice *dev, int vector);
+ void pci_set_enabled(PCIDevice *pci_dev, bool state);
+ void pci_set_power(PCIDevice *pci_dev, bool state);
++int pci_pm_init(PCIDevice *pci_dev, uint8_t offset, Error **errp);
+ 
+ #endif
+diff --git a/include/hw/pci/pci_device.h b/include/hw/pci/pci_device.h
+index f38fb31119..325d7bcaf7 100644
+--- a/include/hw/pci/pci_device.h
++++ b/include/hw/pci/pci_device.h
+@@ -105,6 +105,9 @@ struct PCIDevice {
+     /* Capability bits */
+     uint32_t cap_present;
+ 
++    /* Offset of PM capability in config space */
++    uint8_t pm_cap;
++
+     /* Offset of MSI-X capability in config space */
+     uint8_t msix_cap;
+ 
+-- 
+2.48.1
+

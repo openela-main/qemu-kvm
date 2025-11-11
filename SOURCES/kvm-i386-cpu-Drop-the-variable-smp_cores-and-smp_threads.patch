@@ -1,0 +1,68 @@
+From 368e0e988c60d0391c1e47db7e3f1aff7742f697 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 008/115] i386/cpu: Drop the variable smp_cores and smp_threads
+ in x86_cpu_pre_plug()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [8/115] bc67c58c23402a05899559f8ecfa61218aa3ef2a (bonzini/rhel-qemu-kvm)
+
+No need to define smp_cores and smp_threads, just using ms->smp.cores
+and ms->smp.threads is straightforward. It's also consistent with other
+checks of socket/die/module.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20241219110125.1266461-3-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 81bd60625fc23cb8d4d0e682dcc4223d5e1ead84)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit c263000e490ddb361e0ef8a45342dea034036682)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/x86-common.c | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/hw/i386/x86-common.c b/hw/i386/x86-common.c
+index 992ea1f25e..2806be98f3 100644
+--- a/hw/i386/x86-common.c
++++ b/hw/i386/x86-common.c
+@@ -248,8 +248,6 @@ void x86_cpu_pre_plug(HotplugHandler *hotplug_dev,
+     CPUX86State *env = &cpu->env;
+     MachineState *ms = MACHINE(hotplug_dev);
+     X86MachineState *x86ms = X86_MACHINE(hotplug_dev);
+-    unsigned int smp_cores = ms->smp.cores;
+-    unsigned int smp_threads = ms->smp.threads;
+     X86CPUTopoInfo topo_info;
+ 
+     if (!object_dynamic_cast(OBJECT(cpu), ms->cpu_type)) {
+@@ -329,17 +327,17 @@ void x86_cpu_pre_plug(HotplugHandler *hotplug_dev,
+         if (cpu->core_id < 0) {
+             error_setg(errp, "CPU core-id is not set");
+             return;
+-        } else if (cpu->core_id > (smp_cores - 1)) {
++        } else if (cpu->core_id > (ms->smp.cores - 1)) {
+             error_setg(errp, "Invalid CPU core-id: %u must be in range 0:%u",
+-                       cpu->core_id, smp_cores - 1);
++                       cpu->core_id, ms->smp.cores - 1);
+             return;
+         }
+         if (cpu->thread_id < 0) {
+             error_setg(errp, "CPU thread-id is not set");
+             return;
+-        } else if (cpu->thread_id > (smp_threads - 1)) {
++        } else if (cpu->thread_id > (ms->smp.threads - 1)) {
+             error_setg(errp, "Invalid CPU thread-id: %u must be in range 0:%u",
+-                       cpu->thread_id, smp_threads - 1);
++                       cpu->thread_id, ms->smp.threads - 1);
+             return;
+         }
+ 
+-- 
+2.50.1
+

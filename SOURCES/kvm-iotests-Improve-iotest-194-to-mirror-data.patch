@@ -1,0 +1,42 @@
+From 8832268a98104ba3065a57dedcd3db43231512ba Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 9 May 2025 15:40:22 -0500
+Subject: [PATCH 07/16] iotests: Improve iotest 194 to mirror data
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 365: blockdev-mirror: More efficient handling of sparse mirrors
+RH-Jira: RHEL-82906 RHEL-83015
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [5/14] bfbe8eab1035480cef9d69d1974ba66b755b1b60 (ebblake/centos-qemu-kvm)
+
+Mirroring a completely sparse image to a sparse destination should be
+practically instantaneous.  It isn't yet, but the test will be more
+realistic if it has some non-zero to mirror as well as the holes.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20250509204341.3553601-20-eblake@redhat.com>
+(cherry picked from commit eb89627899bb84148d272394e885725eff456ae9)
+Jira: https://issues.redhat.com/browse/RHEL-82906
+Jira: https://issues.redhat.com/browse/RHEL-83015
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ tests/qemu-iotests/194 | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/qemu-iotests/194 b/tests/qemu-iotests/194
+index c0ce82dd25..d0b9c084f5 100755
+--- a/tests/qemu-iotests/194
++++ b/tests/qemu-iotests/194
+@@ -34,6 +34,7 @@ with iotests.FilePath('source.img') as source_img_path, \
+ 
+     img_size = '1G'
+     iotests.qemu_img_create('-f', iotests.imgfmt, source_img_path, img_size)
++    iotests.qemu_io('-f', iotests.imgfmt, '-c', 'write 512M 1M', source_img_path)
+     iotests.qemu_img_create('-f', iotests.imgfmt, dest_img_path, img_size)
+ 
+     iotests.log('Launching VMs...')
+-- 
+2.48.1
+

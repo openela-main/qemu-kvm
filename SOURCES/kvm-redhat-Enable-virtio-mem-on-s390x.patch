@@ -1,0 +1,36 @@
+From 7300a435547b7e999227648fd1451db00e9c4867 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 24 Mar 2025 18:09:26 +0100
+Subject: [PATCH 26/26] redhat: Enable virtio-mem on s390x
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [26/26] 076b44c8f0262e903c5e17eda676614aec6f5c98 (thuth/qemu-kvm-cs)
+
+JIRA: https://issues.redhat.com/browse/RHEL-72977
+
+Enable virtio-mem on s390x now, too.
+
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ configs/devices/s390x-softmmu/s390x-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/s390x-softmmu/s390x-rh-devices.mak b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+index 24cf6dbd03..834281d872 100644
+--- a/configs/devices/s390x-softmmu/s390x-rh-devices.mak
++++ b/configs/devices/s390x-softmmu/s390x-rh-devices.mak
+@@ -12,6 +12,7 @@ CONFIG_VFIO_CCW=y
+ CONFIG_VFIO_PCI=y
+ CONFIG_VHOST_USER=y
+ CONFIG_VIRTIO_CCW=y
++CONFIG_VIRTIO_MEM=y
+ CONFIG_WDT_DIAG288=y
+ CONFIG_VHOST_VSOCK=y
+ CONFIG_VHOST_USER_VSOCK=y
+-- 
+2.48.1
+

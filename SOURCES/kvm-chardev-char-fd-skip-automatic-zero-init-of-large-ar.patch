@@ -1,17 +1,17 @@
-From c336909ad95540147d9cfed843874ddd986ad917 Mon Sep 17 00:00:00 2001
+From 1e8798a3adbbfc42167aaba0ee18175deac37193 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:42 +0100
-Subject: [PATCH 05/31] chardev/char-fd: skip automatic zero-init of large
+Subject: [PATCH 30/57] chardev/char-fd: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [4/30] e9adf42d47ddd90cc15862e711de0a90d1d25e0a
+RH-Commit: [4/30] b16fe5c9af4756e1856cd330df02a1a09d9f33ea (stefanha/centos-stream-qemu-kvm)
 
 The 'fd_chr_read' method has a 4k byte array used for copying
 data between the socket and device. Skip the automatic zero-init

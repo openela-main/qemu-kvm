@@ -1,0 +1,99 @@
+From 274e81bcf091c981d1e27e49fbe98e63d5308472 Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Tue, 25 Feb 2025 14:52:28 -0700
+Subject: [PATCH 5/7] pcie, virtio: Remove redundant pm_cap
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 348: PCI: Implement basic PCI PM capability backing
+RH-Jira: RHEL-7301
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [5/6] 81c6e3c9c52a0b3f0b9269b4ac7f56e8e4b5d68b (eauger1/centos-qemu-kvm)
+
+The pm_cap on the PCIExpressDevice object can be distilled down
+to the new instance on the PCIDevice object.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250225215237.3314011-5-alex.williamson@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 8b8d08cf293b930d0f55b2d5385d8dd27e0c6b41)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci-bridge/pcie_pci_bridge.c | 1 -
+ hw/virtio/virtio-pci.c          | 8 +++-----
+ include/hw/pci/pcie.h           | 2 --
+ 3 files changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/hw/pci-bridge/pcie_pci_bridge.c b/hw/pci-bridge/pcie_pci_bridge.c
+index 2f098e3a13..c0ba6d7928 100644
+--- a/hw/pci-bridge/pcie_pci_bridge.c
++++ b/hw/pci-bridge/pcie_pci_bridge.c
+@@ -56,7 +56,6 @@ static void pcie_pci_bridge_realize(PCIDevice *d, Error **errp)
+     if (pos < 0) {
+         goto pm_error;
+     }
+-    d->exp.pm_cap = pos;
+     pci_set_word(d->config + pos + PCI_PM_PMC, 0x3);
+ 
+     pcie_cap_arifwd_init(d);
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 4b2aeaad8d..a85787b837 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -2200,8 +2200,6 @@ static void virtio_pci_realize(PCIDevice *pci_dev, Error **errp)
+             return;
+         }
+ 
+-        pci_dev->exp.pm_cap = pos;
+-
+         /*
+          * Indicates that this function complies with revision 1.2 of the
+          * PCI Power Management Interface Specification.
+@@ -2295,11 +2293,11 @@ static bool virtio_pci_no_soft_reset(PCIDevice *dev)
+ {
+     uint16_t pmcsr;
+ 
+-    if (!pci_is_express(dev) || !dev->exp.pm_cap) {
++    if (!pci_is_express(dev) || !(dev->cap_present & QEMU_PCI_CAP_PM)) {
+         return false;
+     }
+ 
+-    pmcsr = pci_get_word(dev->config + dev->exp.pm_cap + PCI_PM_CTRL);
++    pmcsr = pci_get_word(dev->config + dev->pm_cap + PCI_PM_CTRL);
+ 
+     /*
+      * When No_Soft_Reset bit is set and the device
+@@ -2328,7 +2326,7 @@ static void virtio_pci_bus_reset_hold(Object *obj, ResetType type)
+ 
+         if (proxy->flags & VIRTIO_PCI_FLAG_INIT_PM) {
+             pci_word_test_and_clear_mask(
+-                dev->config + dev->exp.pm_cap + PCI_PM_CTRL,
++                dev->config + dev->pm_cap + PCI_PM_CTRL,
+                 PCI_PM_CTRL_STATE_MASK);
+         }
+     }
+diff --git a/include/hw/pci/pcie.h b/include/hw/pci/pcie.h
+index 5eddb90976..8a30d07fd0 100644
+--- a/include/hw/pci/pcie.h
++++ b/include/hw/pci/pcie.h
+@@ -58,8 +58,6 @@ typedef enum {
+ struct PCIExpressDevice {
+     /* Offset of express capability in config space */
+     uint8_t exp_cap;
+-    /* Offset of Power Management capability in config space */
+-    uint8_t pm_cap;
+ 
+     /* SLOT */
+     bool hpev_notified; /* Logical AND of conditions for hot plug event.
+-- 
+2.48.1
+

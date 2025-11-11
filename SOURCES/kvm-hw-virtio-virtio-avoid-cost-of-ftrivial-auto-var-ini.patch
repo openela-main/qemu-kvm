@@ -1,17 +1,17 @@
-From ea242d728ed1716602b4cdd01d3fabb5ab260781 Mon Sep 17 00:00:00 2001
+From 4727c044a09fb8c4fb6d667f26eb55bb6de7554d Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:40 +0100
-Subject: [PATCH 03/31] hw/virtio/virtio: avoid cost of -ftrivial-auto-var-init
+Subject: [PATCH 28/57] hw/virtio/virtio: avoid cost of -ftrivial-auto-var-init
  in hot path
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/30] a90fb4e14c182ace7a28c8335858895b4257f37b
+RH-Commit: [2/30] 1c2cc6292deaaac068f4514439703c22c9ccb300 (stefanha/centos-stream-qemu-kvm)
 
 Since commit 7ff9ff039380 ("meson: mitigate against use of uninitialize
 stack for exploits") the -ftrivial-auto-var-init=zero compiler option is

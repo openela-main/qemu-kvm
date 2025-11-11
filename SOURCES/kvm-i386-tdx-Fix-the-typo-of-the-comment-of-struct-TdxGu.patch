@@ -1,0 +1,50 @@
+From 3d855c5ffd0b235642c334ea3e9680451e2e50a6 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 090/115] i386/tdx: Fix the typo of the comment of struct
+ TdxGuest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [90/115] 86befce58e11c4eba084141ec177648b901dd165 (bonzini/rhel-qemu-kvm)
+
+Change sha348 to sha384.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Link: https://lore.kernel.org/r/20250603050305.1704586-3-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a38da9f4876bb17d7ed9c6e24964b12b61877d38)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/kvm/tdx.h b/target/i386/kvm/tdx.h
+index 04b5afe199..8dd66e9014 100644
+--- a/target/i386/kvm/tdx.h
++++ b/target/i386/kvm/tdx.h
+@@ -40,9 +40,9 @@ typedef struct TdxGuest {
+     bool initialized;
+     uint64_t attributes;    /* TD attributes */
+     uint64_t xfam;
+-    char *mrconfigid;       /* base64 encoded sha348 digest */
+-    char *mrowner;          /* base64 encoded sha348 digest */
+-    char *mrownerconfig;    /* base64 encoded sha348 digest */
++    char *mrconfigid;       /* base64 encoded sha384 digest */
++    char *mrowner;          /* base64 encoded sha384 digest */
++    char *mrownerconfig;    /* base64 encoded sha384 digest */
+ 
+     MemoryRegion *tdvf_mr;
+     TdxFirmware tdvf;
+-- 
+2.50.1
+

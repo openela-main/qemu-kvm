@@ -1,0 +1,62 @@
+From e8d9e0b0c8b44da13be0735e67576d6d2336750a Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 106/115] target/i386: tdx: fix locking for interrupt injection
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [106/115] 0ec3f0d2a022735ef6dbd5b0cce10ee348dde3f1 (bonzini/rhel-qemu-kvm)
+
+Take tdx_guest->lock when injecting the event notification interrupt into
+the guest.
+
+Fixes CID 1612364.
+
+Reported-by: Peter Maydell <peter.maydell@linaro.org>
+Cc: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit f2b787976342a9e1d47810f3146ad74b86a5088a)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 20fcd9a4c5..08eed19960 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -1126,10 +1126,15 @@ int tdx_parse_tdvf(void *flash_ptr, int size)
+     return tdvf_parse_metadata(&tdx_guest->tdvf, flash_ptr, size);
+ }
+ 
+-static void tdx_inject_interrupt(uint32_t apicid, uint32_t vector)
++static void tdx_inject_interrupt(TdxGuest *tdx)
+ {
+     int ret;
++    uint32_t apicid, vector;
+ 
++    qemu_mutex_lock(&tdx->lock);
++    vector = tdx->event_notify_vector;
++    apicid = tdx->event_notify_apicid;
++    qemu_mutex_unlock(&tdx->lock);
+     if (vector < 32 || vector > 255) {
+         return;
+     }
+@@ -1179,8 +1184,7 @@ static void tdx_get_quote_completion(TdxGenerateQuoteTask *task)
+         error_report("TDX: get-quote: failed to update GetQuote header.");
+     }
+ 
+-    tdx_inject_interrupt(tdx_guest->event_notify_apicid,
+-                         tdx_guest->event_notify_vector);
++    tdx_inject_interrupt(tdx);
+ 
+     g_free(task->send_data);
+     g_free(task->receive_buf);
+-- 
+2.50.1
+

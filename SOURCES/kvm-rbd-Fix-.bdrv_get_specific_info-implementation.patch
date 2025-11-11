@@ -1,14 +1,14 @@
-From 04a3beab85453e901e76c64b8a7164bfb9fbbc4d Mon Sep 17 00:00:00 2001
+From 181b9ca805f3ae09c24a925eea0460525f30c90e Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Mon, 11 Aug 2025 15:40:10 +0200
 Subject: [PATCH] rbd: Fix .bdrv_get_specific_info implementation
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 473: rbd: Fix .bdrv_get_specific_info implementation
-RH-Jira: RHEL-108725
-RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 400: rbd: Fix .bdrv_get_specific_info implementation
+RH-Jira: RHEL-108726
 RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
-RH-Commit: [1/1] 183cf2d34cd1aa32e5f234139c00f6cf925edd56 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/1] 5a488d6e2355adcec7fc4fd686c6be001808a146 (kmwolf/centos-qemu-kvm)
 
 qemu_rbd_get_specific_info() has at least two problems:
 
@@ -57,7 +57,7 @@ Signed-off-by: Kevin Wolf <kwolf@redhat.com>
  2 files changed, 76 insertions(+), 37 deletions(-)
 
 diff --git a/block/rbd.c b/block/rbd.c
-index 9c0fd0cb3f..fa9aab12ab 100644
+index 627f8eb05a..d5546da71b 100644
 --- a/block/rbd.c
 +++ b/block/rbd.c
 @@ -99,6 +99,14 @@ typedef struct BDRVRBDState {
@@ -249,7 +249,7 @@ index 9c0fd0cb3f..fa9aab12ab 100644
  
      return spec_info;
 diff --git a/qapi/block-core.json b/qapi/block-core.json
-index c1af3d1f7d..a2fa277245 100644
+index 3969c60b93..15b91e2d4a 100644
 --- a/qapi/block-core.json
 +++ b/qapi/block-core.json
 @@ -158,7 +158,14 @@

@@ -1,0 +1,49 @@
+From 544ec72c98bdb325589cf9cddc7356ce5d4ae586 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 010/115] i386/topology: Update the comment of
+ x86_apicid_from_topo_ids()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [10/115] 62641dcd4cb51e9d252e4d5b3257ac87cfb165c0 (bonzini/rhel-qemu-kvm)
+
+Update the comment of x86_apicid_from_topo_ids() to match the current
+implementation,
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20241219110125.1266461-5-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 8f78378de70fc79fdc7e1318496bd91ddd22df49)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a4452a3e65f1fdbbafd22e9089864d37d323d7e0)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ include/hw/i386/topology.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/hw/i386/topology.h b/include/hw/i386/topology.h
+index dff49fce11..1880df621a 100644
+--- a/include/hw/i386/topology.h
++++ b/include/hw/i386/topology.h
+@@ -135,9 +135,10 @@ static inline unsigned apicid_pkg_offset(X86CPUTopoInfo *topo_info)
+ }
+ 
+ /*
+- * Make APIC ID for the CPU based on Pkg_ID, Core_ID, SMT_ID
++ * Make APIC ID for the CPU based on topology and IDs of each topology level.
+  *
+- * The caller must make sure core_id < nr_cores and smt_id < nr_threads.
++ * The caller must make sure the ID of each level doesn't exceed the width of
++ * the level.
+  */
+ static inline apic_id_t x86_apicid_from_topo_ids(X86CPUTopoInfo *topo_info,
+                                                  const X86CPUTopoIDs *topo_ids)
+-- 
+2.50.1
+

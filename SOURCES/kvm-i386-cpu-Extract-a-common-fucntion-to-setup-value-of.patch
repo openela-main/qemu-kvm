@@ -1,0 +1,112 @@
+From 54403f52f9be5f4d05f1cc866b397820340099ab Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 007/115] i386/cpu: Extract a common fucntion to setup value of
+ MSR_CORE_THREAD_COUNT
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [7/115] d61186d383365a629a8d74a5618b4df6b2723a88 (bonzini/rhel-qemu-kvm)
+
+There are duplicated code to setup the value of MSR_CORE_THREAD_COUNT.
+Extract a common function for it.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20241219110125.1266461-2-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit d3bb5d0d4f5d4ad7dc6c02ea5fea51ca2f946593)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 66f4008d32a6cddd1ada5906487ecc9fb0b62fed)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu-sysemu.c             | 11 +++++++++++
+ target/i386/cpu.h                    |  2 ++
+ target/i386/hvf/x86_emu.c            |  3 +--
+ target/i386/kvm/kvm.c                |  5 +----
+ target/i386/tcg/sysemu/misc_helper.c |  3 +--
+ 5 files changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/target/i386/cpu-sysemu.c b/target/i386/cpu-sysemu.c
+index 227ac021f6..4e9df0bc01 100644
+--- a/target/i386/cpu-sysemu.c
++++ b/target/i386/cpu-sysemu.c
+@@ -309,3 +309,14 @@ void x86_cpu_get_crash_info_qom(Object *obj, Visitor *v,
+                                      errp);
+     qapi_free_GuestPanicInformation(panic_info);
+ }
++
++uint64_t cpu_x86_get_msr_core_thread_count(X86CPU *cpu)
++{
++    CPUState *cs = CPU(cpu);
++    uint64_t val;
++
++    val = cs->nr_threads * cs->nr_cores;  /* thread count, bits 15..0 */
++    val |= ((uint32_t)cs->nr_cores << 16); /* core count, bits 31..16 */
++
++    return val;
++}
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 5924761551..8c9216d9d0 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2368,6 +2368,8 @@ static inline void cpu_x86_load_seg_cache_sipi(X86CPU *cpu,
+     cs->halted = 0;
+ }
+ 
++uint64_t cpu_x86_get_msr_core_thread_count(X86CPU *cpu);
++
+ int cpu_x86_get_descr_debug(CPUX86State *env, unsigned int selector,
+                             target_ulong *base, unsigned int *limit,
+                             unsigned int *flags);
+diff --git a/target/i386/hvf/x86_emu.c b/target/i386/hvf/x86_emu.c
+index 38c782b8e3..425f1afda8 100644
+--- a/target/i386/hvf/x86_emu.c
++++ b/target/i386/hvf/x86_emu.c
+@@ -745,8 +745,7 @@ void simulate_rdmsr(CPUX86State *env)
+         val = env->mtrr_deftype;
+         break;
+     case MSR_CORE_THREAD_COUNT:
+-        val = cs->nr_threads * cs->nr_cores;  /* thread count, bits 15..0 */
+-        val |= ((uint32_t)cs->nr_cores << 16); /* core count, bits 31..16 */
++        val = cpu_x86_get_msr_core_thread_count(cpu);
+         break;
+     default:
+         /* fprintf(stderr, "%s: unknown msr 0x%x\n", __func__, msr); */
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index b02aec915c..fe6b34bb10 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -2586,10 +2586,7 @@ static bool kvm_rdmsr_core_thread_count(X86CPU *cpu,
+                                         uint32_t msr,
+                                         uint64_t *val)
+ {
+-    CPUState *cs = CPU(cpu);
+-
+-    *val = cs->nr_threads * cs->nr_cores; /* thread count, bits 15..0 */
+-    *val |= ((uint32_t)cs->nr_cores << 16); /* core count, bits 31..16 */
++    *val = cpu_x86_get_msr_core_thread_count(cpu);
+ 
+     return true;
+ }
+diff --git a/target/i386/tcg/sysemu/misc_helper.c b/target/i386/tcg/sysemu/misc_helper.c
+index 094aa56a20..ff7b201b44 100644
+--- a/target/i386/tcg/sysemu/misc_helper.c
++++ b/target/i386/tcg/sysemu/misc_helper.c
+@@ -468,8 +468,7 @@ void helper_rdmsr(CPUX86State *env)
+         val = x86_cpu->ucode_rev;
+         break;
+     case MSR_CORE_THREAD_COUNT: {
+-        CPUState *cs = CPU(x86_cpu);
+-        val = (cs->nr_threads * cs->nr_cores) | (cs->nr_cores << 16);
++        val = cpu_x86_get_msr_core_thread_count(x86_cpu);
+         break;
+     }
+     case MSR_APIC_START ... MSR_APIC_END: {
+-- 
+2.50.1
+

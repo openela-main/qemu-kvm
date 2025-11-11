@@ -1,0 +1,75 @@
+From d6c70ced910aede72d11b6a698bfda9648a3c959 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:43 +0200
+Subject: [PATCH 002/115] target/i386: Enable fdp-excptn-only and zero-fcs-fds
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [2/115] 58b986eab9ccc86b3f50ca480ae184779cd85bee (bonzini/rhel-qemu-kvm)
+
+- CPUID.(EAX=07H,ECX=0H):EBX[bit 6]: x87 FPU Data Pointer updated only
+  on x87 exceptions if 1.
+
+- CPUID.(EAX=07H,ECX=0H):EBX[bit 13]: Deprecates FPU CS and FPU DS
+  values if 1. i.e., X87 FCS and FDS are always zero.
+
+Define names for them so that they can be exposed to guest with -cpu host.
+
+Also define the bit field MACROs so that named cpu models can add it as
+well in the future.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Link: https://lore.kernel.org/r/20240814075431.339209-3-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7dddc3bb875e7141ab25931d0f30a1c319bc8457)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 4 ++--
+ target/i386/cpu.h | 4 ++++
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 0ac6cd8ad7..1fe492f33d 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1058,9 +1058,9 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+         .type = CPUID_FEATURE_WORD,
+         .feat_names = {
+             "fsgsbase", "tsc-adjust", "sgx", "bmi1",
+-            "hle", "avx2", NULL, "smep",
++            "hle", "avx2", "fdp-excptn-only", "smep",
+             "bmi2", "erms", "invpcid", "rtm",
+-            NULL, NULL, "mpx", NULL,
++            NULL, "zero-fcs-fds", "mpx", NULL,
+             "avx512f", "avx512dq", "rdseed", "adx",
+             "smap", "avx512ifma", "pcommit", "clflushopt",
+             "clwb", "intel-pt", "avx512pf", "avx512er",
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index e513e5f62d..5924761551 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -828,6 +828,8 @@ uint64_t x86_cpu_get_supported_feature_word(X86CPU *cpu, FeatureWord w);
+ #define CPUID_7_0_EBX_HLE               (1U << 4)
+ /* Intel Advanced Vector Extensions 2 */
+ #define CPUID_7_0_EBX_AVX2              (1U << 5)
++/* FPU data pointer updated only on x87 exceptions */
++#define CPUID_7_0_EBX_FDP_EXCPTN_ONLY (1u << 6)
+ /* Supervisor-mode Execution Prevention */
+ #define CPUID_7_0_EBX_SMEP              (1U << 7)
+ /* 2nd Group of Advanced Bit Manipulation Extensions */
+@@ -838,6 +840,8 @@ uint64_t x86_cpu_get_supported_feature_word(X86CPU *cpu, FeatureWord w);
+ #define CPUID_7_0_EBX_INVPCID           (1U << 10)
+ /* Restricted Transactional Memory */
+ #define CPUID_7_0_EBX_RTM               (1U << 11)
++/* Zero out FPU CS and FPU DS */
++#define CPUID_7_0_EBX_ZERO_FCS_FDS      (1U << 13)
+ /* Memory Protection Extension */
+ #define CPUID_7_0_EBX_MPX               (1U << 14)
+ /* AVX-512 Foundation */
+-- 
+2.50.1
+

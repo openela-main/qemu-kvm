@@ -1,0 +1,99 @@
+From a4bc6c4fc28364e8ca9fc99344b85254268744e3 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 019/115] target/i386/sev: Reduce system specific declarations
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [19/115] 0015a372d990c69ce81241822722bf2521571ca7 (bonzini/rhel-qemu-kvm)
+
+"system/confidential-guest-support.h" is not needed,
+remove it. Reorder #ifdef'ry to reduce declarations
+exposed on user emulation.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Message-Id: <20241218155913.72288-3-philmd@linaro.org>
+(cherry picked from commit 63cda19446c5307cc05b965c203742a583fc5abf)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc_sysfw.c |  2 +-
+ target/i386/sev.h  | 29 ++++++++++++++++-------------
+ 2 files changed, 17 insertions(+), 14 deletions(-)
+
+diff --git a/hw/i386/pc_sysfw.c b/hw/i386/pc_sysfw.c
+index ef80281d28..e6271e1020 100644
+--- a/hw/i386/pc_sysfw.c
++++ b/hw/i386/pc_sysfw.c
+@@ -36,7 +36,7 @@
+ #include "hw/qdev-properties.h"
+ #include "hw/block/flash.h"
+ #include "sysemu/kvm.h"
+-#include "sev.h"
++#include "target/i386/sev.h"
+ 
+ #define FLASH_SECTOR_SIZE 4096
+ 
+diff --git a/target/i386/sev.h b/target/i386/sev.h
+index 858005a119..373669eaac 100644
+--- a/target/i386/sev.h
++++ b/target/i386/sev.h
+@@ -18,7 +18,17 @@
+ #include CONFIG_DEVICES /* CONFIG_SEV */
+ #endif
+ 
+-#include "exec/confidential-guest-support.h"
++#if !defined(CONFIG_SEV) || defined(CONFIG_USER_ONLY)
++#define sev_enabled() 0
++#define sev_es_enabled() 0
++#define sev_snp_enabled() 0
++#else
++bool sev_enabled(void);
++bool sev_es_enabled(void);
++bool sev_snp_enabled(void);
++#endif
++
++#if !defined(CONFIG_USER_ONLY)
+ 
+ #define TYPE_SEV_COMMON "sev-common"
+ #define TYPE_SEV_GUEST "sev-guest"
+@@ -45,18 +55,6 @@ typedef struct SevKernelLoaderContext {
+     size_t cmdline_size;
+ } SevKernelLoaderContext;
+ 
+-#ifdef CONFIG_SEV
+-bool sev_enabled(void);
+-bool sev_es_enabled(void);
+-bool sev_snp_enabled(void);
+-#else
+-#define sev_enabled() 0
+-#define sev_es_enabled() 0
+-#define sev_snp_enabled() 0
+-#endif
+-
+-uint32_t sev_get_cbit_position(void);
+-uint32_t sev_get_reduced_phys_bits(void);
+ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp);
+ 
+ int sev_encrypt_flash(hwaddr gpa, uint8_t *ptr, uint64_t len, Error **errp);
+@@ -68,4 +66,9 @@ void sev_es_set_reset_vector(CPUState *cpu);
+ 
+ void pc_system_parse_sev_metadata(uint8_t *flash_ptr, size_t flash_size);
+ 
++#endif /* !CONFIG_USER_ONLY */
++
++uint32_t sev_get_cbit_position(void);
++uint32_t sev_get_reduced_phys_bits(void);
++
+ #endif
+-- 
+2.50.1
+

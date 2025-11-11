@@ -1,0 +1,59 @@
+From 673bbd9c79946356d2863f0944a576d100750c64 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 015/115] i386/cpu: Set up CPUID_HT in
+ x86_cpu_expand_features() instead of cpu_x86_cpuid()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [15/115] c763ec424a0cc64f46fd27aa2f03fd1b2933c23b (bonzini/rhel-qemu-kvm)
+
+Currently CPUID_HT is evaluated in cpu_x86_cpuid() each time. It's not a
+correct usage of how feature bit is maintained and evaluated. The
+expected practice is that features are tracked in env->features[] and
+cpu_x86_cpuid() should be the consumer of env->features[].
+
+Track CPUID_HT in env->features[FEAT_1_EDX] instead and evaluate it in
+cpu's realizefn().
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Link: https://lore.kernel.org/r/20241219110125.1266461-10-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit c6bd2dd634208ca717b6dc010064fe34d1359080)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 4e3da2efde9f16460e90246bec15b29739930bb1)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 2295149bfa..e20977411d 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -6989,7 +6989,6 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         *edx = env->features[FEAT_1_EDX];
+         if (threads_per_pkg > 1) {
+             *ebx |= threads_per_pkg << 16;
+-            *edx |= CPUID_HT;
+         }
+         if (!cpu->enable_pmu) {
+             *ecx &= ~CPUID_EXT_PDCM;
+@@ -7975,6 +7974,10 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
++    if (x86_threads_per_pkg(&env->topo_info) > 1) {
++        env->features[FEAT_1_EDX] |= CPUID_HT;
++    }
++
+     for (i = 0; i < ARRAY_SIZE(feature_dependencies); i++) {
+         FeatureDep *d = &feature_dependencies[i];
+         if (!(env->features[d->from.index] & d->from.mask)) {
+-- 
+2.50.1
+

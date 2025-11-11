@@ -1,0 +1,44 @@
+From 8468a1a6a23c02c4a4b09501d7702d7e44095df9 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:47 +0200
+Subject: [PATCH 055/115] i386/tdx: Finalize TDX VM
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [55/115] 391331e4b8c4582cc4db040188c44ab5ff23987e (bonzini/rhel-qemu-kvm)
+
+Invoke KVM_TDX_FINALIZE_VM to finalize the TD's measurement and make
+the TD vCPUs runnable once machine initialization is complete.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-27-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit ae60ff4e9f9e5790f79abf866ec67270c28ca477)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 7980daf8c4..19ed1038a7 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -353,6 +353,9 @@ static void tdx_finalize_vm(Notifier *notifier, void *unused)
+      */
+     ram_block = tdx_guest->tdvf_mr->ram_block;
+     ram_block_discard_range(ram_block, 0, ram_block->max_length);
++
++    tdx_vm_ioctl(KVM_TDX_FINALIZE_VM, 0, NULL, &error_fatal);
++    CONFIDENTIAL_GUEST_SUPPORT(tdx_guest)->ready = true;
+ }
+ 
+ static Notifier tdx_machine_done_notify = {
+-- 
+2.50.1
+

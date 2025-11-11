@@ -1,16 +1,16 @@
-From 06915675e69c2ff0d1a686dcea200429f54fee74 Mon Sep 17 00:00:00 2001
+From 0b4d59d75edd49ef99f0a82fbcbe360c5b48e4f8 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:50 +0100
-Subject: [PATCH 13/31] hw/audio/sb16: skip automatic zero-init of large array
+Subject: [PATCH 38/57] hw/audio/sb16: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [12/30] 93e9b488f1ec99b425cc149c3aba8f824d000c73
+RH-Commit: [12/30] 6475d67546bf04745636b317e965bcd89b6fb2d2 (stefanha/centos-stream-qemu-kvm)
 
 The 'write_audio' method has a 4k byte array used for copying data
 between the audio backend and device. Skip the automatic zero-init

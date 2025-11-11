@@ -1,0 +1,180 @@
+From 423ce7727eecae647330287e1264ac0d938fa7f9 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 9 May 2025 15:40:27 -0500
+Subject: [PATCH 12/16] mirror: Skip pre-zeroing destination if it is already
+ zero
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 365: blockdev-mirror: More efficient handling of sparse mirrors
+RH-Jira: RHEL-82906 RHEL-83015
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [10/14] e754ae559123099f4aed322f6a4287cf3323f54d (ebblake/centos-qemu-kvm)
+
+When doing a sync=full mirroring, we can skip pre-zeroing the
+destination if it already reads as zeroes and we are not also trying
+to punch holes due to detect-zeroes.  With this patch, there are fewer
+scenarios that have to pass in an explicit target-is-zero, while still
+resulting in a sparse destination remaining sparse.
+
+A later patch will then further improve things to skip writing to the
+destination for parts of the image where the source is zero; but even
+with just this patch, it is possible to see a difference for any
+source that does not report itself as fully allocated, coupled with a
+destination BDS that can quickly report that it already reads as zero.
+(For a source that reports as fully allocated, such as a file, the
+rest of mirror_dirty_init() still sets the entire dirty bitmap to
+true, so even though we avoided the pre-zeroing, we are not yet
+avoiding all redundant I/O).
+
+Iotest 194 detects the difference made by this patch: for a file
+source (where block status reports the entire image as allocated, and
+therefore we end up writing zeroes everywhere in the destination
+anyways), the job length remains the same.  But for a qcow2 source and
+a destination that reads as all zeroes, the dirty bitmap changes to
+just tracking the allocated portions of the source, which results in
+faster completion and smaller job statistics.  For the test to pass
+with both ./check -file and -qcow2, a new python filter is needed to
+mask out the now-varying job amounts (this matches the shell filters
+_filter_block_job_{offset,len} in common.filter).  A later test will
+also be added which further validates expected sparseness, so it does
+not matter that 194 is no longer explicitly looking at how many bytes
+were copied.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20250509204341.3553601-25-eblake@redhat.com>
+Reviewed-by: Sunny Zhu <sunnyzhyy@qq.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 181a63667adf16c35b57e446def3e41c70f1fea6)
+Jira: https://issues.redhat.com/browse/RHEL-82906
+Jira: https://issues.redhat.com/browse/RHEL-83015
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ block/mirror.c                | 24 ++++++++++++++++--------
+ tests/qemu-iotests/194        |  6 ++++--
+ tests/qemu-iotests/194.out    |  4 ++--
+ tests/qemu-iotests/iotests.py | 12 +++++++++++-
+ 4 files changed, 33 insertions(+), 13 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index b35d12adaa..29cac1777c 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -848,23 +848,31 @@ static int coroutine_fn GRAPH_UNLOCKED mirror_dirty_init(MirrorBlockJob *s)
+         target_bs->detect_zeroes == BLOCKDEV_DETECT_ZEROES_OPTIONS_UNMAP &&
+         bdrv_can_write_zeroes_with_unmap(target_bs);
+ 
++    /* Determine if the image is already zero, regardless of sync mode.  */
+     bdrv_graph_co_rdlock();
+     bs = s->mirror_top_bs->backing->bs;
++    if (s->target_is_zero) {
++        ret = 1;
++    } else {
++        ret = bdrv_co_is_all_zeroes(target_bs);
++    }
+     bdrv_graph_co_rdunlock();
+ 
+-    if (s->sync_mode == MIRROR_SYNC_MODE_TOP) {
++    /* Determine if a pre-zeroing pass is necessary.  */
++    if (ret < 0) {
++        return ret;
++    } else if (s->sync_mode == MIRROR_SYNC_MODE_TOP) {
+         /* In TOP mode, there is no benefit to a pre-zeroing pass.  */
+-    } else if (!s->target_is_zero || punch_holes) {
++    } else if (ret == 0 || punch_holes) {
+         /*
+          * Here, we are in FULL mode; our goal is to avoid writing
+          * zeroes if the destination already reads as zero, except
+          * when we are trying to punch holes.  This is possible if
+-         * zeroing happened externally (s->target_is_zero) or if we
+-         * have a fast way to pre-zero the image (the dirty bitmap
+-         * will be populated later by the non-zero portions, the same
+-         * as for TOP mode).  If pre-zeroing is not fast, or we need
+-         * to punch holes, then our only recourse is to write the
+-         * entire image.
++         * zeroing happened externally (ret > 0) or if we have a fast
++         * way to pre-zero the image (the dirty bitmap will be
++         * populated later by the non-zero portions, the same as for
++         * TOP mode).  If pre-zeroing is not fast, or we need to punch
++         * holes, then our only recourse is to write the entire image.
+          */
+         if (!bdrv_can_write_zeroes_with_unmap(target_bs)) {
+             bdrv_set_dirty_bitmap(s->dirty_bitmap, 0, s->bdev_length);
+diff --git a/tests/qemu-iotests/194 b/tests/qemu-iotests/194
+index d0b9c084f5..e114c0b269 100755
+--- a/tests/qemu-iotests/194
++++ b/tests/qemu-iotests/194
+@@ -62,7 +62,8 @@ with iotests.FilePath('source.img') as source_img_path, \
+ 
+     iotests.log('Waiting for `drive-mirror` to complete...')
+     iotests.log(source_vm.event_wait('BLOCK_JOB_READY'),
+-                filters=[iotests.filter_qmp_event])
++                filters=[iotests.filter_qmp_event,
++                         iotests.filter_block_job])
+ 
+     iotests.log('Starting migration...')
+     capabilities = [{'capability': 'events', 'state': True},
+@@ -88,7 +89,8 @@ with iotests.FilePath('source.img') as source_img_path, \
+ 
+     while True:
+         event2 = source_vm.event_wait('BLOCK_JOB_COMPLETED')
+-        iotests.log(event2, filters=[iotests.filter_qmp_event])
++        iotests.log(event2, filters=[iotests.filter_qmp_event,
++                                     iotests.filter_block_job])
+         if event2['event'] == 'BLOCK_JOB_COMPLETED':
+             iotests.log('Stopping the NBD server on destination...')
+             iotests.log(dest_vm.qmp('nbd-server-stop'))
+diff --git a/tests/qemu-iotests/194.out b/tests/qemu-iotests/194.out
+index 376ed1d2e6..84e0fc34be 100644
+--- a/tests/qemu-iotests/194.out
++++ b/tests/qemu-iotests/194.out
+@@ -7,7 +7,7 @@ Launching NBD server on destination...
+ Starting `drive-mirror` on source...
+ {"return": {}}
+ Waiting for `drive-mirror` to complete...
+-{"data": {"device": "mirror-job0", "len": 1073741824, "offset": 1073741824, "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_READY", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
++{"data": {"device": "mirror-job0", "len": "LEN", "offset": "OFFSET", "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_READY", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+ Starting migration...
+ {"return": {}}
+ {"execute": "migrate-start-postcopy", "arguments": {}}
+@@ -17,7 +17,7 @@ Starting migration...
+ {"data": {"status": "completed"}, "event": "MIGRATION", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+ Gracefully ending the `drive-mirror` job on source...
+ {"return": {}}
+-{"data": {"device": "mirror-job0", "len": 1073741824, "offset": 1073741824, "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_COMPLETED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
++{"data": {"device": "mirror-job0", "len": "LEN", "offset": "OFFSET", "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_COMPLETED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+ Stopping the NBD server on destination...
+ {"return": {}}
+ Wait for migration completion on target...
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index c8cb028c2d..978bef1499 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -601,13 +601,23 @@ def filter_chown(msg):
+     return chown_re.sub("chown UID:GID", msg)
+ 
+ def filter_qmp_event(event):
+-    '''Filter a QMP event dict'''
++    '''Filter the timestamp of a QMP event dict'''
+     event = dict(event)
+     if 'timestamp' in event:
+         event['timestamp']['seconds'] = 'SECS'
+         event['timestamp']['microseconds'] = 'USECS'
+     return event
+ 
++def filter_block_job(event):
++    '''Filter the offset and length of a QMP block job event dict'''
++    event = dict(event)
++    if 'data' in event:
++        if 'offset' in event['data']:
++            event['data']['offset'] = 'OFFSET'
++        if 'len' in event['data']:
++            event['data']['len'] = 'LEN'
++    return event
++
+ def filter_qmp(qmsg, filter_fn):
+     '''Given a string filter, filter a QMP object's values.
+     filter_fn takes a (key, value) pair.'''
+-- 
+2.48.1
+

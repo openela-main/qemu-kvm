@@ -1,0 +1,123 @@
+From a3dfbe30e930c8d794057e45fffd91a9b0e6afd0 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Feb 2025 19:25:33 +0100
+Subject: [PATCH 3/9] hw/arm/smmuv3: Move reset to exit phase
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 341: Fix vIOMMU reset order
+RH-Jira: RHEL-7188
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [3/5] e291cb45c32e0fab49b200c275553bbe76b97264 (eauger1/centos-qemu-kvm)
+
+Currently the iommu may be reset before the devices
+it protects. For example this happens with virtio-scsi-pci.
+when system_reset is issued from qmp monitor: spurious
+"virtio: zero sized buffers are not allowed" warnings can
+be observed. This happens because outstanding DMA requests
+are still happening while the SMMU gets reset.
+
+This can also happen with VFIO devices. In that case
+spurious DMA translation faults can be observed on host.
+
+Make sure the SMMU is reset in the 'exit' phase after
+all DMA capable devices have been reset during the 'enter'
+or 'hold' phase.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+
+Message-Id: <20250218182737.76722-4-eric.auger@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit e39e3f8b8dea856f141e9945167d2b18021ef445)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmu-common.c |  9 +++++++--
+ hw/arm/smmuv3.c      | 14 ++++++++++----
+ hw/arm/trace-events  |  1 +
+ 3 files changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/smmu-common.c b/hw/arm/smmu-common.c
+index 3f82728758..f4210fcbc1 100644
+--- a/hw/arm/smmu-common.c
++++ b/hw/arm/smmu-common.c
+@@ -924,7 +924,12 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+     }
+ }
+ 
+-static void smmu_base_reset_hold(Object *obj, ResetType type)
++/*
++ * Make sure the IOMMU is reset in 'exit' phase after
++ * all outstanding DMA requests have been quiesced during
++ * the 'enter' or 'hold' reset phases
++ */
++static void smmu_base_reset_exit(Object *obj, ResetType type)
+ {
+     SMMUState *s = ARM_SMMU(obj);
+ 
+@@ -950,7 +955,7 @@ static void smmu_base_class_init(ObjectClass *klass, void *data)
+     device_class_set_props(dc, smmu_dev_properties);
+     device_class_set_parent_realize(dc, smmu_base_realize,
+                                     &sbc->parent_realize);
+-    rc->phases.hold = smmu_base_reset_hold;
++    rc->phases.exit = smmu_base_reset_exit;
+ }
+ 
+ static const TypeInfo smmu_base_info = {
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 3971976389..2e90570915 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1870,13 +1870,19 @@ static void smmu_init_irq(SMMUv3State *s, SysBusDevice *dev)
+     }
+ }
+ 
+-static void smmu_reset_hold(Object *obj, ResetType type)
++/*
++ * Make sure the IOMMU is reset in 'exit' phase after
++ * all outstanding DMA requests have been quiesced during
++ * the 'enter' or 'hold' reset phases
++ */
++static void smmu_reset_exit(Object *obj, ResetType type)
+ {
+     SMMUv3State *s = ARM_SMMUV3(obj);
+     SMMUv3Class *c = ARM_SMMUV3_GET_CLASS(s);
+ 
+-    if (c->parent_phases.hold) {
+-        c->parent_phases.hold(obj, type);
++    trace_smmu_reset_exit();
++    if (c->parent_phases.exit) {
++        c->parent_phases.exit(obj, type);
+     }
+ 
+     smmuv3_init_regs(s);
+@@ -1999,7 +2005,7 @@ static void smmuv3_class_init(ObjectClass *klass, void *data)
+     SMMUv3Class *c = ARM_SMMUV3_CLASS(klass);
+ 
+     dc->vmsd = &vmstate_smmuv3;
+-    resettable_class_set_parent_phases(rc, NULL, smmu_reset_hold, NULL,
++    resettable_class_set_parent_phases(rc, NULL, NULL, smmu_reset_exit,
+                                        &c->parent_phases);
+     device_class_set_parent_realize(dc, smmu_realize,
+                                     &c->parent_realize);
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index be6c8f720b..79ef347e3e 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -56,6 +56,7 @@ smmuv3_config_cache_inv(uint32_t sid) "Config cache INV for sid=0x%x"
+ smmuv3_notify_flag_add(const char *iommu) "ADD SMMUNotifier node for iommu mr=%s"
+ smmuv3_notify_flag_del(const char *iommu) "DEL SMMUNotifier node for iommu mr=%s"
+ smmuv3_inv_notifiers_iova(const char *name, int asid, int vmid, uint64_t iova, uint8_t tg, uint64_t num_pages, int stage) "iommu mr=%s asid=%d vmid=%d iova=0x%"PRIx64" tg=%d num_pages=0x%"PRIx64" stage=%d"
++smmu_reset_exit(void) ""
+ 
+ # strongarm.c
+ strongarm_uart_update_parameters(const char *label, int speed, char parity, int data_bits, int stop_bits) "%s speed=%d parity=%c data=%d stop=%d"
+-- 
+2.48.1
+

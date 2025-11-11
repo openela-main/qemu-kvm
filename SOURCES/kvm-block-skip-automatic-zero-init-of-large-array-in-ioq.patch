@@ -1,17 +1,17 @@
-From 9f8ff1d0ef010b9c0339869f655ee9af6b10dcd5 Mon Sep 17 00:00:00 2001
+From d38bdce712f572e1920e3344132ff6600d657de2 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:41 +0100
-Subject: [PATCH 04/31] block: skip automatic zero-init of large array in
+Subject: [PATCH 29/57] block: skip automatic zero-init of large array in
  ioq_submit
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [3/30] 0a24695ab7f3a11ab61b12ae2b95bd45a7babc05
+RH-Commit: [3/30] 301a08b3acdcd95634dec5dab1d96fcfe3abf3be (stefanha/centos-stream-qemu-kvm)
 
 The 'ioq_submit' method has a struct array that is 8k in size.
 Skip the automatic zero-init of this array to eliminate the

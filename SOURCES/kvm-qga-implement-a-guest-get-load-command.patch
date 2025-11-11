@@ -1,17 +1,17 @@
-From 0e3c6791fe9788e8f170818787bbdf609297da7d Mon Sep 17 00:00:00 2001
+From 22f26a93ab94bf87c0724891a5886797a38c23b4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Mon, 2 Dec 2024 12:19:27 +0000
-Subject: [PATCH 2/2] qga: implement a 'guest-get-load' command
+Subject: [PATCH 6/9] qga: implement a 'guest-get-load' command
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Konstantin Kostiuk <None>
-RH-MergeRequest: 434: RHEL-83000: qga: implement a 'guest-get-load' command
-RH-Jira: RHEL-83000
-RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-MergeRequest: 343: RHEL-69622: qga: implement a 'guest-get-load' command
+RH-Jira: RHEL-69622
 RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
-RH-Commit: [1/1] ad1d374a9e2200e0e36727e3484b96e9675bd0e4
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/1] 9284c70737ad9f700d37f8c3833f855f2354acb7 (kkostiuk/redhat-centos-stream-src-qemu-kvm)
 
 Provide a way to report the process load average, via a new
 'guest-get-load' command.

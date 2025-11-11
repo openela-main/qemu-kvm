@@ -1,0 +1,73 @@
+From 07bba3fcfd6b8eb6e833e7d675be3ccc667423de Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 089/115] i386/cpu: Rename enable_cpuid_0x1f to
+ force_cpuid_0x1f
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [89/115] d1152aea8e699b1563750d286b41a47d9036429e (bonzini/rhel-qemu-kvm)
+
+The name of "enable_cpuid_0x1f" isn't right to its behavior because the
+leaf 0x1f can be enabled even when "enable_cpuid_0x1f" is false.
+
+Rename it to "force_cpuid_0x1f" to better reflect its behavior.
+
+Suggested-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Link: https://lore.kernel.org/r/20250603050305.1704586-2-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 90d2bbd1f6edfa22a056070ee62ded55099cd56d)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.h     | 4 ++--
+ target/i386/kvm/tdx.c | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 2e73945b28..a08931f969 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2195,7 +2195,7 @@ struct ArchCPU {
+     bool enable_cpuid_0xb;
+ 
+     /* Force to enable cpuid 0x1f */
+-    bool enable_cpuid_0x1f;
++    bool force_cpuid_0x1f;
+ 
+     /* Enable auto level-increase for all CPUID leaves */
+     bool full_cpuid_auto_level;
+@@ -2465,7 +2465,7 @@ void mark_forced_on_features(X86CPU *cpu, FeatureWord w, uint64_t mask,
+ 
+ static inline bool x86_has_cpuid_0x1f(X86CPU *cpu)
+ {
+-    return cpu->enable_cpuid_0x1f ||
++    return cpu->force_cpuid_0x1f ||
+            x86_has_extended_topo(cpu->env.avail_cpu_topo);
+ }
+ 
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 3099e40baa..ca3641441c 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -752,7 +752,7 @@ static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)
+     /* invtsc is fixed1 for TD guest */
+     object_property_set_bool(OBJECT(cpu), "invtsc", true, &error_abort);
+ 
+-    x86cpu->enable_cpuid_0x1f = true;
++    x86cpu->force_cpuid_0x1f = true;
+ }
+ 
+ static uint32_t tdx_adjust_cpuid_features(X86ConfidentialGuest *cg,
+-- 
+2.50.1
+

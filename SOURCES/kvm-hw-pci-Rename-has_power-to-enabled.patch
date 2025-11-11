@@ -1,0 +1,130 @@
+From 8711bb1a54d4f5734d44545cd8e7262bc358f51d Mon Sep 17 00:00:00 2001
+From: Akihiko Odaki <akihiko.odaki@daynix.com>
+Date: Thu, 9 Jan 2025 15:29:46 +0900
+Subject: [PATCH 1/7] hw/pci: Rename has_power to enabled
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 348: PCI: Implement basic PCI PM capability backing
+RH-Jira: RHEL-7301
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/6] ac8a7427a1203e33aa323933818a7114c0eb4520 (eauger1/centos-qemu-kvm)
+
+The renamed state will not only represent powering state of PFs, but
+also represent SR-IOV VF enablement in the future.
+
+Signed-off-by: Akihiko Odaki <akihiko.odaki@daynix.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-ID: <20250109-reuse-v19-1-f541e82ca5f7@daynix.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit c407eef162f765dd83d45e048585731be41a66fc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c                | 17 +++++++++++------
+ hw/pci/pci_host.c           |  4 ++--
+ include/hw/pci/pci.h        |  1 +
+ include/hw/pci/pci_device.h |  2 +-
+ 4 files changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index fab86d0567..83c9d5b9ea 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -1525,7 +1525,7 @@ static void pci_update_mappings(PCIDevice *d)
+             continue;
+ 
+         new_addr = pci_bar_address(d, i, r->type, r->size);
+-        if (!d->has_power) {
++        if (!d->enabled) {
+             new_addr = PCI_BAR_UNMAPPED;
+         }
+ 
+@@ -1613,7 +1613,7 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int
+         pci_update_irq_disabled(d, was_irq_disabled);
+         memory_region_set_enabled(&d->bus_master_enable_region,
+                                   (pci_get_word(d->config + PCI_COMMAND)
+-                                   & PCI_COMMAND_MASTER) && d->has_power);
++                                   & PCI_COMMAND_MASTER) && d->enabled);
+     }
+ 
+     msi_write_config(d, addr, val_in, l);
+@@ -2886,16 +2886,21 @@ MSIMessage pci_get_msi_message(PCIDevice *dev, int vector)
+ 
+ void pci_set_power(PCIDevice *d, bool state)
+ {
+-    if (d->has_power == state) {
++    pci_set_enabled(d, state);
++}
++
++void pci_set_enabled(PCIDevice *d, bool state)
++{
++    if (d->enabled == state) {
+         return;
+     }
+ 
+-    d->has_power = state;
++    d->enabled = state;
+     pci_update_mappings(d);
+     memory_region_set_enabled(&d->bus_master_enable_region,
+                               (pci_get_word(d->config + PCI_COMMAND)
+-                               & PCI_COMMAND_MASTER) && d->has_power);
+-    if (!d->has_power) {
++                               & PCI_COMMAND_MASTER) && d->enabled);
++    if (!d->enabled) {
+         pci_device_reset(d);
+     }
+ }
+diff --git a/hw/pci/pci_host.c b/hw/pci/pci_host.c
+index dfe6fe6184..0d82727cc9 100644
+--- a/hw/pci/pci_host.c
++++ b/hw/pci/pci_host.c
+@@ -86,7 +86,7 @@ void pci_host_config_write_common(PCIDevice *pci_dev, uint32_t addr,
+      * allowing direct removal of unexposed functions.
+      */
+     if ((pci_dev->qdev.hotplugged && !pci_get_function_0(pci_dev)) ||
+-        !pci_dev->has_power || is_pci_dev_ejected(pci_dev)) {
++        !pci_dev->enabled || is_pci_dev_ejected(pci_dev)) {
+         return;
+     }
+ 
+@@ -111,7 +111,7 @@ uint32_t pci_host_config_read_common(PCIDevice *pci_dev, uint32_t addr,
+      * allowing direct removal of unexposed functions.
+      */
+     if ((pci_dev->qdev.hotplugged && !pci_get_function_0(pci_dev)) ||
+-        !pci_dev->has_power || is_pci_dev_ejected(pci_dev)) {
++        !pci_dev->enabled || is_pci_dev_ejected(pci_dev)) {
+         return ~0x0;
+     }
+ 
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index eb26cac810..45365ae085 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -678,6 +678,7 @@ static inline void pci_irq_pulse(PCIDevice *pci_dev)
+ }
+ 
+ MSIMessage pci_get_msi_message(PCIDevice *dev, int vector);
++void pci_set_enabled(PCIDevice *pci_dev, bool state);
+ void pci_set_power(PCIDevice *pci_dev, bool state);
+ 
+ #endif
+diff --git a/include/hw/pci/pci_device.h b/include/hw/pci/pci_device.h
+index 15694f2489..f38fb31119 100644
+--- a/include/hw/pci/pci_device.h
++++ b/include/hw/pci/pci_device.h
+@@ -57,7 +57,7 @@ typedef struct PCIReqIDCache PCIReqIDCache;
+ struct PCIDevice {
+     DeviceState qdev;
+     bool partially_hotplugged;
+-    bool has_power;
++    bool enabled;
+ 
+     /* PCI config space */
+     uint8_t *config;
+-- 
+2.48.1
+

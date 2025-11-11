@@ -1,0 +1,80 @@
+From 97edfb8e45b34e3909f387162785f0aa8979aba6 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 013/115] i386/cpu: Hoist check of CPUID_EXT3_TOPOEXT against
+ threads_per_core
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [13/115] e8e81cac13bb9363c167e92a8478efb97ceab79a (bonzini/rhel-qemu-kvm)
+
+Now it changes to use env->topo_info.threads_per_core and doesn't depend
+on qemu_init_vcpu() anymore.  Put it together with other feature checks
+before qemu_init_vcpu()
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Link: https://lore.kernel.org/r/20241219110125.1266461-8-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 473d79b56a1645be90b890f9623b27acd0afba49)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 8098c705a5d8f82d2a772194ebdbef87784b0461)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 30 +++++++++++++++---------------
+ 1 file changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 554455169a..2295149bfa 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -8327,6 +8327,21 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+      */
+     cpu->mwait.ecx |= CPUID_MWAIT_EMX | CPUID_MWAIT_IBE;
+ 
++    /*
++     * Most Intel and certain AMD CPUs support hyperthreading. Even though QEMU
++     * fixes this issue by adjusting CPUID_0000_0001_EBX and CPUID_8000_0008_ECX
++     * based on inputs (sockets,cores,threads), it is still better to give
++     * users a warning.
++     */
++    if (IS_AMD_CPU(env) &&
++        !(env->features[FEAT_8000_0001_ECX] & CPUID_EXT3_TOPOEXT) &&
++        env->topo_info.threads_per_core > 1) {
++            warn_report_once("This family of AMD CPU doesn't support "
++                             "hyperthreading(%d). Please configure -smp "
++                             "options properly or try enabling topoext "
++                             "feature.", env->topo_info.threads_per_core);
++    }
++
+     /* For 64bit systems think about the number of physical bits to present.
+      * ideally this should be the same as the host; anything other than matching
+      * the host can cause incorrect guest behaviour.
+@@ -8430,21 +8445,6 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
+ 
+     qemu_init_vcpu(cs);
+ 
+-    /*
+-     * Most Intel and certain AMD CPUs support hyperthreading. Even though QEMU
+-     * fixes this issue by adjusting CPUID_0000_0001_EBX and CPUID_8000_0008_ECX
+-     * based on inputs (sockets,cores,threads), it is still better to give
+-     * users a warning.
+-     */
+-    if (IS_AMD_CPU(env) &&
+-        !(env->features[FEAT_8000_0001_ECX] & CPUID_EXT3_TOPOEXT) &&
+-        env->topo_info.threads_per_core > 1) {
+-            warn_report_once("This family of AMD CPU doesn't support "
+-                             "hyperthreading(%d). Please configure -smp "
+-                             "options properly or try enabling topoext "
+-                             "feature.", env->topo_info.threads_per_core);
+-    }
+-
+ #ifndef CONFIG_USER_ONLY
+     x86_cpu_apic_realize(cpu, &local_err);
+     if (local_err != NULL) {
+-- 
+2.50.1
+

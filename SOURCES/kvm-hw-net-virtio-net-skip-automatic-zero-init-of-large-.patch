@@ -1,17 +1,17 @@
-From 9ecc539204dd6ab7a1124089f9e557248e321282 Mon Sep 17 00:00:00 2001
+From 0925796a4537e20e033a675ebc8899e4580235f3 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:59 +0100
-Subject: [PATCH 22/31] hw/net/virtio-net: skip automatic zero-init of large
+Subject: [PATCH 47/57] hw/net/virtio-net: skip automatic zero-init of large
  arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [21/30] f093a50cc162bd376fd74ea47c6274d7e718ba69
+RH-Commit: [21/30] 0450189a4c4c779b5a1850e9ea8278a5129c5f7f (stefanha/centos-stream-qemu-kvm)
 
 The 'virtio_net_receive_rcu' method has three arrays with
 VIRTQUEUE_MAX_SIZE elements, which are apprixmately 32k in

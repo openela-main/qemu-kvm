@@ -1,0 +1,79 @@
+From 001200670ce9076a34419828e7e7ba92f19a80b7 Mon Sep 17 00:00:00 2001
+From: Juraj Marcin <jmarcin@redhat.com>
+Date: Wed, 4 Sep 2024 12:37:15 +0200
+Subject: [PATCH 08/26] virtio-mem: Add support for suspend+wake-up with
+ plugged memory
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [8/26] 08e25d41e32b3ac2bf5e0266f9c7e91739eda4d4 (thuth/qemu-kvm-cs)
+
+Before, the virtio-mem device would unplug all the memory with any reset
+of the device, including during the wake-up of the guest from a
+suspended state. Due to this, the virtio-mem driver in the Linux kernel
+disallowed suspend-to-ram requests in the guest when the
+VIRTIO_MEM_F_PERSISTENT_SUSPEND feature is not exposed by QEMU.
+
+This patch adds the code to skip the reset on wake-up and exposes
+theVIRTIO_MEM_F_PERSISTENT_SUSPEND feature to the guest kernel driver
+when suspending is possible in QEMU (currently only x86).
+
+Message-ID: <20240904103722.946194-5-jmarcin@redhat.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 1f5f49056d0f140568805d66f33396ed5cd90369)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/virtio/virtio-mem.c | 10 ++++++++++
+ hw/virtio/virtio-qmp.c |  3 +++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/hw/virtio/virtio-mem.c b/hw/virtio/virtio-mem.c
+index 025ae4abac..51642a15ef 100644
+--- a/hw/virtio/virtio-mem.c
++++ b/hw/virtio/virtio-mem.c
+@@ -883,6 +883,9 @@ static uint64_t virtio_mem_get_features(VirtIODevice *vdev, uint64_t features,
+     if (vmem->unplugged_inaccessible == ON_OFF_AUTO_ON) {
+         virtio_add_feature(&features, VIRTIO_MEM_F_UNPLUGGED_INACCESSIBLE);
+     }
++    if (qemu_wakeup_suspend_enabled()) {
++        virtio_add_feature(&features, VIRTIO_MEM_F_PERSISTENT_SUSPEND);
++    }
+     return features;
+ }
+ 
+@@ -1842,6 +1845,13 @@ static void virtio_mem_system_reset_hold(Object *obj, ResetType type)
+ {
+     VirtIOMEM *vmem = VIRTIO_MEM(obj);
+ 
++    /*
++     * When waking up from standby/suspend-to-ram, do not unplug any memory.
++     */
++    if (type == RESET_TYPE_WAKEUP) {
++        return;
++    }
++
+     /*
+      * During usual resets, we will unplug all memory and shrink the usable
+      * region size. This is, however, not possible in all scenarios. Then,
+diff --git a/hw/virtio/virtio-qmp.c b/hw/virtio/virtio-qmp.c
+index 1dd96ed20f..cccc6fe761 100644
+--- a/hw/virtio/virtio-qmp.c
++++ b/hw/virtio/virtio-qmp.c
+@@ -450,6 +450,9 @@ static const qmp_virtio_feature_map_t virtio_mem_feature_map[] = {
+     FEATURE_ENTRY(VIRTIO_MEM_F_UNPLUGGED_INACCESSIBLE, \
+             "VIRTIO_MEM_F_UNPLUGGED_INACCESSIBLE: Unplugged memory cannot be "
+             "accessed"),
++    FEATURE_ENTRY(VIRTIO_MEM_F_PERSISTENT_SUSPEND, \
++            "VIRTIO_MEM_F_PERSISTENT_SUSPND: Plugged memory will remain "
++            "plugged when suspending+resuming"),
+     { -1, "" }
+ };
+ #endif
+-- 
+2.48.1
+

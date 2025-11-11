@@ -1,0 +1,59 @@
+From bbfdcd93ce27ea64b6f6854dfdb8635f107de76c Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 088/115] i386/tdx: Error and exit when named cpu model is
+ requested
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [88/115] 7ffb866075f6c8951eee9fbbd6ff3a0362519c4a (bonzini/rhel-qemu-kvm)
+
+Currently, it gets below error when requesting any named cpu model with
+"-cpu" to boot a TDX VM:
+
+  qemu-system-x86_64: KVM_TDX_INIT_VM failed: Invalid argument
+
+It misleads people to think it's the bug of KVM or QEMU. It is just that
+current QEMU doesn't support named cpu model for TDX.
+
+To support named cpu models for TDX guest, there are opens to be
+finalized and needs a mount of additional work.
+
+For now, explicitly check the case when named cpu model is requested.
+Error report a hint and exit.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Link: https://lore.kernel.org/r/20250612133801.2238342-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 750560f8a832361cf5cc4cd7bc4f56e1e76206f6)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index cca2b11622..3099e40baa 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -739,8 +739,14 @@ static int tdx_kvm_type(X86ConfidentialGuest *cg)
+ 
+ static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)
+ {
++    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+     X86CPU *x86cpu = X86_CPU(cpu);
+ 
++    if (xcc->model) {
++        error_report("Named cpu model is not supported for TDX yet!");
++        exit(1);
++    }
++
+     object_property_set_bool(OBJECT(cpu), "pmu", false, &error_abort);
+ 
+     /* invtsc is fixed1 for TD guest */
+-- 
+2.50.1
+

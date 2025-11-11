@@ -1,0 +1,145 @@
+From 62aee66f496828bec5574d7790501788ad602966 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 094/115] target/i386: move max_features to class
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [94/115] f1ce43d8d481176eed2bf0f51c4e1bb423480858 (bonzini/rhel-qemu-kvm)
+
+max_features is always set to true for instances created by -cpu max or
+-cpu host; it's always false for other classes.  Therefore it can be
+turned into a field in the X86CPUClass.
+
+Reviewed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit cb2273edf5df57cb270bc19d7e92d8be5870c17a)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c         | 7 ++++---
+ target/i386/cpu.h         | 2 +-
+ target/i386/hvf/hvf-cpu.c | 3 ++-
+ target/i386/kvm/kvm-cpu.c | 5 +++--
+ 4 files changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index a9d6811032..8685b9d998 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5868,6 +5868,7 @@ static void max_x86_cpu_class_init(ObjectClass *oc, void *data)
+ 
+     xcc->ordering = 9;
+ 
++    xcc->max_features = true;
+     xcc->model_description =
+         "Enables all features supported by the accelerator in the current host";
+ 
+@@ -5882,7 +5883,6 @@ static void max_x86_cpu_initfn(Object *obj)
+     /* We can't fill the features array here because we don't know yet if
+      * "migratable" is true or false.
+      */
+-    cpu->max_features = true;
+     object_property_set_bool(OBJECT(cpu), "pmu", true, &error_abort);
+ 
+     /*
+@@ -7954,6 +7954,7 @@ static void x86_cpu_enable_xsave_components(X86CPU *cpu)
+  */
+ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+ {
++    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+     CPUX86State *env = &cpu->env;
+     FeatureWord w;
+     int i;
+@@ -7973,12 +7974,12 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
+-    /*TODO: Now cpu->max_features doesn't overwrite features
++    /* TODO: Now xcc->max_features doesn't overwrite features
+      * set using QOM properties, and we can convert
+      * plus_features & minus_features to global properties
+      * inside x86_cpu_parse_featurestr() too.
+      */
+-    if (cpu->max_features) {
++    if (xcc->max_features) {
+         for (w = 0; w < FEATURE_WORDS; w++) {
+             /* Override only features that weren't set explicitly
+              * by the user.
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index a08931f969..a419eb64a5 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2122,7 +2122,6 @@ struct ArchCPU {
+     bool expose_tcg;
+     bool migratable;
+     bool migrate_smi_count;
+-    bool max_features; /* Enable all supported features automatically */
+     uint32_t apic_id;
+ 
+     /* Enables publishing of TSC increment and Local APIC bus frequencies to
+@@ -2275,6 +2274,7 @@ struct X86CPUClass {
+      */
+     X86CPUModel *model;
+ 
++    bool max_features; /* Enable all supported features automatically */
+     bool host_cpuid_required;
+     int ordering;
+     bool migration_safe;
+diff --git a/target/i386/hvf/hvf-cpu.c b/target/i386/hvf/hvf-cpu.c
+index ac617f17e7..35fc642b93 100644
+--- a/target/i386/hvf/hvf-cpu.c
++++ b/target/i386/hvf/hvf-cpu.c
+@@ -61,13 +61,14 @@ static void hvf_cpu_xsave_init(void)
+ static void hvf_cpu_instance_init(CPUState *cs)
+ {
+     X86CPU *cpu = X86_CPU(cs);
++    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+ 
+     host_cpu_instance_init(cpu);
+ 
+     /* Special cases not set in the X86CPUDefinition structs: */
+     /* TODO: in-kernel irqchip for hvf */
+ 
+-    if (cpu->max_features) {
++    if (xcc->max_features) {
+         hvf_cpu_max_instance_init(cpu);
+     }
+ 
+diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
+index 961b87e98e..49e820b69e 100644
+--- a/target/i386/kvm/kvm-cpu.c
++++ b/target/i386/kvm/kvm-cpu.c
+@@ -41,6 +41,7 @@ static void kvm_set_guest_phys_bits(CPUState *cs)
+ static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
+ {
+     X86CPU *cpu = X86_CPU(cs);
++    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+     CPUX86State *env = &cpu->env;
+     bool ret;
+ 
+@@ -63,7 +64,7 @@ static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
+      *   check/update ucode_rev, phys_bits, guest_phys_bits, mwait
+      *   cpu_common_realizefn() (via xcc->parent_realize)
+      */
+-    if (cpu->max_features) {
++    if (xcc->max_features) {
+         if (enable_cpu_pm) {
+             if (kvm_has_waitpkg()) {
+                 env->features[FEAT_7_0_ECX] |= CPUID_7_0_ECX_WAITPKG;
+@@ -217,7 +218,7 @@ static void kvm_cpu_instance_init(CPUState *cs)
+         x86_cpu_apply_props(cpu, kvm_default_props);
+     }
+ 
+-    if (cpu->max_features) {
++    if (xcc->max_features) {
+         kvm_cpu_max_instance_init(cpu);
+     }
+ 
+-- 
+2.50.1
+

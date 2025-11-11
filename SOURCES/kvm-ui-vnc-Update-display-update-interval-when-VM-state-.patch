@@ -1,18 +1,18 @@
-From e2931430d3f10dd521e6b4cc7505842fbc8296ec Mon Sep 17 00:00:00 2001
+From a69b8d66fb515cd55cef2fcaa626c350d761f1a9 Mon Sep 17 00:00:00 2001
 From: Juraj Marcin <jmarcin@redhat.com>
 Date: Wed, 21 May 2025 17:16:13 +0200
-Subject: [PATCH 01/31] ui/vnc: Update display update interval when VM state
+Subject: [PATCH 57/57] ui/vnc: Update display update interval when VM state
  changes to RUNNING
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Juraj Marcin <None>
-RH-MergeRequest: 463: ui/vnc: Update display update interval when VM state changes to RUNNING
-RH-Jira: RHEL-100767
+RH-MergeRequest: 385: ui/vnc: Update display update interval when VM state changes to RUNNING
+RH-Jira: RHEL-100741
 RH-Acked-by: Peter Xu <peterx@redhat.com>
 RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
-RH-Commit: [1/1] 60b1a7921296e82b616d055691fe8ac0f2e283b1
+RH-Commit: [1/1] 30dd4790a607d646465c18d621073df997e8850b (JurajMarcin/centos-src-qemu-kvm)
 
 If a virtual machine is paused for an extended period time, for example,
 due to an incoming migration, there are also no changes on the screen.
@@ -41,7 +41,7 @@ Signed-off-by: Peter Xu <peterx@redhat.com>
 
 (cherry picked from commit 0310d594d98b39f9dde79b87fd8b0ad16e7c5459)
 
-JIRA: https://issues.redhat.com/browse/RHEL-100767
+JIRA: https://issues.redhat.com/browse/RHEL-100741
 
 Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
 ---

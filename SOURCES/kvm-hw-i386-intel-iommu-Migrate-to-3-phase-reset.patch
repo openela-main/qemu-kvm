@@ -1,0 +1,96 @@
+From 67b281dc1ccdae05da6c6052c264ecd94723c0b2 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Feb 2025 19:25:32 +0100
+Subject: [PATCH 2/9] hw/i386/intel-iommu: Migrate to 3-phase reset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 341: Fix vIOMMU reset order
+RH-Jira: RHEL-7188
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [2/5] 5b9b60b2b796529db10b846881e82e7df4626ec1 (eauger1/centos-qemu-kvm)
+
+Currently the IOMMU may be reset before the devices
+it protects. For example this happens with virtio devices
+but also with VFIO devices. In this latter case this
+produces spurious translation faults on host.
+
+Let's use 3-phase reset mechanism and reset the IOMMU on
+exit phase after all DMA capable devices have been reset
+on 'enter' or 'hold' phase.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Zhenzhong Duan <zhenzhong.duan@intel.com>
+
+Message-Id: <20250218182737.76722-3-eric.auger@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 2aaf48bcf27d8b3da5b30af6c1ced464d3df30f7)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+
+Conflicts: Code change
+	hw/i386/intel_iommu.c
+We miss e3d0814368d0 ("hw: Use device_class_set_legacy_reset() instead
+of opencoding") meaning that instead of removing
+device_class_set_legacy_reset(dc, vtd_reset) we remove
+dc->reset = vtd_reset;
+---
+ hw/i386/intel_iommu.c | 12 +++++++++---
+ hw/i386/trace-events  |  1 +
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/hw/i386/intel_iommu.c b/hw/i386/intel_iommu.c
+index 16d2885fcc..4acefcf5c8 100644
+--- a/hw/i386/intel_iommu.c
++++ b/hw/i386/intel_iommu.c
+@@ -4212,10 +4212,11 @@ static void vtd_init(IntelIOMMUState *s)
+ /* Should not reset address_spaces when reset because devices will still use
+  * the address space they got at first (won't ask the bus again).
+  */
+-static void vtd_reset(DeviceState *dev)
++static void vtd_reset_exit(Object *obj, ResetType type)
+ {
+-    IntelIOMMUState *s = INTEL_IOMMU_DEVICE(dev);
++    IntelIOMMUState *s = INTEL_IOMMU_DEVICE(obj);
+ 
++    trace_vtd_reset_exit();
+     vtd_init(s);
+     vtd_address_space_refresh_all(s);
+ }
+@@ -4367,8 +4368,13 @@ static void vtd_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     X86IOMMUClass *x86_class = X86_IOMMU_DEVICE_CLASS(klass);
++    ResettableClass *rc = RESETTABLE_CLASS(klass);
+ 
+-    dc->reset = vtd_reset;
++    /*
++     * Use 'exit' reset phase to make sure all DMA requests
++     * have been quiesced during 'enter' or 'hold' phase
++     */
++    rc->phases.exit = vtd_reset_exit;
+     dc->vmsd = &vtd_vmstate;
+     device_class_set_props(dc, vtd_properties);
+     dc->hotpluggable = false;
+diff --git a/hw/i386/trace-events b/hw/i386/trace-events
+index 53c02d7ac8..ac9e1a10aa 100644
+--- a/hw/i386/trace-events
++++ b/hw/i386/trace-events
+@@ -68,6 +68,7 @@ vtd_frr_new(int index, uint64_t hi, uint64_t lo) "index %d high 0x%"PRIx64" low
+ vtd_warn_invalid_qi_tail(uint16_t tail) "tail 0x%"PRIx16
+ vtd_warn_ir_vector(uint16_t sid, int index, int vec, int target) "sid 0x%"PRIx16" index %d vec %d (should be: %d)"
+ vtd_warn_ir_trigger(uint16_t sid, int index, int trig, int target) "sid 0x%"PRIx16" index %d trigger %d (should be: %d)"
++vtd_reset_exit(void) ""
+ 
+ # amd_iommu.c
+ amdvi_evntlog_fail(uint64_t addr, uint32_t head) "error: fail to write at addr 0x%"PRIx64" +  offset 0x%"PRIx32
+-- 
+2.48.1
+

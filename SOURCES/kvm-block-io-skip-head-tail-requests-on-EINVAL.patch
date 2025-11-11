@@ -1,14 +1,14 @@
-From ecdc254dbaa7995a94f67e7dfafb17137d15759e Mon Sep 17 00:00:00 2001
+From e629a362860977161e43ed80bb59d1d05a06b2f2 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Thu, 17 Apr 2025 11:05:28 -0400
-Subject: [PATCH 2/3] block/io: skip head/tail requests on EINVAL
+Subject: [PATCH 4/5] block/io: skip head/tail requests on EINVAL
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 450: file-posix: probe discard alignment on Linux block devices
-RH-Jira: RHEL-87734
+RH-MergeRequest: 355: file-posix: probe discard alignment on Linux block devices
+RH-Jira: RHEL-86032
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
 RH-Acked-by: Eric Blake <eblake@redhat.com>
-RH-Commit: [2/3] 30b17fc1828c45cf958b8254999ce1ef1f100868
+RH-Commit: [2/3] 0028fb11f18e16e2aba9506eabb2383c406d17b5 (stefanha/centos-stream-qemu-kvm)
 
 When guests send misaligned discard requests, the block layer breaks
 them up into a misaligned head, an aligned main body, and a misaligned

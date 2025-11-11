@@ -1,0 +1,90 @@
+From e1658c60f353f93b195fb6f569cb44a5fb1f3e99 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:43 +0200
+Subject: [PATCH 003/115] kvm/i386: make kvm_filter_msr() and related
+ definitions private to kvm module
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [3/115] ef00896ed2cac6bc1ef39f21aad422ae5b571cb6 (bonzini/rhel-qemu-kvm)
+
+kvm_filer_msr() is only used from i386 kvm module. Make it static so that its
+easy for developers to understand that its not used anywhere else.
+Same for QEMURDMSRHandler, QEMUWRMSRHandler and KVMMSRHandlers definitions.
+
+CC: philmd@linaro.org
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Ani Sinha <anisinha@redhat.com>
+Link: https://lore.kernel.org/r/20240903140045.41167-1-anisinha@redhat.com
+[Make struct unnamed. - Paolo]
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit ed2880f4e93bf83106ebdc8562a5ee4d93285a3b)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/kvm.c      | 12 +++++++++++-
+ target/i386/kvm/kvm_i386.h | 11 -----------
+ 2 files changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 94b678e9e3..b02aec915c 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -92,7 +92,17 @@
+  * 255 kvm_msr_entry structs */
+ #define MSR_BUF_SIZE 4096
+ 
++typedef bool QEMURDMSRHandler(X86CPU *cpu, uint32_t msr, uint64_t *val);
++typedef bool QEMUWRMSRHandler(X86CPU *cpu, uint32_t msr, uint64_t val);
++typedef struct {
++    uint32_t msr;
++    QEMURDMSRHandler *rdmsr;
++    QEMUWRMSRHandler *wrmsr;
++} KVMMSRHandlers;
++
+ static void kvm_init_msrs(X86CPU *cpu);
++static bool kvm_filter_msr(KVMState *s, uint32_t msr, QEMURDMSRHandler *rdmsr,
++                           QEMUWRMSRHandler *wrmsr);
+ 
+ const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
+     KVM_CAP_INFO(SET_TSS_ADDR),
+@@ -5762,7 +5772,7 @@ static bool kvm_install_msr_filters(KVMState *s)
+     return true;
+ }
+ 
+-bool kvm_filter_msr(KVMState *s, uint32_t msr, QEMURDMSRHandler *rdmsr,
++static bool kvm_filter_msr(KVMState *s, uint32_t msr, QEMURDMSRHandler *rdmsr,
+                     QEMUWRMSRHandler *wrmsr)
+ {
+     int i;
+diff --git a/target/i386/kvm/kvm_i386.h b/target/i386/kvm/kvm_i386.h
+index 34fc60774b..9de9c0d303 100644
+--- a/target/i386/kvm/kvm_i386.h
++++ b/target/i386/kvm/kvm_i386.h
+@@ -66,17 +66,6 @@ uint64_t kvm_swizzle_msi_ext_dest_id(uint64_t address);
+ void kvm_update_msi_routes_all(void *private, bool global,
+                                uint32_t index, uint32_t mask);
+ 
+-typedef bool QEMURDMSRHandler(X86CPU *cpu, uint32_t msr, uint64_t *val);
+-typedef bool QEMUWRMSRHandler(X86CPU *cpu, uint32_t msr, uint64_t val);
+-typedef struct kvm_msr_handlers {
+-    uint32_t msr;
+-    QEMURDMSRHandler *rdmsr;
+-    QEMUWRMSRHandler *wrmsr;
+-} KVMMSRHandlers;
+-
+-bool kvm_filter_msr(KVMState *s, uint32_t msr, QEMURDMSRHandler *rdmsr,
+-                    QEMUWRMSRHandler *wrmsr);
+-
+ #endif /* CONFIG_KVM */
+ 
+ void kvm_pc_setup_irq_routing(bool pci_enabled);
+-- 
+2.50.1
+

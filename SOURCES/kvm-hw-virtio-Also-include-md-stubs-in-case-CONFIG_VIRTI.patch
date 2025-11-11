@@ -1,0 +1,59 @@
+From afa3a488f3ca52a5455987e4cd643882c4b15d8a Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Thu, 13 Mar 2025 07:35:22 +0100
+Subject: [PATCH 24/26] hw/virtio: Also include md stubs in case
+ CONFIG_VIRTIO_PCI is not set
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [24/26] ae6307b26d01d2a317f7e5d1d3b3a16b6d5f56de (thuth/qemu-kvm-cs)
+
+For the s390x target, it's possible to build the QEMU binary without
+CONFIG_VIRTIO_PCI and only have the virtio-mem device via the ccw
+transport. In that case, QEMU currently fails to link correctly:
+
+ /usr/bin/ld: libqemu-s390x-softmmu.a.p/hw_s390x_s390-virtio-ccw.c.o: in function `s390_machine_device_pre_plug':
+ ../hw/s390x/s390-virtio-ccw.c:579:(.text+0x1e96): undefined reference to `virtio_md_pci_pre_plug'
+ /usr/bin/ld: libqemu-s390x-softmmu.a.p/hw_s390x_s390-virtio-ccw.c.o: in function `s390_machine_device_plug':
+ ../hw/s390x/s390-virtio-ccw.c:608:(.text+0x21a4): undefined reference to `virtio_md_pci_plug'
+ /usr/bin/ld: libqemu-s390x-softmmu.a.p/hw_s390x_s390-virtio-ccw.c.o: in function `s390_machine_device_unplug_request':
+ ../hw/s390x/s390-virtio-ccw.c:622:(.text+0x2334): undefined reference to `virtio_md_pci_unplug_request'
+ /usr/bin/ld: libqemu-s390x-softmmu.a.p/hw_s390x_s390-virtio-ccw.c.o: in function `s390_machine_device_unplug':
+ ../hw/s390x/s390-virtio-ccw.c:633:(.text+0x2436): undefined reference to `virtio_md_pci_unplug'
+ clang: error: linker command failed with exit code 1 (use -v to see invocation)
+
+We also need to include the stubs when CONFIG_VIRTIO_PCI is missing.
+
+Fixes: aa910c20ec5 ("s390x: virtio-mem support")
+Message-ID: <20250313063522.1348288-1-thuth@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit c1a6bff276ca52ffde472532d92bb5bb122dab3f)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/virtio/meson.build | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/virtio/meson.build b/hw/virtio/meson.build
+index c38bdd6fa4..e2f9c75625 100644
+--- a/hw/virtio/meson.build
++++ b/hw/virtio/meson.build
+@@ -89,7 +89,8 @@ specific_virtio_ss.add_all(when: 'CONFIG_VIRTIO_PCI', if_true: virtio_pci_ss)
+ system_ss.add_all(when: 'CONFIG_VIRTIO', if_true: system_virtio_ss)
+ system_ss.add(when: 'CONFIG_VIRTIO', if_false: files('vhost-stub.c'))
+ system_ss.add(when: 'CONFIG_VIRTIO', if_false: files('virtio-stub.c'))
+-system_ss.add(when: 'CONFIG_VIRTIO_MD', if_false: files('virtio-md-stubs.c'))
++system_ss.add(when: ['CONFIG_VIRTIO_MD', 'CONFIG_VIRTIO_PCI'],
++              if_false: files('virtio-md-stubs.c'))
+ 
+ system_ss.add(files('virtio-hmp-cmds.c'))
+ 
+-- 
+2.48.1
+

@@ -1,0 +1,68 @@
+From 10a611c8c607b7c320eb7c01c444944d8ba318f6 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 097/115] target/i386: move accel_cpu_instance_init to
+ .instance_init
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [97/115] b2725f7b55754f8ec6a54428eb1d70c588eb09ef (bonzini/rhel-qemu-kvm)
+
+With the reordering of instance_post_init callbacks that is new in 10.1
+accel_cpu_instance_init must execute in .instance_init as is already
+the case for RISC-V.  Otherwise, for example, setting the vendor
+property is broken when using KVM or Hypervisor.framework, because
+KVM sets it *after* the user's value is set by DeviceState's
+intance_post_init callback.
+
+Reported-by: Like Xu <like.xu.linux@gmail.com>
+Reported-by: Dongli Zhang <dongli.zhang@oracle.com>
+Reviewed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 5f158abef44c7e0945fc5f76715ef135a9bf9bd2)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index dd2180fc3a..2160754869 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5883,8 +5883,8 @@ static void max_x86_cpu_initfn(Object *obj)
+     CPUX86State *env = &cpu->env;
+ 
+     /*
+-     * these defaults are used for TCG, other accelerators overwrite these
+-     * values
++     * these defaults are used for TCG, other accelerators have overwritten
++     * these values
+      */
+     if (!env->cpuid_vendor1) {
+         object_property_set_str(OBJECT(cpu), "vendor", CPUID_VENDOR_AMD,
+@@ -8636,8 +8636,6 @@ static void x86_cpu_post_initfn(Object *obj)
+         }
+     }
+ 
+-    accel_cpu_instance_init(CPU(obj));
+-
+ #ifndef CONFIG_USER_ONLY
+     if (current_machine && current_machine->cgs) {
+         x86_confidential_guest_cpu_instance_init(
+@@ -8712,6 +8710,8 @@ static void x86_cpu_initfn(Object *obj)
+     if (xcc->model) {
+         x86_cpu_load_model(cpu, xcc->model);
+     }
++
++    accel_cpu_instance_init(CPU(obj));
+ }
+ 
+ static int64_t x86_cpu_get_arch_id(CPUState *cs)
+-- 
+2.50.1
+

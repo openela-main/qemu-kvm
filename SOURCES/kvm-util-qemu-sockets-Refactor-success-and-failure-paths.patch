@@ -1,0 +1,141 @@
+From 17af9176a1fff5af0d4c1bf1beb52228f7fc324d Mon Sep 17 00:00:00 2001
+From: Juraj Marcin <jmarcin@redhat.com>
+Date: Wed, 21 May 2025 15:52:32 +0200
+Subject: [PATCH 10/57] util/qemu-sockets: Refactor success and failure paths
+ in inet_listen_saddr()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 369: util/qemu-sockets: Introduce inet socket options controlling TCP keep-alive
+RH-Jira: RHEL-67104
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/7] 5d5f0e704cdf3454a3c402ea7b130aa42705eb9f (JurajMarcin/centos-src-qemu-kvm)
+
+To get a listening socket, we need to first create a socket, try binding
+it to a certain port, and lastly starting listening to it. Each of these
+operations can fail due to various reasons, one of them being that the
+requested address/port is already in use. In such case, the function
+tries the same process with a new port number.
+
+This patch refactors the port number loop, so the success path is no
+longer buried inside the 'if' statements in the middle of the loop. Now,
+the success path is not nested and ends at the end of the iteration
+after successful socket creation, binding, and listening. In case any of
+the operations fails, it either continues to the next iteration (and the
+next port) or jumps out of the loop to handle the error and exits the
+function.
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+(cherry picked from commit 911e0f2c6e2d00c985affa75ec188c8edcf480f2)
+
+JIRA: https://issues.redhat.com/browse/RHEL-67104
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ util/qemu-sockets.c | 51 ++++++++++++++++++++++++---------------------
+ 1 file changed, 27 insertions(+), 24 deletions(-)
+
+diff --git a/util/qemu-sockets.c b/util/qemu-sockets.c
+index 2c0e4883ce..631d0c4023 100644
+--- a/util/qemu-sockets.c
++++ b/util/qemu-sockets.c
+@@ -303,11 +303,20 @@ static int inet_listen_saddr(InetSocketAddress *saddr,
+         port_min = inet_getport(e);
+         port_max = saddr->has_to ? saddr->to + port_offset : port_min;
+         for (p = port_min; p <= port_max; p++) {
++            if (slisten >= 0) {
++                /*
++                 * We have a socket we tried with the previous port. It cannot
++                 * be rebound, we need to close it and create a new one.
++                 */
++                close(slisten);
++                slisten = -1;
++            }
+             inet_setport(e, p);
+ 
+             slisten = create_fast_reuse_socket(e);
+             if (slisten < 0) {
+-                /* First time we expect we might fail to create the socket
++                /*
++                 * First time we expect we might fail to create the socket
+                  * eg if 'e' has AF_INET6 but ipv6 kmod is not loaded.
+                  * Later iterations should always succeed if first iteration
+                  * worked though, so treat that as fatal.
+@@ -317,40 +326,38 @@ static int inet_listen_saddr(InetSocketAddress *saddr,
+                 } else {
+                     error_setg_errno(errp, errno,
+                                      "Failed to recreate failed listening socket");
+-                    goto listen_failed;
++                    goto fail;
+                 }
+             }
+             socket_created = true;
+ 
+             rc = try_bind(slisten, saddr, e);
+             if (rc < 0) {
+-                if (errno != EADDRINUSE) {
+-                    error_setg_errno(errp, errno, "Failed to bind socket");
+-                    goto listen_failed;
+-                }
+-            } else {
+-                if (!listen(slisten, num)) {
+-                    goto listen_ok;
++                if (errno == EADDRINUSE) {
++                    /* This port is already used, try the next one */
++                    continue;
+                 }
+-                if (errno != EADDRINUSE) {
+-                    error_setg_errno(errp, errno, "Failed to listen on socket");
+-                    goto listen_failed;
++                error_setg_errno(errp, errno, "Failed to bind socket");
++                goto fail;
++            }
++            if (listen(slisten, num)) {
++                if (errno == EADDRINUSE) {
++                    /* This port is already used, try the next one */
++                    continue;
+                 }
++                error_setg_errno(errp, errno, "Failed to listen on socket");
++                goto fail;
+             }
+-            /* Someone else managed to bind to the same port and beat us
+-             * to listen on it! Socket semantics does not allow us to
+-             * recover from this situation, so we need to recreate the
+-             * socket to allow bind attempts for subsequent ports:
+-             */
+-            close(slisten);
+-            slisten = -1;
++            /* We have a listening socket */
++            freeaddrinfo(res);
++            return slisten;
+         }
+     }
+     error_setg_errno(errp, errno,
+                      socket_created ?
+                      "Failed to find an available port" :
+                      "Failed to create a socket");
+-listen_failed:
++fail:
+     saved_errno = errno;
+     if (slisten >= 0) {
+         close(slisten);
+@@ -358,10 +365,6 @@ listen_failed:
+     freeaddrinfo(res);
+     errno = saved_errno;
+     return -1;
+-
+-listen_ok:
+-    freeaddrinfo(res);
+-    return slisten;
+ }
+ 
+ #ifdef _WIN32
+-- 
+2.39.3
+

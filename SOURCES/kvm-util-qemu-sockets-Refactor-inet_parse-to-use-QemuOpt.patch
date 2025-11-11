@@ -1,0 +1,461 @@
+From d2155b6fe1f200a588dd5e95d7587e96109da989 Mon Sep 17 00:00:00 2001
+From: Juraj Marcin <jmarcin@redhat.com>
+Date: Wed, 21 May 2025 15:52:34 +0200
+Subject: [PATCH 12/57] util/qemu-sockets: Refactor inet_parse() to use
+ QemuOpts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 369: util/qemu-sockets: Introduce inet socket options controlling TCP keep-alive
+RH-Jira: RHEL-67104
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/7] 7fd97ed112c6259928d94595c2ae23fe1208621e (JurajMarcin/centos-src-qemu-kvm)
+
+Currently, the inet address parser cannot handle multiple options where
+one is prefixed with the name of the other. For example, with the
+'keep-alive-idle' option added, the current parser cannot parse
+'127.0.0.1:5000,keep-alive-idle=60,keep-alive' correctly. Instead, it
+fails with "error parsing 'keep-alive' flag '-idle=60,keep-alive'".
+
+To resolve these issues, this patch rewrites the inet address parsing
+using the QemuOpts parser, which the inet_parse_flag() function tries to
+mimic. This new parser supports all previously supported options and on
+top of that the 'numeric' flag is now also supported. The only
+difference is, the new parser produces an error if an unknown option is
+passed, instead of silently ignoring it.
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+(cherry picked from commit 316e8ee8d614f049bfae697570a5e62af450491c)
+
+JIRA: https://issues.redhat.com/browse/RHEL-67104
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ tests/unit/test-util-sockets.c | 196 +++++++++++++++++++++++++++++++++
+ util/qemu-sockets.c            | 158 +++++++++++++-------------
+ 2 files changed, 270 insertions(+), 84 deletions(-)
+
+diff --git a/tests/unit/test-util-sockets.c b/tests/unit/test-util-sockets.c
+index 4c9dd0b271..9e39b92e7c 100644
+--- a/tests/unit/test-util-sockets.c
++++ b/tests/unit/test-util-sockets.c
+@@ -332,6 +332,177 @@ static void test_socket_unix_abstract(void)
+ 
+ #endif  /* CONFIG_LINUX */
+ 
++static void inet_parse_test_helper(const char *str,
++                                   InetSocketAddress *exp_addr, bool success)
++{
++    InetSocketAddress addr;
++    Error *error = NULL;
++
++    int rc = inet_parse(&addr, str, &error);
++
++    if (success) {
++        g_assert_cmpint(rc, ==, 0);
++    } else {
++        g_assert_cmpint(rc, <, 0);
++    }
++    if (exp_addr != NULL) {
++        g_assert_cmpstr(addr.host, ==, exp_addr->host);
++        g_assert_cmpstr(addr.port, ==, exp_addr->port);
++        /* Own members: */
++        g_assert_cmpint(addr.has_numeric, ==, exp_addr->has_numeric);
++        g_assert_cmpint(addr.numeric, ==, exp_addr->numeric);
++        g_assert_cmpint(addr.has_to, ==, exp_addr->has_to);
++        g_assert_cmpint(addr.to, ==, exp_addr->to);
++        g_assert_cmpint(addr.has_ipv4, ==, exp_addr->has_ipv4);
++        g_assert_cmpint(addr.ipv4, ==, exp_addr->ipv4);
++        g_assert_cmpint(addr.has_ipv6, ==, exp_addr->has_ipv6);
++        g_assert_cmpint(addr.ipv6, ==, exp_addr->ipv6);
++        g_assert_cmpint(addr.has_keep_alive, ==, exp_addr->has_keep_alive);
++        g_assert_cmpint(addr.keep_alive, ==, exp_addr->keep_alive);
++#ifdef HAVE_IPPROTO_MPTCP
++        g_assert_cmpint(addr.has_mptcp, ==, exp_addr->has_mptcp);
++        g_assert_cmpint(addr.mptcp, ==, exp_addr->mptcp);
++#endif
++    }
++
++    g_free(addr.host);
++    g_free(addr.port);
++}
++
++static void test_inet_parse_nohost_good(void)
++{
++    char host[] = "";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++    };
++    inet_parse_test_helper(":5000", &exp_addr, true);
++}
++
++static void test_inet_parse_empty_bad(void)
++{
++    inet_parse_test_helper("", NULL, false);
++}
++
++static void test_inet_parse_only_colon_bad(void)
++{
++    inet_parse_test_helper(":", NULL, false);
++}
++
++static void test_inet_parse_ipv4_good(void)
++{
++    char host[] = "127.0.0.1";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++    };
++    inet_parse_test_helper("127.0.0.1:5000", &exp_addr, true);
++}
++
++static void test_inet_parse_ipv4_noport_bad(void)
++{
++    inet_parse_test_helper("127.0.0.1", NULL, false);
++}
++
++static void test_inet_parse_ipv6_good(void)
++{
++    char host[] = "::1";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++    };
++    inet_parse_test_helper("[::1]:5000", &exp_addr, true);
++}
++
++static void test_inet_parse_ipv6_noend_bad(void)
++{
++    inet_parse_test_helper("[::1", NULL, false);
++}
++
++static void test_inet_parse_ipv6_noport_bad(void)
++{
++    inet_parse_test_helper("[::1]:", NULL, false);
++}
++
++static void test_inet_parse_ipv6_empty_bad(void)
++{
++    inet_parse_test_helper("[]:5000", NULL, false);
++}
++
++static void test_inet_parse_hostname_good(void)
++{
++    char host[] = "localhost";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++    };
++    inet_parse_test_helper("localhost:5000", &exp_addr, true);
++}
++
++static void test_inet_parse_all_options_good(void)
++{
++    char host[] = "::1";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++        .has_numeric = true,
++        .numeric =  true,
++        .has_to = true,
++        .to = 5006,
++        .has_ipv4 = true,
++        .ipv4 = false,
++        .has_ipv6 = true,
++        .ipv6 = true,
++        .has_keep_alive = true,
++        .keep_alive = true,
++#ifdef HAVE_IPPROTO_MPTCP
++        .has_mptcp = true,
++        .mptcp = false,
++#endif
++    };
++    inet_parse_test_helper(
++        "[::1]:5000,numeric=on,to=5006,ipv4=off,ipv6=on,keep-alive=on"
++#ifdef HAVE_IPPROTO_MPTCP
++        ",mptcp=off"
++#endif
++        , &exp_addr, true);
++}
++
++static void test_inet_parse_all_implicit_bool_good(void)
++{
++    char host[] = "::1";
++    char port[] = "5000";
++    InetSocketAddress exp_addr = {
++        .host = host,
++        .port = port,
++        .has_numeric = true,
++        .numeric =  true,
++        .has_to = true,
++        .to = 5006,
++        .has_ipv4 = true,
++        .ipv4 = true,
++        .has_ipv6 = true,
++        .ipv6 = true,
++        .has_keep_alive = true,
++        .keep_alive = true,
++#ifdef HAVE_IPPROTO_MPTCP
++        .has_mptcp = true,
++        .mptcp = true,
++#endif
++    };
++    inet_parse_test_helper(
++        "[::1]:5000,numeric,to=5006,ipv4,ipv6,keep-alive"
++#ifdef HAVE_IPPROTO_MPTCP
++        ",mptcp"
++#endif
++        , &exp_addr, true);
++}
++
+ int main(int argc, char **argv)
+ {
+     bool has_ipv4, has_ipv6;
+@@ -377,6 +548,31 @@ int main(int argc, char **argv)
+                     test_socket_unix_abstract);
+ #endif
+ 
++    g_test_add_func("/util/socket/inet-parse/nohost-good",
++                    test_inet_parse_nohost_good);
++    g_test_add_func("/util/socket/inet-parse/empty-bad",
++                    test_inet_parse_empty_bad);
++    g_test_add_func("/util/socket/inet-parse/only-colon-bad",
++                    test_inet_parse_only_colon_bad);
++    g_test_add_func("/util/socket/inet-parse/ipv4-good",
++                    test_inet_parse_ipv4_good);
++    g_test_add_func("/util/socket/inet-parse/ipv4-noport-bad",
++                    test_inet_parse_ipv4_noport_bad);
++    g_test_add_func("/util/socket/inet-parse/ipv6-good",
++                    test_inet_parse_ipv6_good);
++    g_test_add_func("/util/socket/inet-parse/ipv6-noend-bad",
++                    test_inet_parse_ipv6_noend_bad);
++    g_test_add_func("/util/socket/inet-parse/ipv6-noport-bad",
++                    test_inet_parse_ipv6_noport_bad);
++    g_test_add_func("/util/socket/inet-parse/ipv6-empty-bad",
++                    test_inet_parse_ipv6_empty_bad);
++    g_test_add_func("/util/socket/inet-parse/hostname-good",
++                    test_inet_parse_hostname_good);
++    g_test_add_func("/util/socket/inet-parse/all-options-good",
++                    test_inet_parse_all_options_good);
++    g_test_add_func("/util/socket/inet-parse/all-bare-bool-good",
++                    test_inet_parse_all_implicit_bool_good);
++
+ end:
+     return g_test_run();
+ }
+diff --git a/util/qemu-sockets.c b/util/qemu-sockets.c
+index 8fc1f86145..8017124c74 100644
+--- a/util/qemu-sockets.c
++++ b/util/qemu-sockets.c
+@@ -30,6 +30,7 @@
+ #include "qapi/qobject-input-visitor.h"
+ #include "qapi/qobject-output-visitor.h"
+ #include "qemu/cutils.h"
++#include "qemu/option.h"
+ #include "trace.h"
+ 
+ #ifndef AI_ADDRCONFIG
+@@ -601,115 +602,104 @@ err:
+     return -1;
+ }
+ 
+-/* compatibility wrapper */
+-static int inet_parse_flag(const char *flagname, const char *optstr, bool *val,
+-                           Error **errp)
+-{
+-    char *end;
+-    size_t len;
+-
+-    end = strstr(optstr, ",");
+-    if (end) {
+-        if (end[1] == ',') { /* Reject 'ipv6=on,,foo' */
+-            error_setg(errp, "error parsing '%s' flag '%s'", flagname, optstr);
+-            return -1;
+-        }
+-        len = end - optstr;
+-    } else {
+-        len = strlen(optstr);
+-    }
+-    if (len == 0 || (len == 3 && strncmp(optstr, "=on", len) == 0)) {
+-        *val = true;
+-    } else if (len == 4 && strncmp(optstr, "=off", len) == 0) {
+-        *val = false;
+-    } else {
+-        error_setg(errp, "error parsing '%s' flag '%s'", flagname, optstr);
+-        return -1;
+-    }
+-    return 0;
+-}
++static QemuOptsList inet_opts = {
++    .name = "InetSocketAddress",
++    .head = QTAILQ_HEAD_INITIALIZER(inet_opts.head),
++    .implied_opt_name = "addr",
++    .desc = {
++        {
++            .name = "addr",
++            .type = QEMU_OPT_STRING,
++        },
++        {
++            .name = "numeric",
++            .type = QEMU_OPT_BOOL,
++        },
++        {
++            .name = "to",
++            .type = QEMU_OPT_NUMBER,
++        },
++        {
++            .name = "ipv4",
++            .type = QEMU_OPT_BOOL,
++        },
++        {
++            .name = "ipv6",
++            .type = QEMU_OPT_BOOL,
++        },
++        {
++            .name = "keep-alive",
++            .type = QEMU_OPT_BOOL,
++        },
++#ifdef HAVE_IPPROTO_MPTCP
++        {
++            .name = "mptcp",
++            .type = QEMU_OPT_BOOL,
++        },
++#endif
++        { /* end of list */ }
++    },
++};
+ 
+ int inet_parse(InetSocketAddress *addr, const char *str, Error **errp)
+ {
+-    const char *optstr, *h;
+-    char host[65];
+-    char port[33];
+-    int to;
+-    int pos;
+-    char *begin;
+-
++    QemuOpts *opts = qemu_opts_parse(&inet_opts, str, true, errp);
++    if (!opts) {
++        return -1;
++    }
+     memset(addr, 0, sizeof(*addr));
+ 
+     /* parse address */
+-    if (str[0] == ':') {
+-        /* no host given */
+-        host[0] = '\0';
+-        if (sscanf(str, ":%32[^,]%n", port, &pos) != 1) {
+-            error_setg(errp, "error parsing port in address '%s'", str);
+-            return -1;
+-        }
+-    } else if (str[0] == '[') {
++    const char *addr_str = qemu_opt_get(opts, "addr");
++    if (!addr_str) {
++        error_setg(errp, "error parsing address ''");
++        return -1;
++    }
++    if (str[0] == '[') {
+         /* IPv6 addr */
+-        if (sscanf(str, "[%64[^]]]:%32[^,]%n", host, port, &pos) != 2) {
+-            error_setg(errp, "error parsing IPv6 address '%s'", str);
++        const char *ip_end = strstr(addr_str, "]:");
++        if (!ip_end || ip_end - addr_str < 2 || strlen(ip_end) < 3) {
++            error_setg(errp, "error parsing IPv6 address '%s'", addr_str);
+             return -1;
+         }
++        addr->host = g_strndup(addr_str + 1, ip_end - addr_str - 1);
++        addr->port = g_strdup(ip_end + 2);
+     } else {
+-        /* hostname or IPv4 addr */
+-        if (sscanf(str, "%64[^:]:%32[^,]%n", host, port, &pos) != 2) {
+-            error_setg(errp, "error parsing address '%s'", str);
++        /* no host, hostname or IPv4 addr */
++        const char *port = strchr(addr_str, ':');
++        if (!port || strlen(port) < 2) {
++            error_setg(errp, "error parsing address '%s'", addr_str);
+             return -1;
+         }
++        addr->host = g_strndup(addr_str, port - addr_str);
++        addr->port = g_strdup(port + 1);
+     }
+ 
+-    addr->host = g_strdup(host);
+-    addr->port = g_strdup(port);
+-
+     /* parse options */
+-    optstr = str + pos;
+-    h = strstr(optstr, ",to=");
+-    if (h) {
+-        h += 4;
+-        if (sscanf(h, "%d%n", &to, &pos) != 1 ||
+-            (h[pos] != '\0' && h[pos] != ',')) {
+-            error_setg(errp, "error parsing to= argument");
+-            return -1;
+-        }
++    if (qemu_opt_find(opts, "numeric")) {
++        addr->has_numeric = true,
++        addr->numeric = qemu_opt_get_bool(opts, "numeric", false);
++    }
++    if (qemu_opt_find(opts, "to")) {
+         addr->has_to = true;
+-        addr->to = to;
++        addr->to = qemu_opt_get_number(opts, "to", 0);
+     }
+-    begin = strstr(optstr, ",ipv4");
+-    if (begin) {
+-        if (inet_parse_flag("ipv4", begin + 5, &addr->ipv4, errp) < 0) {
+-            return -1;
+-        }
++    if (qemu_opt_find(opts, "ipv4")) {
+         addr->has_ipv4 = true;
++        addr->ipv4 = qemu_opt_get_bool(opts, "ipv4", false);
+     }
+-    begin = strstr(optstr, ",ipv6");
+-    if (begin) {
+-        if (inet_parse_flag("ipv6", begin + 5, &addr->ipv6, errp) < 0) {
+-            return -1;
+-        }
++    if (qemu_opt_find(opts, "ipv6")) {
+         addr->has_ipv6 = true;
++        addr->ipv6 = qemu_opt_get_bool(opts, "ipv6", false);
+     }
+-    begin = strstr(optstr, ",keep-alive");
+-    if (begin) {
+-        if (inet_parse_flag("keep-alive", begin + strlen(",keep-alive"),
+-                            &addr->keep_alive, errp) < 0)
+-        {
+-            return -1;
+-        }
++    if (qemu_opt_find(opts, "keep-alive")) {
+         addr->has_keep_alive = true;
++        addr->keep_alive = qemu_opt_get_bool(opts, "keep-alive", false);
+     }
+ #ifdef HAVE_IPPROTO_MPTCP
+-    begin = strstr(optstr, ",mptcp");
+-    if (begin) {
+-        if (inet_parse_flag("mptcp", begin + strlen(",mptcp"),
+-                            &addr->mptcp, errp) < 0)
+-        {
+-            return -1;
+-        }
++    if (qemu_opt_find(opts, "mptcp")) {
+         addr->has_mptcp = true;
++        addr->mptcp = qemu_opt_get_bool(opts, "mptcp", 0);
+     }
+ #endif
+     return 0;
+-- 
+2.39.3
+

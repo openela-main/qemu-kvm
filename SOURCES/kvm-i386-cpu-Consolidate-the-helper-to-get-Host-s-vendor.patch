@@ -1,0 +1,78 @@
+From 0a568fbac880efdda740808e6fbbd8be09cfb46a Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:45 +0200
+Subject: [PATCH 024/115] i386/cpu: Consolidate the helper to get Host's vendor
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [24/115] cd823d475dc0a0ec4135f0c9d5546db996579d30 (bonzini/rhel-qemu-kvm)
+
+Extend host_cpu_vendor_fms() to help more cases to get Host's vendor
+information.
+
+Cc: Dongli Zhang <dongli.zhang@oracle.com>
+Signed-off-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250410075619.145792-1-zhao1.liu@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit ae39acef49e29169f90cd3a799d6cd0b50bc65d2)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/host-cpu.c        | 10 ++++++----
+ target/i386/kvm/vmsr_energy.c |  3 +--
+ 2 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/target/i386/host-cpu.c b/target/i386/host-cpu.c
+index 03b9d1b169..4a77ecc1fc 100644
+--- a/target/i386/host-cpu.c
++++ b/target/i386/host-cpu.c
+@@ -109,9 +109,13 @@ void host_cpu_vendor_fms(char *vendor, int *family, int *model, int *stepping)
+ {
+     uint32_t eax, ebx, ecx, edx;
+ 
+-    host_cpuid(0x0, 0, &eax, &ebx, &ecx, &edx);
++    host_cpuid(0x0, 0, NULL, &ebx, &ecx, &edx);
+     x86_cpu_vendor_words2str(vendor, ebx, edx, ecx);
+ 
++    if (!family && !model && !stepping) {
++        return;
++    }
++
+     host_cpuid(0x1, 0, &eax, &ebx, &ecx, &edx);
+     if (family) {
+         *family = ((eax >> 8) & 0x0F) + ((eax >> 20) & 0xFF);
+@@ -129,11 +133,9 @@ void host_cpu_instance_init(X86CPU *cpu)
+     X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+ 
+     if (xcc->model) {
+-        uint32_t ebx = 0, ecx = 0, edx = 0;
+         char vendor[CPUID_VENDOR_SZ + 1];
+ 
+-        host_cpuid(0, 0, NULL, &ebx, &ecx, &edx);
+-        x86_cpu_vendor_words2str(vendor, ebx, edx, ecx);
++        host_cpu_vendor_fms(vendor, NULL, NULL, NULL);
+         object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
+     }
+ }
+diff --git a/target/i386/kvm/vmsr_energy.c b/target/i386/kvm/vmsr_energy.c
+index 7e064c5aef..615f23b6cf 100644
+--- a/target/i386/kvm/vmsr_energy.c
++++ b/target/i386/kvm/vmsr_energy.c
+@@ -29,10 +29,9 @@ char *vmsr_compute_default_paths(void)
+ 
+ bool is_host_cpu_intel(void)
+ {
+-    int family, model, stepping;
+     char vendor[CPUID_VENDOR_SZ + 1];
+ 
+-    host_cpu_vendor_fms(vendor, &family, &model, &stepping);
++    host_cpu_vendor_fms(vendor, NULL, NULL, NULL);
+ 
+     return strcmp(vendor, CPUID_VENDOR_INTEL);
+ }
+-- 
+2.50.1
+

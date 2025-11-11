@@ -1,15 +1,15 @@
-From 50b1a3ec7cfea5a92069e043e8f77a2595480d20 Mon Sep 17 00:00:00 2001
+From 95c651ba1177bd88dbd9b52fe2ec8fedadcdb5c8 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Thu, 22 May 2025 15:08:03 +0200
-Subject: [PATCH 2/2] file-posix: Probe paths and retry SG_IO on potential path
+Subject: [PATCH 3/3] file-posix: Probe paths and retry SG_IO on potential path
  errors
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 456: file-posix: Fix multipath failover with SCSI passthrough [9.6.z]
-RH-Jira: RHEL-95407
+RH-MergeRequest: 372: file-posix: Fix multipath failover with SCSI passthrough [9.7]
+RH-Jira: RHEL-95408
 RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [2/2] 2f4aed9004889e9df25e30c2273f2524a67c666c (kmwolf/rhel-qemu-kvm)
+RH-Commit: [2/2] 4312e9ec609e511afdfb6634e1d2370032d41543 (kmwolf/centos-qemu-kvm)
 
 When scsi-block is used on a host multipath device, it runs into the
 problem that the kernel dm-mpath doesn't know anything about SCSI or

@@ -1,17 +1,17 @@
-From da69744f6441f4a63215841ae9add2c1ef631047 Mon Sep 17 00:00:00 2001
+From 0e733c43122688a40b0bad9cf9af43ac3655fa30 Mon Sep 17 00:00:00 2001
 From: Alex Williamson <alex.williamson@redhat.com>
 Date: Tue, 22 Oct 2024 14:08:29 -0600
-Subject: [PATCH 2/2] vfio/helpers: Align mmaps
+Subject: [PATCH 5/5] vfio/helpers: Align mmaps
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-RH-Author: Alex Williamson <None>
-RH-MergeRequest: 468: vfio/helpers: Align mmaps [9.6.z]
-RH-Jira: RHEL-107314
+RH-Author: Donald Dutile <None>
+RH-MergeRequest: 366: Improve VFIO mmapping performance with huge pfnmaps
+RH-Jira: RHEL-88533
 RH-Acked-by: Cédric Le Goater <clg@redhat.com>
-RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Commit: [2/2] 4941ab64a5c0508eefa6bc5f923d6fcc38fdda4b
+RH-Acked-by: Alex Williamson <None>
+RH-Commit: [2/2] f0e99cf993f82796352376bc7280342729ea5624 (ddutile/qemu-kvm)
 
 Thanks to work by Peter Xu, support is introduced in Linux v6.12 to
 allow pfnmap insertions at PMD and PUD levels of the page table.  This
@@ -37,7 +37,10 @@ Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
 Reviewed-by: Peter Xu <peterx@redhat.com>
 Reviewed-by: Cédric Le Goater <clg@redhat.com>
 (cherry picked from commit 00b519c0bca0e933ed22e2e6f8bca6b23f41f950)
-Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+
+Jira: https://issues.redhat.com/browse/RHEL-88533
+
+Signed-off-by: Donald Dutile <ddutile@redhat.com>
 ---
  hw/vfio/helpers.c | 32 ++++++++++++++++++++++++++++++--
  1 file changed, 30 insertions(+), 2 deletions(-)

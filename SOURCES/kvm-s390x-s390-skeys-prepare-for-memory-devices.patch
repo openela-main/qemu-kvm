@@ -1,0 +1,56 @@
+From 53d1b43699c6b30583f41a18a33c28893718aeac Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Thu, 19 Dec 2024 15:41:10 +0100
+Subject: [PATCH 18/26] s390x/s390-skeys: prepare for memory devices
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [18/26] 47edda0eeb6d5932f81633f2d9d294b1ca5f413c (thuth/qemu-kvm-cs)
+
+With memory devices, we will have storage keys for memory that
+exceeds the initial ram size.
+
+The TODO already states that current handling is subopimal,
+but we won't worry about improving that (TCG-only) thing for now.
+
+Message-ID: <20241219144115.2820241-10-david@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit d1e3c2ac41b3f73708682e4e8212c32ad35013b9)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-skeys.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/hw/s390x/s390-skeys.c b/hw/s390x/s390-skeys.c
+index bf22d6863e..e4297b3b8a 100644
+--- a/hw/s390x/s390-skeys.c
++++ b/hw/s390x/s390-skeys.c
+@@ -11,7 +11,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "qemu/units.h"
+-#include "hw/boards.h"
++#include "hw/s390x/s390-virtio-ccw.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/s390x/storage-keys.h"
+ #include "qapi/error.h"
+@@ -251,9 +251,9 @@ static bool qemu_s390_enable_skeys(S390SKeysState *ss)
+      *    g_once_init_enter() is good enough.
+      */
+     if (g_once_init_enter(&initialized)) {
+-        MachineState *machine = MACHINE(qdev_get_machine());
++        S390CcwMachineState *s390ms = S390_CCW_MACHINE(qdev_get_machine());
+ 
+-        skeys->key_count = machine->ram_size / TARGET_PAGE_SIZE;
++        skeys->key_count = s390_get_memory_limit(s390ms) / TARGET_PAGE_SIZE;
+         skeys->keydata = g_malloc0(skeys->key_count);
+         g_once_init_leave(&initialized, 1);
+     }
+-- 
+2.48.1
+

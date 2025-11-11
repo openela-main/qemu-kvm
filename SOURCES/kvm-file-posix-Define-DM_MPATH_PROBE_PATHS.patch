@@ -1,14 +1,14 @@
-From 762f24e92b93c0e8cbb5b0abe135d29fb444737d Mon Sep 17 00:00:00 2001
+From d565fe385b3c45a41fa8e25942220aff38a04fc3 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 29 Apr 2025 17:05:41 +0200
-Subject: [PATCH 1/2] file-posix: Define DM_MPATH_PROBE_PATHS
+Subject: [PATCH 2/3] file-posix: Define DM_MPATH_PROBE_PATHS
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 456: file-posix: Fix multipath failover with SCSI passthrough [9.6.z]
-RH-Jira: RHEL-95407
+RH-MergeRequest: 372: file-posix: Fix multipath failover with SCSI passthrough [9.7]
+RH-Jira: RHEL-95408
 RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [1/2] 0d9ec74bf3bb999c8baa929e0d25682680fa1731 (kmwolf/rhel-qemu-kvm)
+RH-Commit: [1/2] 7615906833a6bb2b4645fa5cd60d78aa9631cb7c (kmwolf/centos-qemu-kvm)
 
 While the kernel side isn't merged yet and we're still using old kernel
 headers, just define DM_MPATH_PROBE_PATHS manually.

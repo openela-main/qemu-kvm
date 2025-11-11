@@ -1,0 +1,78 @@
+From c97fb38ea2145d0f827cc693e03628d9582433c3 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:46 +0200
+Subject: [PATCH 043/115] i386/tdx: Set APIC bus rate to match with what TDX
+ module enforces
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [43/115] 2a25d2d762dba32fd6d0d3f4669c254cf0cb6a65 (bonzini/rhel-qemu-kvm)
+
+TDX advertises core crystal clock with cpuid[0x15] as 25MHz for TD
+guests and it's unchangeable from VMM. As a result, TDX guest reads
+the APIC timer at the same frequency, 25MHz.
+
+While KVM's default emulated frequency for APIC bus is 1GHz, set the
+APIC bus rate to match with TDX explicitly to ensure KVM provide correct
+emulated APIC timer for TD guest.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-15-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit d529a2ac5ef4620173439942f78ec668f9165fc1)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 13 +++++++++++++
+ target/i386/kvm/tdx.h |  3 +++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 39fd964c6b..c96e8eb7b8 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -254,6 +254,19 @@ int tdx_pre_create_vcpu(CPUState *cpu, Error **errp)
+     init_vm = g_malloc0(sizeof(struct kvm_tdx_init_vm) +
+                         sizeof(struct kvm_cpuid_entry2) * KVM_MAX_CPUID_ENTRIES);
+ 
++    if (!kvm_check_extension(kvm_state, KVM_CAP_X86_APIC_BUS_CYCLES_NS)) {
++        error_setg(errp, "KVM doesn't support KVM_CAP_X86_APIC_BUS_CYCLES_NS");
++        return -EOPNOTSUPP;
++    }
++
++    r = kvm_vm_enable_cap(kvm_state, KVM_CAP_X86_APIC_BUS_CYCLES_NS,
++                          0, TDX_APIC_BUS_CYCLES_NS);
++    if (r < 0) {
++        error_setg_errno(errp, -r,
++                         "Unable to set core crystal clock frequency to 25MHz");
++        return r;
++    }
++
+     if (tdx_guest->mrconfigid) {
+         g_autofree uint8_t *data = qbase64_decode(tdx_guest->mrconfigid,
+                               strlen(tdx_guest->mrconfigid), &data_len, errp);
+diff --git a/target/i386/kvm/tdx.h b/target/i386/kvm/tdx.h
+index e472b11fb0..d39e733d9f 100644
+--- a/target/i386/kvm/tdx.h
++++ b/target/i386/kvm/tdx.h
+@@ -16,6 +16,9 @@ typedef struct TdxGuestClass {
+     X86ConfidentialGuestClass parent_class;
+ } TdxGuestClass;
+ 
++/* TDX requires bus frequency 25MHz */
++#define TDX_APIC_BUS_CYCLES_NS 40
++
+ typedef struct TdxGuest {
+     X86ConfidentialGuest parent_obj;
+ 
+-- 
+2.50.1
+

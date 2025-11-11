@@ -1,14 +1,14 @@
-From 9bd4a89d3e1410b3a5994ab2b33f4332a4246955 Mon Sep 17 00:00:00 2001
+From 2bb5dff02fb393530a12f4f00219cd2f90cd442a Mon Sep 17 00:00:00 2001
 From: Sebastian Ott <sebott@redhat.com>
 Date: Thu, 15 May 2025 18:45:51 +0200
-Subject: [PATCH] hw/i386: Fix machine type compatibility
+Subject: [PATCH 3/5] hw/i386: Fix machine type compatibility
 
 RH-Author: Sebastian Ott <sebott@redhat.com>
-RH-MergeRequest: 452: hw/i386: Fix machine type compatibility
-RH-Jira: RHEL-92077
+RH-MergeRequest: 364: hw/i386: Fix machine type compatibility
+RH-Jira: RHEL-91307
 RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [1/1] d594f142e8ce616b6fd1accd6950ab5cebc34984
+RH-Commit: [1/1] 44ddbcb3af119c65e99018d7ed90887f3948907e (seott1/cos-qemu-kvm)
 
 Upstream Status: RHEL only
 
@@ -24,7 +24,7 @@ Signed-off-by: Sebastian Ott <sebott@redhat.com>
  4 files changed, 15 insertions(+)
 
 diff --git a/hw/i386/pc.c b/hw/i386/pc.c
-index fa0e42d072..d8f1b2d899 100644
+index fa9f16cbaf..5237538640 100644
 --- a/hw/i386/pc.c
 +++ b/hw/i386/pc.c
 @@ -298,6 +298,14 @@ GlobalProperty pc_rhel_compat[] = {
@@ -43,7 +43,7 @@ index fa0e42d072..d8f1b2d899 100644
      /* pc_rhel_9_5_compat from pc_compat_pc_9_0 (backported from 9.1) */
      { TYPE_X86_CPU, "guest-phys-bits", "0" },
 diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index 656abb5d39..80d366bf17 100644
+index 10764bf596..0687317db5 100644
 --- a/hw/i386/pc_piix.c
 +++ b/hw/i386/pc_piix.c
 @@ -885,6 +885,8 @@ static void pc_i440fx_rhel_machine_7_6_0_options(MachineClass *m)
@@ -56,10 +56,10 @@ index 656abb5d39..80d366bf17 100644
  		     pc_rhel_9_5_compat_len);
      compat_props_add(m->compat_props, hw_compat_rhel_9_5,
 diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index 578f63524f..e3653b44cd 100644
+index 5bf08be0fb..871c760aea 100644
 --- a/hw/i386/pc_q35.c
 +++ b/hw/i386/pc_q35.c
-@@ -701,6 +701,8 @@ static void pc_q35_rhel_machine_9_4_0_options(MachineClass *m)
+@@ -704,6 +704,8 @@ static void pc_q35_rhel_machine_9_4_0_options(MachineClass *m)
  
      compat_props_add(m->compat_props, hw_compat_rhel_9_6,
                       hw_compat_rhel_9_6_len);

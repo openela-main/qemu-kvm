@@ -1,0 +1,102 @@
+From 0288537593cd4452a2523b686b297dad3735f7f8 Mon Sep 17 00:00:00 2001
+From: Vitaly Kuznetsov <vkuznets@redhat.com>
+Date: Thu, 17 Apr 2025 15:30:50 +0200
+Subject: [PATCH 2/2] target/i386: Exclude 'hv-syndbg' from 'hv-passthrough'
+
+RH-Author: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-MergeRequest: 352: hyper-v: exclude 'hv-syndbg' from 'hv-passthrough' set
+RH-Jira: RHEL-7130
+RH-Acked-by: Maxim Levitsky <None>
+RH-Acked-by: Ani Sinha <anisinha@redhat.com>
+RH-Acked-by: Emanuele Giuseppe Esposito <eesposit@redhat.com>
+RH-Commit: [2/2] bf276ad5b340139f71b92e656a0c7756a55dec0b (vkuznets/qemu-kvm)
+
+Windows with Hyper-V role enabled doesn't boot with 'hv-passthrough' when
+no debugger is configured, this significantly limits the usefulness of the
+feature as there's no support for subtracting Hyper-V features from CPU
+flags at this moment (e.g. "-cpu host,hv-passthrough,-hv-syndbg" does not
+work). While this is also theoretically fixable, 'hv-syndbg' is likely
+very special and unneeded in the default set. Genuine Hyper-V doesn't seem
+to enable it either.
+
+Introduce 'skip_passthrough' flag to 'kvm_hyperv_properties' and use it as
+one-off to skip 'hv-syndbg' when enabling features in 'hv-passthrough'
+mode. Note, "-cpu host,hv-passthrough,hv-syndbg" can still be used if
+needed.
+
+As both 'hv-passthrough' and 'hv-syndbg' are debug features, the change
+should not have any effect on production environments.
+
+Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+Link: https://lore.kernel.org/r/20240917160051.2637594-3-vkuznets@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7d7b9c7655a26e09c800ef40373078a80e90d9f3)
+Signed-off-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+---
+ docs/system/i386/hyperv.rst | 13 +++++++++----
+ target/i386/kvm/kvm.c       |  7 +++++--
+ 2 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/docs/system/i386/hyperv.rst b/docs/system/i386/hyperv.rst
+index 2505dc4c86..009947e391 100644
+--- a/docs/system/i386/hyperv.rst
++++ b/docs/system/i386/hyperv.rst
+@@ -262,14 +262,19 @@ Supplementary features
+ ``hv-passthrough``
+   In some cases (e.g. during development) it may make sense to use QEMU in
+   'pass-through' mode and give Windows guests all enlightenments currently
+-  supported by KVM. This pass-through mode is enabled by "hv-passthrough" CPU
+-  flag.
++  supported by KVM.
+ 
+   Note: ``hv-passthrough`` flag only enables enlightenments which are known to QEMU
+   (have corresponding 'hv-' flag) and copies ``hv-spinlocks`` and ``hv-vendor-id``
+   values from KVM to QEMU. ``hv-passthrough`` overrides all other 'hv-' settings on
+-  the command line. Also, enabling this flag effectively prevents migration as the
+-  list of enabled enlightenments may differ between target and destination hosts.
++  the command line.
++
++  Note: ``hv-passthrough`` does not enable ``hv-syndbg`` which can prevent certain
++  Windows guests from booting when used without proper configuration. If needed,
++  ``hv-syndbg`` can be enabled additionally.
++
++  Note: ``hv-passthrough`` effectively prevents migration as the list of enabled
++  enlightenments may differ between target and destination hosts.
+ 
+ ``hv-enforce-cpuid``
+   By default, KVM allows the guest to use all currently supported Hyper-V
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 5bf77d761f..94b678e9e3 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -913,6 +913,7 @@ static struct {
+         uint32_t bits;
+     } flags[2];
+     uint64_t dependencies;
++    bool skip_passthrough;
+ } kvm_hyperv_properties[] = {
+     [HYPERV_FEAT_RELAXED] = {
+         .desc = "relaxed timing (hv-relaxed)",
+@@ -1041,7 +1042,8 @@ static struct {
+             {.func = HV_CPUID_FEATURES, .reg = R_EDX,
+              .bits = HV_FEATURE_DEBUG_MSRS_AVAILABLE}
+         },
+-        .dependencies = BIT(HYPERV_FEAT_SYNIC) | BIT(HYPERV_FEAT_RELAXED)
++        .dependencies = BIT(HYPERV_FEAT_SYNIC) | BIT(HYPERV_FEAT_RELAXED),
++        .skip_passthrough = true,
+     },
+     [HYPERV_FEAT_MSR_BITMAP] = {
+         .desc = "enlightened MSR-Bitmap (hv-emsr-bitmap)",
+@@ -1450,7 +1452,8 @@ bool kvm_hyperv_expand_features(X86CPU *cpu, Error **errp)
+          * hv_build_cpuid_leaf() uses this info to build guest CPUIDs.
+          */
+         for (feat = 0; feat < ARRAY_SIZE(kvm_hyperv_properties); feat++) {
+-            if (hyperv_feature_supported(cs, feat)) {
++            if (hyperv_feature_supported(cs, feat) &&
++                !kvm_hyperv_properties[feat].skip_passthrough) {
+                 cpu->hyperv_features |= BIT(feat);
+             }
+         }
+-- 
+2.48.1
+

@@ -1,17 +1,17 @@
-From 63094ee4645705be09f68c547e3f1775ca528951 Mon Sep 17 00:00:00 2001
+From bd32bb22fb324a37b31ed9ac3387524f6f4ea5be Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:46 +0100
-Subject: [PATCH 09/31] hw/audio/cs4231a: skip automatic zero-init of large
+Subject: [PATCH 34/57] hw/audio/cs4231a: skip automatic zero-init of large
  arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [8/30] c6117831ac2ec8e0a700207d5f101eddb67a24a4
+RH-Commit: [8/30] 6c454bcc2927e49896c62718287fb9e4b37b3bb9 (stefanha/centos-stream-qemu-kvm)
 
 The 'cs_write_audio' method has a pair of byte arrays, one 4k in size
 and one 8k, which are used in converting audio samples. Skip the

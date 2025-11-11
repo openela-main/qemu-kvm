@@ -1,0 +1,61 @@
+From 04f11749dd21b4df1ea2818785d650dd6eee2cbe Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Feb 2025 19:25:34 +0100
+Subject: [PATCH 4/9] hw/vfio/common: Add a trace point in vfio_reset_handler
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 341: Fix vIOMMU reset order
+RH-Jira: RHEL-7188
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [4/5] 46878ffdc96997d1f6d09bde3fce350564e499fd (eauger1/centos-qemu-kvm)
+
+To ease the debug of reset sequence, let's add a trace point
+in vfio_reset_handler()
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Message-Id: <20250218182737.76722-5-eric.auger@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit d410e709526d1cd4aa9085c6e254a622594a02a5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/common.c     | 1 +
+ hw/vfio/trace-events | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 36d0cf6585..6982f88fc8 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -1395,6 +1395,7 @@ void vfio_reset_handler(void *opaque)
+ {
+     VFIODevice *vbasedev;
+ 
++    trace_vfio_reset_handler();
+     QLIST_FOREACH(vbasedev, &vfio_device_list, global_next) {
+         if (vbasedev->dev->realized) {
+             vbasedev->ops->vfio_compute_needs_reset(vbasedev);
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index 3756ff660e..9523a9ccb0 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -120,6 +120,7 @@ vfio_get_dev_region(const char *name, int index, uint32_t type, uint32_t subtype
+ vfio_legacy_dma_unmap_overflow_workaround(void) ""
+ vfio_get_dirty_bitmap(uint64_t iova, uint64_t size, uint64_t bitmap_size, uint64_t start, uint64_t dirty_pages) "iova=0x%"PRIx64" size= 0x%"PRIx64" bitmap_size=0x%"PRIx64" start=0x%"PRIx64" dirty_pages=%"PRIu64
+ vfio_iommu_map_dirty_notify(uint64_t iova_start, uint64_t iova_end) "iommu dirty @ 0x%"PRIx64" - 0x%"PRIx64
++vfio_reset_handler(void) ""
+ 
+ # platform.c
+ vfio_platform_realize(char *name, char *compat) "vfio device %s, compat = %s"
+-- 
+2.48.1
+

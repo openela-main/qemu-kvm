@@ -1,0 +1,63 @@
+From f5b6984efa1bf825410011b957b4f46fcfe963db Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:48 +0200
+Subject: [PATCH 070/115] i386/apic: Skip kvm_apic_put() for TDX
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [70/115] d4e1631ebceb6441a608ff92c1964b64cf116094 (bonzini/rhel-qemu-kvm)
+
+KVM neithers allow writing to MSR_IA32_APICBASE for TDs, nor allow for
+KVM_SET_LAPIC[*].
+
+Note, KVM_GET_LAPIC is also disallowed for TDX. It is called in the path
+
+  do_kvm_cpu_synchronize_state()
+  -> kvm_arch_get_registers()
+     -> kvm_get_apic()
+
+and it's already disllowed for confidential guest through
+guest_state_protected.
+
+[*] https://lore.kernel.org/all/Z3w4Ku4Jq0CrtXne@google.com/
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-42-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 62a1a8b89d90cd3fbee0e6d38e6a4c0d833e978a)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/kvm/apic.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/i386/kvm/apic.c b/hw/i386/kvm/apic.c
+index a72c28e8a7..9c12a9c856 100644
+--- a/hw/i386/kvm/apic.c
++++ b/hw/i386/kvm/apic.c
+@@ -17,6 +17,7 @@
+ #include "sysemu/hw_accel.h"
+ #include "sysemu/kvm.h"
+ #include "kvm/kvm_i386.h"
++#include "kvm/tdx.h"
+ 
+ static inline void kvm_apic_set_reg(struct kvm_lapic_state *kapic,
+                                     int reg_id, uint32_t val)
+@@ -141,6 +142,10 @@ static void kvm_apic_put(CPUState *cs, run_on_cpu_data data)
+     struct kvm_lapic_state kapic;
+     int ret;
+ 
++    if (is_tdx_vm()) {
++        return;
++    }
++
+     kvm_put_apicbase(s->cpu, s->apicbase);
+     kvm_put_apic_state(s, &kapic);
+ 
+-- 
+2.50.1
+

@@ -1,16 +1,16 @@
-From d589e33ff7dea4aeb69fe205bea02fb6bd7da618 Mon Sep 17 00:00:00 2001
+From 2018f62f2242d8d4a970d83ebef9b3c2bccf6fda Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:45 +0100
-Subject: [PATCH 08/31] hw/audio/ac97: skip automatic zero-init of large arrays
+Subject: [PATCH 33/57] hw/audio/ac97: skip automatic zero-init of large arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [7/30] a2898256b990c1916082a9938740d0fe53da5325
+RH-Commit: [7/30] 4a6b59a9b9122d9f89e99b3e44df19e6d92ed941 (stefanha/centos-stream-qemu-kvm)
 
 The 'read_audio' & 'write_audio' methods have a 4k byte array used
 for copying data between the audio backend and device. Skip the

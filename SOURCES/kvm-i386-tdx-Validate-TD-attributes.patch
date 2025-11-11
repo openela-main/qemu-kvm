@@ -1,0 +1,106 @@
+From e0384fc5822eb8fcea9a5e59b89b9430dedadba3 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:46 +0200
+Subject: [PATCH 041/115] i386/tdx: Validate TD attributes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [41/115] c95c6476092eb717dd042c64d656c2b1aa70a409 (bonzini/rhel-qemu-kvm)
+
+Validate TD attributes with tdx_caps that only supported bits are
+allowed by KVM.
+
+Besides, sanity check the attribute bits that have not been supported by
+QEMU yet. e.g., debug bit, it will be allowed in the future when debug
+TD support lands in QEMU.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-13-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 53b6f406b4f1a215fb3ec60e56ddba2e019a45ef)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 33 +++++++++++++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 1ab063f790..3de3b5fa6a 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -18,10 +18,15 @@
+ #include "kvm_i386.h"
+ #include "tdx.h"
+ 
++#define TDX_TD_ATTRIBUTES_DEBUG             BIT_ULL(0)
+ #define TDX_TD_ATTRIBUTES_SEPT_VE_DISABLE   BIT_ULL(28)
+ #define TDX_TD_ATTRIBUTES_PKS               BIT_ULL(30)
+ #define TDX_TD_ATTRIBUTES_PERFMON           BIT_ULL(63)
+ 
++#define TDX_SUPPORTED_TD_ATTRS  (TDX_TD_ATTRIBUTES_SEPT_VE_DISABLE |\
++                                 TDX_TD_ATTRIBUTES_PKS | \
++                                 TDX_TD_ATTRIBUTES_PERFMON)
++
+ static TdxGuest *tdx_guest;
+ 
+ static struct kvm_tdx_capabilities *tdx_caps;
+@@ -153,13 +158,34 @@ static int tdx_kvm_type(X86ConfidentialGuest *cg)
+     return KVM_X86_TDX_VM;
+ }
+ 
+-static void setup_td_guest_attributes(X86CPU *x86cpu)
++static int tdx_validate_attributes(TdxGuest *tdx, Error **errp)
++{
++    if ((tdx->attributes & ~tdx_caps->supported_attrs)) {
++        error_setg(errp, "Invalid attributes 0x%lx for TDX VM "
++                   "(KVM supported: 0x%llx)", tdx->attributes,
++                   tdx_caps->supported_attrs);
++        return -1;
++    }
++
++    if (tdx->attributes & ~TDX_SUPPORTED_TD_ATTRS) {
++        error_setg(errp, "Some QEMU unsupported TD attribute bits being "
++                    "requested: 0x%lx (QEMU supported: 0x%llx)",
++                    tdx->attributes, TDX_SUPPORTED_TD_ATTRS);
++        return -1;
++    }
++
++    return 0;
++}
++
++static int setup_td_guest_attributes(X86CPU *x86cpu, Error **errp)
+ {
+     CPUX86State *env = &x86cpu->env;
+ 
+     tdx_guest->attributes |= (env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_PKS) ?
+                              TDX_TD_ATTRIBUTES_PKS : 0;
+     tdx_guest->attributes |= x86cpu->enable_pmu ? TDX_TD_ATTRIBUTES_PERFMON : 0;
++
++    return tdx_validate_attributes(tdx_guest, errp);
+ }
+ 
+ static int setup_td_xfam(X86CPU *x86cpu, Error **errp)
+@@ -225,7 +251,10 @@ int tdx_pre_create_vcpu(CPUState *cpu, Error **errp)
+     init_vm = g_malloc0(sizeof(struct kvm_tdx_init_vm) +
+                         sizeof(struct kvm_cpuid_entry2) * KVM_MAX_CPUID_ENTRIES);
+ 
+-    setup_td_guest_attributes(x86cpu);
++    r = setup_td_guest_attributes(x86cpu, errp);
++    if (r) {
++        return r;
++    }
+ 
+     r = setup_td_xfam(x86cpu, errp);
+     if (r) {
+-- 
+2.50.1
+

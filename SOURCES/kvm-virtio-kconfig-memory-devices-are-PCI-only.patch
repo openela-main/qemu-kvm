@@ -1,0 +1,87 @@
+From a582cf6f68febba05e20548f643c8be637eab7b8 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 6 Sep 2024 12:16:58 +0200
+Subject: [PATCH 01/26] virtio: kconfig: memory devices are PCI only
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [1/26] 0f0eab06b6f79f84c2e8d4fee28309b3c7c57414 (thuth/qemu-kvm-cs)
+
+Virtio memory devices rely on PCI BARs to expose the contents of memory.
+Because of this they cannot be used (yet) with virtio-mmio or virtio-ccw.
+In fact the code that is common to virtio-mem and virtio-pmem, which
+is in hw/virtio/virtio-md-pci.c, is only included if CONFIG_VIRTIO_PCI
+is set.  Reproduce the same condition in the Kconfig file, only allowing
+VIRTIO_MEM and VIRTIO_PMEM to be defined if the transport supports it.
+
+Without this patch it is possible to create a configuration with
+CONFIG_VIRTIO_PCI=n and CONFIG_VIRTIO_MEM=y, but that causes a
+linking failure.
+
+Message-ID: <20240906101658.514470-1-pbonzini@redhat.com>
+Reported-by: Michael Tokarev <mjt@tls.msk.ru>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 8d018fe59a0beff580ac6b3399d642c4277d9dd0)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/virtio/Kconfig | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/hw/virtio/Kconfig b/hw/virtio/Kconfig
+index aa63ff7fd4..0afec2ae92 100644
+--- a/hw/virtio/Kconfig
++++ b/hw/virtio/Kconfig
+@@ -16,6 +16,7 @@ config VIRTIO_PCI
+     default y if PCI_DEVICES
+     depends on PCI
+     select VIRTIO
++    select VIRTIO_MD_SUPPORTED
+ 
+ config VIRTIO_MMIO
+     bool
+@@ -35,10 +36,17 @@ config VIRTIO_CRYPTO
+     default y
+     depends on VIRTIO
+ 
++# not all virtio transports support memory devices; if none does,
++# no need to include the code
++config VIRTIO_MD_SUPPORTED
++    bool
++
+ config VIRTIO_MD
+     bool
++    depends on VIRTIO_MD_SUPPORTED
+     select MEM_DEVICE
+ 
++# selected by the board if it has the required support code
+ config VIRTIO_PMEM_SUPPORTED
+     bool
+ 
+@@ -46,9 +54,11 @@ config VIRTIO_PMEM
+     bool
+     default y
+     depends on VIRTIO
++    depends on VIRTIO_MD_SUPPORTED
+     depends on VIRTIO_PMEM_SUPPORTED
+     select VIRTIO_MD
+ 
++# selected by the board if it has the required support code
+ config VIRTIO_MEM_SUPPORTED
+     bool
+ 
+@@ -57,6 +67,7 @@ config VIRTIO_MEM
+     default y
+     depends on VIRTIO
+     depends on LINUX
++    depends on VIRTIO_MD_SUPPORTED
+     depends on VIRTIO_MEM_SUPPORTED
+     select VIRTIO_MD
+ 
+-- 
+2.48.1
+

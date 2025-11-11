@@ -1,0 +1,72 @@
+From 13e8ddbd282da692c8199a6cb9ca847334089e29 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Thu, 12 Jun 2025 11:48:41 +0200
+Subject: [PATCH 02/16] s390x/pci: indicate QEMU supports relaxed translation
+ for passthrough
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 376: Draft: KVM: Performance Enhanced Refresh PCI Translation
+RH-Jira: RHEL-11430
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [2/2] afd514268347d0b434a60d7c6c09d20b84e5d902 (cschlame/qemu-kvm)
+
+JIRA: https://issues.redhat.com/browse/RHEL-11430
+
+commit d9b5dfc7122559e5b5959ecf534788b90c3dd102
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Wed Feb 26 16:00:13 2025 -0500
+
+    s390x/pci: indicate QEMU supports relaxed translation for passthrough
+
+    Specifying this bit in the guest CLP response indicates that the guest
+    can optionally choose to skip translation and instead use
+    identity-mapped operations.
+
+    Tested-by: Niklas Schnelle <schnelle@linux.ibm.com>
+    Reviewed-by: Niklas Schnelle <schnelle@linux.ibm.com>
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Message-ID: <20250226210013.238349-3-mjrosato@linux.ibm.com>
+    Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/s390-pci-vfio.c        | 5 ++++-
+ include/hw/s390x/s390-pci-clp.h | 1 +
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index 443e222912..6236ac7f1e 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -238,8 +238,11 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
+         pbdev->pci_group = s390_group_create(pbdev->zpci_fn.pfgid, start_gid);
+ 
+         resgrp = &pbdev->pci_group->zpci_group;
++        if (pbdev->rtr_avail) {
++            resgrp->fr |= CLP_RSP_QPCIG_MASK_RTR;
++        }
+         if (cap->flags & VFIO_DEVICE_INFO_ZPCI_FLAG_REFRESH) {
+-            resgrp->fr = 1;
++            resgrp->fr |= CLP_RSP_QPCIG_MASK_REFRESH;
+         }
+         resgrp->dasm = cap->dasm;
+         resgrp->msia = cap->msi_addr;
+diff --git a/include/hw/s390x/s390-pci-clp.h b/include/hw/s390x/s390-pci-clp.h
+index 03b7f9ba5f..6a635d693b 100644
+--- a/include/hw/s390x/s390-pci-clp.h
++++ b/include/hw/s390x/s390-pci-clp.h
+@@ -158,6 +158,7 @@ typedef struct ClpRspQueryPciGrp {
+ #define CLP_RSP_QPCIG_MASK_NOI 0xfff
+     uint16_t i;
+     uint8_t version;
++#define CLP_RSP_QPCIG_MASK_RTR     0x20
+ #define CLP_RSP_QPCIG_MASK_FRAME   0x2
+ #define CLP_RSP_QPCIG_MASK_REFRESH 0x1
+     uint8_t fr;
+-- 
+2.48.1
+

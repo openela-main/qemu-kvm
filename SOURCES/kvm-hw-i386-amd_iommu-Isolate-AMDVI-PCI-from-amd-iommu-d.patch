@@ -1,0 +1,267 @@
+From 5a697d0f66360acca8216f49c06dc9702231d470 Mon Sep 17 00:00:00 2001
+From: Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+Date: Sun, 4 May 2025 17:04:04 +0000
+Subject: [PATCH 24/57] hw/i386/amd_iommu: Isolate AMDVI-PCI from amd-iommu
+ device to allow full control over the PCI device creation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: John Allen <None>
+RH-MergeRequest: 380: Add ability to manually specify the AMDVI-PCI device
+RH-Jira: RHEL-70925
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/3] 58254a72ba2d810b57c610462494f76691126521 (johnalle/qemu-kvm-fork)
+
+Current amd-iommu model internally creates an AMDVI-PCI device. Here is
+a snippet from info qtree:
+
+  bus: main-system-bus
+    type System
+    dev: amd-iommu, id ""
+      xtsup = false
+      pci-id = ""
+      intremap = "on"
+      device-iotlb = false
+      pt = true
+    ...
+    dev: q35-pcihost, id ""
+      MCFG = -1 (0xffffffffffffffff)
+      pci-hole64-size = 34359738368 (32 GiB)
+      below-4g-mem-size = 134217728 (128 MiB)
+      above-4g-mem-size = 0 (0 B)
+      smm-ranges = true
+      x-pci-hole64-fix = true
+      x-config-reg-migration-enabled = true
+      bypass-iommu = false
+      bus: pcie.0
+        type PCIE
+        dev: AMDVI-PCI, id ""
+          addr = 01.0
+          romfile = ""
+          romsize = 4294967295 (0xffffffff)
+          rombar = -1 (0xffffffffffffffff)
+          multifunction = false
+          x-pcie-lnksta-dllla = true
+          x-pcie-extcap-init = true
+          failover_pair_id = ""
+          acpi-index = 0 (0x0)
+          x-pcie-err-unc-mask = true
+          x-pcie-ari-nextfn-1 = false
+          x-max-bounce-buffer-size = 4096 (4 KiB)
+          x-pcie-ext-tag = true
+          busnr = 0 (0x0)
+          class Class 0806, addr 00:01.0, pci id 1022:0000 (sub 1af4:1100)
+    ...
+
+This prohibits users from specifying the PCI topology for the amd-iommu device,
+which becomes a problem when trying to support VM migration since it does not
+guarantee the same enumeration of AMD IOMMU device.
+
+Therefore, allow the 'AMDVI-PCI' device to optionally be pre-created and
+associated with a 'amd-iommu' device via a new 'pci-id' parameter on the
+latter.
+
+For example:
+  -device AMDVI-PCI,id=iommupci0,bus=pcie.0,addr=0x05 \
+  -device amd-iommu,intremap=on,pt=on,xtsup=on,pci-id=iommupci0 \
+
+For backward-compatibility, internally create the AMDVI-PCI device if not
+specified on the CLI.
+
+Co-developed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+Message-Id: <20250504170405.12623-2-suravee.suthikulpanit@amd.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit f864a3235ea1d1d714b3cde2d9a810ea6344a7b5)
+
+JIRA: https://issues.redhat.com/browse/RHEL-70925
+
+Signed-off-by: John Allen <johnalle@redhat.com>
+---
+ hw/i386/acpi-build.c |  8 +++----
+ hw/i386/amd_iommu.c  | 53 ++++++++++++++++++++++++++------------------
+ hw/i386/amd_iommu.h  |  3 ++-
+ 3 files changed, 38 insertions(+), 26 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 032fb1f904..236261f8aa 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -2392,10 +2392,10 @@ build_amd_iommu(GArray *table_data, BIOSLinker *linker, const char *oem_id,
+     build_append_int_noprefix(table_data, ivhd_blob->len + 24, 2);
+     /* DeviceID */
+     build_append_int_noprefix(table_data,
+-                              object_property_get_int(OBJECT(&s->pci), "addr",
++                              object_property_get_int(OBJECT(s->pci), "addr",
+                                                       &error_abort), 2);
+     /* Capability offset */
+-    build_append_int_noprefix(table_data, s->pci.capab_offset, 2);
++    build_append_int_noprefix(table_data, s->pci->capab_offset, 2);
+     /* IOMMU base address */
+     build_append_int_noprefix(table_data, s->mr_mmio.addr, 8);
+     /* PCI Segment Group */
+@@ -2427,10 +2427,10 @@ build_amd_iommu(GArray *table_data, BIOSLinker *linker, const char *oem_id,
+     build_append_int_noprefix(table_data, ivhd_blob->len + 40, 2);
+     /* DeviceID */
+     build_append_int_noprefix(table_data,
+-                              object_property_get_int(OBJECT(&s->pci), "addr",
++                              object_property_get_int(OBJECT(s->pci), "addr",
+                                                       &error_abort), 2);
+     /* Capability offset */
+-    build_append_int_noprefix(table_data, s->pci.capab_offset, 2);
++    build_append_int_noprefix(table_data, s->pci->capab_offset, 2);
+     /* IOMMU base address */
+     build_append_int_noprefix(table_data, s->mr_mmio.addr, 8);
+     /* PCI Segment Group */
+diff --git a/hw/i386/amd_iommu.c b/hw/i386/amd_iommu.c
+index 59e1a01b7c..6a5e76cfef 100644
+--- a/hw/i386/amd_iommu.c
++++ b/hw/i386/amd_iommu.c
+@@ -167,11 +167,11 @@ static void amdvi_generate_msi_interrupt(AMDVIState *s)
+ {
+     MSIMessage msg = {};
+     MemTxAttrs attrs = {
+-        .requester_id = pci_requester_id(&s->pci.dev)
++        .requester_id = pci_requester_id(&s->pci->dev)
+     };
+ 
+-    if (msi_enabled(&s->pci.dev)) {
+-        msg = msi_get_message(&s->pci.dev, 0);
++    if (msi_enabled(&s->pci->dev)) {
++        msg = msi_get_message(&s->pci->dev, 0);
+         address_space_stl_le(&address_space_memory, msg.address, msg.data,
+                              attrs, NULL);
+     }
+@@ -239,7 +239,7 @@ static void amdvi_page_fault(AMDVIState *s, uint16_t devid,
+     info |= AMDVI_EVENT_IOPF_I | AMDVI_EVENT_IOPF;
+     amdvi_encode_event(evt, devid, addr, info);
+     amdvi_log_event(s, evt);
+-    pci_word_test_and_set_mask(s->pci.dev.config + PCI_STATUS,
++    pci_word_test_and_set_mask(s->pci->dev.config + PCI_STATUS,
+             PCI_STATUS_SIG_TARGET_ABORT);
+ }
+ /*
+@@ -256,7 +256,7 @@ static void amdvi_log_devtab_error(AMDVIState *s, uint16_t devid,
+ 
+     amdvi_encode_event(evt, devid, devtab, info);
+     amdvi_log_event(s, evt);
+-    pci_word_test_and_set_mask(s->pci.dev.config + PCI_STATUS,
++    pci_word_test_and_set_mask(s->pci->dev.config + PCI_STATUS,
+             PCI_STATUS_SIG_TARGET_ABORT);
+ }
+ /* log an event trying to access command buffer
+@@ -269,7 +269,7 @@ static void amdvi_log_command_error(AMDVIState *s, hwaddr addr)
+ 
+     amdvi_encode_event(evt, 0, addr, info);
+     amdvi_log_event(s, evt);
+-    pci_word_test_and_set_mask(s->pci.dev.config + PCI_STATUS,
++    pci_word_test_and_set_mask(s->pci->dev.config + PCI_STATUS,
+             PCI_STATUS_SIG_TARGET_ABORT);
+ }
+ /* log an illegal command event
+@@ -310,7 +310,7 @@ static void amdvi_log_pagetab_error(AMDVIState *s, uint16_t devid,
+     info |= AMDVI_EVENT_PAGE_TAB_HW_ERROR;
+     amdvi_encode_event(evt, devid, addr, info);
+     amdvi_log_event(s, evt);
+-    pci_word_test_and_set_mask(s->pci.dev.config + PCI_STATUS,
++    pci_word_test_and_set_mask(s->pci->dev.config + PCI_STATUS,
+              PCI_STATUS_SIG_TARGET_ABORT);
+ }
+ 
+@@ -1607,7 +1607,7 @@ static void amdvi_sysbus_reset(DeviceState *dev)
+ {
+     AMDVIState *s = AMD_IOMMU_DEVICE(dev);
+ 
+-    msi_reset(&s->pci.dev);
++    msi_reset(&s->pci->dev);
+     amdvi_init(s);
+ }
+ 
+@@ -1619,14 +1619,32 @@ static void amdvi_sysbus_realize(DeviceState *dev, Error **errp)
+     X86MachineState *x86ms = X86_MACHINE(ms);
+     PCIBus *bus = pcms->pcibus;
+ 
+-    s->iotlb = g_hash_table_new_full(amdvi_uint64_hash,
+-                                     amdvi_uint64_equal, g_free, g_free);
++    if (s->pci_id) {
++        PCIDevice *pdev = NULL;
++        int ret = pci_qdev_find_device(s->pci_id, &pdev);
+ 
+-    /* This device should take care of IOMMU PCI properties */
+-    if (!qdev_realize(DEVICE(&s->pci), &bus->qbus, errp)) {
+-        return;
++        if (ret) {
++            error_report("Cannot find PCI device '%s'", s->pci_id);
++            return;
++        }
++
++        if (!object_dynamic_cast(OBJECT(pdev), TYPE_AMD_IOMMU_PCI)) {
++            error_report("Device '%s' must be an AMDVI-PCI device type", s->pci_id);
++            return;
++        }
++
++        s->pci = AMD_IOMMU_PCI(pdev);
++    } else {
++        s->pci = AMD_IOMMU_PCI(object_new(TYPE_AMD_IOMMU_PCI));
++        /* This device should take care of IOMMU PCI properties */
++        if (!qdev_realize(DEVICE(s->pci), &bus->qbus, errp)) {
++            return;
++        }
+     }
+ 
++    s->iotlb = g_hash_table_new_full(amdvi_uint64_hash,
++                                     amdvi_uint64_equal, g_free, g_free);
++
+     /* Pseudo address space under root PCI bus. */
+     x86ms->ioapic_as = amdvi_host_dma_iommu(bus, s, AMDVI_IOAPIC_SB_DEVID);
+ 
+@@ -1668,6 +1686,7 @@ static void amdvi_sysbus_realize(DeviceState *dev, Error **errp)
+ 
+ static Property amdvi_properties[] = {
+     DEFINE_PROP_BOOL("xtsup", AMDVIState, xtsup, false),
++    DEFINE_PROP_STRING("pci-id", AMDVIState, pci_id),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+@@ -1676,13 +1695,6 @@ static const VMStateDescription vmstate_amdvi_sysbus = {
+     .unmigratable = 1
+ };
+ 
+-static void amdvi_sysbus_instance_init(Object *klass)
+-{
+-    AMDVIState *s = AMD_IOMMU_DEVICE(klass);
+-
+-    object_initialize(&s->pci, sizeof(s->pci), TYPE_AMD_IOMMU_PCI);
+-}
+-
+ static void amdvi_sysbus_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+@@ -1704,7 +1716,6 @@ static const TypeInfo amdvi_sysbus = {
+     .name = TYPE_AMD_IOMMU_DEVICE,
+     .parent = TYPE_X86_IOMMU_DEVICE,
+     .instance_size = sizeof(AMDVIState),
+-    .instance_init = amdvi_sysbus_instance_init,
+     .class_init = amdvi_sysbus_class_init
+ };
+ 
+diff --git a/hw/i386/amd_iommu.h b/hw/i386/amd_iommu.h
+index e0dac4d9a9..ece71ff0b6 100644
+--- a/hw/i386/amd_iommu.h
++++ b/hw/i386/amd_iommu.h
+@@ -315,7 +315,8 @@ struct AMDVIPCIState {
+ 
+ struct AMDVIState {
+     X86IOMMUState iommu;        /* IOMMU bus device             */
+-    AMDVIPCIState pci;          /* IOMMU PCI device             */
++    AMDVIPCIState *pci;         /* IOMMU PCI device             */
++    char *pci_id;               /* ID of AMDVI-PCI device, if user created */
+ 
+     uint32_t version;
+ 
+-- 
+2.39.3
+

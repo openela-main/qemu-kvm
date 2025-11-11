@@ -1,0 +1,91 @@
+From eb67f5f683c98892292aa40695d7ec59a17c122f Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 105/115] i386/cpu: Move x86_ext_save_areas[] initialization to
+ .instance_init
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [105/115] 289d5143a71cd0dc24c6d8e32d510657d5c77091 (bonzini/rhel-qemu-kvm)
+
+In x86_cpu_post_initfn(), the initialization of x86_ext_save_areas[]
+marks the unsupported xsave areas based on Host support.
+
+This step must be done before accel_cpu_instance_init(), otherwise,
+KVM's assertion on host xsave support would fail:
+
+qemu-system-x86_64: ../target/i386/kvm/kvm-cpu.c:149:
+kvm_cpu_xsave_init: Assertion `esa->size == eax' failed.
+
+(on AMD EPYC 7302 16-Core Processor)
+
+Move x86_ext_save_areas[] initialization to .instance_init and place it
+before accel_cpu_instance_init().
+
+Fixes: commit 5f158abef44c ("target/i386: move accel_cpu_instance_init to .instance_init")
+Reported-by: Paolo Abeni <pabeni@redhat.com>
+Tested-by: Paolo Abeni <pabeni@redhat.com>
+Signed-off-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250717023933.2502109-1-zhao1.liu@intel.com
+Reviewed-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e52af92e9e6f8fc00f2ae6b63214b3d6213b3cec)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 22 +++++++++++++++-------
+ 1 file changed, 15 insertions(+), 7 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index d0161f922c..ee753351fc 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -8617,6 +8617,16 @@ static void x86_cpu_register_feature_bit_props(X86CPUClass *xcc,
+ }
+ 
+ static void x86_cpu_post_initfn(Object *obj)
++{
++#ifndef CONFIG_USER_ONLY
++    if (current_machine && current_machine->cgs) {
++        x86_confidential_guest_cpu_instance_init(
++            X86_CONFIDENTIAL_GUEST(current_machine->cgs), (CPU(obj)));
++    }
++#endif
++}
++
++static void x86_cpu_init_xsave(void)
+ {
+     static bool first = true;
+     uint64_t supported_xcr0;
+@@ -8637,13 +8647,6 @@ static void x86_cpu_post_initfn(Object *obj)
+             }
+         }
+     }
+-
+-#ifndef CONFIG_USER_ONLY
+-    if (current_machine && current_machine->cgs) {
+-        x86_confidential_guest_cpu_instance_init(
+-            X86_CONFIDENTIAL_GUEST(current_machine->cgs), (CPU(obj)));
+-    }
+-#endif
+ }
+ 
+ static void x86_cpu_init_default_topo(X86CPU *cpu)
+@@ -8713,6 +8716,11 @@ static void x86_cpu_initfn(Object *obj)
+         x86_cpu_load_model(cpu, xcc->model);
+     }
+ 
++    /*
++     * accel's cpu_instance_init may have the xsave check,
++     * so x86_ext_save_areas[] must be initialized before this.
++     */
++    x86_cpu_init_xsave();
+     accel_cpu_instance_init(CPU(obj));
+ }
+ 
+-- 
+2.50.1
+

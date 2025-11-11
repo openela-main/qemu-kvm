@@ -1,0 +1,64 @@
+From 13e58b76efc0c20373a21d319d43361af80d82f6 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:47 +0200
+Subject: [PATCH 067/115] i386/tdx: Set and check kernel_irqchip mode for TDX
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [67/115] 6d1c37af7cbaf0e84d1f1e2eb493f2397afaf452 (bonzini/rhel-qemu-kvm)
+
+KVM mandates kernel_irqchip to be split mode.
+
+Set it to split mode automatically when users don't provide an explicit
+value, otherwise check it to be the split mode.
+
+Suggested-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-39-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit bb45580d842530d78b58179eaf80b6331b15324e)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflicts: system/ -> sysemu/
+---
+ target/i386/kvm/tdx.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 4f17e17308..58fb68cab0 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -16,6 +16,7 @@
+ #include "qapi/error.h"
+ #include "qom/object_interfaces.h"
+ #include "crypto/hash.h"
++#include "sysemu/kvm_int.h"
+ #include "sysemu/runstate.h"
+ #include "sysemu/sysemu.h"
+ #include "exec/ramblock.h"
+@@ -388,6 +389,13 @@ static int tdx_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+         return -EINVAL;
+     }
+ 
++    if (kvm_state->kernel_irqchip_split == ON_OFF_AUTO_AUTO) {
++        kvm_state->kernel_irqchip_split = ON_OFF_AUTO_ON;
++    } else if (kvm_state->kernel_irqchip_split != ON_OFF_AUTO_ON) {
++        error_setg(errp, "TDX VM requires kernel_irqchip to be split");
++        return -EINVAL;
++    }
++
+     if (!tdx_caps) {
+         r = get_tdx_capabilities(errp);
+         if (r) {
+-- 
+2.50.1
+

@@ -1,0 +1,73 @@
+From 4545870823aea92b18a7e747b686b666d08006a4 Mon Sep 17 00:00:00 2001
+From: Juraj Marcin <jmarcin@redhat.com>
+Date: Wed, 21 May 2025 15:52:30 +0200
+Subject: [PATCH 08/57] io: Fix partial struct copy in
+ qio_dns_resolver_lookup_sync_inet()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Juraj Marcin <None>
+RH-MergeRequest: 369: util/qemu-sockets: Introduce inet socket options controlling TCP keep-alive
+RH-Jira: RHEL-67104
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/7] 92c8b3e63c22a3ca6e5adc76cac1a9f812034912 (JurajMarcin/centos-src-qemu-kvm)
+
+Commit aec21d3175 (qapi: Add InetSocketAddress member keep-alive)
+introduces the keep-alive flag, but this flag is not copied together
+with other options in qio_dns_resolver_lookup_sync_inet().
+
+This patch fixes this issue and also prevents future ones by copying the
+entire structure first and only then overriding a few attributes that
+need to be different.
+
+Fixes: aec21d31756c (qapi: Add InetSocketAddress member keep-alive)
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+
+(cherry picked from commit 0dc051aa85e1bd68d5c5110fa8af69204e6dbd3d)
+
+JIRA: https://issues.redhat.com/browse/RHEL-67104
+
+Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
+---
+ io/dns-resolver.c | 21 +++++----------------
+ 1 file changed, 5 insertions(+), 16 deletions(-)
+
+diff --git a/io/dns-resolver.c b/io/dns-resolver.c
+index 53b0e8407a..3712438f82 100644
+--- a/io/dns-resolver.c
++++ b/io/dns-resolver.c
+@@ -111,22 +111,11 @@ static int qio_dns_resolver_lookup_sync_inet(QIODNSResolver *resolver,
+                     uaddr, INET6_ADDRSTRLEN, uport, 32,
+                     NI_NUMERICHOST | NI_NUMERICSERV);
+ 
+-        newaddr->u.inet = (InetSocketAddress){
+-            .host = g_strdup(uaddr),
+-            .port = g_strdup(uport),
+-            .has_numeric = true,
+-            .numeric = true,
+-            .has_to = iaddr->has_to,
+-            .to = iaddr->to,
+-            .has_ipv4 = iaddr->has_ipv4,
+-            .ipv4 = iaddr->ipv4,
+-            .has_ipv6 = iaddr->has_ipv6,
+-            .ipv6 = iaddr->ipv6,
+-#ifdef HAVE_IPPROTO_MPTCP
+-            .has_mptcp = iaddr->has_mptcp,
+-            .mptcp = iaddr->mptcp,
+-#endif
+-        };
++        newaddr->u.inet = *iaddr;
++        newaddr->u.inet.host = g_strdup(uaddr),
++        newaddr->u.inet.port = g_strdup(uport),
++        newaddr->u.inet.has_numeric = true,
++        newaddr->u.inet.numeric = true,
+ 
+         (*addrs)[i] = newaddr;
+     }
+-- 
+2.39.3
+

@@ -1,0 +1,64 @@
+From 39e0c370357a414abacd64fb6a172e7b25eb4d82 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 9 May 2025 15:40:19 -0500
+Subject: [PATCH 04/16] file-posix, gluster: Handle zero block status hint
+ better
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 365: blockdev-mirror: More efficient handling of sparse mirrors
+RH-Jira: RHEL-82906 RHEL-83015
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [2/14] 1f7b47ce5f5fb321aee41a16accf5bce3d1bfe95 (ebblake/centos-qemu-kvm)
+
+Although the previous patch to change 'bool want_zero' into a bitmask
+made no semantic change, it is now time to differentiate.  When the
+caller specifically wants to know what parts of the file read as zero,
+we need to use lseek and actually reporting holes, rather than
+short-circuiting and advertising full allocation.
+
+This change will be utilized in later patches to let mirroring
+optimize for the case when the destination already reads as zeroes.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20250509204341.3553601-17-eblake@redhat.com>
+(cherry picked from commit a6a0a7fb0e327d17594c971b4a39de14e025b415)
+Jira: https://issues.redhat.com/browse/RHEL-82906
+Jira: https://issues.redhat.com/browse/RHEL-83015
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ block/file-posix.c | 3 ++-
+ block/gluster.c    | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/block/file-posix.c b/block/file-posix.c
+index 9ca55620ca..ce5da2b4c2 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -3293,7 +3293,8 @@ static int coroutine_fn raw_co_block_status(BlockDriverState *bs,
+         return ret;
+     }
+ 
+-    if (mode != BDRV_WANT_PRECISE) {
++    if (!(mode & BDRV_WANT_ZERO)) {
++        /* There is no backing file - all bytes are allocated in this file.  */
+         *pnum = bytes;
+         *map = offset;
+         *file = bs;
+diff --git a/block/gluster.c b/block/gluster.c
+index ae5c45666b..175c70164c 100644
+--- a/block/gluster.c
++++ b/block/gluster.c
+@@ -1483,7 +1483,7 @@ static int coroutine_fn qemu_gluster_co_block_status(BlockDriverState *bs,
+         return ret;
+     }
+ 
+-    if (mode != BDRV_WANT_PRECISE) {
++    if (!(mode & BDRV_WANT_ZERO)) {
+         *pnum = bytes;
+         *map = offset;
+         *file = bs;
+-- 
+2.48.1
+

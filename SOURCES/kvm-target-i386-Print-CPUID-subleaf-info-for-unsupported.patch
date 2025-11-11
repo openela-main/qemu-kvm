@@ -1,0 +1,47 @@
+From 532fe3ba3d7c05387884bf3460894f9d2e0e8a91 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 018/115] target/i386: Print CPUID subleaf info for unsupported
+ feature
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [18/115] 7a9640191aa0a03348b8c0162ba1957d749cd454 (bonzini/rhel-qemu-kvm)
+
+Some CPUID leaves have meaningful subleaf index. Print the subleaf info
+in feature_word_description for CPUID features.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Message-ID: <20241217123932.948789-3-xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 22a2a701090b83d8dd06765edc1b61f6208c76b1)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 32e89f1a5c..816285facd 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5906,8 +5906,9 @@ static char *feature_word_description(FeatureWordInfo *f)
+         {
+             const char *reg = get_register_name_32(f->cpuid.reg);
+             assert(reg);
+-            return g_strdup_printf("CPUID.%02XH:%s",
+-                                   f->cpuid.eax, reg);
++            return g_strdup_printf("CPUID.%02XH_%02XH:%s",
++                                   f->cpuid.eax,
++                                   f->cpuid.needs_ecx ? f->cpuid.ecx : 0, reg);
+         }
+     case MSR_FEATURE_WORD:
+         return g_strdup_printf("MSR(%02XH)",
+-- 
+2.50.1
+

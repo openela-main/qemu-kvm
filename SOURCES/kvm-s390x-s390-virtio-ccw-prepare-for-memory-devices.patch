@@ -1,0 +1,117 @@
+From 0e7d7bf86fb242c1ea90bf9648fb061626790eda Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Thu, 19 Dec 2024 15:41:11 +0100
+Subject: [PATCH 19/26] s390x/s390-virtio-ccw: prepare for memory devices
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [19/26] 2441c8c5f5a06d5ca93188dd44e8a08f06d1722b (thuth/qemu-kvm-cs)
+
+Let's prepare our address space for memory devices if enabled via
+"maxmem" and if we have CONFIG_MEM_DEVICE enabled at all. Note that
+CONFIG_MEM_DEVICE will be selected automatically once we add support
+for devices.
+
+Just like on other architectures, the region container for memory devices
+is placed directly above our initial memory. For now, we only align the
+start address of the region up to 1 GiB, but we won't add any additional
+space to the region for internal alignment purposes; this can be done in
+the future if really required.
+
+The RAM size returned via SCLP is not modified, as this only
+covers initial RAM (and standby memory we don't implement) and not memory
+devices; clarify that in the docs of read_SCP_info(). Existing OSes without
+support for memory devices will keep working as is, even when memory
+devices would be attached the VM.
+
+Guest OSs which support memory devices, such as virtio-mem, will
+consult diag500(), to find out the maximum possible pfn. Guest OSes that
+don't support memory devices, don't have to be changed and will continue
+relying on information provided by SCLP.
+
+There are no remaining maxram_size users in s390x code, and the remaining
+ram_size users only care about initial RAM:
+* hw/s390x/ipl.c
+* hw/s390x/s390-hypercall.c
+* hw/s390x/sclp.c
+* target/s390x/kvm/pv.c
+
+Message-ID: <20241219144115.2820241-11-david@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 1e86400298cf0fed5f7d49427db477775b859093)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 23 ++++++++++++++++++++++-
+ hw/s390x/sclp.c            |  6 +++++-
+ 2 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index f5f147eb92..824c73536a 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -149,6 +149,7 @@ static void s390_memory_init(MachineState *machine)
+     MemoryRegion *sysmem = get_system_memory();
+     MemoryRegion *ram = machine->ram;
+     uint64_t ram_size = memory_region_size(ram);
++    uint64_t devmem_base, devmem_size;
+ 
+     if (!QEMU_IS_ALIGNED(ram_size, 1 * MiB)) {
+         /*
+@@ -161,11 +162,31 @@ static void s390_memory_init(MachineState *machine)
+         exit(EXIT_FAILURE);
+     }
+ 
+-    s390_set_memory_limit(s390ms, ram_size);
++    devmem_size = 0;
++    devmem_base = ram_size;
++#ifdef CONFIG_MEM_DEVICE
++    if (machine->ram_size < machine->maxram_size) {
++
++        /*
++         * Make sure memory devices have a sane default alignment, even
++         * when weird initial memory sizes are specified.
++         */
++        devmem_base = QEMU_ALIGN_UP(devmem_base, 1 * GiB);
++        devmem_size = machine->maxram_size - machine->ram_size;
++    }
++#endif
++    s390_set_memory_limit(s390ms, devmem_base + devmem_size);
+ 
+     /* Map the initial memory. Must happen after setting the memory limit. */
+     memory_region_add_subregion(sysmem, 0, ram);
+ 
++    /* Initialize address space for memory devices. */
++#ifdef CONFIG_MEM_DEVICE
++    if (devmem_size) {
++        machine_memory_devices_init(machine, devmem_base, devmem_size);
++    }
++#endif /* CONFIG_MEM_DEVICE */
++
+     /*
+      * Configure the maximum page size. As no memory devices were created
+      * yet, this is the page size of initial memory only.
+diff --git a/hw/s390x/sclp.c b/hw/s390x/sclp.c
+index 73e88ab4eb..5945c9b1d8 100644
+--- a/hw/s390x/sclp.c
++++ b/hw/s390x/sclp.c
+@@ -161,7 +161,11 @@ static void read_SCP_info(SCLPDevice *sclp, SCCB *sccb)
+         read_info->rnsize2 = cpu_to_be32(rnsize);
+     }
+ 
+-    /* we don't support standby memory, maxram_size is never exposed */
++    /*
++     * We don't support standby memory. maxram_size is used for sizing the
++     * memory device region, which is not exposed through SCLP but through
++     * diag500.
++     */
+     rnmax = machine->ram_size >> sclp->increment_size;
+     if (rnmax < 0x10000) {
+         read_info->rnmax = cpu_to_be16(rnmax);
+-- 
+2.48.1
+

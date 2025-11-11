@@ -1,17 +1,17 @@
-From 30a938409f664179061b039796354628c714229e Mon Sep 17 00:00:00 2001
+From 9f76103e90ce8406bc5bbda72a7314b82e56652e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:06 +0100
-Subject: [PATCH 28/31] hw/scsi/megasas: skip automatic zero-init of large
+Subject: [PATCH 53/57] hw/scsi/megasas: skip automatic zero-init of large
  arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 461: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99887
+RH-MergeRequest: 382: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-99888
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [27/30] 70c3c002601bc54ff81d000092e7be2bdb1eb82a
+RH-Commit: [27/30] b3a3f466fd03c64c665c52e26079b03def376f48 (stefanha/centos-stream-qemu-kvm)
 
 The 'megasas_dcmd_pd_get_list' and 'megasas_dcmd_get_properties'
 methods have 4k structs used for copying data from the device.

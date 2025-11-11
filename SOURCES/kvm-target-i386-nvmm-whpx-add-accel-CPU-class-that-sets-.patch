@@ -1,0 +1,164 @@
+From a0f80cbb64e88f7f4e222e31d2ace756ece782f7 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 095/115] target/i386: nvmm, whpx: add accel/CPU class that
+ sets host vendor
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [95/115] b579400cf9a23c6405af130a5fed54fc41063bcb (bonzini/rhel-qemu-kvm)
+
+NVMM and WHPX are virtualizers, and therefore they need to use
+(at least by default) the host vendor for the guest CPUID.
+Add a cpu_instance_init implementation to these accelerators.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit d93972d88b0984ed0a2090493f8d62cc188976d2)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflicts: system/ -> sysemu/
+---
+ target/i386/cpu.c           |  3 ++-
+ target/i386/meson.build     |  2 ++
+ target/i386/nvmm/nvmm-all.c | 25 +++++++++++++++++++++++++
+ target/i386/whpx/whpx-all.c | 25 +++++++++++++++++++++++++
+ 4 files changed, 54 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 8685b9d998..4df98838a3 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -43,6 +43,7 @@
+ #include "hw/boards.h"
+ #include "hw/i386/sgx-epc.h"
+ #endif
++#include "sysemu/qtest.h"
+ #include "tcg/tcg-cpu.h"
+ 
+ #include "disas/capstone.h"
+@@ -1893,7 +1894,7 @@ uint32_t xsave_area_size(uint64_t mask, bool compacted)
+ 
+ static inline bool accel_uses_host_cpuid(void)
+ {
+-    return kvm_enabled() || hvf_enabled();
++    return !tcg_enabled() && !qtest_enabled();
+ }
+ 
+ static inline uint64_t x86_cpu_xsave_xcr0_components(X86CPU *cpu)
+diff --git a/target/i386/meson.build b/target/i386/meson.build
+index 075117989b..9572b31040 100644
+--- a/target/i386/meson.build
++++ b/target/i386/meson.build
+@@ -11,6 +11,8 @@ i386_ss.add(when: 'CONFIG_SEV', if_true: files('host-cpu.c', 'confidential-guest
+ # x86 cpu type
+ i386_ss.add(when: 'CONFIG_KVM', if_true: files('host-cpu.c'))
+ i386_ss.add(when: 'CONFIG_HVF', if_true: files('host-cpu.c'))
++i386_ss.add(when: 'CONFIG_WHPX', if_true: files('host-cpu.c'))
++i386_ss.add(when: 'CONFIG_NVMM', if_true: files('host-cpu.c'))
+ 
+ i386_system_ss = ss.source_set()
+ i386_system_ss.add(files(
+diff --git a/target/i386/nvmm/nvmm-all.c b/target/i386/nvmm/nvmm-all.c
+index 65768aca03..2cc84a15f9 100644
+--- a/target/i386/nvmm/nvmm-all.c
++++ b/target/i386/nvmm/nvmm-all.c
+@@ -19,6 +19,8 @@
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+ #include "qemu/queue.h"
++#include "accel/accel-cpu-target.h"
++#include "host-cpu.h"
+ #include "migration/blocker.h"
+ #include "strings.h"
+ 
+@@ -1214,10 +1216,33 @@ static const TypeInfo nvmm_accel_type = {
+     .class_init = nvmm_accel_class_init,
+ };
+ 
++static void nvmm_cpu_instance_init(CPUState *cs)
++{
++    X86CPU *cpu = X86_CPU(cs);
++
++    host_cpu_instance_init(cpu);
++}
++
++static void nvmm_cpu_accel_class_init(ObjectClass *oc, const void *data)
++{
++    AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
++
++    acc->cpu_instance_init = nvmm_cpu_instance_init;
++}
++
++static const TypeInfo nvmm_cpu_accel_type = {
++    .name = ACCEL_CPU_NAME("nvmm"),
++
++    .parent = TYPE_ACCEL_CPU,
++    .class_init = nvmm_cpu_accel_class_init,
++    .abstract = true,
++};
++
+ static void
+ nvmm_type_init(void)
+ {
+     type_register_static(&nvmm_accel_type);
++    type_register_static(&nvmm_cpu_accel_type);
+ }
+ 
+ type_init(nvmm_type_init);
+diff --git a/target/i386/whpx/whpx-all.c b/target/i386/whpx/whpx-all.c
+index a6674a826d..ea209d50f8 100644
+--- a/target/i386/whpx/whpx-all.c
++++ b/target/i386/whpx/whpx-all.c
+@@ -26,6 +26,8 @@
+ #include "qapi/qapi-types-common.h"
+ #include "qapi/qapi-visit-common.h"
+ #include "migration/blocker.h"
++#include "host-cpu.h"
++#include "accel/accel-cpu-target.h"
+ #include <winerror.h>
+ 
+ #include "whpx-internal.h"
+@@ -2512,6 +2514,28 @@ static void whpx_set_kernel_irqchip(Object *obj, Visitor *v,
+     }
+ }
+ 
++static void whpx_cpu_instance_init(CPUState *cs)
++{
++    X86CPU *cpu = X86_CPU(cs);
++
++    host_cpu_instance_init(cpu);
++}
++
++static void whpx_cpu_accel_class_init(ObjectClass *oc, const void *data)
++{
++    AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
++
++    acc->cpu_instance_init = whpx_cpu_instance_init;
++}
++
++static const TypeInfo whpx_cpu_accel_type = {
++    .name = ACCEL_CPU_NAME("whpx"),
++
++    .parent = TYPE_ACCEL_CPU,
++    .class_init = whpx_cpu_accel_class_init,
++    .abstract = true,
++};
++
+ /*
+  * Partition support
+  */
+@@ -2742,6 +2766,7 @@ static const TypeInfo whpx_accel_type = {
+ static void whpx_type_init(void)
+ {
+     type_register_static(&whpx_accel_type);
++    type_register_static(&whpx_cpu_accel_type);
+ }
+ 
+ bool init_whp_dispatch(void)
+-- 
+2.50.1
+

@@ -1,0 +1,689 @@
+From 26f5d221dd16137bed3527ee120cdf085e2c7e23 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 9 May 2025 15:40:18 -0500
+Subject: [PATCH 03/16] block: Expand block status mode from bool to flags
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 365: blockdev-mirror: More efficient handling of sparse mirrors
+RH-Jira: RHEL-82906 RHEL-83015
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/14] 9de5245def80e9815ed306e4abce9caec56cef6f (ebblake/centos-qemu-kvm)
+
+This patch is purely mechanical, changing bool want_zero into an
+unsigned int for bitwise-or of flags.  As of this patch, all
+implementations are unchanged (the old want_zero==true is now
+mode==BDRV_WANT_PRECISE which is a superset of BDRV_WANT_ZERO); but
+the callers in io.c that used to pass want_zero==false are now
+prepared for future driver changes that can now distinguish bewteen
+BDRV_WANT_ZERO vs. BDRV_WANT_ALLOCATED.  The next patch will actually
+change the file-posix driver along those lines, now that we have
+more-specific hints.
+
+As for the background why this patch is useful: right now, the
+file-posix driver recognizes that if allocation is being queried, the
+entire image can be reported as allocated (there is no backing file to
+refer to) - but this throws away information on whether the entire
+image reads as zero (trivially true if lseek(SEEK_HOLE) at offset 0
+returns -ENXIO, a bit more complicated to prove if the raw file was
+created with 'qemu-img create' since we intentionally allocate a small
+chunk of all-zero data to help with alignment probing).  Later patches
+will add a generic algorithm for seeing if an entire file reads as
+zeroes.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20250509204341.3553601-16-eblake@redhat.com>
+(cherry picked from commit c33159dec79069514f78faecfe268439226b0f5b)
+Jira: https://issues.redhat.com/browse/RHEL-82906
+Jira: https://issues.redhat.com/browse/RHEL-83015
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ block/blkdebug.c                 |  6 ++--
+ block/copy-before-write.c        |  4 +--
+ block/coroutines.h               |  4 +--
+ block/file-posix.c               |  4 +--
+ block/gluster.c                  |  4 +--
+ block/io.c                       | 51 ++++++++++++++++----------------
+ block/iscsi.c                    |  6 ++--
+ block/nbd.c                      |  4 +--
+ block/null.c                     |  6 ++--
+ block/parallels.c                |  6 ++--
+ block/qcow.c                     |  2 +-
+ block/qcow2.c                    |  6 ++--
+ block/qed.c                      |  6 ++--
+ block/quorum.c                   |  4 +--
+ block/raw-format.c               |  4 +--
+ block/rbd.c                      |  6 ++--
+ block/snapshot-access.c          |  4 +--
+ block/vdi.c                      |  4 +--
+ block/vmdk.c                     |  2 +-
+ block/vpc.c                      |  2 +-
+ block/vvfat.c                    |  6 ++--
+ include/block/block-common.h     | 11 +++++++
+ include/block/block_int-common.h | 27 +++++++++--------
+ include/block/block_int-io.h     |  4 +--
+ tests/unit/test-block-iothread.c |  2 +-
+ 25 files changed, 99 insertions(+), 86 deletions(-)
+
+diff --git a/block/blkdebug.c b/block/blkdebug.c
+index c95c818c38..736ae2b56b 100644
+--- a/block/blkdebug.c
++++ b/block/blkdebug.c
+@@ -751,9 +751,9 @@ blkdebug_co_pdiscard(BlockDriverState *bs, int64_t offset, int64_t bytes)
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-blkdebug_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
+-                         int64_t bytes, int64_t *pnum, int64_t *map,
+-                         BlockDriverState **file)
++blkdebug_co_block_status(BlockDriverState *bs, unsigned int mode,
++                         int64_t offset, int64_t bytes, int64_t *pnum,
++                         int64_t *map, BlockDriverState **file)
+ {
+     int err;
+ 
+diff --git a/block/copy-before-write.c b/block/copy-before-write.c
+index 853e01a1eb..36488cdeca 100644
+--- a/block/copy-before-write.c
++++ b/block/copy-before-write.c
+@@ -290,8 +290,8 @@ cbw_co_preadv_snapshot(BlockDriverState *bs, int64_t offset, int64_t bytes,
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-cbw_co_snapshot_block_status(BlockDriverState *bs,
+-                             bool want_zero, int64_t offset, int64_t bytes,
++cbw_co_snapshot_block_status(BlockDriverState *bs, unsigned int mode,
++                             int64_t offset, int64_t bytes,
+                              int64_t *pnum, int64_t *map,
+                              BlockDriverState **file)
+ {
+diff --git a/block/coroutines.h b/block/coroutines.h
+index f3226682d6..811ef12e43 100644
+--- a/block/coroutines.h
++++ b/block/coroutines.h
+@@ -47,7 +47,7 @@ int coroutine_fn GRAPH_RDLOCK
+ bdrv_co_common_block_status_above(BlockDriverState *bs,
+                                   BlockDriverState *base,
+                                   bool include_base,
+-                                  bool want_zero,
++                                  unsigned int mode,
+                                   int64_t offset,
+                                   int64_t bytes,
+                                   int64_t *pnum,
+@@ -78,7 +78,7 @@ int co_wrapper_mixed_bdrv_rdlock
+ bdrv_common_block_status_above(BlockDriverState *bs,
+                                BlockDriverState *base,
+                                bool include_base,
+-                               bool want_zero,
++                               unsigned int mode,
+                                int64_t offset,
+                                int64_t bytes,
+                                int64_t *pnum,
+diff --git a/block/file-posix.c b/block/file-posix.c
+index f17a3f4d10..9ca55620ca 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -3277,7 +3277,7 @@ static int find_allocation(BlockDriverState *bs, off_t start,
+  * well exceed it.
+  */
+ static int coroutine_fn raw_co_block_status(BlockDriverState *bs,
+-                                            bool want_zero,
++                                            unsigned int mode,
+                                             int64_t offset,
+                                             int64_t bytes, int64_t *pnum,
+                                             int64_t *map,
+@@ -3293,7 +3293,7 @@ static int coroutine_fn raw_co_block_status(BlockDriverState *bs,
+         return ret;
+     }
+ 
+-    if (!want_zero) {
++    if (mode != BDRV_WANT_PRECISE) {
+         *pnum = bytes;
+         *map = offset;
+         *file = bs;
+diff --git a/block/gluster.c b/block/gluster.c
+index f8b415f381..ae5c45666b 100644
+--- a/block/gluster.c
++++ b/block/gluster.c
+@@ -1466,7 +1466,7 @@ exit:
+  * (Based on raw_co_block_status() from file-posix.c.)
+  */
+ static int coroutine_fn qemu_gluster_co_block_status(BlockDriverState *bs,
+-                                                     bool want_zero,
++                                                     unsigned int mode,
+                                                      int64_t offset,
+                                                      int64_t bytes,
+                                                      int64_t *pnum,
+@@ -1483,7 +1483,7 @@ static int coroutine_fn qemu_gluster_co_block_status(BlockDriverState *bs,
+         return ret;
+     }
+ 
+-    if (!want_zero) {
++    if (mode != BDRV_WANT_PRECISE) {
+         *pnum = bytes;
+         *map = offset;
+         *file = bs;
+diff --git a/block/io.c b/block/io.c
+index 3e189837a1..daaafe00d7 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -2360,10 +2360,8 @@ int bdrv_flush_all(void)
+  * Drivers not implementing the functionality are assumed to not support
+  * backing files, hence all their sectors are reported as allocated.
+  *
+- * If 'want_zero' is true, the caller is querying for mapping
+- * purposes, with a focus on valid BDRV_BLOCK_OFFSET_VALID, _DATA, and
+- * _ZERO where possible; otherwise, the result favors larger 'pnum',
+- * with a focus on accurate BDRV_BLOCK_ALLOCATED.
++ * 'mode' serves as a hint as to which results are favored; see the
++ * BDRV_WANT_* macros for details.
+  *
+  * If 'offset' is beyond the end of the disk image the return value is
+  * BDRV_BLOCK_EOF and 'pnum' is set to 0.
+@@ -2383,7 +2381,7 @@ int bdrv_flush_all(void)
+  * set to the host mapping and BDS corresponding to the guest offset.
+  */
+ static int coroutine_fn GRAPH_RDLOCK
+-bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
++bdrv_co_do_block_status(BlockDriverState *bs, unsigned int mode,
+                         int64_t offset, int64_t bytes,
+                         int64_t *pnum, int64_t *map, BlockDriverState **file)
+ {
+@@ -2472,7 +2470,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+             local_file = bs;
+             local_map = aligned_offset;
+         } else {
+-            ret = bs->drv->bdrv_co_block_status(bs, want_zero, aligned_offset,
++            ret = bs->drv->bdrv_co_block_status(bs, mode, aligned_offset,
+                                                 aligned_bytes, pnum, &local_map,
+                                                 &local_file);
+ 
+@@ -2484,10 +2482,10 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+              * the cache requires an RCU update, so double check here to avoid
+              * such an update if possible.
+              *
+-             * Check want_zero, because we only want to update the cache when we
++             * Check mode, because we only want to update the cache when we
+              * have accurate information about what is zero and what is data.
+              */
+-            if (want_zero &&
++            if (mode == BDRV_WANT_PRECISE &&
+                 ret == (BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID) &&
+                 QLIST_EMPTY(&bs->children))
+             {
+@@ -2544,7 +2542,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+ 
+     if (ret & BDRV_BLOCK_RAW) {
+         assert(ret & BDRV_BLOCK_OFFSET_VALID && local_file);
+-        ret = bdrv_co_do_block_status(local_file, want_zero, local_map,
++        ret = bdrv_co_do_block_status(local_file, mode, local_map,
+                                       *pnum, pnum, &local_map, &local_file);
+         goto out;
+     }
+@@ -2556,7 +2554,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+ 
+         if (!cow_bs) {
+             ret |= BDRV_BLOCK_ZERO;
+-        } else if (want_zero) {
++        } else if (mode == BDRV_WANT_PRECISE) {
+             int64_t size2 = bdrv_co_getlength(cow_bs);
+ 
+             if (size2 >= 0 && offset >= size2) {
+@@ -2565,14 +2563,14 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+         }
+     }
+ 
+-    if (want_zero && ret & BDRV_BLOCK_RECURSE &&
++    if (mode == BDRV_WANT_PRECISE && ret & BDRV_BLOCK_RECURSE &&
+         local_file && local_file != bs &&
+         (ret & BDRV_BLOCK_DATA) && !(ret & BDRV_BLOCK_ZERO) &&
+         (ret & BDRV_BLOCK_OFFSET_VALID)) {
+         int64_t file_pnum;
+         int ret2;
+ 
+-        ret2 = bdrv_co_do_block_status(local_file, want_zero, local_map,
++        ret2 = bdrv_co_do_block_status(local_file, mode, local_map,
+                                        *pnum, &file_pnum, NULL, NULL);
+         if (ret2 >= 0) {
+             /* Ignore errors.  This is just providing extra information, it
+@@ -2623,7 +2621,7 @@ int coroutine_fn
+ bdrv_co_common_block_status_above(BlockDriverState *bs,
+                                   BlockDriverState *base,
+                                   bool include_base,
+-                                  bool want_zero,
++                                  unsigned int mode,
+                                   int64_t offset,
+                                   int64_t bytes,
+                                   int64_t *pnum,
+@@ -2650,7 +2648,7 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
+         return 0;
+     }
+ 
+-    ret = bdrv_co_do_block_status(bs, want_zero, offset, bytes, pnum,
++    ret = bdrv_co_do_block_status(bs, mode, offset, bytes, pnum,
+                                   map, file);
+     ++*depth;
+     if (ret < 0 || *pnum == 0 || ret & BDRV_BLOCK_ALLOCATED || bs == base) {
+@@ -2667,7 +2665,7 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
+     for (p = bdrv_filter_or_cow_bs(bs); include_base || p != base;
+          p = bdrv_filter_or_cow_bs(p))
+     {
+-        ret = bdrv_co_do_block_status(p, want_zero, offset, bytes, pnum,
++        ret = bdrv_co_do_block_status(p, mode, offset, bytes, pnum,
+                                       map, file);
+         ++*depth;
+         if (ret < 0) {
+@@ -2730,7 +2728,8 @@ int coroutine_fn bdrv_co_block_status_above(BlockDriverState *bs,
+                                             BlockDriverState **file)
+ {
+     IO_CODE();
+-    return bdrv_co_common_block_status_above(bs, base, false, true, offset,
++    return bdrv_co_common_block_status_above(bs, base, false,
++                                             BDRV_WANT_PRECISE, offset,
+                                              bytes, pnum, map, file, NULL);
+ }
+ 
+@@ -2761,8 +2760,9 @@ int coroutine_fn bdrv_co_is_zero_fast(BlockDriverState *bs, int64_t offset,
+         return 1;
+     }
+ 
+-    ret = bdrv_co_common_block_status_above(bs, NULL, false, false, offset,
+-                                            bytes, &pnum, NULL, NULL, NULL);
++    ret = bdrv_co_common_block_status_above(bs, NULL, false, BDRV_WANT_ZERO,
++                                            offset, bytes, &pnum, NULL, NULL,
++                                            NULL);
+ 
+     if (ret < 0) {
+         return ret;
+@@ -2778,9 +2778,9 @@ int coroutine_fn bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset,
+     int64_t dummy;
+     IO_CODE();
+ 
+-    ret = bdrv_co_common_block_status_above(bs, bs, true, false, offset,
+-                                            bytes, pnum ? pnum : &dummy, NULL,
+-                                            NULL, NULL);
++    ret = bdrv_co_common_block_status_above(bs, bs, true, BDRV_WANT_ALLOCATED,
++                                            offset, bytes, pnum ? pnum : &dummy,
++                                            NULL, NULL, NULL);
+     if (ret < 0) {
+         return ret;
+     }
+@@ -2813,7 +2813,8 @@ int coroutine_fn bdrv_co_is_allocated_above(BlockDriverState *bs,
+     int ret;
+     IO_CODE();
+ 
+-    ret = bdrv_co_common_block_status_above(bs, base, include_base, false,
++    ret = bdrv_co_common_block_status_above(bs, base, include_base,
++                                            BDRV_WANT_ALLOCATED,
+                                             offset, bytes, pnum, NULL, NULL,
+                                             &depth);
+     if (ret < 0) {
+@@ -3710,8 +3711,8 @@ bdrv_co_preadv_snapshot(BdrvChild *child, int64_t offset, int64_t bytes,
+ }
+ 
+ int coroutine_fn
+-bdrv_co_snapshot_block_status(BlockDriverState *bs,
+-                              bool want_zero, int64_t offset, int64_t bytes,
++bdrv_co_snapshot_block_status(BlockDriverState *bs, unsigned int mode,
++                              int64_t offset, int64_t bytes,
+                               int64_t *pnum, int64_t *map,
+                               BlockDriverState **file)
+ {
+@@ -3729,7 +3730,7 @@ bdrv_co_snapshot_block_status(BlockDriverState *bs,
+     }
+ 
+     bdrv_inc_in_flight(bs);
+-    ret = drv->bdrv_co_snapshot_block_status(bs, want_zero, offset, bytes,
++    ret = drv->bdrv_co_snapshot_block_status(bs, mode, offset, bytes,
+                                              pnum, map, file);
+     bdrv_dec_in_flight(bs);
+ 
+diff --git a/block/iscsi.c b/block/iscsi.c
+index 979bf90cb7..d7caa4b363 100644
+--- a/block/iscsi.c
++++ b/block/iscsi.c
+@@ -694,9 +694,9 @@ out_unlock:
+ 
+ 
+ static int coroutine_fn iscsi_co_block_status(BlockDriverState *bs,
+-                                              bool want_zero, int64_t offset,
+-                                              int64_t bytes, int64_t *pnum,
+-                                              int64_t *map,
++                                              unsigned int mode,
++                                              int64_t offset, int64_t bytes,
++                                              int64_t *pnum, int64_t *map,
+                                               BlockDriverState **file)
+ {
+     IscsiLun *iscsilun = bs->opaque;
+diff --git a/block/nbd.c b/block/nbd.c
+index d464315766..a359aa236e 100644
+--- a/block/nbd.c
++++ b/block/nbd.c
+@@ -1397,8 +1397,8 @@ nbd_client_co_pdiscard(BlockDriverState *bs, int64_t offset, int64_t bytes)
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK nbd_client_co_block_status(
+-        BlockDriverState *bs, bool want_zero, int64_t offset, int64_t bytes,
+-        int64_t *pnum, int64_t *map, BlockDriverState **file)
++        BlockDriverState *bs, unsigned int mode, int64_t offset,
++        int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file)
+ {
+     int ret, request_ret;
+     NBDExtent64 extent = { 0 };
+diff --git a/block/null.c b/block/null.c
+index 4730acc1eb..95021230c8 100644
+--- a/block/null.c
++++ b/block/null.c
+@@ -227,9 +227,9 @@ static int null_reopen_prepare(BDRVReopenState *reopen_state,
+ }
+ 
+ static int coroutine_fn null_co_block_status(BlockDriverState *bs,
+-                                             bool want_zero, int64_t offset,
+-                                             int64_t bytes, int64_t *pnum,
+-                                             int64_t *map,
++                                             unsigned int mode,
++                                             int64_t offset, int64_t bytes,
++                                             int64_t *pnum, int64_t *map,
+                                              BlockDriverState **file)
+ {
+     BDRVNullState *s = bs->opaque;
+diff --git a/block/parallels.c b/block/parallels.c
+index 9205a0864f..22ea7834fd 100644
+--- a/block/parallels.c
++++ b/block/parallels.c
+@@ -416,9 +416,9 @@ parallels_co_flush_to_os(BlockDriverState *bs)
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-parallels_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
+-                          int64_t bytes, int64_t *pnum, int64_t *map,
+-                          BlockDriverState **file)
++parallels_co_block_status(BlockDriverState *bs, unsigned int mode,
++                          int64_t offset, int64_t bytes, int64_t *pnum,
++                          int64_t *map, BlockDriverState **file)
+ {
+     BDRVParallelsState *s = bs->opaque;
+     int count;
+diff --git a/block/qcow.c b/block/qcow.c
+index c2f89db055..2e18c42d8f 100644
+--- a/block/qcow.c
++++ b/block/qcow.c
+@@ -530,7 +530,7 @@ get_cluster_offset(BlockDriverState *bs, uint64_t offset, int allocate,
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-qcow_co_block_status(BlockDriverState *bs, bool want_zero,
++qcow_co_block_status(BlockDriverState *bs, unsigned int mode,
+                      int64_t offset, int64_t bytes, int64_t *pnum,
+                      int64_t *map, BlockDriverState **file)
+ {
+diff --git a/block/qcow2.c b/block/qcow2.c
+index a4cffb628c..788da07fee 100644
+--- a/block/qcow2.c
++++ b/block/qcow2.c
+@@ -2147,9 +2147,9 @@ static void qcow2_join_options(QDict *options, QDict *old_options)
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-qcow2_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
+-                      int64_t count, int64_t *pnum, int64_t *map,
+-                      BlockDriverState **file)
++qcow2_co_block_status(BlockDriverState *bs, unsigned int mode,
++                      int64_t offset, int64_t count, int64_t *pnum,
++                      int64_t *map, BlockDriverState **file)
+ {
+     BDRVQcow2State *s = bs->opaque;
+     uint64_t host_offset;
+diff --git a/block/qed.c b/block/qed.c
+index fa5bc11085..b135e981e5 100644
+--- a/block/qed.c
++++ b/block/qed.c
+@@ -832,9 +832,9 @@ fail:
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-bdrv_qed_co_block_status(BlockDriverState *bs, bool want_zero, int64_t pos,
+-                         int64_t bytes, int64_t *pnum, int64_t *map,
+-                         BlockDriverState **file)
++bdrv_qed_co_block_status(BlockDriverState *bs, unsigned int mode,
++                         int64_t pos, int64_t bytes, int64_t *pnum,
++                         int64_t *map, BlockDriverState **file)
+ {
+     BDRVQEDState *s = bs->opaque;
+     size_t len = MIN(bytes, SIZE_MAX);
+diff --git a/block/quorum.c b/block/quorum.c
+index db8fe891c4..bb4ed9483e 100644
+--- a/block/quorum.c
++++ b/block/quorum.c
+@@ -1226,7 +1226,7 @@ static void quorum_child_perm(BlockDriverState *bs, BdrvChild *c,
+  * region contains zeroes, and BDRV_BLOCK_DATA otherwise.
+  */
+ static int coroutine_fn GRAPH_RDLOCK
+-quorum_co_block_status(BlockDriverState *bs, bool want_zero,
++quorum_co_block_status(BlockDriverState *bs, unsigned int mode,
+                        int64_t offset, int64_t count,
+                        int64_t *pnum, int64_t *map, BlockDriverState **file)
+ {
+@@ -1238,7 +1238,7 @@ quorum_co_block_status(BlockDriverState *bs, bool want_zero,
+     for (i = 0; i < s->num_children; i++) {
+         int64_t bytes;
+         ret = bdrv_co_common_block_status_above(s->children[i]->bs, NULL, false,
+-                                                want_zero, offset, count,
++                                                mode, offset, count,
+                                                 &bytes, NULL, NULL, NULL);
+         if (ret < 0) {
+             quorum_report_bad(QUORUM_OP_TYPE_READ, offset, count,
+diff --git a/block/raw-format.c b/block/raw-format.c
+index ac7e8495f6..623bca87a6 100644
+--- a/block/raw-format.c
++++ b/block/raw-format.c
+@@ -283,8 +283,8 @@ fail:
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-raw_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
+-                    int64_t bytes, int64_t *pnum, int64_t *map,
++raw_co_block_status(BlockDriverState *bs, unsigned int mode,
++                    int64_t offset, int64_t bytes, int64_t *pnum, int64_t *map,
+                     BlockDriverState **file)
+ {
+     BDRVRawState *s = bs->opaque;
+diff --git a/block/rbd.c b/block/rbd.c
+index 9c0fd0cb3f..627f8eb05a 100644
+--- a/block/rbd.c
++++ b/block/rbd.c
+@@ -1504,9 +1504,9 @@ static int qemu_rbd_diff_iterate_cb(uint64_t offs, size_t len,
+ }
+ 
+ static int coroutine_fn qemu_rbd_co_block_status(BlockDriverState *bs,
+-                                                 bool want_zero, int64_t offset,
+-                                                 int64_t bytes, int64_t *pnum,
+-                                                 int64_t *map,
++                                                 unsigned int mode,
++                                                 int64_t offset, int64_t bytes,
++                                                 int64_t *pnum, int64_t *map,
+                                                  BlockDriverState **file)
+ {
+     BDRVRBDState *s = bs->opaque;
+diff --git a/block/snapshot-access.c b/block/snapshot-access.c
+index 84d0d13f86..972b8f2e68 100644
+--- a/block/snapshot-access.c
++++ b/block/snapshot-access.c
+@@ -41,11 +41,11 @@ snapshot_access_co_preadv_part(BlockDriverState *bs,
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+ snapshot_access_co_block_status(BlockDriverState *bs,
+-                                bool want_zero, int64_t offset,
++                                unsigned int mode, int64_t offset,
+                                 int64_t bytes, int64_t *pnum,
+                                 int64_t *map, BlockDriverState **file)
+ {
+-    return bdrv_co_snapshot_block_status(bs->file->bs, want_zero, offset,
++    return bdrv_co_snapshot_block_status(bs->file->bs, mode, offset,
+                                          bytes, pnum, map, file);
+ }
+ 
+diff --git a/block/vdi.c b/block/vdi.c
+index 6363da08ce..028fe68488 100644
+--- a/block/vdi.c
++++ b/block/vdi.c
+@@ -521,8 +521,8 @@ static int vdi_reopen_prepare(BDRVReopenState *state,
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-vdi_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
+-                    int64_t bytes, int64_t *pnum, int64_t *map,
++vdi_co_block_status(BlockDriverState *bs, unsigned int mode,
++                    int64_t offset, int64_t bytes, int64_t *pnum, int64_t *map,
+                     BlockDriverState **file)
+ {
+     BDRVVdiState *s = (BDRVVdiState *)bs->opaque;
+diff --git a/block/vmdk.c b/block/vmdk.c
+index 78f6433607..6f1af82078 100644
+--- a/block/vmdk.c
++++ b/block/vmdk.c
+@@ -1777,7 +1777,7 @@ static inline uint64_t vmdk_find_offset_in_cluster(VmdkExtent *extent,
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-vmdk_co_block_status(BlockDriverState *bs, bool want_zero,
++vmdk_co_block_status(BlockDriverState *bs, unsigned int mode,
+                      int64_t offset, int64_t bytes, int64_t *pnum,
+                      int64_t *map, BlockDriverState **file)
+ {
+diff --git a/block/vpc.c b/block/vpc.c
+index d95a204612..0dd641b614 100644
+--- a/block/vpc.c
++++ b/block/vpc.c
+@@ -721,7 +721,7 @@ fail:
+ }
+ 
+ static int coroutine_fn GRAPH_RDLOCK
+-vpc_co_block_status(BlockDriverState *bs, bool want_zero,
++vpc_co_block_status(BlockDriverState *bs, unsigned int mode,
+                     int64_t offset, int64_t bytes,
+                     int64_t *pnum, int64_t *map,
+                     BlockDriverState **file)
+diff --git a/block/vvfat.c b/block/vvfat.c
+index 8ffe8b3b9b..d59231357e 100644
+--- a/block/vvfat.c
++++ b/block/vvfat.c
+@@ -3135,9 +3135,9 @@ vvfat_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
+ }
+ 
+ static int coroutine_fn vvfat_co_block_status(BlockDriverState *bs,
+-                                              bool want_zero, int64_t offset,
+-                                              int64_t bytes, int64_t *n,
+-                                              int64_t *map,
++                                              unsigned int mode,
++                                              int64_t offset, int64_t bytes,
++                                              int64_t *n, int64_t *map,
+                                               BlockDriverState **file)
+ {
+     *n = bytes;
+diff --git a/include/block/block-common.h b/include/block/block-common.h
+index 7030669f04..5beee6402b 100644
+--- a/include/block/block-common.h
++++ b/include/block/block-common.h
+@@ -333,6 +333,17 @@ typedef enum {
+ #define BDRV_BLOCK_RECURSE      0x40
+ #define BDRV_BLOCK_COMPRESSED   0x80
+ 
++/*
++ * Block status hints: the bitwise-or of these flags emphasize what
++ * the caller hopes to learn, and some drivers may be able to give
++ * faster answers by doing less work when the hint permits.
++ */
++#define BDRV_WANT_ZERO          BDRV_BLOCK_ZERO
++#define BDRV_WANT_OFFSET_VALID  BDRV_BLOCK_OFFSET_VALID
++#define BDRV_WANT_ALLOCATED     BDRV_BLOCK_ALLOCATED
++#define BDRV_WANT_PRECISE       (BDRV_WANT_ZERO | BDRV_WANT_OFFSET_VALID | \
++                                 BDRV_WANT_OFFSET_VALID)
++
+ typedef QTAILQ_HEAD(BlockReopenQueue, BlockReopenQueueEntry) BlockReopenQueue;
+ 
+ typedef struct BDRVReopenState {
+diff --git a/include/block/block_int-common.h b/include/block/block_int-common.h
+index ebb4e56a50..a9c0daa2a4 100644
+--- a/include/block/block_int-common.h
++++ b/include/block/block_int-common.h
+@@ -608,15 +608,16 @@ struct BlockDriver {
+      * according to the current layer, and should only need to set
+      * BDRV_BLOCK_DATA, BDRV_BLOCK_ZERO, BDRV_BLOCK_OFFSET_VALID,
+      * and/or BDRV_BLOCK_RAW; if the current layer defers to a backing
+-     * layer, the result should be 0 (and not BDRV_BLOCK_ZERO).  See
+-     * block.h for the overall meaning of the bits.  As a hint, the
+-     * flag want_zero is true if the caller cares more about precise
+-     * mappings (favor accurate _OFFSET_VALID/_ZERO) or false for
+-     * overall allocation (favor larger *pnum, perhaps by reporting
+-     * _DATA instead of _ZERO).  The block layer guarantees input
+-     * clamped to bdrv_getlength() and aligned to request_alignment,
+-     * as well as non-NULL pnum, map, and file; in turn, the driver
+-     * must return an error or set pnum to an aligned non-zero value.
++     * layer, the result should be 0 (and not BDRV_BLOCK_ZERO).  The
++     * caller will synthesize BDRV_BLOCK_ALLOCATED based on the
++     * non-zero results.  See block.h for the overall meaning of the
++     * bits.  As a hint, the flags in @mode may include a bitwise-or
++     * of BDRV_WANT_ALLOCATED, BDRV_WANT_OFFSET_VALID, or
++     * BDRV_WANT_ZERO based on what the caller is looking for in the
++     * results.  The block layer guarantees input clamped to
++     * bdrv_getlength() and aligned to request_alignment, as well as
++     * non-NULL pnum, map, and file; in turn, the driver must return
++     * an error or set pnum to an aligned non-zero value.
+      *
+      * Note that @bytes is just a hint on how big of a region the
+      * caller wants to inspect.  It is not a limit on *pnum.
+@@ -628,8 +629,8 @@ struct BlockDriver {
+      * to clamping *pnum for return to its caller.
+      */
+     int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_block_status)(
+-        BlockDriverState *bs,
+-        bool want_zero, int64_t offset, int64_t bytes, int64_t *pnum,
++        BlockDriverState *bs, unsigned int mode,
++        int64_t offset, int64_t bytes, int64_t *pnum,
+         int64_t *map, BlockDriverState **file);
+ 
+     /*
+@@ -653,8 +654,8 @@ struct BlockDriver {
+         QEMUIOVector *qiov, size_t qiov_offset);
+ 
+     int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_snapshot_block_status)(
+-        BlockDriverState *bs, bool want_zero, int64_t offset, int64_t bytes,
+-        int64_t *pnum, int64_t *map, BlockDriverState **file);
++        BlockDriverState *bs, unsigned int mode, int64_t offset,
++        int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file);
+ 
+     int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pdiscard_snapshot)(
+         BlockDriverState *bs, int64_t offset, int64_t bytes);
+diff --git a/include/block/block_int-io.h b/include/block/block_int-io.h
+index 4a7cf2b4fd..4f94eb3c5a 100644
+--- a/include/block/block_int-io.h
++++ b/include/block/block_int-io.h
+@@ -38,8 +38,8 @@
+ int coroutine_fn GRAPH_RDLOCK bdrv_co_preadv_snapshot(BdrvChild *child,
+     int64_t offset, int64_t bytes, QEMUIOVector *qiov, size_t qiov_offset);
+ int coroutine_fn GRAPH_RDLOCK bdrv_co_snapshot_block_status(
+-    BlockDriverState *bs, bool want_zero, int64_t offset, int64_t bytes,
+-    int64_t *pnum, int64_t *map, BlockDriverState **file);
++    BlockDriverState *bs, unsigned int mode, int64_t offset,
++    int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file);
+ int coroutine_fn GRAPH_RDLOCK bdrv_co_pdiscard_snapshot(BlockDriverState *bs,
+     int64_t offset, int64_t bytes);
+ 
+diff --git a/tests/unit/test-block-iothread.c b/tests/unit/test-block-iothread.c
+index 3766d5de6b..373b72fdd8 100644
+--- a/tests/unit/test-block-iothread.c
++++ b/tests/unit/test-block-iothread.c
+@@ -63,7 +63,7 @@ bdrv_test_co_truncate(BlockDriverState *bs, int64_t offset, bool exact,
+ }
+ 
+ static int coroutine_fn bdrv_test_co_block_status(BlockDriverState *bs,
+-                                                  bool want_zero,
++                                                  unsigned int mode,
+                                                   int64_t offset, int64_t count,
+                                                   int64_t *pnum, int64_t *map,
+                                                   BlockDriverState **file)
+-- 
+2.48.1
+

@@ -1,0 +1,296 @@
+From 16ccb16d393a3e63936dc993c30c67fdecb1f120 Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Thu, 19 Dec 2024 15:41:03 +0100
+Subject: [PATCH 11/26] s390x/s390-virtio-hcall: remove hypercall registration
+ mechanism
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [11/26] 5e8d2720fe9fd6e6e24487d71988821f1cf27f17 (thuth/qemu-kvm-cs)
+
+Nowadays, we only have a single machine type in QEMU, everything is based
+on virtio-ccw and the traditional virtio machine does no longer exist. No
+need to dynamically register diag500 handlers. Move the two existing
+handlers into s390-virtio-hcall.c.
+
+Message-ID: <20241219144115.2820241-3-david@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Acked-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 4be0fce498d0a08f18b3a9accdb9ded79484d30a)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/meson.build           |  6 ++--
+ hw/s390x/s390-virtio-ccw.c     | 58 ------------------------------
+ hw/s390x/s390-virtio-hcall.c   | 65 +++++++++++++++++++++++++---------
+ hw/s390x/s390-virtio-hcall.h   |  2 --
+ target/s390x/kvm/kvm.c         |  5 ++-
+ target/s390x/tcg/misc_helper.c |  3 ++
+ 6 files changed, 60 insertions(+), 79 deletions(-)
+
+diff --git a/hw/s390x/meson.build b/hw/s390x/meson.build
+index 482fd13420..d6c8c33915 100644
+--- a/hw/s390x/meson.build
++++ b/hw/s390x/meson.build
+@@ -12,7 +12,6 @@ s390x_ss.add(files(
+   's390-pci-inst.c',
+   's390-skeys.c',
+   's390-stattrib.c',
+-  's390-virtio-hcall.c',
+   'sclp.c',
+   'sclpcpu.c',
+   'sclpquiesce.c',
+@@ -28,7 +27,10 @@ s390x_ss.add(when: 'CONFIG_KVM', if_true: files(
+ s390x_ss.add(when: 'CONFIG_TCG', if_true: files(
+   'tod-tcg.c',
+ ))
+-s390x_ss.add(when: 'CONFIG_S390_CCW_VIRTIO', if_true: files('s390-virtio-ccw.c'))
++s390x_ss.add(when: 'CONFIG_S390_CCW_VIRTIO', if_true: files(
++  's390-virtio-ccw.c',
++  's390-virtio-hcall.c',
++))
+ s390x_ss.add(when: 'CONFIG_TERMINAL3270', if_true: files('3270-ccw.c'))
+ s390x_ss.add(when: 'CONFIG_VFIO', if_true: files('s390-pci-vfio.c'))
+ 
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 82ded9666c..d47e99028e 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -16,11 +16,8 @@
+ #include "exec/ram_addr.h"
+ #include "exec/confidential-guest-support.h"
+ #include "hw/boards.h"
+-#include "hw/s390x/s390-virtio-hcall.h"
+ #include "hw/s390x/sclp.h"
+ #include "hw/s390x/s390_flic.h"
+-#include "hw/s390x/ioinst.h"
+-#include "hw/s390x/css.h"
+ #include "virtio-ccw.h"
+ #include "qemu/config-file.h"
+ #include "qemu/ctype.h"
+@@ -124,58 +121,6 @@ static void subsystem_reset(void)
+     }
+ }
+ 
+-static int virtio_ccw_hcall_notify(const uint64_t *args)
+-{
+-    uint64_t subch_id = args[0];
+-    uint64_t data = args[1];
+-    SubchDev *sch;
+-    VirtIODevice *vdev;
+-    int cssid, ssid, schid, m;
+-    uint16_t vq_idx = data;
+-
+-    if (ioinst_disassemble_sch_ident(subch_id, &m, &cssid, &ssid, &schid)) {
+-        return -EINVAL;
+-    }
+-    sch = css_find_subch(m, cssid, ssid, schid);
+-    if (!sch || !css_subch_visible(sch)) {
+-        return -EINVAL;
+-    }
+-
+-    vdev = virtio_ccw_get_vdev(sch);
+-    if (vq_idx >= VIRTIO_QUEUE_MAX || !virtio_queue_get_num(vdev, vq_idx)) {
+-        return -EINVAL;
+-    }
+-
+-    if (virtio_vdev_has_feature(vdev, VIRTIO_F_NOTIFICATION_DATA)) {
+-        virtio_queue_set_shadow_avail_idx(virtio_get_queue(vdev, vq_idx),
+-                                          (data >> 16) & 0xFFFF);
+-    }
+-
+-    virtio_queue_notify(vdev, vq_idx);
+-    return 0;
+-}
+-
+-static int virtio_ccw_hcall_early_printk(const uint64_t *args)
+-{
+-    uint64_t mem = args[0];
+-    MachineState *ms = MACHINE(qdev_get_machine());
+-
+-    if (mem < ms->ram_size) {
+-        /* Early printk */
+-        return 0;
+-    }
+-    return -EINVAL;
+-}
+-
+-static void virtio_ccw_register_hcalls(void)
+-{
+-    s390_register_virtio_hypercall(KVM_S390_VIRTIO_CCW_NOTIFY,
+-                                   virtio_ccw_hcall_notify);
+-    /* Tolerate early printk. */
+-    s390_register_virtio_hypercall(KVM_S390_VIRTIO_NOTIFY,
+-                                   virtio_ccw_hcall_early_printk);
+-}
+-
+ static void s390_memory_init(MemoryRegion *ram)
+ {
+     MemoryRegion *sysmem = get_system_memory();
+@@ -296,9 +241,6 @@ static void ccw_init(MachineState *machine)
+                               OBJECT(dev));
+     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+ 
+-    /* register hypercalls */
+-    virtio_ccw_register_hcalls();
+-
+     s390_enable_css_support(s390_cpu_addr2state(0));
+ 
+     ret = css_create_css_image(VIRTUAL_CSSID, true);
+diff --git a/hw/s390x/s390-virtio-hcall.c b/hw/s390x/s390-virtio-hcall.c
+index ec7cf8beb3..ca49e3cd22 100644
+--- a/hw/s390x/s390-virtio-hcall.c
++++ b/hw/s390x/s390-virtio-hcall.c
+@@ -11,31 +11,64 @@
+ 
+ #include "qemu/osdep.h"
+ #include "cpu.h"
++#include "hw/boards.h"
+ #include "hw/s390x/s390-virtio-hcall.h"
++#include "hw/s390x/ioinst.h"
++#include "hw/s390x/css.h"
++#include "virtio-ccw.h"
+ 
+-#define MAX_DIAG_SUBCODES 255
++static int handle_virtio_notify(uint64_t mem)
++{
++    MachineState *ms = MACHINE(qdev_get_machine());
+ 
+-static s390_virtio_fn s390_diag500_table[MAX_DIAG_SUBCODES];
++    if (mem < ms->ram_size) {
++        /* Early printk */
++        return 0;
++    }
++    return -EINVAL;
++}
+ 
+-void s390_register_virtio_hypercall(uint64_t code, s390_virtio_fn fn)
++static int handle_virtio_ccw_notify(uint64_t subch_id, uint64_t data)
+ {
+-    assert(code < MAX_DIAG_SUBCODES);
+-    assert(!s390_diag500_table[code]);
++    SubchDev *sch;
++    VirtIODevice *vdev;
++    int cssid, ssid, schid, m;
++    uint16_t vq_idx = data;
++
++    if (ioinst_disassemble_sch_ident(subch_id, &m, &cssid, &ssid, &schid)) {
++        return -EINVAL;
++    }
++    sch = css_find_subch(m, cssid, ssid, schid);
++    if (!sch || !css_subch_visible(sch)) {
++        return -EINVAL;
++    }
+ 
+-    s390_diag500_table[code] = fn;
++    vdev = virtio_ccw_get_vdev(sch);
++    if (vq_idx >= VIRTIO_QUEUE_MAX || !virtio_queue_get_num(vdev, vq_idx)) {
++        return -EINVAL;
++    }
++
++    if (virtio_vdev_has_feature(vdev, VIRTIO_F_NOTIFICATION_DATA)) {
++        virtio_queue_set_shadow_avail_idx(virtio_get_queue(vdev, vq_idx),
++                                          (data >> 16) & 0xFFFF);
++    }
++
++    virtio_queue_notify(vdev, vq_idx);
++    return 0;
+ }
+ 
+ int s390_virtio_hypercall(CPUS390XState *env)
+ {
+-    s390_virtio_fn fn;
+-
+-    if (env->regs[1] < MAX_DIAG_SUBCODES) {
+-        fn = s390_diag500_table[env->regs[1]];
+-        if (fn) {
+-            env->regs[2] = fn(&env->regs[2]);
+-            return 0;
+-        }
+-    }
++    const uint64_t subcode = env->regs[1];
+ 
+-    return -EINVAL;
++    switch (subcode) {
++    case KVM_S390_VIRTIO_NOTIFY:
++        env->regs[2] = handle_virtio_notify(env->regs[2]);
++        return 0;
++    case KVM_S390_VIRTIO_CCW_NOTIFY:
++        env->regs[2] = handle_virtio_ccw_notify(env->regs[2], env->regs[3]);
++        return 0;
++    default:
++        return -EINVAL;
++    }
+ }
+diff --git a/hw/s390x/s390-virtio-hcall.h b/hw/s390x/s390-virtio-hcall.h
+index 3ae6d6ae3a..3d9fe147d2 100644
+--- a/hw/s390x/s390-virtio-hcall.h
++++ b/hw/s390x/s390-virtio-hcall.h
+@@ -18,8 +18,6 @@
+ /* The only thing that we need from the old kvm_virtio.h file */
+ #define KVM_S390_VIRTIO_NOTIFY 0
+ 
+-typedef int (*s390_virtio_fn)(const uint64_t *args);
+-void s390_register_virtio_hypercall(uint64_t code, s390_virtio_fn fn);
+ int s390_virtio_hypercall(CPUS390XState *env);
+ 
+ #endif /* HW_S390_VIRTIO_HCALL_H */
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index 7a0ca5570f..5947dda829 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -51,6 +51,7 @@
+ #include "hw/s390x/s390-virtio-ccw.h"
+ #include "hw/s390x/s390-virtio-hcall.h"
+ #include "target/s390x/kvm/pv.h"
++#include CONFIG_DEVICES
+ 
+ #define kvm_vm_check_mem_attr(s, attr) \
+     kvm_vm_check_attr(s, KVM_S390_VM_MEM_CTRL, attr)
+@@ -1494,9 +1495,11 @@ static int handle_e3(S390CPU *cpu, struct kvm_run *run, uint8_t ipbl)
+ static int handle_hypercall(S390CPU *cpu, struct kvm_run *run)
+ {
+     CPUS390XState *env = &cpu->env;
+-    int ret;
++    int ret = -EINVAL;
+ 
++#ifdef CONFIG_S390_CCW_VIRTIO
+     ret = s390_virtio_hypercall(env);
++#endif /* CONFIG_S390_CCW_VIRTIO */
+     if (ret == -EINVAL) {
+         kvm_s390_program_interrupt(cpu, PGM_SPECIFICATION);
+         return 0;
+diff --git a/target/s390x/tcg/misc_helper.c b/target/s390x/tcg/misc_helper.c
+index 303f86d363..f44136a568 100644
+--- a/target/s390x/tcg/misc_helper.c
++++ b/target/s390x/tcg/misc_helper.c
+@@ -43,6 +43,7 @@
+ #include "hw/s390x/s390-pci-inst.h"
+ #include "hw/boards.h"
+ #include "hw/s390x/tod.h"
++#include CONFIG_DEVICES
+ #endif
+ 
+ /* #define DEBUG_HELPER */
+@@ -116,12 +117,14 @@ void HELPER(diag)(CPUS390XState *env, uint32_t r1, uint32_t r3, uint32_t num)
+     uint64_t r;
+ 
+     switch (num) {
++#ifdef CONFIG_S390_CCW_VIRTIO
+     case 0x500:
+         /* KVM hypercall */
+         bql_lock();
+         r = s390_virtio_hypercall(env);
+         bql_unlock();
+         break;
++#endif /* CONFIG_S390_CCW_VIRTIO */
+     case 0x44:
+         /* yield */
+         r = 0;
+-- 
+2.48.1
+

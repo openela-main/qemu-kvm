@@ -1,0 +1,153 @@
+From 978951b390bb7073293c792c4714516ad40cba73 Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Tue, 25 Feb 2025 14:52:26 -0700
+Subject: [PATCH 3/7] pci: Use PCI PM capability initializer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 348: PCI: Implement basic PCI PM capability backing
+RH-Jira: RHEL-7301
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [3/6] fd862caa094490a9b8a04b00ad39ba58e0b46a7a (eauger1/centos-qemu-kvm)
+
+Switch callers directly initializing the PCI PM capability with
+pci_add_capability() to use pci_pm_init().
+
+Cc: Dmitry Fleytman <dmitry.fleytman@gmail.com>
+Cc: Akihiko Odaki <akihiko.odaki@daynix.com>
+Cc: Jason Wang <jasowang@redhat.com>
+Cc: Stefan Weil <sw@weilnetz.de>
+Cc: Sriram Yagnaraman <sriram.yagnaraman@ericsson.com>
+Cc: Keith Busch <kbusch@kernel.org>
+Cc: Klaus Jensen <its@irrelevant.dk>
+Cc: Jesper Devantier <foss@defmacro.it>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
+Cc: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Akihiko Odaki <akihiko.odaki@daynix.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250225215237.3314011-3-alex.williamson@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 0681ec253141d838210b3c5e6bc0d2d71f2e111e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/net/e1000e.c                 | 3 +--
+ hw/net/eepro100.c               | 4 +---
+ hw/net/igb.c                    | 3 +--
+ hw/nvme/ctrl.c                  | 3 +--
+ hw/pci-bridge/pcie_pci_bridge.c | 2 +-
+ hw/vfio/pci.c                   | 7 ++++++-
+ hw/virtio/virtio-pci.c          | 3 +--
+ 7 files changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/hw/net/e1000e.c b/hw/net/e1000e.c
+index 843892ce09..9eb93d049d 100644
+--- a/hw/net/e1000e.c
++++ b/hw/net/e1000e.c
+@@ -372,8 +372,7 @@ static int
+ e1000e_add_pm_capability(PCIDevice *pdev, uint8_t offset, uint16_t pmc)
+ {
+     Error *local_err = NULL;
+-    int ret = pci_add_capability(pdev, PCI_CAP_ID_PM, offset,
+-                                 PCI_PM_SIZEOF, &local_err);
++    int ret = pci_pm_init(pdev, offset, &local_err);
+ 
+     if (local_err) {
+         error_report_err(local_err);
+diff --git a/hw/net/eepro100.c b/hw/net/eepro100.c
+index d9a70c4544..668a410055 100644
+--- a/hw/net/eepro100.c
++++ b/hw/net/eepro100.c
+@@ -549,9 +549,7 @@ static void e100_pci_reset(EEPRO100State *s, Error **errp)
+     if (info->power_management) {
+         /* Power Management Capabilities */
+         int cfg_offset = 0xdc;
+-        int r = pci_add_capability(&s->dev, PCI_CAP_ID_PM,
+-                                   cfg_offset, PCI_PM_SIZEOF,
+-                                   errp);
++        int r = pci_pm_init(&s->dev, cfg_offset, errp);
+         if (r < 0) {
+             return;
+         }
+diff --git a/hw/net/igb.c b/hw/net/igb.c
+index b92bba402e..a3c22e2391 100644
+--- a/hw/net/igb.c
++++ b/hw/net/igb.c
+@@ -356,8 +356,7 @@ static int
+ igb_add_pm_capability(PCIDevice *pdev, uint8_t offset, uint16_t pmc)
+ {
+     Error *local_err = NULL;
+-    int ret = pci_add_capability(pdev, PCI_CAP_ID_PM, offset,
+-                                 PCI_PM_SIZEOF, &local_err);
++    int ret = pci_pm_init(pdev, offset, &local_err);
+ 
+     if (local_err) {
+         error_report_err(local_err);
+diff --git a/hw/nvme/ctrl.c b/hw/nvme/ctrl.c
+index 9f277b81d8..d451ee0d00 100644
+--- a/hw/nvme/ctrl.c
++++ b/hw/nvme/ctrl.c
+@@ -8293,8 +8293,7 @@ static int nvme_add_pm_capability(PCIDevice *pci_dev, uint8_t offset)
+     Error *err = NULL;
+     int ret;
+ 
+-    ret = pci_add_capability(pci_dev, PCI_CAP_ID_PM, offset,
+-                             PCI_PM_SIZEOF, &err);
++    ret = pci_pm_init(pci_dev, offset, &err);
+     if (err) {
+         error_report_err(err);
+         return ret;
+diff --git a/hw/pci-bridge/pcie_pci_bridge.c b/hw/pci-bridge/pcie_pci_bridge.c
+index 7646ac2397..2f098e3a13 100644
+--- a/hw/pci-bridge/pcie_pci_bridge.c
++++ b/hw/pci-bridge/pcie_pci_bridge.c
+@@ -52,7 +52,7 @@ static void pcie_pci_bridge_realize(PCIDevice *d, Error **errp)
+         goto cap_error;
+     }
+ 
+-    pos = pci_add_capability(d, PCI_CAP_ID_PM, 0, PCI_PM_SIZEOF, errp);
++    pos = pci_pm_init(d, 0, errp);
+     if (pos < 0) {
+         goto pm_error;
+     }
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 82a47edc89..e18b57d864 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2220,7 +2220,12 @@ static bool vfio_add_std_cap(VFIOPCIDevice *vdev, uint8_t pos, Error **errp)
+     case PCI_CAP_ID_PM:
+         vfio_check_pm_reset(vdev, pos);
+         vdev->pm_cap = pos;
+-        ret = pci_add_capability(pdev, cap_id, pos, size, errp) >= 0;
++        ret = pci_pm_init(pdev, pos, errp) >= 0;
++        /*
++         * PCI-core config space emulation needs write access to the power
++         * state enabled for tracking BAR mapping relative to PM state.
++         */
++        pci_set_word(pdev->wmask + pos + PCI_PM_CTRL, PCI_PM_CTRL_STATE_MASK);
+         break;
+     case PCI_CAP_ID_AF:
+         vfio_check_af_flr(vdev, pos);
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 524b63e5c7..4b2aeaad8d 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -2195,8 +2195,7 @@ static void virtio_pci_realize(PCIDevice *pci_dev, Error **errp)
+         pos = pcie_endpoint_cap_init(pci_dev, 0);
+         assert(pos > 0);
+ 
+-        pos = pci_add_capability(pci_dev, PCI_CAP_ID_PM, 0,
+-                                 PCI_PM_SIZEOF, errp);
++        pos = pci_pm_init(pci_dev, 0, errp);
+         if (pos < 0) {
+             return;
+         }
+-- 
+2.48.1
+

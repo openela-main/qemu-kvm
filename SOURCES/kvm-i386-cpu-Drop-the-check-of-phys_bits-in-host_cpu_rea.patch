@@ -1,0 +1,79 @@
+From 8e732c71def28ac963a8f8d530c7dc063abc6d97 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 006/115] i386/cpu: Drop the check of phys_bits in
+ host_cpu_realizefn()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [6/115] a53971f358752d7c850baee4f8f3c7912854f160 (bonzini/rhel-qemu-kvm)
+
+The check of cpu->phys_bits to be in range between
+[32, TARGET_PHYS_ADDR_SPACE_BITS] in host_cpu_realizefn()
+is duplicated with check in x86_cpu_realizefn().
+
+Since the ckeck in x86_cpu_realizefn() is called later and can cover all
+the x86 cases. Remove the one in host_cpu_realizefn().
+
+Opportunistically adjust cpu->phys_bits directly in
+host_cpu_adjust_phys_bits(), which matches more with the function name.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20240929085747.2023198-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 855bdb6c8a60ae20043531dc965fcb1ed171d7d9)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/host-cpu.c | 16 +++-------------
+ 1 file changed, 3 insertions(+), 13 deletions(-)
+
+diff --git a/target/i386/host-cpu.c b/target/i386/host-cpu.c
+index 8b8bf5afec..03b9d1b169 100644
+--- a/target/i386/host-cpu.c
++++ b/target/i386/host-cpu.c
+@@ -42,7 +42,7 @@ static uint32_t host_cpu_phys_bits(void)
+     return host_phys_bits;
+ }
+ 
+-static uint32_t host_cpu_adjust_phys_bits(X86CPU *cpu)
++static void host_cpu_adjust_phys_bits(X86CPU *cpu)
+ {
+     uint32_t host_phys_bits = host_cpu_phys_bits();
+     uint32_t phys_bits = cpu->phys_bits;
+@@ -66,7 +66,7 @@ static uint32_t host_cpu_adjust_phys_bits(X86CPU *cpu)
+         }
+     }
+ 
+-    return phys_bits;
++    cpu->phys_bits = phys_bits;
+ }
+ 
+ bool host_cpu_realizefn(CPUState *cs, Error **errp)
+@@ -75,17 +75,7 @@ bool host_cpu_realizefn(CPUState *cs, Error **errp)
+     CPUX86State *env = &cpu->env;
+ 
+     if (env->features[FEAT_8000_0001_EDX] & CPUID_EXT2_LM) {
+-        uint32_t phys_bits = host_cpu_adjust_phys_bits(cpu);
+-
+-        if (phys_bits &&
+-            (phys_bits > TARGET_PHYS_ADDR_SPACE_BITS ||
+-             phys_bits < 32)) {
+-            error_setg(errp, "phys-bits should be between 32 and %u "
+-                       " (but is %u)",
+-                       TARGET_PHYS_ADDR_SPACE_BITS, phys_bits);
+-            return false;
+-        }
+-        cpu->phys_bits = phys_bits;
++        host_cpu_adjust_phys_bits(cpu);
+     }
+     return true;
+ }
+-- 
+2.50.1
+

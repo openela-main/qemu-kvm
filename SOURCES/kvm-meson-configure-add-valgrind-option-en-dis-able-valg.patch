@@ -1,0 +1,110 @@
+From 0277328b5a2d1df5d9843423ab5f5fa9481bad79 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Fri, 25 Apr 2025 13:17:12 +0100
+Subject: [PATCH 1/5] meson/configure: add 'valgrind' option & --{en,
+ dis}able-valgrind flag
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 359: distro: add an explicit valgrind-devel build dep
+RH-Jira: RHEL-88153
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/2] ba9bc44ef9cef6fa76e2092500608575f223f1f7 (berrange/centos-src-qemu)
+
+Currently valgrind debugging support for coroutine stacks is enabled
+unconditionally when valgrind/valgrind.h is found. There is no way
+to disable valgrind support if valgrind.h is present in the build env.
+
+This is bad for distros, as an dependency far down the chain may cause
+valgrind.h to become installed, inadvertently enabling QEMU's valgrind
+debugging support. It also means if a distro wants valgrind support
+there is no way to mandate this.
+
+The solution is to add a 'valgrind' build feature to meson and thus
+configure script.
+
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Message-ID: <20250425121713.1913424-1-berrange@redhat.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 6b1c744ec0d66d6d568f9a156282153fc11a21cf)
+
+Conflicts:
+    meson.build - context from upstream is not present in older tree
+---
+ meson.build                   | 13 ++++++++++++-
+ meson_options.txt             |  2 ++
+ scripts/meson-buildoptions.sh |  3 +++
+ 3 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index 1dd97c6f49..5bb2b757c3 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2463,7 +2463,17 @@ config_host_data.set('CONFIG_FSTRIM', qga_fstrim)
+ # has_header
+ config_host_data.set('CONFIG_EPOLL', cc.has_header('sys/epoll.h'))
+ config_host_data.set('CONFIG_LINUX_MAGIC_H', cc.has_header('linux/magic.h'))
+-config_host_data.set('CONFIG_VALGRIND_H', cc.has_header('valgrind/valgrind.h'))
++valgrind = false
++if get_option('valgrind').allowed()
++    if cc.has_header('valgrind/valgrind.h')
++        valgrind = true
++    else
++        if get_option('valgrind').enabled()
++            error('valgrind requested but valgrind.h not found')
++        endif
++    endif
++endif
++config_host_data.set('CONFIG_VALGRIND_H', valgrind)
+ config_host_data.set('HAVE_BTRFS_H', cc.has_header('linux/btrfs.h'))
+ config_host_data.set('HAVE_DRM_H', cc.has_header('libdrm/drm.h'))
+ config_host_data.set('HAVE_PTY_H', cc.has_header('pty.h'))
+@@ -4549,6 +4559,7 @@ summary_info += {'libdw':             libdw}
+ if host_os == 'freebsd'
+   summary_info += {'libinotify-kqueue': inotify}
+ endif
++summary_info += {'valgrind':          valgrind}
+ summary(summary_info, bool_yn: true, section: 'Dependencies')
+ 
+ if host_arch == 'unknown'
+diff --git a/meson_options.txt b/meson_options.txt
+index aa2ba0baef..da06441fdf 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -113,6 +113,8 @@ option('dbus_display', type: 'feature', value: 'auto',
+        description: '-display dbus support')
+ option('tpm', type : 'feature', value : 'auto',
+        description: 'TPM support')
++option('valgrind', type : 'feature', value: 'auto',
++       description: 'valgrind debug support for coroutine stacks')
+ 
+ # Do not enable it by default even for Mingw32, because it doesn't
+ # work on Wine.
+diff --git a/scripts/meson-buildoptions.sh b/scripts/meson-buildoptions.sh
+index 5f0cbfc725..251470ea6d 100644
+--- a/scripts/meson-buildoptions.sh
++++ b/scripts/meson-buildoptions.sh
+@@ -191,6 +191,7 @@ meson_options_help() {
+   printf "%s\n" '  u2f             U2F emulation support'
+   printf "%s\n" '  uadk            UADK Library support'
+   printf "%s\n" '  usb-redir       libusbredir support'
++  printf "%s\n" '  valgrind        valgrind debug support for coroutine stacks'
+   printf "%s\n" '  vde             vde network backend support'
+   printf "%s\n" '  vdi             vdi image format support'
+   printf "%s\n" '  vduse-blk-export'
+@@ -509,6 +510,8 @@ _meson_option_parse() {
+     --disable-uadk) printf "%s" -Duadk=disabled ;;
+     --enable-usb-redir) printf "%s" -Dusb_redir=enabled ;;
+     --disable-usb-redir) printf "%s" -Dusb_redir=disabled ;;
++    --enable-valgrind) printf "%s" -Dvalgrind=enabled ;;
++    --disable-valgrind) printf "%s" -Dvalgrind=disabled ;;
+     --enable-vde) printf "%s" -Dvde=enabled ;;
+     --disable-vde) printf "%s" -Dvde=disabled ;;
+     --enable-vdi) printf "%s" -Dvdi=enabled ;;
+-- 
+2.48.1
+

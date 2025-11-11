@@ -1,0 +1,81 @@
+From 80be4b7d44d4721bacaa6205a47f2d898a090c6b Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Tue, 25 Feb 2025 14:52:27 -0700
+Subject: [PATCH 4/7] vfio/pci: Delete local pm_cap
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 348: PCI: Implement basic PCI PM capability backing
+RH-Jira: RHEL-7301
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Alex Williamson <None>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [4/6] 85bd6b15af7c483e36e265c12b7b1689a4872f4c (eauger1/centos-qemu-kvm)
+
+This is now redundant to PCIDevice.pm_cap.
+
+Cc: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250225215237.3314011-4-alex.williamson@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 05c6a8eff6298675080aa2692ee05a310b3483b4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 9 ++++-----
+ hw/vfio/pci.h | 1 -
+ 2 files changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index e18b57d864..595b5c9b25 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2219,7 +2219,6 @@ static bool vfio_add_std_cap(VFIOPCIDevice *vdev, uint8_t pos, Error **errp)
+         break;
+     case PCI_CAP_ID_PM:
+         vfio_check_pm_reset(vdev, pos);
+-        vdev->pm_cap = pos;
+         ret = pci_pm_init(pdev, pos, errp) >= 0;
+         /*
+          * PCI-core config space emulation needs write access to the power
+@@ -2416,17 +2415,17 @@ void vfio_pci_pre_reset(VFIOPCIDevice *vdev)
+     vfio_disable_interrupts(vdev);
+ 
+     /* Make sure the device is in D0 */
+-    if (vdev->pm_cap) {
++    if (pdev->pm_cap) {
+         uint16_t pmcsr;
+         uint8_t state;
+ 
+-        pmcsr = vfio_pci_read_config(pdev, vdev->pm_cap + PCI_PM_CTRL, 2);
++        pmcsr = vfio_pci_read_config(pdev, pdev->pm_cap + PCI_PM_CTRL, 2);
+         state = pmcsr & PCI_PM_CTRL_STATE_MASK;
+         if (state) {
+             pmcsr &= ~PCI_PM_CTRL_STATE_MASK;
+-            vfio_pci_write_config(pdev, vdev->pm_cap + PCI_PM_CTRL, pmcsr, 2);
++            vfio_pci_write_config(pdev, pdev->pm_cap + PCI_PM_CTRL, pmcsr, 2);
+             /* vfio handles the necessary delay here */
+-            pmcsr = vfio_pci_read_config(pdev, vdev->pm_cap + PCI_PM_CTRL, 2);
++            pmcsr = vfio_pci_read_config(pdev, pdev->pm_cap + PCI_PM_CTRL, 2);
+             state = pmcsr & PCI_PM_CTRL_STATE_MASK;
+             if (state) {
+                 error_report("vfio: Unable to power on device, stuck in D%d",
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index 0d3c93fb2e..ca8d55f8b2 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -161,7 +161,6 @@ struct VFIOPCIDevice {
+     int32_t bootindex;
+     uint32_t igd_gms;
+     OffAutoPCIBAR msix_relo;
+-    uint8_t pm_cap;
+     uint8_t nv_gpudirect_clique;
+     bool pci_aer;
+     bool req_enabled;
+-- 
+2.48.1
+

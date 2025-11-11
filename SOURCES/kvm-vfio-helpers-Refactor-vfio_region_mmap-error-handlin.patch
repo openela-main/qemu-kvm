@@ -1,17 +1,17 @@
-From 41ea67ec82122d12ed26a98fe32d29e90f8fd282 Mon Sep 17 00:00:00 2001
+From f3af9e4476546c0bc814f78d5dd1047ec60768e8 Mon Sep 17 00:00:00 2001
 From: Alex Williamson <alex.williamson@redhat.com>
 Date: Tue, 22 Oct 2024 14:08:28 -0600
-Subject: [PATCH 1/2] vfio/helpers: Refactor vfio_region_mmap() error handling
+Subject: [PATCH 4/5] vfio/helpers: Refactor vfio_region_mmap() error handling
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-RH-Author: Alex Williamson <None>
-RH-MergeRequest: 468: vfio/helpers: Align mmaps [9.6.z]
-RH-Jira: RHEL-107314
+RH-Author: Donald Dutile <None>
+RH-MergeRequest: 366: Improve VFIO mmapping performance with huge pfnmaps
+RH-Jira: RHEL-88533
 RH-Acked-by: Cédric Le Goater <clg@redhat.com>
-RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Commit: [1/2] b91e8d009b8a6ff91bf273211272b101bc1c1146
+RH-Acked-by: Alex Williamson <None>
+RH-Commit: [1/2] b83c7dbc6a6037b465a141961ae810e5551fad30 (ddutile/qemu-kvm)
 
 Move error handling code to the end of the function so that it can more
 easily be shared by new mmap failure conditions.  No functional change
@@ -21,7 +21,10 @@ Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
 Reviewed-by: Peter Xu <peterx@redhat.com>
 Reviewed-by: Cédric Le Goater <clg@redhat.com>
 (cherry picked from commit 49915c0d2c9868e6f25e52e4d839943611b69e98)
-Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+
+Jira: https://issues.redhat.com/browse/RHEL-88533
+
+Signed-off-by: Donald Dutile <ddutile@redhat.com>
 ---
  hw/vfio/helpers.c | 34 +++++++++++++++++-----------------
  1 file changed, 17 insertions(+), 17 deletions(-)

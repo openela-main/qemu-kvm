@@ -1,0 +1,78 @@
+From 43d75b6ffdd152f55c366befb9eabbc8d0a7f6e7 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:46 +0200
+Subject: [PATCH 048/115] i386/tdx: Don't initialize pc.rom for TDX VMs
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [48/115] 857ab7fccb138b45db15621688e412aef24b5821 (bonzini/rhel-qemu-kvm)
+
+For TDX, the address below 1MB are entirely general RAM. No need to
+initialize pc.rom memory region for TDs.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-20-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 49b1f0f812372129736c1df0421c8f67d86d362b)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ hw/i386/pc.c | 29 ++++++++++++++++-------------
+ 1 file changed, 16 insertions(+), 13 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 5237538640..057cd1fb86 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -43,6 +43,7 @@
+ #include "sysemu/xen.h"
+ #include "sysemu/reset.h"
+ #include "kvm/kvm_i386.h"
++#include "kvm/tdx.h"
+ #include "hw/xen/xen.h"
+ #include "qapi/qmp/qlist.h"
+ #include "qemu/error-report.h"
+@@ -1131,21 +1132,23 @@ void pc_memory_init(PCMachineState *pcms,
+     /* Initialize PC system firmware */
+     pc_system_firmware_init(pcms, rom_memory);
+ 
+-    option_rom_mr = g_malloc(sizeof(*option_rom_mr));
+-    if (machine_require_guest_memfd(machine)) {
+-        memory_region_init_ram_guest_memfd(option_rom_mr, NULL, "pc.rom",
+-                                           PC_ROM_SIZE, &error_fatal);
+-    } else {
+-        memory_region_init_ram(option_rom_mr, NULL, "pc.rom", PC_ROM_SIZE,
+-                               &error_fatal);
+-        if (pcmc->pci_enabled) {
+-            memory_region_set_readonly(option_rom_mr, true);
++    if (!is_tdx_vm()) {
++        option_rom_mr = g_malloc(sizeof(*option_rom_mr));
++        if (machine_require_guest_memfd(machine)) {
++            memory_region_init_ram_guest_memfd(option_rom_mr, NULL, "pc.rom",
++                                            PC_ROM_SIZE, &error_fatal);
++        } else {
++            memory_region_init_ram(option_rom_mr, NULL, "pc.rom", PC_ROM_SIZE,
++                                &error_fatal);
++            if (pcmc->pci_enabled) {
++                memory_region_set_readonly(option_rom_mr, true);
++            }
+         }
++        memory_region_add_subregion_overlap(rom_memory,
++                                            PC_ROM_MIN_VGA,
++                                            option_rom_mr,
++                                            1);
+     }
+-    memory_region_add_subregion_overlap(rom_memory,
+-                                        PC_ROM_MIN_VGA,
+-                                        option_rom_mr,
+-                                        1);
+ 
+     fw_cfg = fw_cfg_arch_create(machine,
+                                 x86ms->boot_cpus, x86ms->apic_id_limit);
+-- 
+2.50.1
+

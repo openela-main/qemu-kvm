@@ -1,0 +1,241 @@
+From 5040f835f07f3355ae80b3da2ae83ce35de022e0 Mon Sep 17 00:00:00 2001
+From: Eric Blake <eblake@redhat.com>
+Date: Fri, 9 May 2025 15:40:26 -0500
+Subject: [PATCH 11/16] mirror: Drop redundant zero_target parameter
+
+RH-Author: Eric Blake <eblake@redhat.com>
+RH-MergeRequest: 365: blockdev-mirror: More efficient handling of sparse mirrors
+RH-Jira: RHEL-82906 RHEL-83015
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [9/14] b84a938c69e3761211b9fee4c59b465d55f61855 (ebblake/centos-qemu-kvm)
+
+The two callers to a mirror job (drive-mirror and blockdev-mirror) set
+zero_target precisely when sync mode == FULL, with the one exception
+that drive-mirror skips zeroing the target if it was newly created and
+reads as zero.  But given the previous patch, that exception is
+equally captured by target_is_zero.
+
+Meanwhile, there is another slight wrinkle, fortunately caught by
+iotest 185: if the caller uses "sync":"top" but the source has no
+backing file, the code in blockdev.c was changing sync to be FULL, but
+only after it had set zero_target=false.  In mirror.c, prior to recent
+patches, this didn't matter: the only places that inspected sync were
+setting is_none_mode (both TOP and FULL had set that to false), and
+mirror_start() setting base = mode == MIRROR_SYNC_MODE_TOP ?
+bdrv_backing_chain_next(bs) : NULL.  But now that we are passing sync
+around, the slammed sync mode would result in a new pre-zeroing pass
+even when the user had passed "sync":"top" in an effort to skip
+pre-zeroing.  Fortunately, the assignment of base when bs has no
+backing chain still works out to NULL if we don't slam things.  So
+with the forced change of sync ripped out of blockdev.c, the sync mode
+is passed through the full callstack unmolested, and we can now
+reliably reconstruct the same settings as what used to be passed in by
+zero_target=false, without the redundant parameter.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Message-ID: <20250509204341.3553601-24-eblake@redhat.com>
+Reviewed-by: Sunny Zhu <sunnyzhyy@qq.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+[eblake: Fix regression in iotest 185]
+Signed-off-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 253b43a29077de9266351e120c600a73b82e9c49)
+Jira: https://issues.redhat.com/browse/RHEL-82906
+Jira: https://issues.redhat.com/browse/RHEL-83015
+Signed-off-by: Eric Blake <eblake@redhat.com>
+---
+ block/mirror.c                         | 13 +++++--------
+ blockdev.c                             | 19 ++++---------------
+ include/block/block_int-global-state.h |  3 +--
+ tests/unit/test-block-iothread.c       |  2 +-
+ 4 files changed, 11 insertions(+), 26 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index bba3e3b05c..b35d12adaa 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -53,8 +53,6 @@ typedef struct MirrorBlockJob {
+     Error *replace_blocker;
+     MirrorSyncMode sync_mode;
+     BlockMirrorBackingMode backing_mode;
+-    /* Whether the target image requires explicit zero-initialization */
+-    bool zero_target;
+     /* Whether the target should be assumed to be already zero initialized */
+     bool target_is_zero;
+     /*
+@@ -854,7 +852,9 @@ static int coroutine_fn GRAPH_UNLOCKED mirror_dirty_init(MirrorBlockJob *s)
+     bs = s->mirror_top_bs->backing->bs;
+     bdrv_graph_co_rdunlock();
+ 
+-    if (s->zero_target && (!s->target_is_zero || punch_holes)) {
++    if (s->sync_mode == MIRROR_SYNC_MODE_TOP) {
++        /* In TOP mode, there is no benefit to a pre-zeroing pass.  */
++    } else if (!s->target_is_zero || punch_holes) {
+         /*
+          * Here, we are in FULL mode; our goal is to avoid writing
+          * zeroes if the destination already reads as zero, except
+@@ -1730,7 +1730,7 @@ static BlockJob *mirror_start_job(
+                              uint32_t granularity, int64_t buf_size,
+                              MirrorSyncMode sync_mode,
+                              BlockMirrorBackingMode backing_mode,
+-                             bool zero_target, bool target_is_zero,
++                             bool target_is_zero,
+                              BlockdevOnError on_source_error,
+                              BlockdevOnError on_target_error,
+                              bool unmap,
+@@ -1898,7 +1898,6 @@ static BlockJob *mirror_start_job(
+     s->on_target_error = on_target_error;
+     s->sync_mode = sync_mode;
+     s->backing_mode = backing_mode;
+-    s->zero_target = zero_target;
+     s->target_is_zero = target_is_zero;
+     qatomic_set(&s->copy_mode, copy_mode);
+     s->base = base;
+@@ -2028,7 +2027,7 @@ void mirror_start(const char *job_id, BlockDriverState *bs,
+                   int creation_flags, int64_t speed,
+                   uint32_t granularity, int64_t buf_size,
+                   MirrorSyncMode mode, BlockMirrorBackingMode backing_mode,
+-                  bool zero_target, bool target_is_zero,
++                  bool target_is_zero,
+                   BlockdevOnError on_source_error,
+                   BlockdevOnError on_target_error,
+                   bool unmap, const char *filter_node_name,
+@@ -2051,7 +2050,6 @@ void mirror_start(const char *job_id, BlockDriverState *bs,
+ 
+     mirror_start_job(job_id, bs, creation_flags, target, replaces,
+                      speed, granularity, buf_size, mode, backing_mode,
+-                     zero_target,
+                      target_is_zero, on_source_error, on_target_error, unmap,
+                      NULL, NULL, &mirror_job_driver, base, false,
+                      filter_node_name, true, copy_mode, false, errp);
+@@ -2080,7 +2078,6 @@ BlockJob *commit_active_start(const char *job_id, BlockDriverState *bs,
+     job = mirror_start_job(
+                      job_id, bs, creation_flags, base, NULL, speed, 0, 0,
+                      MIRROR_SYNC_MODE_TOP, MIRROR_LEAVE_BACKING_CHAIN, false,
+-                     false,
+                      on_error, on_error, true, cb, opaque,
+                      &commit_active_job_driver, base, auto_complete,
+                      filter_node_name, false, MIRROR_COPY_MODE_BACKGROUND,
+diff --git a/blockdev.c b/blockdev.c
+index db11a99312..04fa759e30 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -2795,7 +2795,7 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
+                                    const char *replaces,
+                                    enum MirrorSyncMode sync,
+                                    BlockMirrorBackingMode backing_mode,
+-                                   bool zero_target, bool target_is_zero,
++                                   bool target_is_zero,
+                                    bool has_speed, int64_t speed,
+                                    bool has_granularity, uint32_t granularity,
+                                    bool has_buf_size, int64_t buf_size,
+@@ -2862,10 +2862,6 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
+         return;
+     }
+ 
+-    if (!bdrv_backing_chain_next(bs) && sync == MIRROR_SYNC_MODE_TOP) {
+-        sync = MIRROR_SYNC_MODE_FULL;
+-    }
+-
+     if (!replaces) {
+         /* We want to mirror from @bs, but keep implicit filters on top */
+         unfiltered_bs = bdrv_skip_implicit_filters(bs);
+@@ -2907,7 +2903,7 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
+      * and will allow to check whether the node still exist at mirror completion
+      */
+     mirror_start(job_id, bs, target, replaces, job_flags,
+-                 speed, granularity, buf_size, sync, backing_mode, zero_target,
++                 speed, granularity, buf_size, sync, backing_mode,
+                  target_is_zero, on_source_error, on_target_error, unmap,
+                  filter_node_name, copy_mode, errp);
+ }
+@@ -2923,7 +2919,6 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
+     int flags;
+     int64_t size;
+     const char *format = arg->format;
+-    bool zero_target;
+     bool target_is_zero;
+     int ret;
+ 
+@@ -3038,9 +3033,6 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
+     }
+ 
+     bdrv_graph_rdlock_main_loop();
+-    zero_target = (arg->sync == MIRROR_SYNC_MODE_FULL &&
+-                   (arg->mode == NEW_IMAGE_MODE_EXISTING ||
+-                    !bdrv_has_zero_init(target_bs)));
+     target_is_zero = (arg->mode != NEW_IMAGE_MODE_EXISTING &&
+                       bdrv_has_zero_init(target_bs));
+     bdrv_graph_rdunlock_main_loop();
+@@ -3054,7 +3046,7 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
+ 
+     blockdev_mirror_common(arg->job_id, bs, target_bs,
+                            arg->replaces, arg->sync,
+-                           backing_mode, zero_target, target_is_zero,
++                           backing_mode, target_is_zero,
+                            arg->has_speed, arg->speed,
+                            arg->has_granularity, arg->granularity,
+                            arg->has_buf_size, arg->buf_size,
+@@ -3091,7 +3083,6 @@ void qmp_blockdev_mirror(const char *job_id,
+     BlockDriverState *target_bs;
+     AioContext *aio_context;
+     BlockMirrorBackingMode backing_mode = MIRROR_LEAVE_BACKING_CHAIN;
+-    bool zero_target;
+     int ret;
+ 
+     bs = qmp_get_root_bs(device, errp);
+@@ -3104,8 +3095,6 @@ void qmp_blockdev_mirror(const char *job_id,
+         return;
+     }
+ 
+-    zero_target = (sync == MIRROR_SYNC_MODE_FULL);
+-
+     aio_context = bdrv_get_aio_context(bs);
+ 
+     ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
+@@ -3115,7 +3104,7 @@ void qmp_blockdev_mirror(const char *job_id,
+ 
+     blockdev_mirror_common(job_id, bs, target_bs,
+                            replaces, sync, backing_mode,
+-                           zero_target, has_target_is_zero && target_is_zero,
++                           has_target_is_zero && target_is_zero,
+                            has_speed, speed,
+                            has_granularity, granularity,
+                            has_buf_size, buf_size,
+diff --git a/include/block/block_int-global-state.h b/include/block/block_int-global-state.h
+index 8cf0003ce7..d21bd7fd2f 100644
+--- a/include/block/block_int-global-state.h
++++ b/include/block/block_int-global-state.h
+@@ -139,7 +139,6 @@ BlockJob *commit_active_start(const char *job_id, BlockDriverState *bs,
+  * @buf_size: The amount of data that can be in flight at one time.
+  * @mode: Whether to collapse all images in the chain to the target.
+  * @backing_mode: How to establish the target's backing chain after completion.
+- * @zero_target: Whether the target should be explicitly zero-initialized
+  * @target_is_zero: Whether the target already is zero-initialized.
+  * @on_source_error: The action to take upon error reading from the source.
+  * @on_target_error: The action to take upon error writing to the target.
+@@ -160,7 +159,7 @@ void mirror_start(const char *job_id, BlockDriverState *bs,
+                   int creation_flags, int64_t speed,
+                   uint32_t granularity, int64_t buf_size,
+                   MirrorSyncMode mode, BlockMirrorBackingMode backing_mode,
+-                  bool zero_target, bool target_is_zero,
++                  bool target_is_zero,
+                   BlockdevOnError on_source_error,
+                   BlockdevOnError on_target_error,
+                   bool unmap, const char *filter_node_name,
+diff --git a/tests/unit/test-block-iothread.c b/tests/unit/test-block-iothread.c
+index 033711d8d7..373b72fdd8 100644
+--- a/tests/unit/test-block-iothread.c
++++ b/tests/unit/test-block-iothread.c
+@@ -755,7 +755,7 @@ static void test_propagate_mirror(void)
+ 
+     /* Start a mirror job */
+     mirror_start("job0", src, target, NULL, JOB_DEFAULT, 0, 0, 0,
+-                 MIRROR_SYNC_MODE_NONE, MIRROR_OPEN_BACKING_CHAIN, false, false,
++                 MIRROR_SYNC_MODE_NONE, MIRROR_OPEN_BACKING_CHAIN, false,
+                  BLOCKDEV_ON_ERROR_REPORT, BLOCKDEV_ON_ERROR_REPORT,
+                  false, "filter_node", MIRROR_COPY_MODE_BACKGROUND,
+                  &error_abort);
+-- 
+2.48.1
+

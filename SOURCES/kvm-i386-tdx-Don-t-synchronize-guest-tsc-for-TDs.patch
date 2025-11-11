@@ -1,0 +1,46 @@
+From 6339bd26122c876a663e841810de28c064e09128 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:47 +0200
+Subject: [PATCH 068/115] i386/tdx: Don't synchronize guest tsc for TDs
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [68/115] 56f6dc49e20933d8539b2413a902a2fbad2751e0 (bonzini/rhel-qemu-kvm)
+
+TSC of TDs is not accessible and KVM doesn't allow access of
+MSR_IA32_TSC for TDs. To avoid the assert() in kvm_get_tsc, make
+kvm_synchronize_all_tsc() noop for TDs,
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+Reviewed-by: Connor Kuehl <ckuehl@redhat.com>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-40-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 0ed55865b49b703af93e160d48935812a7114e07)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/kvm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index f4809ee004..0c47eef03c 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -319,7 +319,7 @@ void kvm_synchronize_all_tsc(void)
+ {
+     CPUState *cpu;
+ 
+-    if (kvm_enabled()) {
++    if (kvm_enabled() && !is_tdx_vm()) {
+         CPU_FOREACH(cpu) {
+             run_on_cpu(cpu, do_kvm_synchronize_tsc, RUN_ON_CPU_NULL);
+         }
+-- 
+2.50.1
+

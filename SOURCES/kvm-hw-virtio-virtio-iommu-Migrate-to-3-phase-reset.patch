@@ -1,0 +1,96 @@
+From 9ca5d7ac4f0ff5f10bf424df8104fe5abe01e431 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Feb 2025 19:25:31 +0100
+Subject: [PATCH 1/9] hw/virtio/virtio-iommu: Migrate to 3-phase reset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 341: Fix vIOMMU reset order
+RH-Jira: RHEL-7188
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [1/5] 32bf47497d5d4817a448d07ffa7a844aee82ae3c (eauger1/centos-qemu-kvm)
+
+Currently the iommu may be reset before the devices
+it protects. For example this happens with virtio-net.
+
+Let's use 3-phase reset mechanism and reset the IOMMU on
+exit phase after all DMA capable devices have been
+reset during the 'enter' or 'hold' phase.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+
+Message-Id: <20250218182737.76722-2-eric.auger@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit d261b84d354a41a38336af813f92f636d3fb3f78)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/virtio/trace-events   |  2 +-
+ hw/virtio/virtio-iommu.c | 14 ++++++++++----
+ 2 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
+index 04e36ae047..76f0d458b2 100644
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -108,7 +108,7 @@ virtio_pci_notify_write(uint64_t addr, uint64_t val, unsigned int size) "0x%" PR
+ virtio_pci_notify_write_pio(uint64_t addr, uint64_t val, unsigned int size) "0x%" PRIx64" = 0x%" PRIx64 " (%d)"
+ 
+ # hw/virtio/virtio-iommu.c
+-virtio_iommu_device_reset(void) "reset!"
++virtio_iommu_device_reset_exit(void) "reset!"
+ virtio_iommu_system_reset(void) "system reset!"
+ virtio_iommu_get_features(uint64_t features) "device supports features=0x%"PRIx64
+ virtio_iommu_device_status(uint8_t status) "driver status = %d"
+diff --git a/hw/virtio/virtio-iommu.c b/hw/virtio/virtio-iommu.c
+index 59ef4fb217..496200ebc5 100644
+--- a/hw/virtio/virtio-iommu.c
++++ b/hw/virtio/virtio-iommu.c
+@@ -1504,11 +1504,11 @@ static void virtio_iommu_device_unrealize(DeviceState *dev)
+     virtio_cleanup(vdev);
+ }
+ 
+-static void virtio_iommu_device_reset(VirtIODevice *vdev)
++static void virtio_iommu_device_reset_exit(Object *obj, ResetType type)
+ {
+-    VirtIOIOMMU *s = VIRTIO_IOMMU(vdev);
++    VirtIOIOMMU *s = VIRTIO_IOMMU(obj);
+ 
+-    trace_virtio_iommu_device_reset();
++    trace_virtio_iommu_device_reset_exit();
+ 
+     if (s->domains) {
+         g_tree_destroy(s->domains);
+@@ -1669,6 +1669,7 @@ static void virtio_iommu_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
++    ResettableClass *rc = RESETTABLE_CLASS(klass);
+ 
+     device_class_set_props(dc, virtio_iommu_properties);
+     dc->vmsd = &vmstate_virtio_iommu;
+@@ -1676,7 +1677,12 @@ static void virtio_iommu_class_init(ObjectClass *klass, void *data)
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+     vdc->realize = virtio_iommu_device_realize;
+     vdc->unrealize = virtio_iommu_device_unrealize;
+-    vdc->reset = virtio_iommu_device_reset;
++
++    /*
++     * Use 'exit' reset phase to make sure all DMA requests
++     * have been quiesced during 'enter' or 'hold' phase
++     */
++    rc->phases.exit = virtio_iommu_device_reset_exit;
+     vdc->get_config = virtio_iommu_get_config;
+     vdc->set_config = virtio_iommu_set_config;
+     vdc->get_features = virtio_iommu_get_features;
+-- 
+2.48.1
+

@@ -1,0 +1,140 @@
+From 9ec2d356210f1e66f50519cc4d58633a13db9004 Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Thu, 19 Dec 2024 15:41:06 +0100
+Subject: [PATCH 14/26] s390x/s390-virtio-ccw: move setting the maximum guest
+ size from sclp to machine code
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [14/26] a5970c1c6d8d09a473a25a7eee533ec3a6711ec8 (thuth/qemu-kvm-cs)
+
+Nowadays, it feels more natural to have that code located in
+s390_memory_init(), where we also have direct access to the machine
+object.
+
+While at it, use the actual RAM size, not the maximum RAM size which
+cannot currently be reached without support for any memory devices.
+Consequently update s390_pv_vm_try_disable_async() to rely on the RAM size
+as well, to avoid temporary issues while we further rework that
+handling.
+
+set_memory_limit() is temporary, we'll merge it with
+s390_set_memory_limit() next.
+
+Message-ID: <20241219144115.2820241-6-david@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 3c6fb557d295949bea291c3bf88ee9c83392e78c)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/s390-virtio-ccw.c | 28 ++++++++++++++++++++++++----
+ hw/s390x/sclp.c            | 11 -----------
+ target/s390x/kvm/pv.c      |  2 +-
+ 3 files changed, 25 insertions(+), 16 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index d47e99028e..248ac28d20 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -121,11 +121,29 @@ static void subsystem_reset(void)
+     }
+ }
+ 
+-static void s390_memory_init(MemoryRegion *ram)
++static void set_memory_limit(uint64_t new_limit)
++{
++    uint64_t hw_limit;
++    int ret;
++
++    ret = s390_set_memory_limit(new_limit, &hw_limit);
++    if (ret == -E2BIG) {
++        error_report("host supports a maximum of %" PRIu64 " GB",
++                     hw_limit / GiB);
++        exit(EXIT_FAILURE);
++    } else if (ret) {
++        error_report("setting the guest size failed");
++        exit(EXIT_FAILURE);
++    }
++}
++
++static void s390_memory_init(MachineState *machine)
+ {
+     MemoryRegion *sysmem = get_system_memory();
++    MemoryRegion *ram = machine->ram;
++    uint64_t ram_size = memory_region_size(ram);
+ 
+-    if (!QEMU_IS_ALIGNED(memory_region_size(ram), 1 * MiB)) {
++    if (!QEMU_IS_ALIGNED(ram_size, 1 * MiB)) {
+         /*
+          * SCLP cannot possibly expose smaller granularity right now and KVM
+          * cannot handle smaller granularity. As we don't support NUMA, the
+@@ -136,7 +154,9 @@ static void s390_memory_init(MemoryRegion *ram)
+         exit(EXIT_FAILURE);
+     }
+ 
+-    /* allocate RAM for core */
++    set_memory_limit(ram_size);
++
++    /* Map the initial memory. Must happen after setting the memory limit. */
+     memory_region_add_subregion(sysmem, 0, ram);
+ 
+     /*
+@@ -211,7 +231,7 @@ static void ccw_init(MachineState *machine)
+     qdev_realize_and_unref(DEVICE(ms->sclp), NULL, &error_fatal);
+ 
+     /* init memory + setup max page size. Required for the CPU model */
+-    s390_memory_init(machine->ram);
++    s390_memory_init(machine);
+ 
+     /* init CPUs (incl. CPU model) early so s390_has_feature() works */
+     s390_init_cpus(machine);
+diff --git a/hw/s390x/sclp.c b/hw/s390x/sclp.c
+index 8757626b5c..73e88ab4eb 100644
+--- a/hw/s390x/sclp.c
++++ b/hw/s390x/sclp.c
+@@ -376,10 +376,7 @@ void sclp_service_interrupt(uint32_t sccb)
+ /* qemu object creation and initialization functions */
+ static void sclp_realize(DeviceState *dev, Error **errp)
+ {
+-    MachineState *machine = MACHINE(qdev_get_machine());
+     SCLPDevice *sclp = SCLP(dev);
+-    uint64_t hw_limit;
+-    int ret;
+ 
+     /*
+      * qdev_device_add searches the sysbus for TYPE_SCLP_EVENTS_BUS. As long
+@@ -389,14 +386,6 @@ static void sclp_realize(DeviceState *dev, Error **errp)
+     if (!sysbus_realize(SYS_BUS_DEVICE(sclp->event_facility), errp)) {
+         return;
+     }
+-
+-    ret = s390_set_memory_limit(machine->maxram_size, &hw_limit);
+-    if (ret == -E2BIG) {
+-        error_setg(errp, "host supports a maximum of %" PRIu64 " GB",
+-                   hw_limit / GiB);
+-    } else if (ret) {
+-        error_setg(errp, "setting the guest size failed");
+-    }
+ }
+ 
+ static void sclp_memory_init(SCLPDevice *sclp)
+diff --git a/target/s390x/kvm/pv.c b/target/s390x/kvm/pv.c
+index dde836d21a..424cce75ca 100644
+--- a/target/s390x/kvm/pv.c
++++ b/target/s390x/kvm/pv.c
+@@ -133,7 +133,7 @@ bool s390_pv_vm_try_disable_async(S390CcwMachineState *ms)
+      * If the feature is not present or if the VM is not larger than 2 GiB,
+      * KVM_PV_ASYNC_CLEANUP_PREPARE fill fail; no point in attempting it.
+      */
+-    if ((MACHINE(ms)->maxram_size <= 2 * GiB) ||
++    if ((MACHINE(ms)->ram_size <= 2 * GiB) ||
+         !kvm_check_extension(kvm_state, KVM_CAP_S390_PROTECTED_ASYNC_DISABLE)) {
+         return false;
+     }
+-- 
+2.48.1
+

@@ -1,0 +1,50 @@
+From 99563f467faeace2726e62292b128faf3fb56fcb Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:47 +0200
+Subject: [PATCH 061/115] i386/tdx: implement tdx_cpu_instance_init()
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [61/115] 20d53c1ff1d645a043cac27f33f9778732c1469e (bonzini/rhel-qemu-kvm)
+
+Currently, pmu is not supported for TDX by KVM.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-33-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7c615242671dbe65e198c20889dcaa9b4b9a1624)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 7611f51aae..afd7e62422 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -398,6 +398,11 @@ static int tdx_kvm_type(X86ConfidentialGuest *cg)
+     return KVM_X86_TDX_VM;
+ }
+ 
++static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)
++{
++    object_property_set_bool(OBJECT(cpu), "pmu", false, &error_abort);
++}
++
+ static int tdx_validate_attributes(TdxGuest *tdx, Error **errp)
+ {
+     if ((tdx->attributes & ~tdx_caps->supported_attrs)) {
+@@ -791,4 +796,5 @@ static void tdx_guest_class_init(ObjectClass *oc, void *data)
+ 
+     klass->kvm_init = tdx_kvm_init;
+     x86_klass->kvm_type = tdx_kvm_type;
++    x86_klass->cpu_instance_init = tdx_cpu_instance_init;
+ }
+-- 
+2.50.1
+

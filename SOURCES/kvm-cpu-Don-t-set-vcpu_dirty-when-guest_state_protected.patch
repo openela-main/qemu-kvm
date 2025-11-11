@@ -1,0 +1,48 @@
+From dd4ab64754a52f1e50273cb8153567b0d2f382de Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:48 +0200
+Subject: [PATCH 071/115] cpu: Don't set vcpu_dirty when guest_state_protected
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [71/115] c876a59ee5bbfccea9837ac373a2e664354db3ae (bonzini/rhel-qemu-kvm)
+
+QEMU calls kvm_arch_put_registers() when vcpu_dirty is true in
+kvm_vcpu_exec(). However, for confidential guest, like TDX, putting
+registers is disallowed due to guest state is protected.
+
+Only set vcpu_dirty to true with guest state is not protected when
+creating the vcpu.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-43-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit b4b7fb5a773e1d2215c2aaa99789eca51914b78f)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ accel/kvm/kvm-all.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index c1605bc4fa..43c10c82f6 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -456,7 +456,9 @@ int kvm_create_vcpu(CPUState *cpu)
+ 
+     cpu->kvm_fd = kvm_fd;
+     cpu->kvm_state = s;
+-    cpu->vcpu_dirty = true;
++    if (!s->guest_state_protected) {
++        cpu->vcpu_dirty = true;
++    }
+     cpu->dirty_pages = 0;
+     cpu->throttle_us_per_full = 0;
+ 
+-- 
+2.50.1
+

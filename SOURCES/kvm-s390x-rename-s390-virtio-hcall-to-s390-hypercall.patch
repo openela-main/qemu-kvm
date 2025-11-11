@@ -1,0 +1,113 @@
+From 2fbdf7e3cf23daea470aaa4a29e16641feb76f3c Mon Sep 17 00:00:00 2001
+From: David Hildenbrand <david@redhat.com>
+Date: Thu, 19 Dec 2024 15:41:05 +0100
+Subject: [PATCH 13/26] s390x: rename s390-virtio-hcall* to s390-hypercall*
+
+RH-Author: Thomas Huth <thuth@redhat.com>
+RH-MergeRequest: 351: Enable virtio-mem support on s390x
+RH-Jira: RHEL-72977
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Acked-by: Juraj Marcin <None>
+RH-Commit: [13/26] 3c1ef3cbb137517b306871f0a88a61a59740af5a (thuth/qemu-kvm-cs)
+
+Let's make it clearer that we are talking about general
+QEMU/KVM-specific hypercalls.
+
+Message-ID: <20241219144115.2820241-5-david@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: David Hildenbrand <david@redhat.com>
+(cherry picked from commit 85489fc3652d0c4433c940f1a80a952e8cb5d3cb)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+---
+ hw/s390x/meson.build                               | 2 +-
+ hw/s390x/{s390-virtio-hcall.c => s390-hypercall.c} | 2 +-
+ hw/s390x/{s390-virtio-hcall.h => s390-hypercall.h} | 6 +++---
+ target/s390x/kvm/kvm.c                             | 2 +-
+ target/s390x/tcg/misc_helper.c                     | 2 +-
+ 5 files changed, 7 insertions(+), 7 deletions(-)
+ rename hw/s390x/{s390-virtio-hcall.c => s390-hypercall.c} (97%)
+ rename hw/s390x/{s390-virtio-hcall.h => s390-hypercall.h} (86%)
+
+diff --git a/hw/s390x/meson.build b/hw/s390x/meson.build
+index d6c8c33915..e344a3bd8c 100644
+--- a/hw/s390x/meson.build
++++ b/hw/s390x/meson.build
+@@ -29,7 +29,7 @@ s390x_ss.add(when: 'CONFIG_TCG', if_true: files(
+ ))
+ s390x_ss.add(when: 'CONFIG_S390_CCW_VIRTIO', if_true: files(
+   's390-virtio-ccw.c',
+-  's390-virtio-hcall.c',
++  's390-hypercall.c',
+ ))
+ s390x_ss.add(when: 'CONFIG_TERMINAL3270', if_true: files('3270-ccw.c'))
+ s390x_ss.add(when: 'CONFIG_VFIO', if_true: files('s390-pci-vfio.c'))
+diff --git a/hw/s390x/s390-virtio-hcall.c b/hw/s390x/s390-hypercall.c
+similarity index 97%
+rename from hw/s390x/s390-virtio-hcall.c
+rename to hw/s390x/s390-hypercall.c
+index 5fb78a719e..f816c2b1ef 100644
+--- a/hw/s390x/s390-virtio-hcall.c
++++ b/hw/s390x/s390-hypercall.c
+@@ -12,7 +12,7 @@
+ #include "qemu/osdep.h"
+ #include "cpu.h"
+ #include "hw/boards.h"
+-#include "hw/s390x/s390-virtio-hcall.h"
++#include "hw/s390x/s390-hypercall.h"
+ #include "hw/s390x/ioinst.h"
+ #include "hw/s390x/css.h"
+ #include "virtio-ccw.h"
+diff --git a/hw/s390x/s390-virtio-hcall.h b/hw/s390x/s390-hypercall.h
+similarity index 86%
+rename from hw/s390x/s390-virtio-hcall.h
+rename to hw/s390x/s390-hypercall.h
+index dca456b926..2fa81dbfdd 100644
+--- a/hw/s390x/s390-virtio-hcall.h
++++ b/hw/s390x/s390-hypercall.h
+@@ -9,8 +9,8 @@
+  * directory.
+  */
+ 
+-#ifndef HW_S390_VIRTIO_HCALL_H
+-#define HW_S390_VIRTIO_HCALL_H
++#ifndef HW_S390_HYPERCALL_H
++#define HW_S390_HYPERCALL_H
+ 
+ #include "cpu.h"
+ 
+@@ -21,4 +21,4 @@
+ 
+ void handle_diag_500(S390CPU *cpu, uintptr_t ra);
+ 
+-#endif /* HW_S390_VIRTIO_HCALL_H */
++#endif /* HW_S390_HYPERCALL_H */
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index 42d6a54126..afc8d570c9 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -49,7 +49,7 @@
+ #include "hw/s390x/ebcdic.h"
+ #include "exec/memattrs.h"
+ #include "hw/s390x/s390-virtio-ccw.h"
+-#include "hw/s390x/s390-virtio-hcall.h"
++#include "hw/s390x/s390-hypercall.h"
+ #include "target/s390x/kvm/pv.h"
+ #include CONFIG_DEVICES
+ 
+diff --git a/target/s390x/tcg/misc_helper.c b/target/s390x/tcg/misc_helper.c
+index 2b4310003b..b726a95352 100644
+--- a/target/s390x/tcg/misc_helper.c
++++ b/target/s390x/tcg/misc_helper.c
+@@ -36,7 +36,7 @@
+ #include "sysemu/cpus.h"
+ #include "sysemu/sysemu.h"
+ #include "hw/s390x/ebcdic.h"
+-#include "hw/s390x/s390-virtio-hcall.h"
++#include "hw/s390x/s390-hypercall.h"
+ #include "hw/s390x/sclp.h"
+ #include "hw/s390x/s390_flic.h"
+ #include "hw/s390x/ioinst.h"
+-- 
+2.48.1
+

@@ -1,0 +1,59 @@
+From ec1ff403bb13fbb487a19a16c3da299038fecf2c Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 104/115] i386/tdx: Don't mask off CPUID_EXT_PDCM
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [104/115] 46c1e5c86031d5d9ab9082e2d0affb3ddf7d1fb2 (bonzini/rhel-qemu-kvm)
+
+It gets below warning when booting TDX VMs:
+
+  warning: TDX forcibly sets the feature: CPUID[eax=01h].ECX.pdcm [bit 15]
+
+Because CPUID_EXT_PDCM is fixed1 for TDX, and MSR_IA32_PERF_CAPABILITIES is
+supported for TDX guest unconditioanlly.
+
+Don't mask off CPUID_EXT_PDCM for TDX.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250625035710.2770679-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7ff24fb657d35c014f735f69aef03810fde607ab)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflict: no call to mark_unavailable_features
+---
+ target/i386/cpu.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 2160754869..d0161f922c 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -27,6 +27,7 @@
+ #include "sysemu/hvf.h"
+ #include "hvf/hvf-i386.h"
+ #include "kvm/kvm_i386.h"
++#include "kvm/tdx.h"
+ #include "sev.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+@@ -8011,7 +8012,8 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
+-    if (!cpu->enable_pmu) {
++    /* PDCM is fixed1 bit for TDX */
++    if (!cpu->enable_pmu && !is_tdx_vm()) {
+         env->features[FEAT_1_ECX] &= ~CPUID_EXT_PDCM;
+     }
+ 
+-- 
+2.50.1
+

@@ -1,0 +1,49 @@
+From 70ffde0038f36b6720b73136a4368b26f2bf6181 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 107/115] i386/cpu: Cleanup host_cpu_max_instance_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [107/115] 140ba66d2ff544b6ae498798e1f6ad3ade1791bc (bonzini/rhel-qemu-kvm)
+
+The implementation of host_cpu_max_instance_init() was merged into
+host_cpu_instance_init() by commit 29f1ba338baf ("target/i386: merge
+host_cpu_instance_init() and host_cpu_max_instance_init()"), while the
+declaration of it remains in host-cpu.h.
+
+Clean it up.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250716063117.602050-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 5fe6b9a854a91df86fdb794cbeb67d0656756137)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/host-cpu.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/target/i386/host-cpu.h b/target/i386/host-cpu.h
+index b97ec01c9b..5b2ad491a8 100644
+--- a/target/i386/host-cpu.h
++++ b/target/i386/host-cpu.h
+@@ -12,7 +12,6 @@
+ 
+ uint32_t host_cpu_phys_bits(void);
+ void host_cpu_instance_init(X86CPU *cpu);
+-void host_cpu_max_instance_init(X86CPU *cpu);
+ bool host_cpu_realizefn(CPUState *cs, Error **errp);
+ 
+ void host_cpu_vendor_fms(char *vendor, int *family, int *model, int *stepping);
+-- 
+2.50.1
+

@@ -1,0 +1,129 @@
+From 8d8fd49920c7b4c49d2d7ca1666c3cc7a53a3e96 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:11:28 +0200
+Subject: [PATCH 115/115] physmem: Support coordinated discarding of RAM with
+ guest_memfd
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [115/115] 5dfe5036d7b5524f0d0af4cde23cdd9ca696717b (bonzini/rhel-qemu-kvm)
+
+A new field, attributes, was introduced in RAMBlock to link to a
+RamBlockAttributes object, which centralizes all guest_memfd related
+information (such as fd and status bitmap) within a RAMBlock.
+
+Create and initialize the RamBlockAttributes object upon ram_block_add().
+Meanwhile, register the object in the target RAMBlock's MemoryRegion.
+After that, guest_memfd-backed RAMBlock is associated with the
+RamDiscardManager interface, and the users can execute RamDiscardManager
+specific handling. For example, VFIO will register the
+RamDiscardListener and get notifications when the state_change() helper
+invokes.
+
+As coordinate discarding of RAM with guest_memfd is now supported, only
+block uncoordinated discard.
+
+Tested-by: Alexey Kardashevskiy <aik@amd.com>
+Reviewed-by: Alexey Kardashevskiy <aik@amd.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Signed-off-by: Chenyi Qiang <chenyi.qiang@intel.com>
+Link: https://lore.kernel.org/r/20250612082747.51539-6-chenyi.qiang@intel.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 2fde3fb916079ee0ff0fc26d9446c813b1d5cc28)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Conflicts: No CPR
+---
+ accel/kvm/kvm-all.c     |  9 +++++++++
+ include/exec/ramblock.h |  1 +
+ system/physmem.c        | 23 +++++++++++++++++++++--
+ 3 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 43c10c82f6..1fd7773a28 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -3073,6 +3073,15 @@ int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private)
+     addr = memory_region_get_ram_ptr(mr) + section.offset_within_region;
+     rb = qemu_ram_block_from_host(addr, false, &offset);
+ 
++    ret = ram_block_attributes_state_change(RAM_BLOCK_ATTRIBUTES(mr->rdm),
++                                            offset, size, to_private);
++    if (ret) {
++        error_report("Failed to notify the listener the state change of "
++                     "(0x%"HWADDR_PRIx" + 0x%"HWADDR_PRIx") to %s",
++                     start, size, to_private ? "private" : "shared");
++        goto out_unref;
++    }
++
+     if (to_private) {
+         if (rb->page_size != qemu_real_host_page_size()) {
+             /*
+diff --git a/include/exec/ramblock.h b/include/exec/ramblock.h
+index 9ae774d268..a504765038 100644
+--- a/include/exec/ramblock.h
++++ b/include/exec/ramblock.h
+@@ -46,6 +46,7 @@ struct RAMBlock {
+     int fd;
+     uint64_t fd_offset;
+     int guest_memfd;
++    RamBlockAttributes *attributes;
+     size_t page_size;
+     /* dirty bitmap used during migration */
+     unsigned long *bmap;
+diff --git a/system/physmem.c b/system/physmem.c
+index dccc95030b..35f8f25e22 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -1889,7 +1889,7 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
+         }
+         assert(new_block->guest_memfd < 0);
+ 
+-        ret = ram_block_discard_require(true);
++        ret = ram_block_coordinated_discard_require(true);
+         if (ret < 0) {
+             error_setg_errno(errp, -ret,
+                              "cannot set up private guest memory: discard currently blocked");
+@@ -1903,6 +1903,24 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
+             qemu_mutex_unlock_ramlist();
+             goto out_free;
+         }
++
++        /*
++         * The attribute bitmap of the RamBlockAttributes is default to
++         * discarded, which mimics the behavior of kvm_set_phys_mem() when it
++         * calls kvm_set_memory_attributes_private(). This leads to a brief
++         * period of inconsistency between the creation of the RAMBlock and its
++         * mapping into the physical address space. However, this is not
++         * problematic, as no users rely on the attribute status to perform
++         * any actions during this interval.
++         */
++        new_block->attributes = ram_block_attributes_create(new_block);
++        if (!new_block->attributes) {
++            error_setg(errp, "Failed to create ram block attribute");
++            close(new_block->guest_memfd);
++            ram_block_coordinated_discard_require(false);
++            qemu_mutex_unlock_ramlist();
++            goto out_free;
++        }
+     }
+ 
+     new_ram_size = MAX(old_ram_size,
+@@ -2159,8 +2177,9 @@ static void reclaim_ramblock(RAMBlock *block)
+     }
+ 
+     if (block->guest_memfd >= 0) {
++        ram_block_attributes_destroy(block->attributes);
+         close(block->guest_memfd);
+-        ram_block_discard_require(false);
++        ram_block_coordinated_discard_require(false);
+     }
+ 
+     g_free(block);
+-- 
+2.50.1
+

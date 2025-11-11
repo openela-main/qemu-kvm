@@ -1,0 +1,53 @@
+From 389c3c6b4215c9be3fd784c73af0e9795e796380 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Tue, 18 Feb 2025 19:25:35 +0100
+Subject: [PATCH 5/9] docs/devel/reset: Document reset expectations for DMA and
+ IOMMU
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 341: Fix vIOMMU reset order
+RH-Jira: RHEL-7188
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [5/5] be8b9d9e34a2b301430dfa229c6785ab17d3fb16 (eauger1/centos-qemu-kvm)
+
+To avoid any translation faults, the IOMMUs are expected to be
+reset after the devices they protect. Document that we expect
+DMA requests to be stopped during the 'enter' or 'hold' phase
+while IOMMUs should be reset during the 'exit' phase.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Message-Id: <20250218182737.76722-6-eric.auger@redhat.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit dd6d545e8f2d9a0e8a8c287ec16469f03ef5c198)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ docs/devel/reset.rst | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/docs/devel/reset.rst b/docs/devel/reset.rst
+index 9746a4e8a0..24ab630465 100644
+--- a/docs/devel/reset.rst
++++ b/docs/devel/reset.rst
+@@ -123,6 +123,11 @@ The *exit* phase is executed only when the last reset operation ends. Therefore
+ the object does not need to care how many of reset controllers it has and how
+ many of them have started a reset.
+ 
++DMA capable devices are expected to cancel all outstanding DMA operations
++during either 'enter' or 'hold' phases. IOMMUs are expected to reset during
++the 'exit' phase and this sequencing makes sure no outstanding DMA request
++will fault.
++
+ 
+ Handling reset in a resettable object
+ -------------------------------------
+-- 
+2.48.1
+

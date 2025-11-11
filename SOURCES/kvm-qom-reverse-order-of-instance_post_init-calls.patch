@@ -1,0 +1,79 @@
+From 60ab87c5cad64e3169ee65f396c6d9f1f7eb0daa Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:44 +0200
+Subject: [PATCH 022/115] qom: reverse order of instance_post_init calls
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 391: TDX support, including attestation and device assignment
+RH-Jira: RHEL-15710 RHEL-20798 RHEL-49728
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: David Hildenbrand <david@redhat.com>
+RH-Commit: [22/115] e4e2393adffd671dc4d4f7147c620884757c7d74 (bonzini/rhel-qemu-kvm)
+
+Currently, the instance_post_init calls are performed from the leaf
+class and all the way up to Object.  This is incorrect because the
+leaf class cannot observe property values applied by the superclasses;
+for example, a compat property will be set on a device *after*
+the class's post_init callback has run.
+
+In particular this makes it impossible for implementations of
+accel_cpu_instance_init() to operate based on the actual values of
+the properties, though it seems that cxl_dsp_instance_post_init and
+rp_instance_post_init might have similar issues.
+
+Follow instead the same order as instance_init, starting with Object
+and running the child class's instance_post_init after the parent.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Alistair Francis <alistair.francis@wdc.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 220c739903cec99df032219ac94c45b5269a0ab5)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ include/qom/object.h | 3 ++-
+ qom/object.c         | 8 ++++----
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/include/qom/object.h b/include/qom/object.h
+index 13d3a655dd..668dd1cc08 100644
+--- a/include/qom/object.h
++++ b/include/qom/object.h
+@@ -444,7 +444,8 @@ struct Object
+  *   class will have already been initialized so the type is only responsible
+  *   for initializing its own members.
+  * @instance_post_init: This function is called to finish initialization of
+- *   an object, after all @instance_init functions were called.
++ *   an object, after all @instance_init functions were called, as well as
++ *   @instance_post_init functions for the parent classes.
+  * @instance_finalize: This function is called during object destruction.  This
+  *   is called before the parent @instance_finalize function has been called.
+  *   An object should only free the members that are unique to its type in this
+diff --git a/qom/object.c b/qom/object.c
+index 157a45c5f8..c03cd3c733 100644
+--- a/qom/object.c
++++ b/qom/object.c
+@@ -423,13 +423,13 @@ static void object_init_with_type(Object *obj, TypeImpl *ti)
+ 
+ static void object_post_init_with_type(Object *obj, TypeImpl *ti)
+ {
+-    if (ti->instance_post_init) {
+-        ti->instance_post_init(obj);
+-    }
+-
+     if (type_has_parent(ti)) {
+         object_post_init_with_type(obj, type_get_parent(ti));
+     }
++
++    if (ti->instance_post_init) {
++        ti->instance_post_init(obj);
++    }
+ }
+ 
+ bool object_apply_global_props(Object *obj, const GPtrArray *props,
+-- 
+2.50.1
+
