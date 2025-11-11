@@ -1,16 +1,16 @@
-From 949020434ce0692feb8cb9378fb0806ea081a92a Mon Sep 17 00:00:00 2001
+From a39a353ec7656ef7a805391270cec24dfa815b7d Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:01 +0100
-Subject: [PATCH 24/31] hw/nvme/ctrl: skip automatic zero-init of large arrays
+Subject: [PATCH 31/43] hw/nvme/ctrl: skip automatic zero-init of large arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [23/30] 4c0fecafad4034214f5e62595f282e87cacfc8ad
+RH-Commit: [23/31] 926fb489c480ad10c8560efa934b8a7fb3e7a8a3 (stefanha/centos-stream-qemu-kvm)
 
 The 'nvme_map_sgl' method has a 256 element array used for copying
 data from the device. Skip the automatic zero-init of this array
@@ -37,10 +37,10 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/hw/nvme/ctrl.c b/hw/nvme/ctrl.c
-index 9f277b81d8..f000e2246f 100644
+index d6b77d4fbc..ad6b264933 100644
 --- a/hw/nvme/ctrl.c
 +++ b/hw/nvme/ctrl.c
-@@ -1047,7 +1047,8 @@ static uint16_t nvme_map_sgl(NvmeCtrl *n, NvmeSg *sg, NvmeSglDescriptor sgl,
+@@ -1057,7 +1057,8 @@ static uint16_t nvme_map_sgl(NvmeCtrl *n, NvmeSg *sg, NvmeSglDescriptor sgl,
       */
  #define SEG_CHUNK_SIZE 256
  
@@ -50,7 +50,7 @@ index 9f277b81d8..f000e2246f 100644
      uint64_t nsgld;
      uint32_t seg_len;
      uint16_t status;
-@@ -5029,7 +5030,7 @@ static uint16_t nvme_error_info(NvmeCtrl *n, uint8_t rae, uint32_t buf_len,
+@@ -5128,7 +5129,7 @@ static uint16_t nvme_error_info(NvmeCtrl *n, uint8_t rae, uint32_t buf_len,
  static uint16_t nvme_changed_nslist(NvmeCtrl *n, uint8_t rae, uint32_t buf_len,
                                      uint64_t off, NvmeRequest *req)
  {
@@ -59,7 +59,7 @@ index 9f277b81d8..f000e2246f 100644
      uint32_t trans_len;
      int i = 0;
      uint32_t nsid;
-@@ -5039,7 +5040,6 @@ static uint16_t nvme_changed_nslist(NvmeCtrl *n, uint8_t rae, uint32_t buf_len,
+@@ -5138,7 +5139,6 @@ static uint16_t nvme_changed_nslist(NvmeCtrl *n, uint8_t rae, uint32_t buf_len,
          return NVME_INVALID_FIELD | NVME_DNR;
      }
  

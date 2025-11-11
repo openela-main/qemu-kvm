@@ -1,4 +1,4 @@
-From 3c4bab07566d32859e227ca1083b0dc64111e3f7 Mon Sep 17 00:00:00 2001
+From bd972a5dfe6cec33302ae52d7503a23b7b8506af Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 2 Sep 2020 09:39:41 +0200
 Subject: Enable make check
@@ -9,41 +9,37 @@ make check run during build.
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 
 ---
-Rebase notes (9.1.0 rc0):
-- Disable fdc-testa
-
-Rebase notes (9.1.0 rc0):
+Rebase notes (9.1.0):
+- Disable fdc-test
 - Use q35 machine type for new pvpanic test
----
- .distro/qemu-kvm.spec.template      |  4 ++--
- tests/avocado/replay_kernel.py      |  2 +-
- tests/avocado/reverse_debugging.py  |  2 +-
- tests/avocado/tcg_plugins.py        |  4 ++--
- tests/qemu-iotests/meson.build      | 34 ++++++++++++++---------------
- tests/qemu-iotests/testenv.py       |  3 +++
- tests/qtest/fuzz-e1000e-test.c      |  2 +-
- tests/qtest/fuzz-virtio-scsi-test.c |  2 +-
- tests/qtest/intel-hda-test.c        |  2 +-
- tests/qtest/libqos/meson.build      |  2 +-
- tests/qtest/lpc-ich9-test.c         |  2 +-
- tests/qtest/meson.build             |  3 +--
- tests/qtest/pvpanic-test.c          |  2 +-
- tests/qtest/virtio-net-failover.c   |  1 +
- 14 files changed, 34 insertions(+), 31 deletions(-)
 
-diff --git a/tests/avocado/replay_kernel.py b/tests/avocado/replay_kernel.py
-index e22c200a36..cb7ca19b1b 100644
---- a/tests/avocado/replay_kernel.py
-+++ b/tests/avocado/replay_kernel.py
-@@ -193,7 +193,7 @@ def test_aarch64_virt(self):
-         """
-         :avocado: tags=arch:aarch64
-         :avocado: tags=machine:virt
--        :avocado: tags=cpu:cortex-a53
-+        :avocado: tags=cpu:cortex-a57
-         """
-         kernel_url = ('https://archives.fedoraproject.org/pub/archive/fedora'
-                       '/linux/releases/29/Everything/aarch64/os/images/pxeboot'
+Rebase notes (10.0.0 rc0)
+- Disable mem_addr_space functional test
+- Updated removal of q35 test (upstream change)
+
+Rebase notes (10.0.0):
+- Add riscv changes
+---
+ .distro/qemu-kvm.spec.template               |  4 +--
+ tests/avocado/reverse_debugging.py           |  2 +-
+ tests/functional/meson.build                 |  2 +-
+ tests/functional/test_aarch64_replay.py      |  2 +-
+ tests/functional/test_aarch64_tcg_plugins.py |  4 +--
+ tests/qemu-iotests/meson.build               | 34 ++++++++++----------
+ tests/qemu-iotests/testenv.py                |  3 ++
+ tests/qtest/bios-tables-test.c               |  6 ++++
+ tests/qtest/fuzz-e1000e-test.c               |  2 +-
+ tests/qtest/fuzz-virtio-scsi-test.c          |  2 +-
+ tests/qtest/intel-hda-test.c                 |  2 +-
+ tests/qtest/libqos/meson.build               |  2 +-
+ tests/qtest/lpc-ich9-test.c                  |  2 +-
+ tests/qtest/machine-none-test.c              |  2 +-
+ tests/qtest/meson.build                      |  1 -
+ tests/qtest/pvpanic-test.c                   |  2 +-
+ tests/qtest/riscv-csr-test.c                 |  4 +++
+ tests/qtest/virtio-net-failover.c            |  1 +
+ 18 files changed, 45 insertions(+), 32 deletions(-)
+
 diff --git a/tests/avocado/reverse_debugging.py b/tests/avocado/reverse_debugging.py
 index f24287cd0a..3880b81df6 100644
 --- a/tests/avocado/reverse_debugging.py
@@ -57,28 +53,54 @@ index f24287cd0a..3880b81df6 100644
          """
          kernel_url = ('https://archives.fedoraproject.org/pub/archive/fedora'
                        '/linux/releases/29/Everything/aarch64/os/images/pxeboot'
-diff --git a/tests/avocado/tcg_plugins.py b/tests/avocado/tcg_plugins.py
-index a6ff457e27..5172ee9b9e 100644
---- a/tests/avocado/tcg_plugins.py
-+++ b/tests/avocado/tcg_plugins.py
-@@ -66,7 +66,7 @@ def test_aarch64_virt_insn(self):
-         :avocado: tags=accel:tcg
-         :avocado: tags=arch:aarch64
-         :avocado: tags=machine:virt
--        :avocado: tags=cpu:cortex-a53
-+        :avocado: tags=cpu:cortex-a57
-         """
-         kernel_path = self._grab_aarch64_kernel()
+diff --git a/tests/functional/meson.build b/tests/functional/meson.build
+index 0f8be30fe2..4463f6bb0d 100644
+--- a/tests/functional/meson.build
++++ b/tests/functional/meson.build
+@@ -291,7 +291,7 @@ tests_sparc64_system_thorough = [
+ 
+ tests_x86_64_system_quick = [
+   'cpu_queries',
+-  'mem_addr_space',
++#  'mem_addr_space',
+   'migration',
+   'pc_cpu_hotplug_props',
+   'virtio_version',
+diff --git a/tests/functional/test_aarch64_replay.py b/tests/functional/test_aarch64_replay.py
+index bd6609d914..ddf93814fd 100755
+--- a/tests/functional/test_aarch64_replay.py
++++ b/tests/functional/test_aarch64_replay.py
+@@ -18,7 +18,7 @@ class Aarch64Replay(ReplayKernelBase):
+ 
+     def test_aarch64_virt(self):
+         self.set_machine('virt')
+-        self.cpu = 'cortex-a53'
++        self.cpu = 'cortex-a57'
+         kernel_path = self.ASSET_KERNEL.fetch()
          kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
-@@ -96,7 +96,7 @@ def test_aarch64_virt_insn_icount(self):
-         :avocado: tags=accel:tcg
-         :avocado: tags=arch:aarch64
-         :avocado: tags=machine:virt
--        :avocado: tags=cpu:cortex-a53
-+        :avocado: tags=cpu:cortex-a57
-         """
-         kernel_path = self._grab_aarch64_kernel()
+                                'console=ttyAMA0')
+diff --git a/tests/functional/test_aarch64_tcg_plugins.py b/tests/functional/test_aarch64_tcg_plugins.py
+index 4ea71f5f88..0b1043f3dc 100755
+--- a/tests/functional/test_aarch64_tcg_plugins.py
++++ b/tests/functional/test_aarch64_tcg_plugins.py
+@@ -65,7 +65,7 @@ class PluginKernelNormal(PluginKernelBase):
+ 
+     def test_aarch64_virt_insn(self):
+         self.set_machine('virt')
+-        self.cpu='cortex-a53'
++        self.cpu='cortex-a57'
+         kernel_path = self.ASSET_KERNEL.fetch()
          kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
+                                'console=ttyAMA0')
+@@ -91,7 +91,7 @@ def test_aarch64_virt_insn(self):
+ 
+     def test_aarch64_virt_insn_icount(self):
+         self.set_machine('virt')
+-        self.cpu='cortex-a53'
++        self.cpu='cortex-a57'
+         kernel_path = self.ASSET_KERNEL.fetch()
+         kernel_command_line = (self.KERNEL_COMMON_COMMAND_LINE +
+                                'console=ttyAMA0')
 diff --git a/tests/qemu-iotests/meson.build b/tests/qemu-iotests/meson.build
 index fad340ad59..3c0d5241f6 100644
 --- a/tests/qemu-iotests/meson.build
@@ -123,10 +145,10 @@ index fad340ad59..3c0d5241f6 100644
 +#  endforeach
  endforeach
 diff --git a/tests/qemu-iotests/testenv.py b/tests/qemu-iotests/testenv.py
-index c8848f2ec2..d515e5b8b0 100644
+index 6326e46b7b..bc849ae9cf 100644
 --- a/tests/qemu-iotests/testenv.py
 +++ b/tests/qemu-iotests/testenv.py
-@@ -249,6 +249,9 @@ def __init__(self, source_dir: str, build_dir: str,
+@@ -252,6 +252,9 @@ def __init__(self, source_dir: str, build_dir: str,
              if self.qemu_prog.endswith(f'qemu-system-{suffix}'):
                  self.qemu_options += f' -machine {machine}'
  
@@ -136,6 +158,57 @@ index c8848f2ec2..d515e5b8b0 100644
          # QEMU_DEFAULT_MACHINE
          self.qemu_default_machine = get_default_machine(self.qemu_prog)
  
+diff --git a/tests/qtest/bios-tables-test.c b/tests/qtest/bios-tables-test.c
+index 0a333ec435..e24098fc70 100644
+--- a/tests/qtest/bios-tables-test.c
++++ b/tests/qtest/bios-tables-test.c
+@@ -1707,6 +1707,7 @@ static void test_acpi_microvm_ioapic2_tcg(void)
+     free_test_data(&data);
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void test_acpi_riscv64_virt_tcg_numamem(void)
+ {
+     test_data data = {
+@@ -1732,6 +1733,7 @@ static void test_acpi_riscv64_virt_tcg_numamem(void)
+                   &data);
+     free_test_data(&data);
+ }
++#endif /* disabled for RHEL */
+ 
+ static void test_acpi_aarch64_virt_tcg_numamem(void)
+ {
+@@ -2085,6 +2087,7 @@ static void test_acpi_microvm_acpi_erst(void)
+ }
+ #endif /* CONFIG_POSIX */
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void test_acpi_riscv64_virt_tcg(void)
+ {
+     test_data data = {
+@@ -2106,6 +2109,7 @@ static void test_acpi_riscv64_virt_tcg(void)
+     test_acpi_one("-cpu rva22s64 ", &data);
+     free_test_data(&data);
+ }
++#endif /* disabled for RHEL */
+ 
+ static void test_acpi_aarch64_virt_tcg(void)
+ {
+@@ -2587,12 +2591,14 @@ int main(int argc, char *argv[])
+                 qtest_add_func("acpi/virt/viot", test_acpi_aarch64_virt_viot);
+             }
+         }
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     } else if (strcmp(arch, "riscv64") == 0) {
+         if (has_tcg && qtest_has_device("virtio-blk-pci")) {
+             qtest_add_func("acpi/virt", test_acpi_riscv64_virt_tcg);
+             qtest_add_func("acpi/virt/numamem",
+                            test_acpi_riscv64_virt_tcg_numamem);
+         }
++#endif /* disabled for RHEL */
+     }
+     ret = g_test_run();
+     boot_sector_cleanup(disk);
 diff --git a/tests/qtest/fuzz-e1000e-test.c b/tests/qtest/fuzz-e1000e-test.c
 index 5052883fb6..8242190170 100644
 --- a/tests/qtest/fuzz-e1000e-test.c
@@ -176,10 +249,10 @@ index 663bb6c485..2efc43e3f7 100644
                     "-device intel-hda,id=" HDA_ID CODEC_DEVICES);
  
 diff --git a/tests/qtest/libqos/meson.build b/tests/qtest/libqos/meson.build
-index 1b2b2dbb22..86afbddb58 100644
+index 1ddaf7b095..1cb403e90d 100644
 --- a/tests/qtest/libqos/meson.build
 +++ b/tests/qtest/libqos/meson.build
-@@ -44,7 +44,7 @@ libqos_srcs = files(
+@@ -43,7 +43,7 @@ libqos_srcs = files(
          'virtio-rng.c',
          'virtio-scsi.c',
          'virtio-serial.c',
@@ -201,29 +274,33 @@ index 8ac95b89f7..0e118b76eb 100644
                     "-nographic -monitor none -serial none");
  
      qtest_outl(s, 0xcf8, 0x8000f840); /* PMBASE */
+diff --git a/tests/qtest/machine-none-test.c b/tests/qtest/machine-none-test.c
+index b6a87d27ed..423ba12159 100644
+--- a/tests/qtest/machine-none-test.c
++++ b/tests/qtest/machine-none-test.c
+@@ -49,7 +49,7 @@ static struct arch2cpu cpus_map[] = {
+     { "xtensa", "dc233c" },
+     { "xtensaeb", "fsf" },
+     { "hppa", "hppa" },
+-    { "riscv64", "rv64" },
++    { "riscv64", "max" },
+     { "riscv32", "rv32" },
+     { "rx", "rx62n" },
+     { "loongarch64", "la464"},
 diff --git a/tests/qtest/meson.build b/tests/qtest/meson.build
-index 2f0d3ef080..134c48c10e 100644
+index 7749ec4b2f..6e2d08acc5 100644
 --- a/tests/qtest/meson.build
 +++ b/tests/qtest/meson.build
-@@ -91,7 +91,7 @@ qtests_i386 = \
-    config_all_devices.has_key('CONFIG_PARALLEL') ? ['bios-tables-test'] : []) +             \
-   qtests_pci +                                                                              \
-   qtests_cxl +                                                                              \
--  ['fdc-test',
-+  [
-    'ide-test',
-    'hd-geo-test',
-    'boot-order-test',
-@@ -102,7 +102,6 @@ qtests_i386 = \
-    'drive_del-test',
-    'tco-test',
-    'cpu-plug-test',
--   'q35-test',
-    'vmgenid-test',
-    'migration-test',
-    'test-x86-cpuid-compat',
+@@ -91,7 +91,6 @@ qtests_i386 = \
+   (config_all_devices.has_key('CONFIG_LSI_SCSI_PCI') ? ['fuzz-lsi53c895a-test'] : []) +     \
+   (config_all_devices.has_key('CONFIG_VIRTIO_SCSI') ? ['fuzz-virtio-scsi-test'] : []) +     \
+   (config_all_devices.has_key('CONFIG_VIRTIO_BALLOON') ? ['virtio-balloon-test'] : []) + \
+-  (config_all_devices.has_key('CONFIG_Q35') ? ['q35-test'] : []) +                          \
+   (config_all_devices.has_key('CONFIG_SB16') ? ['fuzz-sb16-test'] : []) +                   \
+   (config_all_devices.has_key('CONFIG_SDHCI_PCI') ? ['fuzz-sdcard-test'] : []) +            \
+   (config_all_devices.has_key('CONFIG_ESP_PCI') ? ['am53c974-test'] : []) +                 \
 diff --git a/tests/qtest/pvpanic-test.c b/tests/qtest/pvpanic-test.c
-index c18f63e255..57fb129ae4 100644
+index 094c56b0cd..338f94dcd9 100644
 --- a/tests/qtest/pvpanic-test.c
 +++ b/tests/qtest/pvpanic-test.c
 @@ -65,7 +65,7 @@ static void test_pvshutdown(void)
@@ -235,11 +312,39 @@ index c18f63e255..57fb129ae4 100644
  
      val = qtest_inb(qts, 0x505);
      g_assert_cmpuint(val, ==, PVPANIC_EVENTS);
+diff --git a/tests/qtest/riscv-csr-test.c b/tests/qtest/riscv-csr-test.c
+index ff5c29e6c6..cc3b08a976 100644
+--- a/tests/qtest/riscv-csr-test.c
++++ b/tests/qtest/riscv-csr-test.c
+@@ -20,6 +20,7 @@
+ #define CSR_MVENDORID       0xf11
+ #define CSR_MISELECT        0x350
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void run_test_csr(void)
+ {
+     uint64_t res;
+@@ -45,12 +46,15 @@ static void run_test_csr(void)
+ 
+     qtest_quit(qts);
+ }
++#endif /* disabled for RHEL */
+ 
+ int main(int argc, char **argv)
+ {
+     g_test_init(&argc, &argv, NULL);
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     qtest_add_func("/cpu/csr", run_test_csr);
++#endif /* disabled for RHEL */
+ 
+     return g_test_run();
+ }
 diff --git a/tests/qtest/virtio-net-failover.c b/tests/qtest/virtio-net-failover.c
-index 73dfabc272..a9dd304781 100644
+index 5baf81c3e6..aa87bf5698 100644
 --- a/tests/qtest/virtio-net-failover.c
 +++ b/tests/qtest/virtio-net-failover.c
-@@ -26,6 +26,7 @@
+@@ -27,6 +27,7 @@
  #define PCI_SEL_BASE            0x0010
  
  #define BASE_MACHINE "-M q35 -nodefaults " \

@@ -1,0 +1,291 @@
+From 1d5c95eaddcfd7f9c2764597a4e89a9e8a3e4beb Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 25 Jul 2025 16:43:16 +0200
+Subject: [PATCH 011/100] include/system: Move exec/ramblock.h to
+ system/ramblock.h
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Convert the existing includes with sed.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+(cherry picked from commit 548a01650c9be153b352406cd4afb86cb350788e)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ MAINTAINERS                         | 2 +-
+ hw/display/virtio-gpu-udmabuf.c     | 2 +-
+ hw/hyperv/hv-balloon.c              | 2 +-
+ hw/virtio/vhost-user.c              | 2 +-
+ include/system/ram_addr.h           | 2 +-
+ include/{exec => system}/ramblock.h | 9 ++++-----
+ migration/dirtyrate.c               | 2 +-
+ migration/file.c                    | 2 +-
+ migration/multifd-nocomp.c          | 2 +-
+ migration/multifd-qatzip.c          | 2 +-
+ migration/multifd-qpl.c             | 2 +-
+ migration/multifd-uadk.c            | 2 +-
+ migration/multifd-zero-page.c       | 2 +-
+ migration/multifd-zlib.c            | 2 +-
+ migration/multifd-zstd.c            | 2 +-
+ migration/multifd.c                 | 2 +-
+ migration/postcopy-ram.c            | 2 +-
+ tests/qtest/fuzz/generic_fuzz.c     | 2 +-
+ 18 files changed, 21 insertions(+), 22 deletions(-)
+ rename include/{exec => system}/ramblock.h (96%)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 86df4aa512..9016c2ede2 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -3109,7 +3109,7 @@ F: include/system/ioport.h
+ F: include/exec/memop.h
+ F: include/system/memory.h
+ F: include/system/ram_addr.h
+-F: include/exec/ramblock.h
++F: include/system/ramblock.h
+ F: include/system/memory_mapping.h
+ F: system/dma-helpers.c
+ F: system/ioport.c
+diff --git a/hw/display/virtio-gpu-udmabuf.c b/hw/display/virtio-gpu-udmabuf.c
+index 85ca23cb32..0510577475 100644
+--- a/hw/display/virtio-gpu-udmabuf.c
++++ b/hw/display/virtio-gpu-udmabuf.c
+@@ -19,7 +19,7 @@
+ #include "hw/virtio/virtio-gpu.h"
+ #include "hw/virtio/virtio-gpu-pixman.h"
+ #include "trace.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "system/hostmem.h"
+ #include <sys/ioctl.h>
+ #include <linux/memfd.h>
+diff --git a/hw/hyperv/hv-balloon.c b/hw/hyperv/hv-balloon.c
+index 0b1da723c8..acabff2c4a 100644
+--- a/hw/hyperv/hv-balloon.c
++++ b/hw/hyperv/hv-balloon.c
+@@ -12,7 +12,7 @@
+ 
+ #include "system/address-spaces.h"
+ #include "exec/cpu-common.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "hw/boards.h"
+ #include "hw/hyperv/dynmem-proto.h"
+ #include "hw/hyperv/hv-balloon.h"
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 267b612587..48561d3c74 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -28,7 +28,7 @@
+ #include "system/cryptodev.h"
+ #include "migration/postcopy-ram.h"
+ #include "trace.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ 
+ #include <sys/ioctl.h>
+ #include <sys/socket.h>
+diff --git a/include/system/ram_addr.h b/include/system/ram_addr.h
+index 3550a5df7c..e5ba4f086f 100644
+--- a/include/system/ram_addr.h
++++ b/include/system/ram_addr.h
+@@ -24,7 +24,7 @@
+ #include "system/tcg.h"
+ #include "exec/cputlb.h"
+ #include "exec/ramlist.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "exec/exec-all.h"
+ #include "qemu/rcu.h"
+ 
+diff --git a/include/exec/ramblock.h b/include/system/ramblock.h
+similarity index 96%
+rename from include/exec/ramblock.h
+rename to include/system/ramblock.h
+index 64484cd821..d8a116ba99 100644
+--- a/include/exec/ramblock.h
++++ b/include/system/ramblock.h
+@@ -16,11 +16,10 @@
+  * The functions declared here will be removed soon.
+  */
+ 
+-#ifndef QEMU_EXEC_RAMBLOCK_H
+-#define QEMU_EXEC_RAMBLOCK_H
++#ifndef SYSTEM_RAMBLOCK_H
++#define SYSTEM_RAMBLOCK_H
+ 
+-#ifndef CONFIG_USER_ONLY
+-#include "cpu-common.h"
++#include "exec/cpu-common.h"
+ #include "qemu/rcu.h"
+ #include "exec/ramlist.h"
+ 
+@@ -91,5 +90,5 @@ struct RAMBlock {
+      */
+     ram_addr_t postcopy_length;
+ };
+-#endif
++
+ #endif
+diff --git a/migration/dirtyrate.c b/migration/dirtyrate.c
+index 09caf92f87..986624c79a 100644
+--- a/migration/dirtyrate.c
++++ b/migration/dirtyrate.c
+@@ -14,7 +14,7 @@
+ #include "qemu/error-report.h"
+ #include "hw/core/cpu.h"
+ #include "qapi/error.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "exec/target_page.h"
+ #include "qemu/rcu_queue.h"
+ #include "qemu/main-loop.h"
+diff --git a/migration/file.c b/migration/file.c
+index 7f11e26f5c..bb8031e3c7 100644
+--- a/migration/file.c
++++ b/migration/file.c
+@@ -6,7 +6,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "qemu/cutils.h"
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+diff --git a/migration/multifd-nocomp.c b/migration/multifd-nocomp.c
+index 02f8bf8ce8..03497f035e 100644
+--- a/migration/multifd-nocomp.c
++++ b/migration/multifd-nocomp.c
+@@ -11,7 +11,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "exec/target_page.h"
+ #include "file.h"
+ #include "migration-stats.h"
+diff --git a/migration/multifd-qatzip.c b/migration/multifd-qatzip.c
+index 6a0e989fae..7419e5dc0d 100644
+--- a/migration/multifd-qatzip.c
++++ b/migration/multifd-qatzip.c
+@@ -13,7 +13,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+ #include "qapi/qapi-types-migration.h"
+diff --git a/migration/multifd-qpl.c b/migration/multifd-qpl.c
+index 88e2344af2..52902eb00c 100644
+--- a/migration/multifd-qpl.c
++++ b/migration/multifd-qpl.c
+@@ -14,7 +14,7 @@
+ #include "qemu/module.h"
+ #include "qapi/error.h"
+ #include "qapi/qapi-types-migration.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "multifd.h"
+ #include "qpl/qpl.h"
+ 
+diff --git a/migration/multifd-uadk.c b/migration/multifd-uadk.c
+index 6895c1f65a..fd7cd9b5e8 100644
+--- a/migration/multifd-uadk.c
++++ b/migration/multifd-uadk.c
+@@ -13,7 +13,7 @@
+ #include "qemu/osdep.h"
+ #include "qemu/module.h"
+ #include "qapi/error.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "migration.h"
+ #include "multifd.h"
+ #include "options.h"
+diff --git a/migration/multifd-zero-page.c b/migration/multifd-zero-page.c
+index 3e0a04f2b5..4cde868159 100644
+--- a/migration/multifd-zero-page.c
++++ b/migration/multifd-zero-page.c
+@@ -12,7 +12,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "qemu/cutils.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "migration.h"
+ #include "migration-stats.h"
+ #include "multifd.h"
+diff --git a/migration/multifd-zlib.c b/migration/multifd-zlib.c
+index 8cf8a26bb4..8820b2a787 100644
+--- a/migration/multifd-zlib.c
++++ b/migration/multifd-zlib.c
+@@ -13,7 +13,7 @@
+ #include "qemu/osdep.h"
+ #include <zlib.h>
+ #include "qemu/rcu.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "exec/target_page.h"
+ #include "qapi/error.h"
+ #include "migration.h"
+diff --git a/migration/multifd-zstd.c b/migration/multifd-zstd.c
+index abed140855..3c2dcf76b0 100644
+--- a/migration/multifd-zstd.c
++++ b/migration/multifd-zstd.c
+@@ -13,7 +13,7 @@
+ #include "qemu/osdep.h"
+ #include <zstd.h>
+ #include "qemu/rcu.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "exec/target_page.h"
+ #include "qapi/error.h"
+ #include "migration.h"
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 074d16d07d..f18b166bcf 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -16,7 +16,7 @@
+ #include "qemu/rcu.h"
+ #include "exec/target_page.h"
+ #include "system/system.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+ #include "file.h"
+diff --git a/migration/postcopy-ram.c b/migration/postcopy-ram.c
+index 5d3edfcfec..995614b38c 100644
+--- a/migration/postcopy-ram.c
++++ b/migration/postcopy-ram.c
+@@ -31,7 +31,7 @@
+ #include "qemu/error-report.h"
+ #include "trace.h"
+ #include "hw/boards.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "socket.h"
+ #include "yank_functions.h"
+ #include "tls.h"
+diff --git a/tests/qtest/fuzz/generic_fuzz.c b/tests/qtest/fuzz/generic_fuzz.c
+index 239be9372d..507de74806 100644
+--- a/tests/qtest/fuzz/generic_fuzz.c
++++ b/tests/qtest/fuzz/generic_fuzz.c
+@@ -21,7 +21,7 @@
+ #include "fuzz.h"
+ #include "string.h"
+ #include "system/memory.h"
+-#include "exec/ramblock.h"
++#include "system/ramblock.h"
+ #include "hw/qdev-core.h"
+ #include "hw/pci/pci.h"
+ #include "hw/pci/pci_device.h"
+-- 
+2.47.3
+

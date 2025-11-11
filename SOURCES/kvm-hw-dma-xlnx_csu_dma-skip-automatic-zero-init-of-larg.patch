@@ -1,17 +1,17 @@
-From 89410205460c56e7f1dba0cc1106c12ad07aea4e Mon Sep 17 00:00:00 2001
+From 277dbec12b1a109aca6cfe65046f2b4d6b41ee43 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:53 +0100
-Subject: [PATCH 16/31] hw/dma/xlnx_csu_dma: skip automatic zero-init of large
+Subject: [PATCH 23/43] hw/dma/xlnx_csu_dma: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [15/30] 159936c3a88e61bfe2ceb641ffe330f9e4f31705
+RH-Commit: [15/31] 8832791cb87b342e3b9882893891a824d31b687a (stefanha/centos-stream-qemu-kvm)
 
 The 'xlnx_csu_dma_src_notify' method has a 4k byte array used for
 copying DMA data. Skip the automatic zero-init of this array to
@@ -30,7 +30,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/dma/xlnx_csu_dma.c b/hw/dma/xlnx_csu_dma.c
-index ae307482f2..9d1cccc5ca 100644
+index 1afaa0bf51..8091a785cc 100644
 --- a/hw/dma/xlnx_csu_dma.c
 +++ b/hw/dma/xlnx_csu_dma.c
 @@ -287,7 +287,7 @@ static uint32_t xlnx_csu_dma_advance(XlnxCSUDMA *s, uint32_t len)

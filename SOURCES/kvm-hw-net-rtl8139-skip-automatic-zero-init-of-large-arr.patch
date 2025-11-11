@@ -1,16 +1,16 @@
-From b92fc59a551abc4912688b56fdd13c1f0f37cd2c Mon Sep 17 00:00:00 2001
+From 2aa9f26afe4f3c5d69771b71b0e69e123ac5d893 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:57 +0100
-Subject: [PATCH 20/31] hw/net/rtl8139: skip automatic zero-init of large array
+Subject: [PATCH 27/43] hw/net/rtl8139: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [19/30] ace21ca18ce8c21e731401779dbf4fb31f1e3a85
+RH-Commit: [19/31] 489f599053f7f36dbf382a99697e89309e1273de (stefanha/centos-stream-qemu-kvm)
 
 The 'rtl8139_transmit_one' method has a 8k byte array used for
 copying data between guest and host. Skip the automatic zero-init
@@ -31,10 +31,10 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
-index f2fe057535..a2732bf1c1 100644
+index 6c57a8985b..31a6956252 100644
 --- a/hw/net/rtl8139.c
 +++ b/hw/net/rtl8139.c
-@@ -1818,7 +1818,7 @@ static int rtl8139_transmit_one(RTL8139State *s, int descriptor)
+@@ -1816,7 +1816,7 @@ static int rtl8139_transmit_one(RTL8139State *s, int descriptor)
  
      PCIDevice *d = PCI_DEVICE(s);
      int txsize = s->TxStatus[descriptor] & 0x1fff;

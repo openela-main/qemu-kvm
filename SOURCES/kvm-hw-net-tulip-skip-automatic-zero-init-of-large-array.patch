@@ -1,16 +1,16 @@
-From 180f8a9f8e3ed06905fda019be92342531eff5e1 Mon Sep 17 00:00:00 2001
+From 3164836816fb41146e617c769c3cc82f30fa2f38 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:58 +0100
-Subject: [PATCH 21/31] hw/net/tulip: skip automatic zero-init of large array
+Subject: [PATCH 28/43] hw/net/tulip: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [20/30] afd02f3bfd53f653c9babde27ec8fd6858371bd1
+RH-Commit: [20/31] 289701647a64bf8bbadfd32a4592ffc70d11dba9 (stefanha/centos-stream-qemu-kvm)
 
 The 'tulip_setup_frame' method has a 4k byte array used for copynig
 DMA data from the device. Skip the automatic zero-init of this array
@@ -30,7 +30,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/net/tulip.c b/hw/net/tulip.c
-index 1f2ef20977..5cf2b96fbd 100644
+index a0646bb84c..97bffe4643 100644
 --- a/hw/net/tulip.c
 +++ b/hw/net/tulip.c
 @@ -629,7 +629,7 @@ static void tulip_setup_filter_addr(TULIPState *s, uint8_t *buf, int n)

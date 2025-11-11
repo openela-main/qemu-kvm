@@ -1,17 +1,17 @@
-From 57be097713e549150f57daec1661bd324bd3cb52 Mon Sep 17 00:00:00 2001
+From 6ae70910d16ef313e4addefea33c00083cc5665c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:55 +0100
-Subject: [PATCH 18/31] hw/hyperv/syndbg: skip automatic zero-init of large
+Subject: [PATCH 25/43] hw/hyperv/syndbg: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [17/30] f4c7f618f3918f5c24bc9f9ac7963e239227ddf9
+RH-Commit: [17/31] 2c7e0765ddb0fe5880403b234c299931da6daabf (stefanha/centos-stream-qemu-kvm)
 
 The 'handle_recv_msg' method has a 4k byte array used for copying
 data between the network socket and guest memory. Skip the automatic
@@ -39,7 +39,7 @@ Conflicts:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/hyperv/syndbg.c b/hw/hyperv/syndbg.c
-index 065e12fb1e..c7c43c8009 100644
+index d3e3917077..16ed1ab66b 100644
 --- a/hw/hyperv/syndbg.c
 +++ b/hw/hyperv/syndbg.c
 @@ -188,7 +188,7 @@ static uint16_t handle_recv_msg(HvSynDbg *syndbg, uint64_t outgpa,

@@ -1,4 +1,4 @@
-From bd6f1170d3a011c475ec4a8315512c7c190de3e4 Mon Sep 17 00:00:00 2001
+From 54d447640d3c550143e07610a516e4cdf474260e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:47:04 +0100
 Subject: Revert "meson: temporarily disable -Wunused-function"
@@ -16,10 +16,10 @@ Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
  1 file changed, 1 deletion(-)
 
 diff --git a/meson.build b/meson.build
-index 2de5ab024f..b3529aa0e1 100644
+index 38ad60fc10..0607c1313b 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -651,7 +651,6 @@ warn_flags = [
+@@ -747,7 +747,6 @@ warn_flags = [
    '-Wno-string-plus-int',
    '-Wno-tautological-type-limit-compare',
    '-Wno-typedef-redefinition',

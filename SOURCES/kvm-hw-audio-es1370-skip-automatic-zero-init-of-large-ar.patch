@@ -1,17 +1,17 @@
-From a8adc00e27b3c649522dfb2db29cc6d7fd9cb17b Mon Sep 17 00:00:00 2001
+From 084ce8fa1c5db2eb9c5567fbcd0568e3e2cd37a4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:47 +0100
-Subject: [PATCH 10/31] hw/audio/es1370: skip automatic zero-init of large
+Subject: [PATCH 17/43] hw/audio/es1370: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [9/30] 735b9d5225ffc8b3a51344b3ffbfb18a5ef66cc3
+RH-Commit: [9/31] 3d8c0165ee60c4027302706abc9d6c55461c884b (stefanha/centos-stream-qemu-kvm)
 
 The 'es1370_transfer_audio' method has a 4k byte array used for
 copying data between the audio backend and device. Skip the automatic
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/audio/es1370.c b/hw/audio/es1370.c
-index 4ab61d3b9d..6aea934f54 100644
+index 75f71e5d78..d0ed0052db 100644
 --- a/hw/audio/es1370.c
 +++ b/hw/audio/es1370.c
 @@ -604,7 +604,7 @@ static uint64_t es1370_read(void *opaque, hwaddr addr, unsigned size)

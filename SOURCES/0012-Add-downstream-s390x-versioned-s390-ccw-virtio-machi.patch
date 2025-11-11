@@ -1,4 +1,4 @@
-From 24d6b22e10c87e9a4bf4df834738f42caa1d5014 Mon Sep 17 00:00:00 2001
+From 68460abb11ff9a65c7e9d988609954c2845d32e4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:44:36 +0100
 Subject: Add downstream s390x versioned 's390-ccw-virtio' machine types
@@ -7,24 +7,34 @@ Adding changes to add RHEL machine types for s390x architecture.
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 --
-Rebase notes(9.1.0 rc0):
+Rebase notes(9.1.0):
 - Convert to new DEFINE_CCW_MACHINE macros
 
-Merged patches (9.1.0 rc0):
+Rebase notes (10.0.0):
+- Use upstream compat
+- Disabled relaxed-translation for older types
+
+Merged patches (9.1.0):
 - 043ad5ce97 Add upstream compatibility bits (partial)
 - 04596b496e s390x: remove deprecated rhel machine types
+
+Merged patches (10.0.0 rc0):
+- 03502faf70 Add upstream compatibility bits (partial)
+- d27437e5ba redhat: Add QEMU 9.1 compat handling to the s390x machine types
+- 926a9d0ca2 redhat: Add rhel9.6.0 and rhel10.0.0 machine types
+- d93fcb3940 virtio-net: disable USO for all RHEL9 (partial)
 ---
- hw/s390x/s390-virtio-ccw.c       | 65 +++++++++++++++++++++++++++++---
- target/s390x/cpu_models.c        | 11 ++++++
- target/s390x/cpu_models.h        |  2 +
- target/s390x/cpu_models_sysemu.c |  2 +
- 4 files changed, 75 insertions(+), 5 deletions(-)
+ hw/s390x/s390-virtio-ccw.c       | 103 +++++++++++++++++++++++++++++--
+ target/s390x/cpu_models.c        |  11 ++++
+ target/s390x/cpu_models.h        |   2 +
+ target/s390x/cpu_models_system.c |   2 +
+ 4 files changed, 113 insertions(+), 5 deletions(-)
 
 diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
-index 86bfc9d2eb..451017c50e 100644
+index 5aa5910399..59b545740e 100644
 --- a/hw/s390x/s390-virtio-ccw.c
 +++ b/hw/s390x/s390-virtio-ccw.c
-@@ -617,6 +617,7 @@ static void s390_nmi(NMIState *n, int cpu_index, Error **errp)
+@@ -696,6 +696,7 @@ static void s390_nmi(NMIState *n, int cpu_index, Error **errp)
      s390_cpu_restart(S390_CPU(cs));
  }
  
@@ -32,7 +42,7 @@ index 86bfc9d2eb..451017c50e 100644
  static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
  {
      /* same logic as in sclp.c */
-@@ -636,6 +637,7 @@ static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
+@@ -715,6 +716,7 @@ static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
      }
      return newsz;
  }
@@ -40,16 +50,16 @@ index 86bfc9d2eb..451017c50e 100644
  
  static inline bool machine_get_aes_key_wrap(Object *obj, Error **errp)
  {
-@@ -837,7 +839,7 @@ static const TypeInfo ccw_machine_info = {
+@@ -893,7 +895,7 @@ static const TypeInfo ccw_machine_info = {
      {                                                                         \
          MachineClass *mc = MACHINE_CLASS(oc);                                 \
          MACHINE_VER_SYM(class_options, ccw, __VA_ARGS__)(mc);                 \
 -        mc->desc = "Virtual s390x machine (version " MACHINE_VER_STR(__VA_ARGS__) ")"; \
 +        mc->desc = "Virtual s390x machine (version rhel" MACHINE_VER_STR(__VA_ARGS__) ")"; \
+         mc->init = MACHINE_VER_SYM(mach_init, ccw, __VA_ARGS__);              \
          MACHINE_VER_DEPRECATION(__VA_ARGS__);                                 \
          if (latest) {                                                         \
-             mc->alias = "s390-ccw-virtio";                                    \
-@@ -864,11 +866,11 @@ static const TypeInfo ccw_machine_info = {
+@@ -914,11 +916,11 @@ static const TypeInfo ccw_machine_info = {
      }                                                                         \
      type_init(MACHINE_VER_SYM(register, ccw, __VA_ARGS__))
  
@@ -65,19 +75,57 @@ index 86bfc9d2eb..451017c50e 100644
  
  
  #if 0 /* Disabled for Red Hat Enterprise Linux */
-@@ -1308,6 +1310,59 @@ DEFINE_CCW_MACHINE(2, 4);
+@@ -1298,6 +1300,97 @@ DEFINE_CCW_MACHINE(2, 9);
  #endif
  #endif /* disabled for RHEL */
  
++static void ccw_rhel_machine_10_0_0_instance_options(MachineState *machine)
++{
++}
++
++static void ccw_rhel_machine_10_0_0_class_options(MachineClass *mc)
++{
++    static GlobalProperty compat[] = {
++        { TYPE_S390_PCI_DEVICE, "relaxed-translation", "off", },
++    };
++
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
++    compat_props_add(mc->compat_props, hw_compat_rhel_10_1, hw_compat_rhel_10_1_len);
++}
++DEFINE_CCW_MACHINE_AS_LATEST(10, 0, 0);
++
++static void ccw_rhel_machine_9_6_0_instance_options(MachineState *machine)
++{
++    ccw_rhel_machine_10_0_0_instance_options(machine);
++}
++
++static void ccw_rhel_machine_9_6_0_class_options(MachineClass *mc)
++{
++    ccw_rhel_machine_10_0_0_class_options(mc);
++
++    /* NB: remember to move this line to the *latest* RHEL 9 machine */
++    compat_props_add(mc->compat_props, hw_compat_rhel_9, hw_compat_rhel_9_len);
++}
++DEFINE_CCW_MACHINE(9, 6, 0);
++
 +static void ccw_rhel_machine_9_4_0_instance_options(MachineState *machine)
 +{
++    ccw_rhel_machine_9_6_0_instance_options(machine);
 +}
 +
 +static void ccw_rhel_machine_9_4_0_class_options(MachineClass *mc)
 +{
++    static GlobalProperty compat[] = {
++        { TYPE_QEMU_S390_FLIC, "migrate-all-state", "off", },
++    };
++
++    ccw_rhel_machine_9_6_0_class_options(mc);
++
++    compat_props_add(mc->compat_props, hw_compat_rhel_10_0, hw_compat_rhel_10_0_len);
 +    compat_props_add(mc->compat_props, hw_compat_rhel_9_5, hw_compat_rhel_9_5_len);
++    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
 +}
-+DEFINE_CCW_MACHINE_AS_LATEST(9, 4, 0);
++DEFINE_CCW_MACHINE(9, 4, 0);
 +
 +static void ccw_rhel_machine_9_2_0_instance_options(MachineState *machine)
 +{
@@ -126,7 +174,7 @@ index 86bfc9d2eb..451017c50e 100644
  {
      type_register_static(&ccw_machine_info);
 diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
-index 798c18f940..8afa9af1a5 100644
+index 111d46a59a..156bcf0d22 100644
 --- a/target/s390x/cpu_models.c
 +++ b/target/s390x/cpu_models.c
 @@ -47,6 +47,9 @@
@@ -139,7 +187,7 @@ index 798c18f940..8afa9af1a5 100644
  static S390CPUDef s390_cpu_defs[] = {
      /*
       * Linux requires at least z10 nowadays, and IBM only supports recent CPUs
-@@ -871,22 +874,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
+@@ -932,22 +935,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
  static void s390_base_cpu_model_class_init(ObjectClass *oc, void *data)
  {
      S390CPUClass *xcc = S390_CPU_CLASS(oc);
@@ -183,10 +231,10 @@ index 71d4bc2dd4..d6c7c2cb50 100644
  } S390CPUDef;
  
  /* CPU model based on a CPU definition */
-diff --git a/target/s390x/cpu_models_sysemu.c b/target/s390x/cpu_models_sysemu.c
-index f6df691b66..b8de04de99 100644
---- a/target/s390x/cpu_models_sysemu.c
-+++ b/target/s390x/cpu_models_sysemu.c
+diff --git a/target/s390x/cpu_models_system.c b/target/s390x/cpu_models_system.c
+index 4351182f72..4074124c44 100644
+--- a/target/s390x/cpu_models_system.c
++++ b/target/s390x/cpu_models_system.c
 @@ -56,6 +56,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)
      CpuDefinitionInfo *info;
      char *name = g_strdup(object_class_get_name(klass));

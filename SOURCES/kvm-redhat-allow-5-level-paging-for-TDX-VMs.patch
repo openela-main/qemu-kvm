@@ -1,0 +1,25 @@
+From e4f00a4fc134fd14a63fa189d6f8c5054eb5ebcf Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 095/100] redhat: allow 5-level paging for TDX VMs
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index cc46c0e2f1..33223a550d 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -754,6 +754,7 @@ static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)
+     }
+ 
+     object_property_set_bool(OBJECT(cpu), "pmu", false, &error_abort);
++    object_property_set_int(OBJECT(cpu), "host-phys-bits-limit", 0, &error_abort);
+ 
+     /* invtsc is fixed1 for TD guest */
+     object_property_set_bool(OBJECT(cpu), "invtsc", true, &error_abort);
+-- 
+2.47.3
+

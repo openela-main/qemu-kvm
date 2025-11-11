@@ -1,0 +1,51 @@
+From e8ce1b2ea0eecc36e6bf6df777c6d395d5679e26 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 072/100] i386/cpu: Move adjustment of CPUID_EXT_PDCM before
+ feature_dependencies[] check
+
+There is one entry relates to CPUID_EXT_PDCM in feature_dependencies[].
+So it needs to get correct value of CPUID_EXT_PDCM before using
+feature_dependencies[] to apply dependencies.
+
+Besides, it also ensures CPUID_EXT_PDCM value is tracked in
+env->features[FEAT_1_ECX].
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250304052450.465445-2-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e68ec2980901c8e7f948f3305770962806c53f0b)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 587da2cb84..7220181806 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -7309,9 +7309,6 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (threads_per_pkg > 1) {
+             *ebx |= threads_per_pkg << 16;
+         }
+-        if (!cpu->enable_pmu) {
+-            *ecx &= ~CPUID_EXT_PDCM;
+-        }
+         break;
+     case 2:
+         /* cache info: needed for Pentium Pro compatibility */
+@@ -8301,6 +8298,10 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
++    if (!cpu->enable_pmu) {
++        env->features[FEAT_1_ECX] &= ~CPUID_EXT_PDCM;
++    }
++
+     for (i = 0; i < ARRAY_SIZE(feature_dependencies); i++) {
+         FeatureDep *d = &feature_dependencies[i];
+         if (!(env->features[d->from.index] & d->from.mask)) {
+-- 
+2.47.3
+

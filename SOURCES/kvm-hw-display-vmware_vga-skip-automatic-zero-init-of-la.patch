@@ -1,17 +1,17 @@
-From 2434701b73853adde56d50ab6ccfb4218fb59d3c Mon Sep 17 00:00:00 2001
+From 886a2ce3ff5c05087dc667578d59a37bfedaee19 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:54 +0100
-Subject: [PATCH 17/31] hw/display/vmware_vga: skip automatic zero-init of
+Subject: [PATCH 24/43] hw/display/vmware_vga: skip automatic zero-init of
  large struct
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [16/30] 2c6e05cefbe90cf58d9383d9c0e66ba1c5c5d220
+RH-Commit: [16/31] 201c9ceb2782d17dc9ca800b2d924a8ee3a8eb98 (stefanha/centos-stream-qemu-kvm)
 
 The 'vmsvga_fifo_run' method has a struct which is a little over 20k
 in size, used for holding image data for cursor changes. Skip the
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/display/vmware_vga.c b/hw/display/vmware_vga.c
-index 3db3ff98f7..69afe98a2f 100644
+index 2dd661e3c1..fae10068cb 100644
 --- a/hw/display/vmware_vga.c
 +++ b/hw/display/vmware_vga.c
 @@ -618,7 +618,7 @@ static void vmsvga_fifo_run(struct vmsvga_state_s *s)

@@ -1,16 +1,16 @@
-From af36b7abd6dbdfae9a85f775e09114634a5a1212 Mon Sep 17 00:00:00 2001
+From 074465b3a94a8d18c4202d13d9506f9dee8030e5 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:09 +0100
-Subject: [PATCH 31/31] net/stream: skip automatic zero-init of large array
+Subject: [PATCH 39/43] net/stream: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [30/30] 09cbcf10340b74656b6f97f4bf0ddd2042a65515
+RH-Commit: [31/31] 5200215cfd9e263d24342ee4a2b5aafe3d1e1eb7 (stefanha/centos-stream-qemu-kvm)
 
 The 'net_stream_send' method has a 68k byte array used for copying
 data between guest and host. Skip the automatic zero-init of this
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/net/stream.c b/net/stream.c
-index 97e6ec6679..12384ffee5 100644
+index 4de5613844..6152d2a05e 100644
 --- a/net/stream.c
 +++ b/net/stream.c
 @@ -148,7 +148,7 @@ static gboolean net_stream_send(QIOChannel *ioc,

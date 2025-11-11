@@ -1,17 +1,17 @@
-From 2089707620066ae567466918fdb733db23e4f87a Mon Sep 17 00:00:00 2001
+From 6063d3fedb2767f1a4d668828f49ef8505fa54f3 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:40 +0100
-Subject: [PATCH 03/31] hw/virtio/virtio: avoid cost of -ftrivial-auto-var-init
+Subject: [PATCH 10/43] hw/virtio/virtio: avoid cost of -ftrivial-auto-var-init
  in hot path
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/30] 0d56c3259da6f71f03be563622ce58714fe5bde8
+RH-Commit: [2/31] 12f251ba363203812e46f268a6f46ccfdbf21b41 (stefanha/centos-stream-qemu-kvm)
 
 Since commit 7ff9ff039380 ("meson: mitigate against use of uninitialize
 stack for exploits") the -ftrivial-auto-var-init=zero compiler option is
@@ -43,7 +43,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
-index 10f24a58dd..7f7b178a50 100644
+index 85110bce37..f41a418da3 100644
 --- a/hw/virtio/virtio.c
 +++ b/hw/virtio/virtio.c
 @@ -1680,8 +1680,8 @@ static void *virtqueue_split_pop(VirtQueue *vq, size_t sz)

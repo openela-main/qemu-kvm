@@ -1,17 +1,17 @@
-From 671138b8df11c3e663778b811d75686b6685e8ab Mon Sep 17 00:00:00 2001
+From 6a11d5845b62f4f1a1c481b9be33aae9acded335 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:05 +0100
-Subject: [PATCH 27/31] hw/scsi/lsi53c895a: skip automatic zero-init of large
+Subject: [PATCH 35/43] hw/scsi/lsi53c895a: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [26/30] d49841c853484c14ea6bce2543ab1344b6e0d4a8
+RH-Commit: [27/31] d54767678b4bd133b69cc7461220121eee04c9bb (stefanha/centos-stream-qemu-kvm)
 
 The 'lsi_memcpy' method has a 4k byte array used for copying data
 to/from the device. Skip the automatic zero-init of this array to
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/scsi/lsi53c895a.c b/hw/scsi/lsi53c895a.c
-index f1935e5328..f165705f8a 100644
+index 6689ebba25..bacc6593f6 100644
 --- a/hw/scsi/lsi53c895a.c
 +++ b/hw/scsi/lsi53c895a.c
 @@ -1112,7 +1112,7 @@ bad:

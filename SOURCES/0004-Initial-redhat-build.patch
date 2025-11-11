@@ -1,4 +1,4 @@
-From 7e57931a524e1e805ba8d68e75828e98c591e975 Mon Sep 17 00:00:00 2001
+From ff5cdaa4c69d89d7c6429b30fbdc5b9e1f0a6968 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,33 +13,57 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-We are rebasing from qemu-kvm-9.0.0-8.el10.
+We are rebasing from qemu-kvm-9.1.0-17.el10.
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 
 ---
-Rebase notes (9.1.0 rc0):
+Rebase notes (9.1.0):
 - Remove --disable-block-migration and --disable-pvrdma configure options (upstream)
 - Removed --disable-avx512f configure option
 - Removed qemu-vsmr-helper (changed upstream)
+
+Rebase notes (10.0.0 rc0):
+- Split --disable-sanitazers configure option (upstream change)
+- Removed s390x-netboot.img (upstream)
+- accel-tcg module no longer built (upstream)
+- Removed new upstream npcm8xx board rom
+- Not package hw-uefi-vars.so
+- Not package pnv-pnor.bin on build
+
+Rebase notes (10.0.0):
+- Include riscv support
+
+Merged patches (9.1.0):
+- b206b8f7cb redhat: Remove the s390-netboot.img from the spec file
+- 95605107f1 Require new dtrace package
+
+Merged patches (10.0.0 rc0):
+- 07c8c9b9ff qemu-guest-agent: Update the logfile path of qga-fsfreeze-hook.log
+
+Merged patches (10.0.0 rc1):
+- 1f54babd2a Recommend systemtap-client from qemu-tools
+
+Merged patches (10.0.0 rc3):
+- 3e4d2a0fb8 Also recommend systemtap-devel from qemu-tools
 ---
  .distro/Makefile                        |  101 ++
  .distro/Makefile.common                 |   42 +
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 1332 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 1606 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
  .distro/scripts/frh.py                  |    4 +-
  .distro/scripts/process-patches.sh      |    6 +-
  .gitignore                              |    1 +
  README.systemtap                        |   43 +
- scripts/qemu-guest-agent/fsfreeze-hook  |    2 +-
+ scripts/qemu-guest-agent/fsfreeze-hook  |    4 +-
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 16 files changed, 1593 insertions(+), 7 deletions(-)
+ 16 files changed, 1868 insertions(+), 8 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests
@@ -99,14 +123,16 @@ index 0000000000..ad913fc990
 +3. Translate the trace record to readable format.
 +  # /usr/share/qemu-kvm/simpletrace.py --no-header /usr/share/qemu-kvm/trace-events /tmp/trace.log
 diff --git a/scripts/qemu-guest-agent/fsfreeze-hook b/scripts/qemu-guest-agent/fsfreeze-hook
-index 13aafd4845..e9b84ec028 100755
+index c1feb6f5ce..d5d8d4daf8 100755
 --- a/scripts/qemu-guest-agent/fsfreeze-hook
 +++ b/scripts/qemu-guest-agent/fsfreeze-hook
-@@ -8,7 +8,7 @@
+@@ -7,8 +7,8 @@
+ # "freeze" argument before the filesystem is frozen. And for fsfreeze-thaw
  # request, it is issued with "thaw" argument after filesystem is thawed.
  
- LOGFILE=/var/log/qga-fsfreeze-hook.log
+-LOGFILE=/var/log/qga-fsfreeze-hook.log
 -FSFREEZE_D=$(dirname -- "$0")/fsfreeze-hook.d
++LOGFILE=/var/log/qemu-ga/qga-fsfreeze-hook.log
 +FSFREEZE_D=$(dirname -- "$(realpath $0)")/fsfreeze-hook.d
  
  # Check whether file $1 is a backup or rpm-generated file and should be ignored
@@ -129,7 +155,7 @@ index 0000000000..c04abf9449
 @@ -0,0 +1 @@
 +probe qemu.kvm.simpletrace.handle_qmp_command,qemu.kvm.simpletrace.monitor_protocol_*,qemu.kvm.simpletrace.migrate_set_state {}
 diff --git a/ui/vnc-auth-sasl.c b/ui/vnc-auth-sasl.c
-index 47fdae5b21..2a950caa2a 100644
+index 3f4cfc471d..09dafba18d 100644
 --- a/ui/vnc-auth-sasl.c
 +++ b/ui/vnc-auth-sasl.c
 @@ -42,7 +42,7 @@

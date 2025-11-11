@@ -1,17 +1,17 @@
-From cc996b6418e421da1d04f6c4c91984c066a54db4 Mon Sep 17 00:00:00 2001
+From 0aea786f8ab4f7a4122bb2019ebe5136763c9609 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:39 +0100
-Subject: [PATCH 02/31] include/qemu/compiler: add QEMU_UNINITIALIZED attribute
+Subject: [PATCH 09/43] include/qemu/compiler: add QEMU_UNINITIALIZED attribute
  macro
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/30] 8e3758397d4a2ad7355db6d87bc9e3de6c1c23be
+RH-Commit: [1/31] ddf39e782add4426708480dfb78ebbd71fb777f0 (stefanha/centos-stream-qemu-kvm)
 
 The QEMU_UNINITIALIZED macro is to be used to skip the default compiler
 variable initialization done by -ftrivial-auto-var-init=zero.
@@ -36,19 +36,15 @@ Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
 Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
 (cherry picked from commit c653b67d1863b7ebfa67f7c9f4aec209d7b5ced5)
 Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
-
-Conflicts:
-  include/qemu/compiler.h
-  Context conflict due to clang Thread Safety Analysis macros.
 ---
  include/qemu/compiler.h | 20 ++++++++++++++++++++
  1 file changed, 20 insertions(+)
 
 diff --git a/include/qemu/compiler.h b/include/qemu/compiler.h
-index c06954ccb4..cc193d5b82 100644
+index 496dac5ac1..65b89958d3 100644
 --- a/include/qemu/compiler.h
 +++ b/include/qemu/compiler.h
-@@ -212,6 +212,26 @@
+@@ -207,6 +207,26 @@
  # define QEMU_USED
  #endif
  
@@ -73,8 +69,8 @@ index c06954ccb4..cc193d5b82 100644
 +#endif
 +
  /*
-  * Ugly CPP trick that is like "defined FOO", but also works in C
-  * code.  Useful to replace #ifdef with "if" statements; assumes
+  * http://clang.llvm.org/docs/ThreadSafetyAnalysis.html
+  *
 -- 
 2.39.3
 

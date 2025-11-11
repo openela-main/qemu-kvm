@@ -1,0 +1,95 @@
+From d7dbe00c128a6037a5536bd5f81663e9f79285a9 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:49 +0200
+Subject: [PATCH 083/100] target/i386: merge host_cpu_instance_init() and
+ host_cpu_max_instance_init()
+
+Simplify the accelerators' cpu_instance_init callbacks by doing all
+host-cpu setup in a single function.
+
+Based-on: <20250711000603.438312-1-pbonzini@redhat.com>
+Cc: Xiaoyao Li <xiaoyao.li@intel.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 29f1ba338baf60a9e455b6fdc37489ca1efe25aa)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/host-cpu.c    | 28 ++++++++++++++--------------
+ target/i386/hvf/hvf-cpu.c |  2 --
+ target/i386/kvm/kvm-cpu.c |  2 --
+ 3 files changed, 14 insertions(+), 18 deletions(-)
+
+diff --git a/target/i386/host-cpu.c b/target/i386/host-cpu.c
+index a78be2e220..bba14e7704 100644
+--- a/target/i386/host-cpu.c
++++ b/target/i386/host-cpu.c
+@@ -132,27 +132,27 @@ void host_cpu_instance_init(X86CPU *cpu)
+ {
+     X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
+ 
+-    if (xcc->model) {
+-        char vendor[CPUID_VENDOR_SZ + 1];
+-
+-        host_cpu_vendor_fms(vendor, NULL, NULL, NULL);
+-        object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
+-    }
+-}
+-
+-void host_cpu_max_instance_init(X86CPU *cpu)
+-{
+     char vendor[CPUID_VENDOR_SZ + 1] = { 0 };
+     char model_id[CPUID_MODEL_ID_SZ + 1] = { 0 };
+     int family, model, stepping;
+ 
+-    /* Use max host physical address bits if -cpu max option is applied */
+-    object_property_set_bool(OBJECT(cpu), "host-phys-bits", true, &error_abort);
+-
++    /*
++     * setting vendor applies to both max/host and builtin_x86_defs CPU.
++     * FIXME: this probably should warn or should be skipped if vendors do
++     * not match, because family numbers are incompatible between Intel and AMD.
++     */
+     host_cpu_vendor_fms(vendor, &family, &model, &stepping);
++    object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
++
++    if (!xcc->max_features) {
++        return;
++    }
++
+     host_cpu_fill_model_id(model_id);
+ 
+-    object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
++    /* Use max host physical address bits if -cpu max option is applied */
++    object_property_set_bool(OBJECT(cpu), "host-phys-bits", true, &error_abort);
++
+     object_property_set_int(OBJECT(cpu), "family", family, &error_abort);
+     object_property_set_int(OBJECT(cpu), "model", model, &error_abort);
+     object_property_set_int(OBJECT(cpu), "stepping", stepping,
+diff --git a/target/i386/hvf/hvf-cpu.c b/target/i386/hvf/hvf-cpu.c
+index 83dbd4b46a..6f94f18135 100644
+--- a/target/i386/hvf/hvf-cpu.c
++++ b/target/i386/hvf/hvf-cpu.c
+@@ -21,8 +21,6 @@ static void hvf_cpu_max_instance_init(X86CPU *cpu)
+ {
+     CPUX86State *env = &cpu->env;
+ 
+-    host_cpu_max_instance_init(cpu);
+-
+     env->cpuid_min_level =
+         hvf_get_supported_cpuid(0x0, 0, R_EAX);
+     env->cpuid_min_xlevel =
+diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
+index 34e61bb4cd..71944936ee 100644
+--- a/target/i386/kvm/kvm-cpu.c
++++ b/target/i386/kvm/kvm-cpu.c
+@@ -109,8 +109,6 @@ static void kvm_cpu_max_instance_init(X86CPU *cpu)
+     CPUX86State *env = &cpu->env;
+     KVMState *s = kvm_state;
+ 
+-    host_cpu_max_instance_init(cpu);
+-
+     object_property_set_bool(OBJECT(cpu), "pmu", true, &error_abort);
+ 
+     if (lmce_supported()) {
+-- 
+2.47.3
+

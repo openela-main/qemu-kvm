@@ -1,17 +1,17 @@
-From 635637c7e38b031965ab81a40ae11dd639f57006 Mon Sep 17 00:00:00 2001
+From 116f42add040dfa1eaf25087db1038f8c4198bf7 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:41 +0100
-Subject: [PATCH 04/31] block: skip automatic zero-init of large array in
+Subject: [PATCH 11/43] block: skip automatic zero-init of large array in
  ioq_submit
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [3/30] 9d240d5fcc6f24a18303f3f51f5cfaf6735d3f6c
+RH-Commit: [3/31] 3d4c81fcc56f1c7a4d1d3819214bd6296edc2a1e (stefanha/centos-stream-qemu-kvm)
 
 The 'ioq_submit' method has a struct array that is 8k in size.
 Skip the automatic zero-init of this array to eliminate the
@@ -31,7 +31,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/block/linux-aio.c b/block/linux-aio.c
-index e3b5ec9aba..26d9f086d2 100644
+index 407369f5c9..c200e7ad20 100644
 --- a/block/linux-aio.c
 +++ b/block/linux-aio.c
 @@ -291,7 +291,7 @@ static void ioq_submit(LinuxAioState *s)

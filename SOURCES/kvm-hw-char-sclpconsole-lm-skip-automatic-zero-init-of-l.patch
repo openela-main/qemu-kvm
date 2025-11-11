@@ -1,17 +1,17 @@
-From 85744cd6690bcdb5538365f6a8e714264b3a9fb1 Mon Sep 17 00:00:00 2001
+From d7f96f00428f759f4323364ca1688988b34c17b0 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:52 +0100
-Subject: [PATCH 15/31] hw/char/sclpconsole-lm: skip automatic zero-init of
+Subject: [PATCH 22/43] hw/char/sclpconsole-lm: skip automatic zero-init of
  large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [14/30] e3ba47e29e34cba5727bbea1dae0b1e8eba24203
+RH-Commit: [14/31] 17140f6dae4e1f23ae5d2ba5e320dd8335233a5c (stefanha/centos-stream-qemu-kvm)
 
 The 'process_mdb' method has a 4k byte array used for copying data
 between the guest and the chardev backend. Skip the automatic zero-init
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/char/sclpconsole-lm.c b/hw/char/sclpconsole-lm.c
-index 7719f438f6..19e64b92f6 100644
+index ddb9a726d5..5084531b7b 100644
 --- a/hw/char/sclpconsole-lm.c
 +++ b/hw/char/sclpconsole-lm.c
 @@ -214,7 +214,7 @@ static int process_mdb(SCLPEvent *event, MDBO *mdbo)

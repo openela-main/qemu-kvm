@@ -1,16 +1,16 @@
-From 20bbffe0e677431d0535920fdfe82a4ecc83e563 Mon Sep 17 00:00:00 2001
+From 9df074f93f69dcb7f3a61bcdb05c8e2ece7b6698 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:00 +0100
-Subject: [PATCH 23/31] hw/net/xgamc: skip automatic zero-init of large array
+Subject: [PATCH 30/43] hw/net/xgamc: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [22/30] 11dde61ef5be6ec87c7ae054ee755a149b0cb0fe
+RH-Commit: [22/31] 252d607753e42558049b0516924dad3ca08092c0 (stefanha/centos-stream-qemu-kvm)
 
 The 'xgmac_enet_send' method has a 8k byte array used for copying
 data between guest and host. Skip the automatic zero-init of this
@@ -30,7 +30,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/net/xgmac.c b/hw/net/xgmac.c
-index ffe3fc8dbe..eff8022aca 100644
+index e3cc4c60eb..14225eb27a 100644
 --- a/hw/net/xgmac.c
 +++ b/hw/net/xgmac.c
 @@ -207,7 +207,7 @@ static void xgmac_enet_send(XgmacState *s)

@@ -1,4 +1,4 @@
-From 9813098fb73e899dd1d824f9c1e7e570a87b1771 Mon Sep 17 00:00:00 2001
+From 194c56d4231e0ea6e86c04d905a3941e376c9a55 Mon Sep 17 00:00:00 2001
 From: Bandan Das <bsd@redhat.com>
 Date: Tue, 3 Dec 2013 20:05:13 +0100
 Subject: vfio: cap number of devices that can be assigned
@@ -23,7 +23,7 @@ Signed-off-by: Bandan Das <bsd@redhat.com>
  2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
-index 2407720c35..82a47edc89 100644
+index 7f1532fbed..a71fe1ca7a 100644
 --- a/hw/vfio/pci.c
 +++ b/hw/vfio/pci.c
 @@ -50,6 +50,9 @@
@@ -36,7 +36,7 @@ index 2407720c35..82a47edc89 100644
  static void vfio_disable_interrupts(VFIOPCIDevice *vdev);
  static void vfio_mmap_set_enabled(VFIOPCIDevice *vdev, bool enabled);
  static void vfio_msi_disable_common(VFIOPCIDevice *vdev);
-@@ -2963,10 +2966,33 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
+@@ -2966,10 +2969,33 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
      ERRP_GUARD();
      VFIOPCIDevice *vdev = VFIO_PCI(pdev);
      VFIODevice *vbasedev = &vdev->vbasedev;
@@ -71,7 +71,7 @@ index 2407720c35..82a47edc89 100644
      if (vbasedev->fd < 0 && !vbasedev->sysfsdev) {
          if (!(~vdev->host.domain || ~vdev->host.bus ||
                ~vdev->host.slot || ~vdev->host.function)) {
-@@ -3388,6 +3414,9 @@ static Property vfio_pci_dev_properties[] = {
+@@ -3380,6 +3406,9 @@ static const Property vfio_pci_dev_properties[] = {
      DEFINE_PROP_BOOL("x-no-kvm-msix", VFIOPCIDevice, no_kvm_msix, false),
      DEFINE_PROP_BOOL("x-no-geforce-quirks", VFIOPCIDevice,
                       no_geforce_quirks, false),
@@ -82,7 +82,7 @@ index 2407720c35..82a47edc89 100644
                       false),
      DEFINE_PROP_BOOL("x-no-vfio-ioeventfd", VFIOPCIDevice, no_vfio_ioeventfd,
 diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
-index bf67df2fbc..0d3c93fb2e 100644
+index d94ecaba68..3854bbcb26 100644
 --- a/hw/vfio/pci.h
 +++ b/hw/vfio/pci.h
 @@ -142,6 +142,7 @@ struct VFIOPCIDevice {

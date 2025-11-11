@@ -1,16 +1,16 @@
-From 31235ee1ebeb34c16f2673b9c86a585031344bca Mon Sep 17 00:00:00 2001
+From b6904ecdbd09b38339963465dd9bd81c25acf5cc Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:07 +0100
-Subject: [PATCH 29/31] hw/ufs/lu: skip automatic zero-init of large array
+Subject: [PATCH 37/43] hw/ufs/lu: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [28/30] 2a9adaeaed2689cb9915cbd9f4dc9a310a63b25c
+RH-Commit: [29/31] 9b4da8039e1856614cd65981c2ec0a4b59c4e379 (stefanha/centos-stream-qemu-kvm)
 
 The 'ufs_emulate_scsi_cmd' method has a 4k byte array used for
 copying data from the device. Skip the automatic zero-init of
@@ -33,7 +33,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/ufs/lu.c b/hw/ufs/lu.c
-index 81bfff9b4e..caad82dcc4 100644
+index 1c3794b2d4..63e482bf83 100644
 --- a/hw/ufs/lu.c
 +++ b/hw/ufs/lu.c
 @@ -194,7 +194,7 @@ static int ufs_emulate_wlun_inquiry(UfsRequest *req, uint8_t *outbuf,

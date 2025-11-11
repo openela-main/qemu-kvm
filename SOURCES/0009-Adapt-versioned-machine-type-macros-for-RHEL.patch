@@ -1,4 +1,4 @@
-From ccb1eaa95ce9c92a196fe034c033502f582a324b Mon Sep 17 00:00:00 2001
+From d74a60788160bf1cefe391430bb7ef2f2bd0d29c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 15:27:03 +0100
 Subject: Adapt versioned machine type macros for RHEL
@@ -31,10 +31,10 @@ Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
  8 files changed, 30 insertions(+), 42 deletions(-)
 
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index ccfc3e10eb..7f7eb4ec40 100644
+index d7fa968dca..1f6bba7d64 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -548,16 +548,16 @@ struct MachineState {
+@@ -577,16 +577,16 @@ struct MachineState {
   *   "{prefix}-{major}.{minor}.{micro}-{tag}"
   */
  #define _MACHINE_VER_TYPE_NAME2(prefix, major, minor)   \
@@ -55,7 +55,7 @@ index ccfc3e10eb..7f7eb4ec40 100644
  
  #define MACHINE_VER_TYPE_NAME(prefix, ...) \
      _MACHINE_VER_PICK(__VA_ARGS__, \
-@@ -585,16 +585,16 @@ struct MachineState {
+@@ -614,16 +614,16 @@ struct MachineState {
   *   {prefix}_machine_{major}_{minor}_{micro}_{tag}_{sym}
   */
  #define _MACHINE_VER_SYM2(sym, prefix, major, minor) \
@@ -76,7 +76,7 @@ index ccfc3e10eb..7f7eb4ec40 100644
  
  #define MACHINE_VER_SYM(sym, prefix, ...) \
      _MACHINE_VER_PICK(__VA_ARGS__, \
-@@ -605,26 +605,22 @@ struct MachineState {
+@@ -634,26 +634,22 @@ struct MachineState {
  
  
  /*
@@ -110,7 +110,7 @@ index ccfc3e10eb..7f7eb4ec40 100644
  
  #define _MACHINE_VER_IS_EXPIRED2(cutoff, major, minor) \
      _MACHINE_VER_IS_EXPIRED_IMPL(cutoff, major, minor)
-@@ -686,32 +682,14 @@ struct MachineState {
+@@ -715,32 +711,14 @@ struct MachineState {
   * This must be unconditionally used in the register
   * method for all machine types which support versioning.
   *
@@ -148,10 +148,10 @@ index ccfc3e10eb..7f7eb4ec40 100644
      } while (0)
  
 diff --git a/meson.build b/meson.build
-index 161d496d55..2de5ab024f 100644
+index 066ca7a2c9..38ad60fc10 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -2440,6 +2440,7 @@ config_host_data.set('QEMU_VERSION', '"@0@"'.format(meson.project_version()))
+@@ -2594,6 +2594,7 @@ config_host_data.set('QEMU_VERSION', '"@0@"'.format(meson.project_version()))
  config_host_data.set('QEMU_VERSION_MAJOR', meson.project_version().split('.')[0])
  config_host_data.set('QEMU_VERSION_MINOR', meson.project_version().split('.')[1])
  config_host_data.set('QEMU_VERSION_MICRO', meson.project_version().split('.')[2])
@@ -160,7 +160,7 @@ index 161d496d55..2de5ab024f 100644
  config_host_data.set_quoted('CONFIG_HOST_DSOSUF', host_dsosuf)
  config_host_data.set('HAVE_HOST_BLOCK_DEVICE', have_host_block_device)
 diff --git a/meson_options.txt b/meson_options.txt
-index 0269fa0f16..aa2ba0baef 100644
+index 59d973bca0..ad6996178c 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
 @@ -2,6 +2,8 @@
@@ -173,25 +173,25 @@ index 0269fa0f16..aa2ba0baef 100644
         description: 'Suffix for QEMU data/modules/config directories (can be empty)')
  option('docdir', type : 'string', value : 'share/doc',
 diff --git a/scripts/meson-buildoptions.sh b/scripts/meson-buildoptions.sh
-index c97079a38c..5f0cbfc725 100644
+index 3e8e00852b..e9edc8a919 100644
 --- a/scripts/meson-buildoptions.sh
 +++ b/scripts/meson-buildoptions.sh
-@@ -71,6 +71,7 @@ meson_options_help() {
-   printf "%s\n" '                           "manufacturer" name for qemu-ga registry entries'
+@@ -75,6 +75,7 @@ meson_options_help() {
    printf "%s\n" '                           [QEMU]'
    printf "%s\n" '  --qemu-ga-version=VALUE  version number for qemu-ga installer'
+   printf "%s\n" '  --rtsig-map=VALUE        default value of QEMU_RTSIG_MAP [NULL]'
 +  printf "%s\n" '  --rhel-version=VALUE     RHEL major/minor version [0.0]'
    printf "%s\n" '  --smbd=VALUE             Path to smbd for slirp networking'
    printf "%s\n" '  --sysconfdir=VALUE       Sysconf data directory [etc]'
    printf "%s\n" '  --tls-priority=VALUE     Default TLS protocol/cipher priority string'
-@@ -450,6 +451,7 @@ _meson_option_parse() {
+@@ -464,6 +465,7 @@ _meson_option_parse() {
      --disable-relocatable) printf "%s" -Drelocatable=false ;;
      --enable-replication) printf "%s" -Dreplication=enabled ;;
      --disable-replication) printf "%s" -Dreplication=disabled ;;
 +    --rhel-version=*) quote_sh "-Drhel_version=$2" ;;
      --enable-rng-none) printf "%s" -Drng_none=true ;;
      --disable-rng-none) printf "%s" -Drng_none=false ;;
-     --enable-rutabaga-gfx) printf "%s" -Drutabaga_gfx=enabled ;;
+     --rtsig-map=*) quote_sh "-Drtsig_map=$2" ;;
 -- 
 2.39.3
 

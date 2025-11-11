@@ -1,16 +1,16 @@
-From 7b7f18b36ef46073aee2b9a60404df6a7e58e949 Mon Sep 17 00:00:00 2001
+From 7f3f625c3046f8a44ac158bef1e627f18856a2ef Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:08 +0100
-Subject: [PATCH 30/31] net/socket: skip automatic zero-init of large array
+Subject: [PATCH 38/43] net/socket: skip automatic zero-init of large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [29/30] d9cf9e82838eb14f338030cc9951f66d82673081
+RH-Commit: [30/31] b45f973634d85a5cb99d51ef79b0c04c695a43d6 (stefanha/centos-stream-qemu-kvm)
 
 The 'net_socket_send' method has a 68k byte array used for copying
 data between guest and host. Skip the automatic zero-init of this

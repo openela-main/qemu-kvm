@@ -1,0 +1,106 @@
+From a4f11515016abb663e37c9796ef4655d5e7e831b Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Fri, 30 May 2025 17:10:41 +0200
+Subject: [PATCH 16/33] block: move drain outside of read-locked
+ bdrv_inactivate_recurse()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 393: block: do not drain while holding the graph lock
+RH-Jira: RHEL-88561
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [4/21] 56ced7ba208c22d5998ab27c70ec6a027dc2469e (kmwolf/centos-qemu-kvm)
+
+This is in preparation to mark bdrv_drained_begin() as GRAPH_UNLOCKED.
+
+More granular draining is not trivially possible, because
+bdrv_inactivate_recurse() can recursively call itself.
+
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20250530151125.955508-5-f.ebner@proxmox.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 841998e08650f5b4476fa2d1eb84a592ab405f51)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block.c | 25 ++++++++++++++++++-------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/block.c b/block.c
+index 85efdf9c1b..e340bac177 100644
+--- a/block.c
++++ b/block.c
+@@ -6989,6 +6989,8 @@ bdrv_inactivate_recurse(BlockDriverState *bs, bool top_level)
+ 
+     GLOBAL_STATE_CODE();
+ 
++    assert(bs->quiesce_counter > 0);
++
+     if (!bs->drv) {
+         return -ENOMEDIUM;
+     }
+@@ -7032,9 +7034,7 @@ bdrv_inactivate_recurse(BlockDriverState *bs, bool top_level)
+         return -EPERM;
+     }
+ 
+-    bdrv_drained_begin(bs);
+     bs->open_flags |= BDRV_O_INACTIVE;
+-    bdrv_drained_end(bs);
+ 
+     /*
+      * Update permissions, they may differ for inactive nodes.
+@@ -7059,20 +7059,26 @@ int bdrv_inactivate(BlockDriverState *bs, Error **errp)
+     int ret;
+ 
+     GLOBAL_STATE_CODE();
+-    GRAPH_RDLOCK_GUARD_MAINLOOP();
++
++    bdrv_drain_all_begin();
++    bdrv_graph_rdlock_main_loop();
+ 
+     if (bdrv_has_bds_parent(bs, true)) {
+         error_setg(errp, "Node has active parent node");
+-        return -EPERM;
++        ret = -EPERM;
++        goto out;
+     }
+ 
+     ret = bdrv_inactivate_recurse(bs, true);
+     if (ret < 0) {
+         error_setg_errno(errp, -ret, "Failed to inactivate node");
+-        return ret;
++        goto out;
+     }
+ 
+-    return 0;
++out:
++    bdrv_graph_rdunlock_main_loop();
++    bdrv_drain_all_end();
++    return ret;
+ }
+ 
+ int bdrv_inactivate_all(void)
+@@ -7082,7 +7088,9 @@ int bdrv_inactivate_all(void)
+     int ret = 0;
+ 
+     GLOBAL_STATE_CODE();
+-    GRAPH_RDLOCK_GUARD_MAINLOOP();
++
++    bdrv_drain_all_begin();
++    bdrv_graph_rdlock_main_loop();
+ 
+     for (bs = bdrv_first(&it); bs; bs = bdrv_next(&it)) {
+         /* Nodes with BDS parents are covered by recursion from the last
+@@ -7098,6 +7106,9 @@ int bdrv_inactivate_all(void)
+         }
+     }
+ 
++    bdrv_graph_rdunlock_main_loop();
++    bdrv_drain_all_end();
++
+     return ret;
+ }
+ 
+-- 
+2.39.3
+

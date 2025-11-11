@@ -1,0 +1,49 @@
+From 2d6348de26d12f5bf6866f5f587e0dc854bf43b7 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 089/100] i386/tdx: Don't mask off CPUID_EXT_PDCM
+
+It gets below warning when booting TDX VMs:
+
+  warning: TDX forcibly sets the feature: CPUID[eax=01h].ECX.pdcm [bit 15]
+
+Because CPUID_EXT_PDCM is fixed1 for TDX, and MSR_IA32_PERF_CAPABILITIES is
+supported for TDX guest unconditioanlly.
+
+Don't mask off CPUID_EXT_PDCM for TDX.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250625035710.2770679-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 7ff24fb657d35c014f735f69aef03810fde607ab)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 8a8607591e..15ee4281ba 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -28,6 +28,7 @@
+ #include "system/hvf.h"
+ #include "hvf/hvf-i386.h"
+ #include "kvm/kvm_i386.h"
++#include "kvm/tdx.h"
+ #include "sev.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+@@ -8300,7 +8301,8 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
+-    if (!cpu->enable_pmu) {
++    /* PDCM is fixed1 bit for TDX */
++    if (!cpu->enable_pmu && !is_tdx_vm()) {
+         env->features[FEAT_1_ECX] &= ~CPUID_EXT_PDCM;
+     }
+ 
+-- 
+2.47.3
+

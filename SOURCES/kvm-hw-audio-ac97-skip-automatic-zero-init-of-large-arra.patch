@@ -1,16 +1,16 @@
-From ebdb9f250c30dec885894b6b9e249c1744d36b2d Mon Sep 17 00:00:00 2001
+From 662b91cbf6bebfa4f38fe2d1b1868d316bfe8838 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:45 +0100
-Subject: [PATCH 08/31] hw/audio/ac97: skip automatic zero-init of large arrays
+Subject: [PATCH 15/43] hw/audio/ac97: skip automatic zero-init of large arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [7/30] f5ecbd20c7b3a4c77eb5d3230e589115a333737f
+RH-Commit: [7/31] 5c4f1eea2eab9ef363ac7f0076725fc5767ee51f (stefanha/centos-stream-qemu-kvm)
 
 The 'read_audio' & 'write_audio' methods have a 4k byte array used
 for copying data between the audio backend and device. Skip the
@@ -31,7 +31,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/hw/audio/ac97.c b/hw/audio/ac97.c
-index 3f0053f94d..681b5752a1 100644
+index 05c573776e..2b290cb2b1 100644
 --- a/hw/audio/ac97.c
 +++ b/hw/audio/ac97.c
 @@ -886,7 +886,7 @@ static void nabm_writel(void *opaque, uint32_t addr, uint32_t val)

@@ -1,0 +1,140 @@
+From 883ddd4af17376fc62bdee9f4b30dfaa45d0c968 Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Fri, 11 Apr 2025 17:15:30 +0530
+Subject: [PATCH 03/33] migration: Add save_postcopy_prepare() savevm handler
+
+RH-Author: Prasad Pandit <None>
+RH-MergeRequest: 390: migration: allow to enable multifd+postcopy features together, but use multifd during precopy only
+RH-Jira: RHEL-59697
+RH-Acked-by: Juraj Marcin <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/11] 2f2f108041d921985e2ddce5fd8e805fc539e74f (pjp/cs-qemu-kvm)
+
+Add a savevm handler for a module to opt-in sending extra sections right
+before postcopy starts, and before VM is stopped.
+
+RAM will start to use this new savevm handler in the next patch to do flush
+and sync for multifd pages.
+
+Note that we choose to do it before VM stopped because the current only
+potential user is not sensitive to VM status, so doing it before VM is
+stopped is preferred to enlarge any postcopy downtime.
+
+It is still a bit unfortunate that we need to introduce such a new savevm
+handler just for the only use case, however it's so far the cleanest.
+
+Jira: https://issues.redhat.com/browse/RHEL-59697
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Message-ID: <20250411114534.3370816-4-ppandit@redhat.com>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit 1d481116015428c02f7e3635f9bc0b88b0978fdc)
+Signed-off-by: Prasad Pandit <ppandit@redhat.com>
+---
+ include/migration/register.h | 15 +++++++++++++++
+ migration/migration.c        |  4 ++++
+ migration/savevm.c           | 33 +++++++++++++++++++++++++++++++++
+ migration/savevm.h           |  1 +
+ 4 files changed, 53 insertions(+)
+
+diff --git a/include/migration/register.h b/include/migration/register.h
+index c041ce32f2..b79dc81b8d 100644
+--- a/include/migration/register.h
++++ b/include/migration/register.h
+@@ -189,6 +189,21 @@ typedef struct SaveVMHandlers {
+ 
+     /* This runs outside the BQL!  */
+ 
++    /**
++     * @save_postcopy_prepare
++     *
++     * This hook will be invoked on the source side right before switching
++     * to postcopy (before VM stopped).
++     *
++     * @f:      QEMUFile where to send the data
++     * @opaque: Data pointer passed to register_savevm_live()
++     * @errp:   Error** used to report error message
++     *
++     * Returns: true if succeeded, false if error occured.  When false is
++     * returned, @errp must be set.
++     */
++    bool (*save_postcopy_prepare)(QEMUFile *f, void *opaque, Error **errp);
++
+     /**
+      * @state_pending_estimate
+      *
+diff --git a/migration/migration.c b/migration/migration.c
+index 64f4f40ae3..4bb29b7193 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -2717,6 +2717,10 @@ static int postcopy_start(MigrationState *ms, Error **errp)
+         }
+     }
+ 
++    if (!qemu_savevm_state_postcopy_prepare(ms->to_dst_file, errp)) {
++        return -1;
++    }
++
+     trace_postcopy_start();
+     bql_lock();
+     trace_postcopy_start_set_run();
+diff --git a/migration/savevm.c b/migration/savevm.c
+index ce158c3512..23ef4c7dc9 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1523,6 +1523,39 @@ void qemu_savevm_state_complete_postcopy(QEMUFile *f)
+     qemu_fflush(f);
+ }
+ 
++bool qemu_savevm_state_postcopy_prepare(QEMUFile *f, Error **errp)
++{
++    SaveStateEntry *se;
++    bool ret;
++
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
++        if (!se->ops || !se->ops->save_postcopy_prepare) {
++            continue;
++        }
++
++        if (se->ops->is_active) {
++            if (!se->ops->is_active(se->opaque)) {
++                continue;
++            }
++        }
++
++        trace_savevm_section_start(se->idstr, se->section_id);
++
++        save_section_header(f, se, QEMU_VM_SECTION_PART);
++        ret = se->ops->save_postcopy_prepare(f, se->opaque, errp);
++        save_section_footer(f, se);
++
++        trace_savevm_section_end(se->idstr, se->section_id, ret);
++
++        if (!ret) {
++            assert(*errp);
++            return false;
++        }
++    }
++
++    return true;
++}
++
+ int qemu_savevm_state_complete_precopy_iterable(QEMUFile *f, bool in_postcopy)
+ {
+     int64_t start_ts_each, end_ts_each;
+diff --git a/migration/savevm.h b/migration/savevm.h
+index 138c39a7f9..2d5e9c7166 100644
+--- a/migration/savevm.h
++++ b/migration/savevm.h
+@@ -45,6 +45,7 @@ void qemu_savevm_state_pending_exact(uint64_t *must_precopy,
+ void qemu_savevm_state_pending_estimate(uint64_t *must_precopy,
+                                         uint64_t *can_postcopy);
+ int qemu_savevm_state_complete_precopy_iterable(QEMUFile *f, bool in_postcopy);
++bool qemu_savevm_state_postcopy_prepare(QEMUFile *f, Error **errp);
+ void qemu_savevm_send_ping(QEMUFile *f, uint32_t value);
+ void qemu_savevm_send_open_return_path(QEMUFile *f);
+ int qemu_savevm_send_packaged(QEMUFile *f, const uint8_t *buf, size_t len);
+-- 
+2.39.3
+

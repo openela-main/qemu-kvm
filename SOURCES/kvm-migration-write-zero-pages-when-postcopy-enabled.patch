@@ -1,0 +1,69 @@
+From d25e369e01fcb30d4d12802907372d3320c095ff Mon Sep 17 00:00:00 2001
+From: Prasad Pandit <pjp@fedoraproject.org>
+Date: Mon, 12 May 2025 18:21:22 +0530
+Subject: [PATCH 06/33] migration: write zero pages when postcopy enabled
+
+RH-Author: Prasad Pandit <None>
+RH-MergeRequest: 390: migration: allow to enable multifd+postcopy features together, but use multifd during precopy only
+RH-Jira: RHEL-59697
+RH-Acked-by: Juraj Marcin <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/11] 28ab95cd8a382d400d28511b0bb2e1ea1fd21c0a (pjp/cs-qemu-kvm)
+
+During multifd migration, zero pages are written if
+they are migrated more than once.
+
+This may result in a migration thread hang issue when
+multifd and postcopy are enabled together.
+
+When postcopy is enabled, always write zero pages as and
+when they are migrated.
+
+Jira: https://issues.redhat.com/browse/RHEL-59697
+Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Link: https://lore.kernel.org/r/20250512125124.147064-2-ppandit@redhat.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 249543d0c02d7645b8bcda552dad138769e96831)
+Signed-off-by: Prasad Pandit <ppandit@redhat.com>
+---
+ migration/multifd-zero-page.c | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/migration/multifd-zero-page.c b/migration/multifd-zero-page.c
+index f1e988a959..3e0a04f2b5 100644
+--- a/migration/multifd-zero-page.c
++++ b/migration/multifd-zero-page.c
+@@ -85,9 +85,27 @@ void multifd_recv_zero_page_process(MultiFDRecvParams *p)
+ {
+     for (int i = 0; i < p->zero_num; i++) {
+         void *page = p->host + p->zero[i];
+-        if (ramblock_recv_bitmap_test_byte_offset(p->block, p->zero[i])) {
++        bool received =
++                ramblock_recv_bitmap_test_byte_offset(p->block, p->zero[i]);
++
++        /*
++         * During multifd migration zero page is written to the memory
++         * only if it is migrated more than once.
++         *
++         * It becomes a problem when both multifd & postcopy options are
++         * enabled. If the zero page which was skipped during multifd phase,
++         * is accessed during the postcopy phase of the migration, a page
++         * fault occurs. But this page fault is not served because the
++         * 'receivedmap' says the zero page is already received. Thus the
++         * thread accessing that page may hang.
++         *
++         * When postcopy is enabled, always write the zero page as and when
++         * it is migrated.
++         */
++        if (migrate_postcopy_ram() || received) {
+             memset(page, 0, multifd_ram_page_size());
+-        } else {
++        }
++        if (!received) {
+             ramblock_recv_bitmap_set_offset(p->block, p->zero[i]);
+         }
+     }
+-- 
+2.39.3
+

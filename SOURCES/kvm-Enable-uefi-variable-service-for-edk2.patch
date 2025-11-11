@@ -1,0 +1,45 @@
+From 058b99a669b3cdd55a8c0c685d2fbfae0935d79e Mon Sep 17 00:00:00 2001
+From: Shaoqin Huang <shahuang@redhat.com>
+Date: Wed, 6 Aug 2025 22:31:50 -0400
+Subject: [PATCH] Enable uefi variable service for edk2
+
+RH-Author: Shaoqin Huang <shahuang@redhat.com>
+RH-MergeRequest: 398: Enable uefi variable service for edk2
+RH-Jira: RHEL-102325
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/1] b498b1f4fbdb31b7bb1122caaacd8f391124b1a0 (shahuang/qemu-kvm)
+
+JIRA: https://issues.redhat.com/browse/RHEL-102325
+
+To support secure boot, we need the uefi variable service for edk2 to be
+available.
+
+Signed-off-by: Shaoqin Huang <shahuang@redhat.com>
+---
+ configs/devices/aarch64-softmmu/aarch64-rh-devices.mak | 1 +
+ configs/devices/x86_64-softmmu/x86_64-rh-devices.mak   | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+index 197fabeb00..855278f70e 100644
+--- a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
++++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+@@ -46,3 +46,4 @@ CONFIG_IOMMUFD=y
+ CONFIG_VHOST_USER_SND=y
+ CONFIG_VHOST_USER_SCMI=y
+ CONFIG_VHOST_USER_GPU=y
++CONFIG_UEFI_VARS=y
+diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+index 26e51b1edf..828cb8aa6f 100644
+--- a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
++++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+@@ -115,3 +115,4 @@ CONFIG_VHOST_USER_FS=y
+ CONFIG_IOMMUFD=y
+ CONFIG_VHOST_USER_SND=y
+ CONFIG_VHOST_USER_GPU=y
++CONFIG_UEFI_VARS=y
+-- 
+2.39.3
+

@@ -1,0 +1,158 @@
+From 9e8cee2f5b79e7769533b0db15cddb98acb3fabe Mon Sep 17 00:00:00 2001
+From: Babu Moger <babu.moger@amd.com>
+Date: Thu, 8 May 2025 14:58:03 -0500
+Subject: [PATCH 07/43] target/i386: Update EPYC-Genoa for Cache property,
+ perfmon-v2, RAS and SVM feature bits
+
+RH-Author: John Allen <None>
+RH-MergeRequest: 377: Update EPYC Models and Feature Bits
+RH-Jira: RHEL-52650
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [5/6] 1341ffa8eeda12c964d793c7c99e56c114796f04 (johnalle/qemu-kvm-fork)
+
+Found that some of the cache properties are not set correctly for EPYC models.
+l1d_cache.no_invd_sharing should not be true.
+l1i_cache.no_invd_sharing should not be true.
+
+L2.self_init should be true.
+L2.inclusive should be true.
+
+L3.inclusive should not be true.
+L3.no_invd_sharing should be true.
+
+Fix these cache properties.
+
+Also add the missing RAS and SVM features bits on AMD EPYC-Genoa model.
+The SVM feature bits are used in nested guests.
+
+perfmon-v2     : Allow guests to make use of the PerfMonV2 features.
+succor         : Software uncorrectable error containment and recovery capability.
+overflow-recov : MCA overflow recovery support.
+lbrv           : LBR virtualization
+tsc-scale      : MSR based TSC rate control
+vmcb-clean     : VMCB clean bits
+flushbyasid    : Flush by ASID
+pause-filter   : Pause intercept filter
+pfthreshold    : PAUSE filter threshold
+v-vmsave-vmload: Virtualized VMLOAD and VMSAVE
+vgif           : Virtualized GIF
+fs-gs-base-ns  : WRMSR to {FS,GS,KERNEL_GS}_BASE is non-serializing
+
+The feature details are available in APM listed below [1].
+[1] AMD64 Architecture Programmer's Manual Volume 2: System Programming
+Publication # 24593 Revision 3.41.
+
+Link: https://bugzilla.kernel.org/show_bug.cgi?id=206537
+Signed-off-by: Babu Moger <babu.moger@amd.com>
+Reviewed-by: Maksim Davydov <davydov-max@yandex-team.ru>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/afe3f05d4116124fd5795f28fc23d7b396140313.1746734284.git.babu.moger@amd.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit abc92cc8488b5dbcc403b5be24d8092180605101)
+
+JIRA: https://issues.redhat.com/browse/RHEL-52650
+
+Signed-off-by: John Allen <johnalle@redhat.com>
+---
+ target/i386/cpu.c | 78 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 78 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index dd16f885cf..523ac08a07 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -2615,6 +2615,59 @@ static const CPUCaches epyc_genoa_cache_info = {
+     },
+ };
+ 
++static const CPUCaches epyc_genoa_v2_cache_info = {
++    .l1d_cache = &(CPUCacheInfo) {
++        .type = DATA_CACHE,
++        .level = 1,
++        .size = 32 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 64,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .share_level = CPU_TOPOLOGY_LEVEL_CORE,
++    },
++    .l1i_cache = &(CPUCacheInfo) {
++        .type = INSTRUCTION_CACHE,
++        .level = 1,
++        .size = 32 * KiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 64,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .share_level = CPU_TOPOLOGY_LEVEL_CORE,
++    },
++    .l2_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 2,
++        .size = 1 * MiB,
++        .line_size = 64,
++        .associativity = 8,
++        .partitions = 1,
++        .sets = 2048,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .inclusive = true,
++        .share_level = CPU_TOPOLOGY_LEVEL_CORE,
++    },
++    .l3_cache = &(CPUCacheInfo) {
++        .type = UNIFIED_CACHE,
++        .level = 3,
++        .size = 32 * MiB,
++        .line_size = 64,
++        .associativity = 16,
++        .partitions = 1,
++        .sets = 32768,
++        .lines_per_tag = 1,
++        .self_init = true,
++        .no_invd_sharing = true,
++        .complex_indexing = false,
++        .share_level = CPU_TOPOLOGY_LEVEL_DIE,
++    },
++};
+ /* The following VMX features are not supported by KVM and are left out in the
+  * CPU definitions:
+  *
+@@ -5732,6 +5785,31 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+         .xlevel = 0x80000022,
+         .model_id = "AMD EPYC-Genoa Processor",
+         .cache_info = &epyc_genoa_cache_info,
++        .versions = (X86CPUVersionDefinition[]) {
++            { .version = 1 },
++            {
++                .version = 2,
++                .props = (PropValue[]) {
++                    { "overflow-recov", "on" },
++                    { "succor", "on" },
++                    { "lbrv", "on" },
++                    { "tsc-scale", "on" },
++                    { "vmcb-clean", "on" },
++                    { "flushbyasid", "on" },
++                    { "pause-filter", "on" },
++                    { "pfthreshold", "on" },
++                    { "v-vmsave-vmload", "on" },
++                    { "vgif", "on" },
++                    { "fs-gs-base-ns", "on" },
++                    { "perfmon-v2", "on" },
++                    { "model-id",
++                      "AMD EPYC-Genoa-v2 Processor" },
++                    { /* end of list */ }
++                },
++                .cache_info = &epyc_genoa_v2_cache_info
++            },
++            { /* end of list */ }
++        }
+     },
+ #if 0 // Disabled for Red Hat Enterprise Linux
+     {
+-- 
+2.39.3
+

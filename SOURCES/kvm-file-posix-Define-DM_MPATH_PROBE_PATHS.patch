@@ -1,0 +1,42 @@
+From 42fc4705817fc4d16f2ba785fd29777ed2b7355a Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 29 Apr 2025 17:05:41 +0200
+Subject: [PATCH 1/9] file-posix: Define DM_MPATH_PROBE_PATHS
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 370: file-posix: Fix multipath failover with SCSI passthrough
+RH-Jira: RHEL-65852
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/2] 6680f4a3f15a768b1ca51aafea452c3d0886f12e (kmwolf/centos-qemu-kvm)
+
+While the kernel side isn't merged yet and we're still using old kernel
+headers, just define DM_MPATH_PROBE_PATHS manually.
+
+This is a downstream-only patch that can be removed after the next minor
+release.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/file-posix.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/block/file-posix.c b/block/file-posix.c
+index dea7b09b6c..52cc25db84 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -134,6 +134,11 @@
+ #define RAW_LOCK_PERM_BASE             100
+ #define RAW_LOCK_SHARED_BASE           200
+ 
++/* TODO Remove this when the kernel side is merged */
++#if !defined(DM_MPATH_PROBE_PATHS) && defined(DM_GET_TARGET_VERSION)
++#define DM_MPATH_PROBE_PATHS _IO(DM_IOCTL, DM_GET_TARGET_VERSION_CMD + 1)
++#endif
++
+ typedef struct BDRVRawState {
+     int fd;
+     bool use_lock;
+-- 
+2.39.3
+

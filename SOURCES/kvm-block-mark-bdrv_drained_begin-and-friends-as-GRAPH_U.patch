@@ -1,0 +1,62 @@
+From e002888564647162c7796075ef7bdc14c0dc29fc Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Fri, 30 May 2025 17:10:56 +0200
+Subject: [PATCH 31/33] block: mark bdrv_drained_begin() and friends as
+ GRAPH_UNLOCKED
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 393: block: do not drain while holding the graph lock
+RH-Jira: RHEL-88561
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [19/21] 7dd6a447a7fabb2685bec471a28f9e3e78dbc2d1 (kmwolf/centos-qemu-kvm)
+
+All of bdrv_drain_all_begin(), bdrv_drain_all() and
+bdrv_drained_begin() poll and are not allowed to be called with the
+block graph lock held. Mark the function as such.
+
+Suggested-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20250530151125.955508-20-f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit fc1d2f3eac7946658b160db0b813b81288fb1778)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/block/block-global-state.h | 4 ++--
+ include/block/block-io.h           | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/include/block/block-global-state.h b/include/block/block-global-state.h
+index 91f249b5ad..84a2a4ecd5 100644
+--- a/include/block/block-global-state.h
++++ b/include/block/block-global-state.h
+@@ -192,10 +192,10 @@ int bdrv_inactivate_all(void);
+ 
+ int bdrv_flush_all(void);
+ void bdrv_close_all(void);
+-void bdrv_drain_all_begin(void);
++void GRAPH_UNLOCKED bdrv_drain_all_begin(void);
+ void bdrv_drain_all_begin_nopoll(void);
+ void bdrv_drain_all_end(void);
+-void bdrv_drain_all(void);
++void GRAPH_UNLOCKED bdrv_drain_all(void);
+ 
+ void bdrv_aio_cancel(BlockAIOCB *acb);
+ 
+diff --git a/include/block/block-io.h b/include/block/block-io.h
+index b99cc98d26..4cf83fb367 100644
+--- a/include/block/block-io.h
++++ b/include/block/block-io.h
+@@ -431,7 +431,7 @@ bdrv_drain_poll(BlockDriverState *bs, BdrvChild *ignore_parent,
+  *
+  * This function can be recursive.
+  */
+-void bdrv_drained_begin(BlockDriverState *bs);
++void GRAPH_UNLOCKED bdrv_drained_begin(BlockDriverState *bs);
+ 
+ /**
+  * bdrv_do_drained_begin_quiesce:
+-- 
+2.39.3
+

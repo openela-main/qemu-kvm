@@ -1,17 +1,17 @@
-From bb7babfc547e0339fcb27da41f5f407578865a8c Mon Sep 17 00:00:00 2001
+From dc08736e78d641eaab2f6df35218fb2b0f88ee50 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:51 +0100
-Subject: [PATCH 14/31] hw/audio/via-ac97: skip automatic zero-init of large
+Subject: [PATCH 21/43] hw/audio/via-ac97: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [13/30] 46ade09cbd7bf00f3b3b24b2c32cb187d0d8d087
+RH-Commit: [13/31] 8afade9e5ac67ec271f3318473c04b6fb9947f8d (stefanha/centos-stream-qemu-kvm)
 
 The 'out_cb' method has a 4k byte array used for copying data
 between the audio backend and device. Skip the automatic zero-init
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/audio/via-ac97.c b/hw/audio/via-ac97.c
-index 4c127a1def..e8fcf44e5d 100644
+index 4e115e011e..08e6762597 100644
 --- a/hw/audio/via-ac97.c
 +++ b/hw/audio/via-ac97.c
 @@ -175,7 +175,7 @@ static void out_cb(void *opaque, int avail)

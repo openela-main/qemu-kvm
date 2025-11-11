@@ -1,18 +1,18 @@
-From 108605d8be2edd1acbad7970cf45cb6941818d88 Mon Sep 17 00:00:00 2001
+From d2ae6b7855efeb865f6a93db057378142ca172ea Mon Sep 17 00:00:00 2001
 From: Juraj Marcin <jmarcin@redhat.com>
 Date: Wed, 21 May 2025 17:16:13 +0200
-Subject: [PATCH 01/31] ui/vnc: Update display update interval when VM state
+Subject: [PATCH 43/43] ui/vnc: Update display update interval when VM state
  changes to RUNNING
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Juraj Marcin <None>
-RH-MergeRequest: 462: ui/vnc: Update display update interval when VM state changes to RUNNING
-RH-Jira: RHEL-100765
+RH-MergeRequest: 384: ui/vnc: Update display update interval when VM state changes to RUNNING
+RH-Jira: RHEL-83883
 RH-Acked-by: Peter Xu <peterx@redhat.com>
 RH-Acked-by: Marc-André Lureau <marcandre.lureau@redhat.com>
-RH-Commit: [1/1] 40bb8d265979dccbe847c21ed8c08b6f5eecc7b5
+RH-Commit: [1/1] 1231bccaeb9ea0ca78dd6fd53ba4b523f3bc569f (JurajMarcin/centos-src-qemu-kvm)
 
 If a virtual machine is paused for an extended period time, for example,
 due to an incoming migration, there are also no changes on the screen.
@@ -41,7 +41,7 @@ Signed-off-by: Peter Xu <peterx@redhat.com>
 
 (cherry picked from commit 0310d594d98b39f9dde79b87fd8b0ad16e7c5459)
 
-JIRA: https://issues.redhat.com/browse/RHEL-100765
+JIRA: https://issues.redhat.com/browse/RHEL-83883
 
 Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
 ---
@@ -50,7 +50,7 @@ Signed-off-by: Juraj Marcin <jmarcin@redhat.com>
  2 files changed, 14 insertions(+)
 
 diff --git a/ui/vnc.c b/ui/vnc.c
-index 5057ec8680..4afc925a18 100644
+index 9241caaad9..75fb1e74f0 100644
 --- a/ui/vnc.c
 +++ b/ui/vnc.c
 @@ -3386,6 +3386,16 @@ static const DisplayChangeListenerOps dcl_ops = {
@@ -80,10 +80,10 @@ index 5057ec8680..4afc925a18 100644
  
  
 diff --git a/ui/vnc.h b/ui/vnc.h
-index e5fa2efa3e..e9da707dbc 100644
+index acc53a2cc1..3bb23acd34 100644
 --- a/ui/vnc.h
 +++ b/ui/vnc.h
-@@ -186,6 +186,8 @@ struct VncDisplay
+@@ -185,6 +185,8 @@ struct VncDisplay
  #endif
  
      AudioState *audio_state;

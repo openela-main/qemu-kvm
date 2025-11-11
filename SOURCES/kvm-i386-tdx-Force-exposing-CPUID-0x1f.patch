@@ -1,0 +1,37 @@
+From b478562c6120f493a9254067eafe90a753e4f390 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:47 +0200
+Subject: [PATCH 048/100] i386/tdx: Force exposing CPUID 0x1f
+
+TDX uses CPUID 0x1f to configure TD guest's CPU topology. So set
+enable_cpuid_0x1f for TDs.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+Link: https://lore.kernel.org/r/20250508150002.689633-35-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 9002494f80b751a7655045c5f46bf90bc1d3bbd0)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 0c9a895a2f..66db034e05 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -400,7 +400,11 @@ static int tdx_kvm_type(X86ConfidentialGuest *cg)
+ 
+ static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)
+ {
++    X86CPU *x86cpu = X86_CPU(cpu);
++
+     object_property_set_bool(OBJECT(cpu), "pmu", false, &error_abort);
++
++    x86cpu->enable_cpuid_0x1f = true;
+ }
+ 
+ static int tdx_validate_attributes(TdxGuest *tdx, Error **errp)
+-- 
+2.47.3
+

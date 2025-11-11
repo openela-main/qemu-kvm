@@ -1,4 +1,4 @@
-From 551632921a8330cff09e7d92429aa45cf51c75e6 Mon Sep 17 00:00:00 2001
+From 4d25fc36b02293e78f93ce3512fe485d799fa8f5 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 18:45:58 +0100
 Subject: Increase deletion schedule to 4 releases
@@ -13,17 +13,17 @@ machine type.
 
 Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
 
-Rebase notes (9.1.0 rc0)
+Rebase notes (9.1.0)
   - New patch
 ---
  include/hw/boards.h | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index 7f7eb4ec40..fd5a957cad 100644
+index 1f6bba7d64..182c11dc2c 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -608,7 +608,7 @@ struct MachineState {
+@@ -637,7 +637,7 @@ struct MachineState {
   * How many RHEL major releases for each phase
   * of the life cycle.
   */

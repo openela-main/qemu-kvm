@@ -1,4 +1,4 @@
-From 16946c2c7be0ae23dc1f267323cfc7630a1c9e87 Mon Sep 17 00:00:00 2001
+From 6871c5dd1655c578d9605015b2f88cba38715767 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:32:32 +0100
 Subject: meson: temporarily disable -Wunused-function
@@ -13,17 +13,17 @@ fine grained patch splits.
 
 Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
 
-Rebase notes (9.1.0 rc0)
+Rebase notes (9.1.0)
 - New patch
 ---
  meson.build | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/meson.build b/meson.build
-index fbda17c987..161d496d55 100644
+index 41f68d3806..066ca7a2c9 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -651,6 +651,7 @@ warn_flags = [
+@@ -747,6 +747,7 @@ warn_flags = [
    '-Wno-string-plus-int',
    '-Wno-tautological-type-limit-compare',
    '-Wno-typedef-redefinition',

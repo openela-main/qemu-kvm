@@ -1,0 +1,85 @@
+From d5b76b77dc891f0bec211a6d00b099a2979223ee Mon Sep 17 00:00:00 2001
+From: Peter Xu <peterx@redhat.com>
+Date: Fri, 11 Apr 2025 17:15:31 +0530
+Subject: [PATCH 04/33] migration/ram: Implement save_postcopy_prepare()
+
+RH-Author: Prasad Pandit <None>
+RH-MergeRequest: 390: migration: allow to enable multifd+postcopy features together, but use multifd during precopy only
+RH-Jira: RHEL-59697
+RH-Acked-by: Juraj Marcin <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/11] 4df55b4e65458ffccf48df5de3afad0b38cded51 (pjp/cs-qemu-kvm)
+
+Implement save_postcopy_prepare(), preparing for the enablement
+of both multifd and postcopy.
+
+Jira: https://issues.redhat.com/browse/RHEL-59697
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Message-ID: <20250411114534.3370816-5-ppandit@redhat.com>
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+(cherry picked from commit ad8d82ffbb8b8034f58a570911e6e9c6328c9384)
+Signed-off-by: Prasad Pandit <ppandit@redhat.com>
+---
+ migration/ram.c | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/migration/ram.c b/migration/ram.c
+index 21d2f87ff1..856769a77c 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -4515,6 +4515,42 @@ static int ram_resume_prepare(MigrationState *s, void *opaque)
+     return 0;
+ }
+ 
++static bool ram_save_postcopy_prepare(QEMUFile *f, void *opaque, Error **errp)
++{
++    int ret;
++
++    if (migrate_multifd()) {
++        /*
++         * When multifd is enabled, source QEMU needs to make sure all the
++         * pages queued before postcopy starts have been flushed.
++         *
++         * The load of these pages must happen before switching to postcopy.
++         * It's because loading of guest pages (so far) in multifd recv
++         * threads is still non-atomic, so the load cannot happen with vCPUs
++         * running on the destination side.
++         *
++         * This flush and sync will guarantee that those pages are loaded
++         * _before_ postcopy starts on the destination. The rationale is,
++         * this happens before VM stops (and before source QEMU sends all
++         * the rest of the postcopy messages).  So when the destination QEMU
++         * receives the postcopy messages, it must have received the sync
++         * message on the main channel (either RAM_SAVE_FLAG_MULTIFD_FLUSH,
++         * or RAM_SAVE_FLAG_EOS), and such message would guarantee that
++         * all previous guest pages queued in the multifd channels are
++         * completely loaded.
++         */
++        ret = multifd_ram_flush_and_sync(f);
++        if (ret < 0) {
++            error_setg(errp, "%s: multifd flush and sync failed", __func__);
++            return false;
++        }
++    }
++
++    qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
++
++    return true;
++}
++
+ void postcopy_preempt_shutdown_file(MigrationState *s)
+ {
+     qemu_put_be64(s->postcopy_qemufile_src, RAM_SAVE_FLAG_EOS);
+@@ -4534,6 +4570,7 @@ static SaveVMHandlers savevm_ram_handlers = {
+     .load_setup = ram_load_setup,
+     .load_cleanup = ram_load_cleanup,
+     .resume_prepare = ram_resume_prepare,
++    .save_postcopy_prepare = ram_save_postcopy_prepare,
+ };
+ 
+ static void ram_mig_ram_block_resized(RAMBlockNotifier *n, void *host,
+-- 
+2.39.3
+

@@ -1,0 +1,123 @@
+From e3a722681805290fced1cde3d4ac991f8278f158 Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Fri, 30 May 2025 17:10:48 +0200
+Subject: [PATCH 23/33] block: move drain outside of
+ bdrv_set_backing_hd_drained()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 393: block: do not drain while holding the graph lock
+RH-Jira: RHEL-88561
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [11/21] ab1d93ce55b51312e3aac1867e8826286c5d49de (kmwolf/centos-qemu-kvm)
+
+This is part of resolving the deadlock mentioned in commit "block:
+move draining out of bdrv_change_aio_context() and mark GRAPH_RDLOCK".
+
+The function bdrv_set_backing_hd_drained() holds the graph lock, so it
+is not allowed to drain. It is called by:
+1. bdrv_set_backing_hd(), where a drained section is introduced,
+   replacing the previously present bs-specific drains.
+2. stream_prepare(), where a drained section is introduced replacing
+   the previously present bs-specific drains.
+
+The drain_bs variable in bdrv_set_backing_hd_drained() is now
+superfluous and thus dropped.
+
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20250530151125.955508-12-f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e66dbda11eab2b4a091d470f3508a4d6ca60eaf5)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block.c        | 16 +++-------------
+ block/stream.c |  6 ++----
+ 2 files changed, 5 insertions(+), 17 deletions(-)
+
+diff --git a/block.c b/block.c
+index 2c18e0a4fa..d84b8ae49e 100644
+--- a/block.c
++++ b/block.c
+@@ -3562,8 +3562,7 @@ out:
+  * Both @bs and @backing_hd can move to a different AioContext in this
+  * function.
+  *
+- * If a backing child is already present (i.e. we're detaching a node), that
+- * child node must be drained.
++ * All block nodes must be drained.
+  */
+ int bdrv_set_backing_hd_drained(BlockDriverState *bs,
+                                 BlockDriverState *backing_hd,
+@@ -3578,7 +3577,6 @@ int bdrv_set_backing_hd_drained(BlockDriverState *bs,
+         assert(bs->backing->bs->quiesce_counter > 0);
+     }
+ 
+-    bdrv_drain_all_begin();
+     ret = bdrv_set_file_or_backing_noperm(bs, backing_hd, true, tran, errp);
+     if (ret < 0) {
+         goto out;
+@@ -3587,28 +3585,20 @@ int bdrv_set_backing_hd_drained(BlockDriverState *bs,
+     ret = bdrv_refresh_perms(bs, tran, errp);
+ out:
+     tran_finalize(tran, ret);
+-    bdrv_drain_all_end();
+     return ret;
+ }
+ 
+ int bdrv_set_backing_hd(BlockDriverState *bs, BlockDriverState *backing_hd,
+                         Error **errp)
+ {
+-    BlockDriverState *drain_bs;
+     int ret;
+     GLOBAL_STATE_CODE();
+ 
+-    bdrv_graph_rdlock_main_loop();
+-    drain_bs = bs->backing ? bs->backing->bs : bs;
+-    bdrv_graph_rdunlock_main_loop();
+-
+-    bdrv_ref(drain_bs);
+-    bdrv_drained_begin(drain_bs);
++    bdrv_drain_all_begin();
+     bdrv_graph_wrlock();
+     ret = bdrv_set_backing_hd_drained(bs, backing_hd, errp);
+     bdrv_graph_wrunlock();
+-    bdrv_drained_end(drain_bs);
+-    bdrv_unref(drain_bs);
++    bdrv_drain_all_end();
+ 
+     return ret;
+ }
+diff --git a/block/stream.c b/block/stream.c
+index 999d9e56d4..6ba49cffd3 100644
+--- a/block/stream.c
++++ b/block/stream.c
+@@ -80,11 +80,10 @@ static int stream_prepare(Job *job)
+      * may end up working with the wrong base node (or it might even have gone
+      * away by the time we want to use it).
+      */
+-    bdrv_drained_begin(unfiltered_bs);
+     if (unfiltered_bs_cow) {
+         bdrv_ref(unfiltered_bs_cow);
+-        bdrv_drained_begin(unfiltered_bs_cow);
+     }
++    bdrv_drain_all_begin();
+ 
+     bdrv_graph_rdlock_main_loop();
+     base = bdrv_filter_or_cow_bs(s->above_base);
+@@ -123,11 +122,10 @@ static int stream_prepare(Job *job)
+     }
+ 
+ out:
++    bdrv_drain_all_end();
+     if (unfiltered_bs_cow) {
+-        bdrv_drained_end(unfiltered_bs_cow);
+         bdrv_unref(unfiltered_bs_cow);
+     }
+-    bdrv_drained_end(unfiltered_bs);
+     return ret;
+ }
+ 
+-- 
+2.39.3
+

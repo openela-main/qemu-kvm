@@ -1,17 +1,17 @@
-From 054501bf9876c933d7e745fcec9ff27eaf8351a6 Mon Sep 17 00:00:00 2001
+From 9f9c5b4e9f0c230e81167f937d9d875a67e4558b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:59 +0100
-Subject: [PATCH 22/31] hw/net/virtio-net: skip automatic zero-init of large
+Subject: [PATCH 29/43] hw/net/virtio-net: skip automatic zero-init of large
  arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [21/30] ea6f1bde3855278be9fb0cfb52a65d5a29333cfb
+RH-Commit: [21/31] 87ec97d9e701b7ee27f4b728f0622f5b730e1c03 (stefanha/centos-stream-qemu-kvm)
 
 The 'virtio_net_receive_rcu' method has three arrays with
 VIRTQUEUE_MAX_SIZE elements, which are apprixmately 32k in
@@ -33,12 +33,12 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
-index 3d2b2460ad..086ea20ea0 100644
+index bd37651dab..aaa024d70c 100644
 --- a/hw/net/virtio-net.c
 +++ b/hw/net/virtio-net.c
-@@ -1895,9 +1895,9 @@ static ssize_t virtio_net_receive_rcu(NetClientState *nc, const uint8_t *buf,
+@@ -1910,9 +1910,9 @@ static ssize_t virtio_net_receive_rcu(NetClientState *nc, const uint8_t *buf,
      VirtIONet *n = qemu_get_nic_opaque(nc);
-     VirtIONetQueue *q = virtio_net_get_subqueue(nc);
+     VirtIONetQueue *q;
      VirtIODevice *vdev = VIRTIO_DEVICE(n);
 -    VirtQueueElement *elems[VIRTQUEUE_MAX_SIZE];
 -    size_t lens[VIRTQUEUE_MAX_SIZE];

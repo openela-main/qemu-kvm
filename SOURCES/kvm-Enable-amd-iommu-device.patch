@@ -1,0 +1,38 @@
+From 7b15a63367901d3d3fad7cd17c3960662f2f88f0 Mon Sep 17 00:00:00 2001
+From: John Allen <john.allen@amd.com>
+Date: Wed, 11 Jun 2025 15:41:14 -0500
+Subject: [PATCH 42/43] Enable amd-iommu device
+
+RH-Author: John Allen <None>
+RH-MergeRequest: 383: Add ability to manually specify the AMDVI-PCI device
+RH-Jira: RHEL-85649
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/3] 401f99c41c07746b736300bf40175df11a3330d0 (johnalle/qemu-kvm-fork)
+
+Now that the amdvi-pci device that amd-iommu creates can be specified
+manually, amd-iommu device can be enabled.
+
+JIRA: https://issues.redhat.com/browse/RHEL-85649
+
+Upstream: RHEL ONLY
+
+Signed-off-by: John Allen <johnalle@redhat.com>
+---
+ configs/devices/x86_64-softmmu/x86_64-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+index 097dad9003..26e51b1edf 100644
+--- a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
++++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+@@ -97,6 +97,7 @@ CONFIG_VIRTIO_MEM=y
+ CONFIG_VIRTIO_PCI=y
+ CONFIG_VIRTIO_VGA=y
+ CONFIG_VIRTIO_IOMMU=y
++CONFIG_AMD_IOMMU=y
+ CONFIG_VMMOUSE=y
+ CONFIG_VMPORT=y
+ CONFIG_VTD=y
+-- 
+2.39.3
+

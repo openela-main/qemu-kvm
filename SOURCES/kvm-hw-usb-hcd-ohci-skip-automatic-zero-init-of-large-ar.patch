@@ -1,17 +1,17 @@
-From 1fec74f62de4a34351d4f315b5f6372498b1a56a Mon Sep 17 00:00:00 2001
+From d906c6d5ce5b69083890f4ceea4136e736704aab Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:04 +0100
-Subject: [PATCH 26/31] hw/usb/hcd-ohci: skip automatic zero-init of large
+Subject: [PATCH 34/43] hw/usb/hcd-ohci: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [25/30] bb77133a42314bfdc52dc7d97602ffe6f102a40c
+RH-Commit: [26/31] 4a8000f1c5065bfc95318615952c62f7070500d9 (stefanha/centos-stream-qemu-kvm)
 
 The 'ohci_service_iso_td' method has a 8k byte array used for copying
 data between guest and host. Skip the automatic zero-init of this

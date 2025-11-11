@@ -1,4 +1,4 @@
-From 40274d161d20719709d92356077175f93795ea1e Mon Sep 17 00:00:00 2001
+From 5c4d190b3a79b22c86b59929ffe83433074c64a8 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 8 Jul 2020 08:35:50 +0200
 Subject: Use qemu-kvm in documentation instead of qemu-system-<arch>
@@ -27,10 +27,10 @@ index 52d6454b93..d74dbdeca9 100644
  .. |I2C| replace:: I\ :sup:`2`\ C
  .. |I2S| replace:: I\ :sup:`2`\ S
 diff --git a/qemu-options.hx b/qemu-options.hx
-index d94e2cbbae..a7444abc7f 100644
+index dc694a99a3..5eb668b1e2 100644
 --- a/qemu-options.hx
 +++ b/qemu-options.hx
-@@ -3688,11 +3688,11 @@ SRST
+@@ -3672,11 +3672,11 @@ SRST
  
      ::
  

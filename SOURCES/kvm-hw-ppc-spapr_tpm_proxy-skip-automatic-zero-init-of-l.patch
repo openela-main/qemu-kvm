@@ -1,17 +1,17 @@
-From c5d08a9aae7010ada9ed76785b3b22c20f490768 Mon Sep 17 00:00:00 2001
+From 3fafd694cf5df4fa7a9f4f48aad86748d18bd15a Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:37:03 +0100
-Subject: [PATCH 25/31] hw/ppc/spapr_tpm_proxy: skip automatic zero-init of
+Subject: [PATCH 33/43] hw/ppc/spapr_tpm_proxy: skip automatic zero-init of
  large arrays
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [24/30] 848a40837aec29084f37eb0e20a584c280209ab4
+RH-Commit: [25/31] fe7e91a1f74a696e03336cf3429042681c77c4c7 (stefanha/centos-stream-qemu-kvm)
 
 The 'tpm_execute' method has a pair of 4k arrays used for copying
 data between guest and host. Skip the automatic zero-init of these
@@ -33,7 +33,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/hw/ppc/spapr_tpm_proxy.c b/hw/ppc/spapr_tpm_proxy.c
-index e10af35a18..88833d9e2e 100644
+index ceaa0acaa1..7472ff8709 100644
 --- a/hw/ppc/spapr_tpm_proxy.c
 +++ b/hw/ppc/spapr_tpm_proxy.c
 @@ -41,8 +41,8 @@ static ssize_t tpm_execute(SpaprTpmProxy *tpm_proxy, target_ulong *args)

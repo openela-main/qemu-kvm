@@ -1,0 +1,176 @@
+From 19aa4d70aa02db7183997cfb2e6086a125ee2cdd Mon Sep 17 00:00:00 2001
+From: Andrey Drobyshev <andrey.drobyshev@virtuozzo.com>
+Date: Fri, 30 May 2025 17:10:58 +0200
+Subject: [PATCH 33/33] iotests/graph-changes-while-io: add test case with
+ removal of lower snapshot
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 393: block: do not drain while holding the graph lock
+RH-Jira: RHEL-88561
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [21/21] 2382d5d35e99a8d2dc481e1ddf89b475d13a620f (kmwolf/centos-qemu-kvm)
+
+This case is catching potential deadlock which takes place when job-dismiss
+is issued when I/O requests are processed in a separate iothread.
+
+See https://mail.gnu.org/archive/html/qemu-devel/2025-04/msg04421.html
+
+Signed-off-by: Andrey Drobyshev <andrey.drobyshev@virtuozzo.com>
+[FE: re-use top image and rename snap1->mid as suggested by Kevin Wolf
+     remove image file after test as suggested by Kevin Wolf
+     add type annotation for function argument to make mypy happy]
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20250530151125.955508-22-f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 09d98a018e1fd2db0bb73bbe9b4a7110c8ae354f)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ .../qemu-iotests/tests/graph-changes-while-io | 101 ++++++++++++++++--
+ .../tests/graph-changes-while-io.out          |   4 +-
+ 2 files changed, 96 insertions(+), 9 deletions(-)
+
+diff --git a/tests/qemu-iotests/tests/graph-changes-while-io b/tests/qemu-iotests/tests/graph-changes-while-io
+index 35489e3b5e..dca1167b6d 100755
+--- a/tests/qemu-iotests/tests/graph-changes-while-io
++++ b/tests/qemu-iotests/tests/graph-changes-while-io
+@@ -27,6 +27,7 @@ from iotests import imgfmt, qemu_img, qemu_img_create, qemu_io, \
+ 
+ 
+ top = os.path.join(iotests.test_dir, 'top.img')
++mid = os.path.join(iotests.test_dir, 'mid.img')
+ nbd_sock = os.path.join(iotests.sock_dir, 'nbd.sock')
+ 
+ 
+@@ -59,6 +60,15 @@ class TestGraphChangesWhileIO(QMPTestCase):
+         self.qsd.stop()
+         os.remove(top)
+ 
++    def _wait_for_blockjob(self, status: str) -> None:
++        done = False
++        while not done:
++            for event in self.qsd.get_qmp().get_events(wait=10.0):
++                if event['event'] != 'JOB_STATUS_CHANGE':
++                    continue
++                if event['data']['status'] == status:
++                    done = True
++
+     def test_blockdev_add_while_io(self) -> None:
+         # Run qemu-img bench in the background
+         bench_thr = Thread(target=do_qemu_img_bench)
+@@ -117,15 +127,92 @@ class TestGraphChangesWhileIO(QMPTestCase):
+                 'device': 'job0',
+             })
+ 
+-            cancelled = False
+-            while not cancelled:
+-                for event in self.qsd.get_qmp().get_events(wait=10.0):
+-                    if event['event'] != 'JOB_STATUS_CHANGE':
+-                        continue
+-                    if event['data']['status'] == 'null':
+-                        cancelled = True
++            self._wait_for_blockjob('null')
++
++        bench_thr.join()
++
++    def test_remove_lower_snapshot_while_io(self) -> None:
++        # Run qemu-img bench in the background
++        bench_thr = Thread(target=do_qemu_img_bench, args=(100000, ))
++        bench_thr.start()
++
++        # While I/O is performed on 'node0' node, consequently add 2 snapshots
++        # on top of it, then remove (commit) them starting from lower one.
++        while bench_thr.is_alive():
++            # Recreate snapshot images on every iteration
++            qemu_img_create('-f', imgfmt, mid, '1G')
++            qemu_img_create('-f', imgfmt, top, '1G')
++
++            self.qsd.cmd('blockdev-add', {
++                'driver': imgfmt,
++                'node-name': 'mid',
++                'file': {
++                    'driver': 'file',
++                    'filename': mid
++                }
++            })
++
++            self.qsd.cmd('blockdev-snapshot', {
++                'node': 'node0',
++                'overlay': 'mid',
++            })
++
++            self.qsd.cmd('blockdev-add', {
++                'driver': imgfmt,
++                'node-name': 'top',
++                'file': {
++                    'driver': 'file',
++                    'filename': top
++                }
++            })
++
++            self.qsd.cmd('blockdev-snapshot', {
++                'node': 'mid',
++                'overlay': 'top',
++            })
++
++            self.qsd.cmd('block-commit', {
++                'job-id': 'commit-mid',
++                'device': 'top',
++                'top-node': 'mid',
++                'base-node': 'node0',
++                'auto-finalize': True,
++                'auto-dismiss': False,
++            })
++
++            self._wait_for_blockjob('concluded')
++            self.qsd.cmd('job-dismiss', {
++                'id': 'commit-mid',
++            })
++
++            self.qsd.cmd('block-commit', {
++                'job-id': 'commit-top',
++                'device': 'top',
++                'top-node': 'top',
++                'base-node': 'node0',
++                'auto-finalize': True,
++                'auto-dismiss': False,
++            })
++
++            self._wait_for_blockjob('ready')
++            self.qsd.cmd('job-complete', {
++                'id': 'commit-top',
++            })
++
++            self._wait_for_blockjob('concluded')
++            self.qsd.cmd('job-dismiss', {
++                'id': 'commit-top',
++            })
++
++            self.qsd.cmd('blockdev-del', {
++                'node-name': 'mid'
++            })
++            self.qsd.cmd('blockdev-del', {
++                'node-name': 'top'
++            })
+ 
+         bench_thr.join()
++        os.remove(mid)
+ 
+ if __name__ == '__main__':
+     # Format must support raw backing files
+diff --git a/tests/qemu-iotests/tests/graph-changes-while-io.out b/tests/qemu-iotests/tests/graph-changes-while-io.out
+index fbc63e62f8..8d7e996700 100644
+--- a/tests/qemu-iotests/tests/graph-changes-while-io.out
++++ b/tests/qemu-iotests/tests/graph-changes-while-io.out
+@@ -1,5 +1,5 @@
+-..
++...
+ ----------------------------------------------------------------------
+-Ran 2 tests
++Ran 3 tests
+ 
+ OK
+-- 
+2.39.3
+

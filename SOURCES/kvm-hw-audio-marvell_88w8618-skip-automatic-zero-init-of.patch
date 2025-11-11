@@ -1,17 +1,17 @@
-From 9196c381e0137d5f7c82342d9c200b477bbbcebb Mon Sep 17 00:00:00 2001
+From ef07fc569ae2a50f54f8bf29f09555cb0e8b08db Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:49 +0100
-Subject: [PATCH 12/31] hw/audio/marvell_88w8618: skip automatic zero-init of
+Subject: [PATCH 19/43] hw/audio/marvell_88w8618: skip automatic zero-init of
  large array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [11/30] fdb3782a308d6d5026bbf15f34ef3ad35e0e9723
+RH-Commit: [11/31] c45c78043e51ac3195e76aaf0b745dd41c8d8345 (stefanha/centos-stream-qemu-kvm)
 
 The 'mv88w8618_audio_callback' method has a 4k byte array used for
 copying data between the audio backend and device. Skip the automatic
@@ -33,7 +33,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hw/audio/marvell_88w8618.c b/hw/audio/marvell_88w8618.c
-index cc285444bc..b7b4b27272 100644
+index 28f9af320d..31a73f53b9 100644
 --- a/hw/audio/marvell_88w8618.c
 +++ b/hw/audio/marvell_88w8618.c
 @@ -66,7 +66,7 @@ static void mv88w8618_audio_callback(void *opaque, int free_out, int free_in)

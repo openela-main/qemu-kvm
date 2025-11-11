@@ -1,0 +1,49 @@
+From 9e52d5e0ac43c31ca39c7e1ac41bf5bcb179f848 Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Fri, 30 May 2025 17:10:44 +0200
+Subject: [PATCH 19/33] block: mark bdrv_child_change_aio_context()
+ GRAPH_RDLOCK
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 393: block: do not drain while holding the graph lock
+RH-Jira: RHEL-88561
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [7/21] ca3294430750a4266f4f3cbe42192d3abb84c817 (kmwolf/centos-qemu-kvm)
+
+This is a small step in preparation to mark bdrv_drained_begin() as
+GRAPH_UNLOCKED. More concretely, it is in preparation to move the
+drain out of bdrv_change_aio_context() and marking that function as
+GRAPH_RDLOCK.
+
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20250530151125.955508-8-f.ebner@proxmox.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 469422c45b3a816eaf36e7edc895c81e0f3d38bb)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/block/block-global-state.h | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/include/block/block-global-state.h b/include/block/block-global-state.h
+index 9be34b3c99..aad160956a 100644
+--- a/include/block/block-global-state.h
++++ b/include/block/block-global-state.h
+@@ -274,9 +274,10 @@ int bdrv_debug_remove_breakpoint(BlockDriverState *bs, const char *tag);
+ int bdrv_debug_resume(BlockDriverState *bs, const char *tag);
+ bool bdrv_debug_is_suspended(BlockDriverState *bs, const char *tag);
+ 
+-bool bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
+-                                   GHashTable *visited, Transaction *tran,
+-                                   Error **errp);
++bool GRAPH_RDLOCK
++bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
++                              GHashTable *visited, Transaction *tran,
++                              Error **errp);
+ int bdrv_try_change_aio_context(BlockDriverState *bs, AioContext *ctx,
+                                 BdrvChild *ignore_child, Error **errp);
+ 
+-- 
+2.39.3
+

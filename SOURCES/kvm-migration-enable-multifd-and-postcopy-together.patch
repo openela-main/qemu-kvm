@@ -1,0 +1,111 @@
+From 12f7ba5e8b344e578dc99f5ce6e371d4c51108bb Mon Sep 17 00:00:00 2001
+From: Prasad Pandit <pjp@fedoraproject.org>
+Date: Mon, 12 May 2025 18:21:23 +0530
+Subject: [PATCH 07/33] migration: enable multifd and postcopy together
+
+RH-Author: Prasad Pandit <None>
+RH-MergeRequest: 390: migration: allow to enable multifd+postcopy features together, but use multifd during precopy only
+RH-Jira: RHEL-59697
+RH-Acked-by: Juraj Marcin <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/11] 3e5d91a4aed5f18f1c29ae1ab9296ae41b6cf3ca (pjp/cs-qemu-kvm)
+
+Enable Multifd and Postcopy migration together.
+The migration_ioc_process_incoming() routine checks
+magic value sent on each channel and helps to properly
+setup multifd and postcopy channels.
+
+The Precopy and Multifd threads work during the initial
+guest RAM transfer. When migration moves to the Postcopy
+phase, the multifd threads cease to send data on multifd
+channels and Postcopy threads on the destination
+request/pull data from the source side.
+
+Jira: https://issues.redhat.com/browse/RHEL-59697
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Prasad Pandit <pjp@fedoraproject.org>
+Link: https://lore.kernel.org/r/20250512125124.147064-3-ppandit@redhat.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit e27418861288285d20352448fef4491a68223d39)
+Signed-off-by: Prasad Pandit <ppandit@redhat.com>
+---
+ migration/multifd-nocomp.c | 3 ++-
+ migration/multifd.c        | 7 +++++++
+ migration/options.c        | 5 -----
+ migration/ram.c            | 5 ++---
+ 4 files changed, 11 insertions(+), 9 deletions(-)
+
+diff --git a/migration/multifd-nocomp.c b/migration/multifd-nocomp.c
+index ffe75256c9..02f8bf8ce8 100644
+--- a/migration/multifd-nocomp.c
++++ b/migration/multifd-nocomp.c
+@@ -17,6 +17,7 @@
+ #include "migration-stats.h"
+ #include "multifd.h"
+ #include "options.h"
++#include "migration.h"
+ #include "qapi/error.h"
+ #include "qemu/cutils.h"
+ #include "qemu/error-report.h"
+@@ -399,7 +400,7 @@ int multifd_ram_flush_and_sync(QEMUFile *f)
+     MultiFDSyncReq req;
+     int ret;
+ 
+-    if (!migrate_multifd()) {
++    if (!migrate_multifd() || migration_in_postcopy()) {
+         return 0;
+     }
+ 
+diff --git a/migration/multifd.c b/migration/multifd.c
+index 6139cabe44..074d16d07d 100644
+--- a/migration/multifd.c
++++ b/migration/multifd.c
+@@ -1379,6 +1379,13 @@ static void *multifd_recv_thread(void *opaque)
+         }
+ 
+         if (has_data) {
++            /*
++             * multifd thread should not be active and receive data
++             * when migration is in the Postcopy phase. Two threads
++             * writing the same memory area could easily corrupt
++             * the guest state.
++             */
++            assert(!migration_in_postcopy());
+             if (is_device_state) {
+                 assert(use_packets);
+                 ret = multifd_device_state_recv(p, &local_err);
+diff --git a/migration/options.c b/migration/options.c
+index b0ac2ea408..48aa6076de 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -491,11 +491,6 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
+             error_setg(errp, "Postcopy is not compatible with ignore-shared");
+             return false;
+         }
+-
+-        if (new_caps[MIGRATION_CAPABILITY_MULTIFD]) {
+-            error_setg(errp, "Postcopy is not yet compatible with multifd");
+-            return false;
+-        }
+     }
+ 
+     if (new_caps[MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT]) {
+diff --git a/migration/ram.c b/migration/ram.c
+index 856769a77c..6f390b28d9 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -2013,9 +2013,8 @@ static int ram_save_target_page(RAMState *rs, PageSearchStatus *pss)
+         }
+     }
+ 
+-    if (migrate_multifd()) {
+-        RAMBlock *block = pss->block;
+-        return ram_save_multifd_page(block, offset);
++    if (migrate_multifd() && !migration_in_postcopy()) {
++        return ram_save_multifd_page(pss->block, offset);
+     }
+ 
+     return ram_save_page(rs, pss);
+-- 
+2.39.3
+

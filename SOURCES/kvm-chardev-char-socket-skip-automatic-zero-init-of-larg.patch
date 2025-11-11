@@ -1,17 +1,17 @@
-From 60383e9e167883840c5cbea4b279622ef29a0107 Mon Sep 17 00:00:00 2001
+From 1dbdcc30075e480b1d6da9ef19a8bd38e1762ac9 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:44 +0100
-Subject: [PATCH 07/31] chardev/char-socket: skip automatic zero-init of large
+Subject: [PATCH 14/43] chardev/char-socket: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [6/30] 5e2bb9ad5a8422682ca2e6a8e5abc8b7eebc84d2
+RH-Commit: [6/31] 97ec8420f5a8cc37d5ece5721d409e9d94f8b11f (stefanha/centos-stream-qemu-kvm)
 
 The 'tcp_chr_read' method has a 4k byte array used for copying
 data between the socket and device. Skip the automatic zero-init
@@ -32,7 +32,7 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/chardev/char-socket.c b/chardev/char-socket.c
-index 1ca9441b1b..99d644e89f 100644
+index 2f842f9f88..22c87d0885 100644
 --- a/chardev/char-socket.c
 +++ b/chardev/char-socket.c
 @@ -497,7 +497,7 @@ static gboolean tcp_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)

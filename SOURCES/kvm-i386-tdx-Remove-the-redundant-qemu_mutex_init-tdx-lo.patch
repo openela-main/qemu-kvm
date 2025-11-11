@@ -1,0 +1,42 @@
+From bb5ff40813ec38b73dc7656bd324ed08ec9eb7ed Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 18 Jul 2025 18:03:50 +0200
+Subject: [PATCH 093/100] i386/tdx: Remove the redundant
+ qemu_mutex_init(&tdx->lock)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 40da501d8989 ("i386/tdx: handle TDG.VP.VMCALL<GetQuote>") added
+redundant qemu_mutex_init(&tdx->lock) in tdx_guest_init by mistake.
+
+Fix it by removing the redundant one.
+
+Fixes: 40da501d8989 ("i386/tdx: handle TDG.VP.VMCALL<GetQuote>")
+Reported-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Link: https://lore.kernel.org/r/20250717103707.688929-1-xiaoyao.li@intel.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit f64832033d1262983bfe759669b4f65080f760dc)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/kvm/tdx.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index b8084758cb..cc46c0e2f1 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -1527,8 +1527,6 @@ static void tdx_guest_init(Object *obj)
+                             tdx_guest_set_qgs,
+                             NULL, NULL);
+ 
+-    qemu_mutex_init(&tdx->lock);
+-
+     tdx->event_notify_vector = -1;
+     tdx->event_notify_apicid = -1;
+ }
+-- 
+2.47.3
+

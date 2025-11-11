@@ -1,17 +1,17 @@
-From ed3fefc5bcaf3d0843eabca60d0630678740bd9b Mon Sep 17 00:00:00 2001
+From dfe44e34228c242f539f61383c431b6b9acd86f0 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Tue, 10 Jun 2025 13:36:43 +0100
-Subject: [PATCH 06/31] chardev/char-pty: skip automatic zero-init of large
+Subject: [PATCH 13/43] chardev/char-pty: skip automatic zero-init of large
  array
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 460: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
-RH-Jira: RHEL-99889
+RH-MergeRequest: 381: Solve -ftrivial-auto-var-init performance regression with QEMU_UNINITIALIZED
+RH-Jira: RHEL-95479
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [5/30] 9555824c46d6a12316ea57a73042e69ee7d8d033
+RH-Commit: [5/31] e41c3503091674e90cc7c17f202e5d4ae1f417cd (stefanha/centos-stream-qemu-kvm)
 
 The 'pty_chr_read' method has a 4k byte array used for copying
 data between the PTY and device. Skip the automatic zero-init
@@ -32,10 +32,10 @@ Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/chardev/char-pty.c b/chardev/char-pty.c
-index cc2f7617fe..3319ad215d 100644
+index 6a2c1dc13a..f484aac78d 100644
 --- a/chardev/char-pty.c
 +++ b/chardev/char-pty.c
-@@ -152,7 +152,7 @@ static gboolean pty_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
+@@ -154,7 +154,7 @@ static gboolean pty_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
      Chardev *chr = CHARDEV(opaque);
      PtyChardev *s = PTY_CHARDEV(opaque);
      gsize len;
