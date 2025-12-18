@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.1.0
-Release: 29%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 29%{?rcrel}%{?dist}%{?cc_suffix}.3
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -1199,6 +1199,12 @@ Patch391: kvm-ram-block-attributes-Introduce-RamBlockAttributes-to.patch
 Patch392: kvm-physmem-Support-coordinated-discarding-of-RAM-with-g.patch
 # For RHEL-17614 - VM reports Vulnerable to spec_rstack_overflow when reading status in '/sys/devices/system/cpu/vulnerabilities/'
 Patch393: kvm-target-i386-Expose-IBPB-BRTYPE-and-SBPB-CPUID-bits-t.patch
+# For RHEL-120502 - [rhel9] Backport "arm/kvm: report registers we failed to set" [rhel-9.7.z]
+Patch394: kvm-arm-kvm-report-registers-we-failed-to-set.patch
+# For RHEL-120125 - CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-9.7.z]
+Patch395: kvm-io-move-websock-resource-release-to-close-method.patch
+# For RHEL-120125 - CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-9.7.z]
+Patch396: kvm-io-fix-use-after-free-in-websocket-handshake-code.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -2274,6 +2280,23 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Nov 17 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.3
+- kvm-io-move-websock-resource-release-to-close-method.patch [RHEL-120125]
+- kvm-io-fix-use-after-free-in-websocket-handshake-code.patch [RHEL-120125]
+- Resolves: RHEL-120125
+  (CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-9.7.z])
+
+* Wed Nov 12 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.2
+- kvm-io-move-websock-resource-release-to-close-method.patch [RHEL-120125]
+- kvm-io-fix-use-after-free-in-websocket-handshake-code.patch [RHEL-120125]
+- Resolves: RHEL-120125
+  (CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-9.7.z])
+
+* Mon Nov 03 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.1
+- kvm-arm-kvm-report-registers-we-failed-to-set.patch [RHEL-120502]
+- Resolves: RHEL-120502
+  ([rhel9] Backport "arm/kvm: report registers we failed to set" [rhel-9.7.z])
+
 * Tue Sep 16 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29
 - kvm-target-i386-Expose-IBPB-BRTYPE-and-SBPB-CPUID-bits-t.patch [RHEL-17614]
 - Resolves: RHEL-17614
