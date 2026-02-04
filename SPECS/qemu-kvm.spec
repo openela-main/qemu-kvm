@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.0.0
-Release: 14%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 14%{?rcrel}%{?dist}%{?cc_suffix}.5
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -526,6 +526,22 @@ Patch231: kvm-hw-uefi-clear-uefi-vars-buffer-in-uefi_vars_write-ca.patch
 Patch232: kvm-hw-uefi-return-success-for-notifications.patch
 # For RHEL-108614 - CVE-2025-8860 qemu-kvm: uefi-vars: information disclosure vulnerability in uefi_vars_write callback [rhel-10.1]
 Patch233: kvm-hw-uefi-check-access-for-first-variable.patch
+# For RHEL-120074 - [rhel10] Backport "arm/kvm: report registers we failed to set" [rhel-10.1.z]
+Patch234: kvm-arm-kvm-report-registers-we-failed-to-set.patch
+# For RHEL-120118 - CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-10.1.z]
+Patch235: kvm-io-move-websock-resource-release-to-close-method.patch
+# For RHEL-120118 - CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-10.1.z]
+Patch236: kvm-io-fix-use-after-free-in-websocket-handshake-code.patch
+# For RHEL-129549 - [RHEL 10]snp guest fail to boot with hugepage [rhel-10.1.z]
+Patch237: kvm-ram-block-attributes-fix-interaction-with-hugetlb-me.patch
+# For RHEL-129549 - [RHEL 10]snp guest fail to boot with hugepage [rhel-10.1.z]
+Patch238: kvm-ram-block-attributes-Unify-the-retrieval-of-the-bloc.patch
+# For RHEL-133521 - The VM hit io error when do S3-PR integration on the pass-through  failover multipath device [rhel-10.1.z]
+Patch239: kvm-file-posix-Handle-suspended-dm-multipath-better-for-.patch
+# For RHEL-133527 - Assertion failure on drain with iothread and I/O load [rhel-10.1.z]
+Patch240: kvm-block-backend-Fix-race-when-resuming-queued-requests.patch
+# For RHEL-135453 - Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: pdcm [rhel-10.1.z]
+Patch241: kvm-Revert-i386-cpu-Move-adjustment-of-CPUID_EXT_PDCM-be.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1609,6 +1625,36 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Dec 15 2025 Miroslav Rezanina <mrezanin@redhat.com> - 10.0.0-14.el10_1.5
+- kvm-Revert-i386-cpu-Move-adjustment-of-CPUID_EXT_PDCM-be.patch [RHEL-135453]
+- Resolves: RHEL-135453
+  (Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: pdcm [rhel-10.1.z])
+
+* Wed Dec 10 2025 Miroslav Rezanina <mrezanin@redhat.com> - 10.0.0-14.el10_1.4
+- kvm-file-posix-Handle-suspended-dm-multipath-better-for-.patch [RHEL-133521]
+- kvm-block-backend-Fix-race-when-resuming-queued-requests.patch [RHEL-133527]
+- Resolves: RHEL-133521
+  (The VM hit io error when do S3-PR integration on the pass-through  failover multipath device [rhel-10.1.z])
+- Resolves: RHEL-133527
+  (Assertion failure on drain with iothread and I/O load [rhel-10.1.z])
+
+* Tue Nov 25 2025 Jon Maloy <jmaloy@redhat.com> - 10.0.0-14.el10_1.3
+- kvm-ram-block-attributes-fix-interaction-with-hugetlb-me.patch [RHEL-129549]
+- kvm-ram-block-attributes-Unify-the-retrieval-of-the-bloc.patch [RHEL-129549]
+- Resolves: RHEL-129549
+  ([RHEL 10]snp guest fail to boot with hugepage [rhel-10.1.z])
+
+* Mon Nov 10 2025 Miroslav Rezanina <mrezanin@redhat.com> - 10.0.0-14.el10_1.2
+- kvm-io-move-websock-resource-release-to-close-method.patch [RHEL-120118]
+- kvm-io-fix-use-after-free-in-websocket-handshake-code.patch [RHEL-120118]
+- Resolves: RHEL-120118
+  (CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-10.1.z])
+
+* Fri Oct 31 2025 Miroslav Rezanina <mrezanin@redhat.com> - 10.0.0-14.el10_1.1
+- kvm-arm-kvm-report-registers-we-failed-to-set.patch [RHEL-120074]
+- Resolves: RHEL-120074
+  ([rhel10] Backport "arm/kvm: report registers we failed to set" [rhel-10.1.z])
+
 * Wed Sep 17 2025 Miroslav Rezanina <mrezanin@redhat.com> - 10.0.0-14
 - kvm-hw-uefi-clear-uefi-vars-buffer-in-uefi_vars_write-ca.patch [RHEL-108614]
 - kvm-hw-uefi-return-success-for-notifications.patch [RHEL-108614]

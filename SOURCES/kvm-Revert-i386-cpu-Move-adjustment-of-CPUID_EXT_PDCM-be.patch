@@ -1,0 +1,74 @@
+From 688540b82cdb18de5a8815035157fb4b310d6287 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 12 Dec 2025 00:48:42 +0100
+Subject: [PATCH] Revert "i386/cpu: Move adjustment of CPUID_EXT_PDCM before
+ feature_dependencies[] check"
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 526: Revert "i386/cpu: Move adjustment of CPUID_EXT_PDCM before feature_dependencies[] check"
+RH-Jira: RHEL-135453
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Commit: [1/1] 171bef2088b6010b44c269c6d34d95d5135be758
+
+JIRA: https://issues.redhat.com/browse/RHEL-135453
+
+This reverts commit e8ce1b2ea0eecc36e6bf6df777c6d395d5679e26.
+
+Quoting from commit 6529f31e0dc ("target/i386: add compatibility
+property for pdcm feature", 2025-10-07):
+
+    The pdcm feature is supposed to be disabled when PMU is not
+    available. Up until v10.1, pdcm feature is enabled even when PMU
+    is off. This behavior has been fixed but this change breaks the
+    migration of VMs that are run with QEMU < 10.0 and expect the pdcm
+    feature to be enabled on the destination host.
+
+    This commit restores the legacy behavior for machines with version
+    prior to 10.1 to allow the migration from older QEMU to QEMU 10.1.
+
+    Signed-off-by: Hector Cao <hector.cao@canonical.com>
+    Link: https://lore.kernel.org/r/20250910115733.21149-3-hector.cao@canonical.com
+    Fixes: e68ec298090 ("i386/cpu: Move adjustment of CPUID_EXT_PDCM before feature_dependencies[] check", 2025-06-20)
+    [Move property from migration object to CPU. - Paolo]
+    Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+
+For RHEL10.1 we don't have machine types so just revert, while keeping only
+the TDX check.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ target/i386/cpu.c | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 8ba92de50c..5a768805f3 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -7311,6 +7311,10 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         if (threads_per_pkg > 1) {
+             *ebx |= threads_per_pkg << 16;
+         }
++        /* PDCM is fixed1 bit for TDX */
++        if (!cpu->enable_pmu && !is_tdx_vm()) {
++            *ecx &= ~CPUID_EXT_PDCM;
++        }
+         break;
+     case 2:
+         /* cache info: needed for Pentium Pro compatibility */
+@@ -8301,11 +8305,6 @@ void x86_cpu_expand_features(X86CPU *cpu, Error **errp)
+         }
+     }
+ 
+-    /* PDCM is fixed1 bit for TDX */
+-    if (!cpu->enable_pmu && !is_tdx_vm()) {
+-        env->features[FEAT_1_ECX] &= ~CPUID_EXT_PDCM;
+-    }
+-
+     for (i = 0; i < ARRAY_SIZE(feature_dependencies); i++) {
+         FeatureDep *d = &feature_dependencies[i];
+         if (!(env->features[d->from.index] & d->from.mask)) {
+-- 
+2.47.3
+
