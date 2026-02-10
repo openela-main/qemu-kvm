@@ -83,7 +83,7 @@ Obsoletes: %1-rhev <= %{epoch}:%{version}-%{release}
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 6.2.0
-Release: 53%{?rcrel}%{?dist}.4
+Release: 53%{?rcrel}%{?dist}.6
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 Epoch: 15
 License: GPLv2 and GPLv2+ and CC-BY
@@ -903,6 +903,20 @@ Patch370: kvm-target-s390x-filter-deprecated-properties-based-on-m.patch
 Patch371: kvm-target-s390x-move-deprecated-props-to-CpuModelExpans.patch
 # For RHEL-88701 - [RHEL 8.10 qemu] KVM - Live migration of guest fails from z16-z17 [rhel-8.10.z]
 Patch372: kvm-redhat-Adjust-indentation-in-qapi-machine-target.jso.patch
+# For RHEL-120119 - CVE-2025-11234 virt:rhel/qemu-kvm: VNC WebSocket handshake use-after-free [rhel-8.10.z]
+Patch373: kvm-io-move-websock-resource-release-to-close-method.patch
+# For RHEL-120119 - CVE-2025-11234 virt:rhel/qemu-kvm: VNC WebSocket handshake use-after-free [rhel-8.10.z]
+Patch374: kvm-io-fix-use-after-free-in-websocket-handshake-code.patch
+# For RHEL-120737 - qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed
+Patch375: kvm-scsi-disk-Use-positive-return-value-for-status-in-dm.patch
+# For RHEL-120737 - qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed
+Patch376: kvm-scsi-block-Don-t-skip-callback-for-sgio-error-status.patch
+# For RHEL-120737 - qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed
+Patch377: kvm-scsi-disk-Add-warning-comments-that-host_status-erro.patch
+# For RHEL-120737 - qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed
+Patch378: kvm-scsi-disk-Always-report-RESERVATION_CONFLICT-to-gues.patch
+# For RHEL-120737 - qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed
+Patch379: kvm-scsi-disk-Apply-error-policy-for-host_status-errors-.patch
 
 BuildRequires: wget
 BuildRequires: rpm-build
@@ -2072,6 +2086,21 @@ sh %{_sysconfdir}/sysconfig/modules/kvm.modules &> /dev/null || :
 
 
 %changelog
+* Tue Dec 02 2025 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.6
+- kvm-scsi-disk-Use-positive-return-value-for-status-in-dm.patch [RHEL-120737]
+- kvm-scsi-block-Don-t-skip-callback-for-sgio-error-status.patch [RHEL-120737]
+- kvm-scsi-disk-Add-warning-comments-that-host_status-erro.patch [RHEL-120737]
+- kvm-scsi-disk-Always-report-RESERVATION_CONFLICT-to-gues.patch [RHEL-120737]
+- kvm-scsi-disk-Apply-error-policy-for-host_status-errors-.patch [RHEL-120737]
+- Resolves: RHEL-120737
+  (qemu hit io error and crash scsi-disk.c:554: scsi_write_data: Assertion `r->req.aiocb == NULL' failed)
+
+* Wed Nov 19 2025 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.5
+- kvm-io-move-websock-resource-release-to-close-method.patch [RHEL-120119]
+- kvm-io-fix-use-after-free-in-websocket-handshake-code.patch [RHEL-120119]
+- Resolves: RHEL-120119
+  (CVE-2025-11234 virt:rhel/qemu-kvm: VNC WebSocket handshake use-after-free [rhel-8.10.z])
+
 * Mon May 05 2025 Jon Maloy <jmaloy@redhat.com> - 6.2.0-53.el8.4
 - kvm-target-s390x-report-deprecated-props-in-cpu-model-ex.patch [RHEL-88701]
 - kvm-target-s390x-flag-te-and-cte-as-deprecated.patch [RHEL-88701]

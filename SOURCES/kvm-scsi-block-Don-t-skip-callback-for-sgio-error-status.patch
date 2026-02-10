@@ -1,0 +1,79 @@
+From 7ec344bf9285cf854db5a643af5b9111aa47eee5 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Wed, 31 Jul 2024 14:32:05 +0200
+Subject: [PATCH 2/5] scsi-block: Don't skip callback for sgio error
+ status/driver_status
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 513: scsi-block: Fix error handling with r/werror=stop
+RH-Jira: RHEL-120737
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/5] 29d87d7eb1241586a852a7f63e0ec0232a28a3ac (kmwolf/rhel-qemu-kvm)
+
+Instead of calling into scsi_handle_rw_error() directly from
+scsi_block_sgio_complete() and skipping the normal callback, go through
+the normal cleanup path by calling the callback with a positive error
+value.
+
+The important difference here is not only that the code path is cleaner,
+but that the callbacks set r->req.aiocb = NULL. If we skip setting this
+and the error action is BLOCK_ERROR_ACTION_STOP, resuming the VM runs
+into an assertion failure in scsi_read_data() or scsi_write_data()
+because the dangling aiocb pointer is unexpected.
+
+Fixes: a108557bbf ("scsi: inline sg_io_sense_from_errno() into the callers.")
+Buglink: https://issues.redhat.com/browse/RHEL-50000
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+Message-ID: <20240731123207.27636-3-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 622a70161ac258e4a166a7dca4b5be267e0652d9)
+
+Conflicts:
+	hw/scsi/scsi-disk.c
+
+RHEL 8.10 still uses AioContext locks, so the removed code is slightly
+different. The callbacks that replace it have all the necessary locking
+in place.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-disk.c | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 463c14590f..a677ad8a92 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -2703,7 +2703,6 @@ static void scsi_block_sgio_complete(void *opaque, int ret)
+ {
+     SCSIBlockReq *req = (SCSIBlockReq *)opaque;
+     SCSIDiskReq *r = &req->req;
+-    SCSIDevice *s = r->req.dev;
+     sg_io_hdr_t *io_hdr = &req->io_header;
+ 
+     if (ret == 0) {
+@@ -2718,19 +2717,6 @@ static void scsi_block_sgio_complete(void *opaque, int ret)
+         } else {
+             ret = io_hdr->status;
+         }
+-
+-        if (ret > 0) {
+-            aio_context_acquire(blk_get_aio_context(s->conf.blk));
+-            if (scsi_handle_rw_error(r, ret, true)) {
+-                aio_context_release(blk_get_aio_context(s->conf.blk));
+-                scsi_req_unref(&r->req);
+-                return;
+-            }
+-            aio_context_release(blk_get_aio_context(s->conf.blk));
+-
+-            /* Ignore error.  */
+-            ret = 0;
+-        }
+     }
+ 
+     req->cb(req->cb_opaque, ret);
+-- 
+2.51.1
+
