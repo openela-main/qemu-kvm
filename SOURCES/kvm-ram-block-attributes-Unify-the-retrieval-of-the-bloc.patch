@@ -1,0 +1,49 @@
+From fe05c3a7f85d479df1d3214dc2f06d5eecdec06a Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Wed, 19 Nov 2025 12:51:32 +0100
+Subject: [PATCH 3/4] ram-block-attributes: Unify the retrieval of the block
+ size
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 510: SNP fixes for RHEL 9.7.z
+RH-Jira: RHEL-129551
+RH-Acked-by: Yash Mankad <None>
+RH-Acked-by: Bandan Das <bdas@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Commit: [3/3] a7c0d9e98aa363337b79a891691e60d33523af3d
+
+JIRA: https://issues.redhat.com/browse/RHEL-126551
+Y-JIRA: https://issues.redhat.com/browse/RHEL-126693
+
+There's an existing helper function designed to obtain the block size.
+Modify ram_block_attribute_create() to use this function for
+consistency.
+
+Tested-by: Farrah Chen <farrah.chen@intel.com>
+Signed-off-by: Chenyi Qiang <chenyi.qiang@intel.com>
+Link: https://lore.kernel.org/r/20251023095526.48365-3-chenyi.qiang@intel.com
+[peterx: fix double spaces, per david]
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit b2ceb87b1a210d91a29d525590eb164d1121b8a1)
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ system/ram-block-attributes.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/system/ram-block-attributes.c b/system/ram-block-attributes.c
+index 0f09d73ab3..ae28b15e4c 100644
+--- a/system/ram-block-attributes.c
++++ b/system/ram-block-attributes.c
+@@ -390,7 +390,7 @@ int ram_block_attributes_state_change(RamBlockAttributes *attr,
+ 
+ RamBlockAttributes *ram_block_attributes_create(RAMBlock *ram_block)
+ {
+-    const int block_size  = qemu_real_host_page_size();
++    const int block_size = ram_block_attributes_get_block_size();
+     RamBlockAttributes *attr;
+     MemoryRegion *mr = ram_block->mr;
+ 
+-- 
+2.51.1
+

@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 9.1.0
-Release: 29%{?rcrel}%{?dist}%{?cc_suffix}.3
+Release: 29%{?rcrel}%{?dist}%{?cc_suffix}.6
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -1205,6 +1205,18 @@ Patch394: kvm-arm-kvm-report-registers-we-failed-to-set.patch
 Patch395: kvm-io-move-websock-resource-release-to-close-method.patch
 # For RHEL-120125 - CVE-2025-11234 qemu-kvm: VNC WebSocket handshake use-after-free [rhel-9.7.z]
 Patch396: kvm-io-fix-use-after-free-in-websocket-handshake-code.patch
+# For RHEL-129551 - [RHEL 9]snp guest fail to boot with hugepage [rhel-9.7.z]
+Patch397: kvm-accel-kvm-check-for-KVM_CAP_READONLY_MEM-on-VM.patch
+# For RHEL-129551 - [RHEL 9]snp guest fail to boot with hugepage [rhel-9.7.z]
+Patch398: kvm-ram-block-attributes-fix-interaction-with-hugetlb-me.patch
+# For RHEL-129551 - [RHEL 9]snp guest fail to boot with hugepage [rhel-9.7.z]
+Patch399: kvm-ram-block-attributes-Unify-the-retrieval-of-the-bloc.patch
+# For RHEL-130209 - scsi-block: Error policy is ignored for host_status errors [rhel-9.7.z]
+Patch400: kvm-scsi-disk-Apply-error-policy-for-host_status-errors-.patch
+# For RHEL-133302 - The VM hit io error when do S3-PR integration on the pass-through  failover multipath device [rhel-9.7.z]
+Patch401: kvm-file-posix-Handle-suspended-dm-multipath-better-for-.patch
+# For RHEL-135451 - Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: pdcm [rhel-9]
+Patch402: kvm-Revert-i386-cpu-Move-adjustment-of-CPUID_EXT_PDCM-be.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -2280,6 +2292,26 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Dec 15 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.6
+- kvm-Revert-i386-cpu-Move-adjustment-of-CPUID_EXT_PDCM-be.patch [RHEL-135451]
+- Resolves: RHEL-135451
+  (Live migration after workload update fails with operation failed: guest CPU doesn't match specification: missing features: pdcm [rhel-9])
+
+* Mon Dec 08 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.5
+- kvm-file-posix-Handle-suspended-dm-multipath-better-for-.patch [RHEL-133302]
+- Resolves: RHEL-133302
+  (The VM hit io error when do S3-PR integration on the pass-through  failover multipath device [rhel-9.7.z])
+
+* Tue Dec 02 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.4
+- kvm-accel-kvm-check-for-KVM_CAP_READONLY_MEM-on-VM.patch [RHEL-129551]
+- kvm-ram-block-attributes-fix-interaction-with-hugetlb-me.patch [RHEL-129551]
+- kvm-ram-block-attributes-Unify-the-retrieval-of-the-bloc.patch [RHEL-129551]
+- kvm-scsi-disk-Apply-error-policy-for-host_status-errors-.patch [RHEL-130209]
+- Resolves: RHEL-129551
+  ([RHEL 9]snp guest fail to boot with hugepage [rhel-9.7.z])
+- Resolves: RHEL-130209
+  (scsi-block: Error policy is ignored for host_status errors [rhel-9.7.z])
+
 * Mon Nov 17 2025 Jon Maloy <jmaloy@redhat.com> - 9.1.0-29.el9_7.3
 - kvm-io-move-websock-resource-release-to-close-method.patch [RHEL-120125]
 - kvm-io-fix-use-after-free-in-websocket-handshake-code.patch [RHEL-120125]
