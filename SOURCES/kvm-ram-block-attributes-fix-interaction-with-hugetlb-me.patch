@@ -1,20 +1,18 @@
-From e20a6ae07f1ec43a985e5884bd1b2e99824f4146 Mon Sep 17 00:00:00 2001
+From 3a4219fadaaeeb64be2803d390fdf5f4d16bcd04 Mon Sep 17 00:00:00 2001
 From: Paolo Bonzini <pbonzini@redhat.com>
 Date: Wed, 19 Nov 2025 12:51:32 +0100
-Subject: [PATCH 2/4] ram-block-attributes: fix interaction with hugetlb memory
+Subject: [PATCH 1/2] ram-block-attributes: fix interaction with hugetlb memory
  backends
 
 RH-Author: Paolo Bonzini <pbonzini@redhat.com>
-RH-MergeRequest: 510: SNP fixes for RHEL 9.7.z
-RH-Jira: RHEL-129551
-RH-Acked-by: Yash Mankad <None>
+RH-MergeRequest: 425: SNP fixes for RHEL 9.8
+RH-Jira: RHEL-126693
 RH-Acked-by: Bandan Das <bdas@redhat.com>
 RH-Acked-by: Eric Blake <eblake@redhat.com>
 RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Commit: [2/3] f93ec3a62939310fc0d556a4b9c134150e16a53f
+RH-Commit: [1/2] 690e7c2e120145725d5e4485cfc7c8a7e7a053cf (bonzini/qemu-kvm-centos)
 
-JIRA: https://issues.redhat.com/browse/RHEL-126551
-Y-JIRA: https://issues.redhat.com/browse/RHEL-126693
+JIRA: https://issues.redhat.com/browse/RHEL-126693
 
 Currently, CoCo VMs can perform conversion at the base page granularity,
 which is the granularity that has to be tracked. In relevant setups, the
@@ -46,7 +44,7 @@ Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
  1 file changed, 8 insertions(+), 10 deletions(-)
 
 diff --git a/system/ram-block-attributes.c b/system/ram-block-attributes.c
-index 0bded54e9c..0f09d73ab3 100644
+index 68e8a02703..a7579de5b4 100644
 --- a/system/ram-block-attributes.c
 +++ b/system/ram-block-attributes.c
 @@ -22,16 +22,14 @@ OBJECT_DEFINE_SIMPLE_TYPE_WITH_INTERFACES(RamBlockAttributes,

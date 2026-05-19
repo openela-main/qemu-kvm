@@ -1,19 +1,19 @@
-From e4223fa468bf6887c3053a74a6e83bd0e99af70c Mon Sep 17 00:00:00 2001
+From 67251cdb869b79d3c6d82cdc8b3ae4322e56c34d Mon Sep 17 00:00:00 2001
 From: Jon Maloy <jmaloy@redhat.com>
 Date: Tue, 4 Nov 2025 17:23:29 -0500
-Subject: [PATCH 1/2] io: move websock resource release to close method
+Subject: [PATCH 1/3] io: move websock resource release to close method
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 497: io: fix use after free in websocket handshake code
-RH-Jira: RHEL-120125
-RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 420: io: fix use after free in websocket handshake code
+RH-Jira: RHEL-120127
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/2] 09d2c8d9150af559afb5750b97b1b6985e535580 (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Commit: [1/2] 43f3de85f64597dd95b55239e6b379ca8d26fff5 (jmaloy/jmaloy-qemu-kvm-2)
 
-JIRA: https://issues.redhat.com/browse/RHEL-120125
+JIRA: https://issues.redhat.com/browse/RHEL-120127
 CVE: CVE-2025-11234
 
 commit 322c3c4f3abee616a18b3bfe563ec29dd67eae63
@@ -45,7 +45,7 @@ Signed-off-by: Jon Maloy <jmaloy@redhat.com>
  1 file changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/io/channel-websock.c b/io/channel-websock.c
-index de39f0d182..1aac3c88a8 100644
+index 08ddb274f0..a19b902ff9 100644
 --- a/io/channel-websock.c
 +++ b/io/channel-websock.c
 @@ -922,13 +922,13 @@ static void qio_channel_websock_finalize(Object *obj)

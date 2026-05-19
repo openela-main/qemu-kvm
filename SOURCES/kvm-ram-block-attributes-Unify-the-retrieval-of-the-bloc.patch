@@ -1,20 +1,18 @@
-From fe05c3a7f85d479df1d3214dc2f06d5eecdec06a Mon Sep 17 00:00:00 2001
+From 5ce2d7f8e90911ae6d7a9be295881c74f64706f2 Mon Sep 17 00:00:00 2001
 From: Paolo Bonzini <pbonzini@redhat.com>
 Date: Wed, 19 Nov 2025 12:51:32 +0100
-Subject: [PATCH 3/4] ram-block-attributes: Unify the retrieval of the block
+Subject: [PATCH 2/2] ram-block-attributes: Unify the retrieval of the block
  size
 
 RH-Author: Paolo Bonzini <pbonzini@redhat.com>
-RH-MergeRequest: 510: SNP fixes for RHEL 9.7.z
-RH-Jira: RHEL-129551
-RH-Acked-by: Yash Mankad <None>
+RH-MergeRequest: 425: SNP fixes for RHEL 9.8
+RH-Jira: RHEL-126693
 RH-Acked-by: Bandan Das <bdas@redhat.com>
 RH-Acked-by: Eric Blake <eblake@redhat.com>
 RH-Acked-by: Peter Xu <peterx@redhat.com>
-RH-Commit: [3/3] a7c0d9e98aa363337b79a891691e60d33523af3d
+RH-Commit: [2/2] 56381c838d3f1269f7129140f0fa19c40f9f09f0 (bonzini/qemu-kvm-centos)
 
-JIRA: https://issues.redhat.com/browse/RHEL-126551
-Y-JIRA: https://issues.redhat.com/browse/RHEL-126693
+JIRA: https://issues.redhat.com/browse/RHEL-126693
 
 There's an existing helper function designed to obtain the block size.
 Modify ram_block_attribute_create() to use this function for
@@ -32,7 +30,7 @@ Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/system/ram-block-attributes.c b/system/ram-block-attributes.c
-index 0f09d73ab3..ae28b15e4c 100644
+index a7579de5b4..fb7c5c2746 100644
 --- a/system/ram-block-attributes.c
 +++ b/system/ram-block-attributes.c
 @@ -390,7 +390,7 @@ int ram_block_attributes_state_change(RamBlockAttributes *attr,

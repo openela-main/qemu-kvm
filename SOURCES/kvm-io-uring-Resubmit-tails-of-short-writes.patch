@@ -1,0 +1,280 @@
+From 5c03f1f319e1a945d3a651677178f5af872971d9 Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Tue, 24 Mar 2026 09:43:36 +0100
+Subject: [PATCH 5/5] io-uring: Resubmit tails of short writes
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 480: linux-aio/io-uring: Resubmit tails of short requests
+RH-Jira: RHEL-154174
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [4/4] e9d78176f1b737ddc1ea74ca412a892634902409 (hreitz/qemu-kvm-c-9-s)
+
+Short writes can happen, too, not just short reads.  The difference to
+aio=native is that the kernel will actually retry the tail of short
+requests internally already -- so it is harder to reproduce.  But if the
+tail of a short request returns an error to the kernel, we will see it
+in userspace still.  To reproduce this, apply the following patch on top
+of the one shown in HEAD^ (again %s/escaped // to apply):
+
+escaped diff --git a/block/export/fuse.c b/block/export/fuse.c
+escaped index 67dc50a412..2b98489a32 100644
+escaped --- a/block/export/fuse.c
+escaped +++ b/block/export/fuse.c
+@@ -1059,8 +1059,15 @@ fuse_co_read(FuseExport *exp, void **bufptr, uint64_t offset, uint32_t size)
+     int64_t blk_len;
+     void *buf;
+     int ret;
++    static uint32_t error_size;
+
+-    size = MIN(size, 4096);
++    if (error_size == size) {
++        error_size = 0;
++        return -EIO;
++    } else if (size > 4096) {
++        error_size = size - 4096;
++        size = 4096;
++    }
+
+     /* Limited by max_read, should not happen */
+     if (size > FUSE_MAX_READ_BYTES) {
+@@ -1111,8 +1118,15 @@ fuse_co_write(FuseExport *exp, struct fuse_write_out *out,
+ {
+     int64_t blk_len;
+     int ret;
++    static uint32_t error_size;
+
+-    size = MIN(size, 4096);
++    if (error_size == size) {
++        error_size = 0;
++        return -EIO;
++    } else if (size > 4096) {
++        error_size = size - 4096;
++        size = 4096;
++    }
+
+     QEMU_BUILD_BUG_ON(FUSE_MAX_WRITE_BYTES > BDRV_REQUEST_MAX_BYTES);
+     /* Limited by max_write, should not happen */
+
+I know this is a bit artificial because to produce this, there must be
+an I/O error somewhere anyway, but if it does happen, qemu will
+understand it to mean ENOSPC for short writes, which is incorrect.  So I
+believe we need to resubmit the tail to maybe have it succeed now, or at
+least get the correct error code.
+
+Reproducer as before:
+$ ./qemu-img create -f raw test.raw 8k
+Formatting 'test.raw', fmt=raw size=8192
+$ ./qemu-io -f raw -c 'write -P 42 0 8k' test.raw
+wrote 8192/8192 bytes at offset 0
+8 KiB, 1 ops; 00.00 sec (64.804 MiB/sec and 8294.9003 ops/sec)
+$ hexdump -C test.raw
+00000000  2a 2a 2a 2a 2a 2a 2a 2a  2a 2a 2a 2a 2a 2a 2a 2a  |****************|
+*
+00002000
+$ storage-daemon/qemu-storage-daemon \
+    --blockdev file,node-name=test,filename=test.raw \
+    --export fuse,id=exp,node-name=test,mountpoint=test.raw,writable=true
+
+$ ./qemu-io --image-opts -c 'read -P 23 0 8k' \
+    driver=file,filename=test.raw,cache.direct=on,aio=io_uring
+read 8192/8192 bytes at offset 0
+8 KiB, 1 ops; 00.00 sec (58.481 MiB/sec and 7485.5342 ops/sec)
+$ ./qemu-io --image-opts -c 'write -P 23 0 8k' \
+    driver=file,filename=test.raw,cache.direct=on,aio=io_uring
+write failed: No space left on device
+$ hexdump -C test.raw
+00000000  17 17 17 17 17 17 17 17  17 17 17 17 17 17 17 17  |................|
+*
+00001000  2a 2a 2a 2a 2a 2a 2a 2a  2a 2a 2a 2a 2a 2a 2a 2a  |****************|
+*
+00002000
+
+So short reads already work (because there is code for that), but short
+writes incorrectly produce ENOSPC.  This patch fixes that by
+resubmitting not only the tail of short reads but short writes also.
+
+(And this patch uses the opportunity to make it so qemu_iovec_destroy()
+is called only if req->resubmit_qiov.iov is non-NULL.  Functionally a
+non-op, but this is how the code generally checks whether the
+resubmit_qiov has been set up or not.)
+
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20260324084338.37453-4-hreitz@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit cf9cdaea6e24d13dfdf8402f6829d2ca4dca864b)
+
+Conflicts:
+- block/io_uring.c, block/trace-events
+  Missing 047dabef97bd0c4af3c3dc453b19e20345de3602 ("block/io_uring: use
+  aio_add_sqe()") downstream, which changed quite a few things about the
+  io-uring code. Backporting it seems excessive, though, especially
+  given that it would pull in even more dependencies (general aio and
+  aio-posix changes that come right before 047dabef).
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+(cherry picked from commit cf9cdaea6e24d13dfdf8402f6829d2ca4dca864b)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/io_uring.c   | 77 +++++++++++++++++++++++++---------------------
+ block/trace-events |  2 +-
+ 2 files changed, 43 insertions(+), 36 deletions(-)
+
+diff --git a/block/io_uring.c b/block/io_uring.c
+index 5dbafc8f7b..582550f8e9 100644
+--- a/block/io_uring.c
++++ b/block/io_uring.c
+@@ -31,14 +31,14 @@ typedef struct LuringAIOCB {
+     struct io_uring_sqe sqeq;
+     ssize_t ret;
+     QEMUIOVector *qiov;
+-    bool is_read;
++    int type;
+     QSIMPLEQ_ENTRY(LuringAIOCB) next;
+ 
+     /*
+-     * Buffered reads may require resubmission, see
+-     * luring_resubmit_short_read().
++     * Short reads/writes require resubmission, see
++     * luring_resubmit_short_io().
+      */
+-    int total_read;
++    int total_done;
+     QEMUIOVector resubmit_qiov;
+ } LuringAIOCB;
+ 
+@@ -73,22 +73,27 @@ static void luring_resubmit(LuringState *s, LuringAIOCB *luringcb)
+ }
+ 
+ /**
+- * luring_resubmit_short_read:
++ * luring_resubmit_short_io:
+  *
+- * Short reads are rare but may occur. The remaining read request needs to be
+- * resubmitted.
++ * Short reads and writes are rare but may occur.  The remaining request needs
++ * to be resubmitted.
++ *
++ * For example, short reads can be reproduced by a FUSE export deliberately
++ * executing short reads.  The tail of short writes is generally resubmitted by
++ * io-uring in the kernel, but if that resubmission encounters an I/O error, the
++ * already submitted portion will be returned as a short write.
+  */
+-static void luring_resubmit_short_read(LuringState *s, LuringAIOCB *luringcb,
+-                                       int nread)
++static void luring_resubmit_short_io(LuringState *s, LuringAIOCB *luringcb,
++                                     int ndone)
+ {
+     QEMUIOVector *resubmit_qiov;
+     size_t remaining;
+ 
+-    trace_luring_resubmit_short_read(s, luringcb, nread);
++    trace_luring_resubmit_short_io(s, luringcb, ndone);
+ 
+-    /* Update read position */
+-    luringcb->total_read += nread;
+-    remaining = luringcb->qiov->size - luringcb->total_read;
++    /* Update I/O position */
++    luringcb->total_done += ndone;
++    remaining = luringcb->qiov->size - luringcb->total_done;
+ 
+     /* Shorten qiov */
+     resubmit_qiov = &luringcb->resubmit_qiov;
+@@ -97,11 +102,11 @@ static void luring_resubmit_short_read(LuringState *s, LuringAIOCB *luringcb,
+     } else {
+         qemu_iovec_reset(resubmit_qiov);
+     }
+-    qemu_iovec_concat(resubmit_qiov, luringcb->qiov, luringcb->total_read,
++    qemu_iovec_concat(resubmit_qiov, luringcb->qiov, luringcb->total_done,
+                       remaining);
+ 
+     /* Update sqe */
+-    luringcb->sqeq.off += nread;
++    luringcb->sqeq.off += ndone;
+     luringcb->sqeq.addr = (uintptr_t)luringcb->resubmit_qiov.iov;
+     luringcb->sqeq.len = luringcb->resubmit_qiov.niov;
+ 
+@@ -165,8 +170,8 @@ static bool luring_process_completions(LuringState *s)
+         s->io_q.in_flight--;
+         trace_luring_process_completion(s, luringcb, ret);
+ 
+-        /* total_read is non-zero only for resubmitted read requests */
+-        total_bytes = ret + luringcb->total_read;
++        /* total_done is non-zero only for resubmitted requests */
++        total_bytes = ret + luringcb->total_done;
+ 
+         if (ret < 0) {
+             /*
+@@ -192,27 +197,29 @@ static bool luring_process_completions(LuringState *s)
+             goto end;
+         } else if (total_bytes == luringcb->qiov->size) {
+             ret = 0;
+-        /* Only read/write */
++        } else if (ret > 0 && (luringcb->type == QEMU_AIO_READ ||
++                               luringcb->type == QEMU_AIO_WRITE)) {
++            luring_resubmit_short_io(s, luringcb, ret);
++            resubmit = true;
++            continue;
++        } else if (luringcb->type == QEMU_AIO_READ) {
++            /* Read ret == 0: EOF, pad with zeroes */
++            qemu_iovec_memset(luringcb->qiov, total_bytes, 0,
++                              luringcb->qiov->size - total_bytes);
++            ret = 0;
+         } else {
+-            /* Short Read/Write */
+-            if (luringcb->is_read) {
+-                if (ret > 0) {
+-                    luring_resubmit_short_read(s, luringcb, ret);
+-                    resubmit = true;
+-                    continue;
+-                } else {
+-                    /* Pad with zeroes */
+-                    qemu_iovec_memset(luringcb->qiov, total_bytes, 0,
+-                                      luringcb->qiov->size - total_bytes);
+-                    ret = 0;
+-                }
+-            } else {
+-                ret = -ENOSPC;
+-            }
++            /*
++             * Normal write ret == 0 means ENOSPC.
++             * For zone-append, we treat any 0 <= ret < qiov->size as ENOSPC,
++             * too, because resubmitting the tail seems a little unsafe.
++             */
++            ret = -ENOSPC;
+         }
+ end:
+         luringcb->ret = ret;
+-        qemu_iovec_destroy(&luringcb->resubmit_qiov);
++        if (luringcb->resubmit_qiov.iov) {
++            qemu_iovec_destroy(&luringcb->resubmit_qiov);
++        }
+ 
+         /*
+          * If the coroutine is already entered it must be in ioq_submit()
+@@ -409,7 +416,7 @@ int coroutine_fn luring_co_submit(BlockDriverState *bs, int fd, uint64_t offset,
+         .co         = qemu_coroutine_self(),
+         .ret        = -EINPROGRESS,
+         .qiov       = qiov,
+-        .is_read    = (type == QEMU_AIO_READ),
++        .type       = type,
+     };
+     trace_luring_co_submit(bs, s, &luringcb, fd, offset, qiov ? qiov->size : 0,
+                            type);
+diff --git a/block/trace-events b/block/trace-events
+index 8e789e1f12..99b8c12bc8 100644
+--- a/block/trace-events
++++ b/block/trace-events
+@@ -70,7 +70,7 @@ luring_do_submit_done(void *s, int ret) "LuringState %p submitted to kernel %d"
+ luring_co_submit(void *bs, void *s, void *luringcb, int fd, uint64_t offset, size_t nbytes, int type) "bs %p s %p luringcb %p fd %d offset %" PRId64 " nbytes %zd type %d"
+ luring_process_completion(void *s, void *aiocb, int ret) "LuringState %p luringcb %p ret %d"
+ luring_io_uring_submit(void *s, int ret) "LuringState %p ret %d"
+-luring_resubmit_short_read(void *s, void *luringcb, int nread) "LuringState %p luringcb %p nread %d"
++luring_resubmit_short_io(void *s, void *luringcb, int ndone) "LuringState %p luringcb %p ndone %d"
+ 
+ # qcow2.c
+ qcow2_add_task(void *co, void *bs, void *pool, const char *action, int cluster_type, uint64_t host_offset, uint64_t offset, uint64_t bytes, void *qiov, size_t qiov_offset) "co %p bs %p pool %p: %s: cluster_type %d file_cluster_offset %" PRIu64 " offset %" PRIu64 " bytes %" PRIu64 " qiov %p qiov_offset %zu"
+-- 
+2.52.0
+

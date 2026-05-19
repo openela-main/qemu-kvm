@@ -1,19 +1,19 @@
-From 9f1ce751f7e800f00e4511c6ec874fe38deba7bf Mon Sep 17 00:00:00 2001
+From f018a3070e7ca36a0ffda7619d946812ea1b83bc Mon Sep 17 00:00:00 2001
 From: Jon Maloy <jmaloy@redhat.com>
 Date: Tue, 4 Nov 2025 17:28:47 -0500
-Subject: [PATCH 2/2] io: fix use after free in websocket handshake code
+Subject: [PATCH 2/3] io: fix use after free in websocket handshake code
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 RH-Author: Jon Maloy <jmaloy@redhat.com>
-RH-MergeRequest: 497: io: fix use after free in websocket handshake code
-RH-Jira: RHEL-120125
-RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 420: io: fix use after free in websocket handshake code
+RH-Jira: RHEL-120127
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/2] 68a23cb8e7a580a0d7de79994c71157f25c792ee (redhat/rhel/src/qemu-kvm/jons-qemu-kvm-2)
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Commit: [2/2] b6d0eb3c1024dce31f52b57b8cdd181ab4ee7cfa (jmaloy/jmaloy-qemu-kvm-2)
 
-JIRA: https://issues.redhat.com/browse/RHEL-120125
+JIRA: https://issues.redhat.com/browse/RHEL-120127
 CVE: CVE-2025-11234
 
 commit b7a1f2ca45c7865b9e98e02ae605a65fc9458ae9
@@ -110,7 +110,7 @@ index e180827c57..6700cf8946 100644
      gboolean io_eof;
      uint8_t opcode;
 diff --git a/io/channel-websock.c b/io/channel-websock.c
-index 1aac3c88a8..583ea86187 100644
+index a19b902ff9..ec5e09f9ab 100644
 --- a/io/channel-websock.c
 +++ b/io/channel-websock.c
 @@ -545,6 +545,7 @@ static gboolean qio_channel_websock_handshake_send(QIOChannel *ioc,
