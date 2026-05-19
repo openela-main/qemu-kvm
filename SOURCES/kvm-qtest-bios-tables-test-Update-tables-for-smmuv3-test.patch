@@ -1,0 +1,282 @@
+From d6f27731c3d469f4ba68807a4c1f8ee534cc9d57 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:33 +0100
+Subject: [PATCH 15/16] qtest/bios-tables-test: Update tables for smmuv3 tests
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [11/11] 88cb1daec4e92b759f12a96daacd46fc4656eacd (eauger1/centos-qemu-kvm)
+
+For the legacy smmuv3 test case, generated IORT has a single SMMUv3 node,
+a Root Complex(RC) node and 1 ITS node.
+RC node features 4 ID mappings, of which 2 points to SMMU node and the
+remaining ones points to ITS.
+
+       pcie.0 -> {SMMU0} -> {ITS}
+{RC}   pcie.1 -> {SMMU0} -> {ITS}
+       pcie.2            -> {ITS}
+       [all other ids]   -> {ITS}
+
+...
+[030h 0048   1]                         Type : 00
+[031h 0049   2]                       Length : 0018
+[033h 0051   1]                     Revision : 01
+[034h 0052   4]                   Identifier : 00000000
+[038h 0056   4]                Mapping Count : 00000000
+[03Ch 0060   4]               Mapping Offset : 00000000
+
+[040h 0064   4]                     ItsCount : 00000001
+[044h 0068   4]                  Identifiers : 00000000
+
+[048h 0072   1]                         Type : 04
+[049h 0073   2]                       Length : 0058
+[04Bh 0075   1]                     Revision : 04
+[04Ch 0076   4]                   Identifier : 00000001
+[050h 0080   4]                Mapping Count : 00000001
+[054h 0084   4]               Mapping Offset : 00000044
+
+[058h 0088   8]                 Base Address : 0000000009050000
+[060h 0096   4]        Flags (decoded below) : 00000001
+                             COHACC Override : 1
+                               HTTU Override : 0
+                      Proximity Domain Valid : 0
+[064h 0100   4]                     Reserved : 00000000
+[068h 0104   8]                VATOS Address : 0000000000000000
+[070h 0112   4]                        Model : 00000000
+[074h 0116   4]                   Event GSIV : 0000006A
+[078h 0120   4]                     PRI GSIV : 0000006B
+[07Ch 0124   4]                    GERR GSIV : 0000006D
+[080h 0128   4]                    Sync GSIV : 0000006C
+[084h 0132   4]             Proximity Domain : 00000000
+[088h 0136   4]      Device ID Mapping Index : 00000000
+
+[08Ch 0140   4]                   Input base : 00000000
+[090h 0144   4]                     ID Count : 0000FFFF
+[094h 0148   4]                  Output Base : 00000000
+[098h 0152   4]             Output Reference : 00000030
+[09Ch 0156   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[0A0h 0160   1]                         Type : 02
+[0A1h 0161   2]                       Length : 0074
+[0A3h 0163   1]                     Revision : 03
+[0A4h 0164   4]                   Identifier : 00000002
+[0A8h 0168   4]                Mapping Count : 00000004
+[0ACh 0172   4]               Mapping Offset : 00000024
+
+[0B0h 0176   8]            Memory Properties : [IORT Memory Access Properties]
+[0B0h 0176   4]              Cache Coherency : 00000001
+[0B4h 0180   1]        Hints (decoded below) : 00
+                                   Transient : 0
+                              Write Allocate : 0
+                               Read Allocate : 0
+                                    Override : 0
+[0B5h 0181   2]                     Reserved : 0000
+[0B7h 0183   1] Memory Flags (decoded below) : 03
+                                   Coherency : 1
+                            Device Attribute : 1
+[0B8h 0184   4]                ATS Attribute : 00000000
+[0BCh 0188   4]           PCI Segment Number : 00000000
+[0C0h 0192   1]            Memory Size Limit : 40
+[0C1h 0193   2]           PASID Capabilities : 0000
+[0C3h 0195   1]                     Reserved : 00
+
+[0C4h 0196   4]                   Input base : 00000000
+[0C8h 0200   4]                     ID Count : 000001FF
+[0CCh 0204   4]                  Output Base : 00000000
+[0D0h 0208   4]             Output Reference : 00000048
+[0D4h 0212   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[0D8h 0216   4]                   Input base : 00001000
+[0DCh 0220   4]                     ID Count : 000000FF
+[0E0h 0224   4]                  Output Base : 00001000
+[0E4h 0228   4]             Output Reference : 00000048
+[0E8h 0232   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[0ECh 0236   4]                   Input base : 00000200
+[0F0h 0240   4]                     ID Count : 00000DFF
+[0F4h 0244   4]                  Output Base : 00000200
+[0F8h 0248   4]             Output Reference : 00000030
+[0FCh 0252   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[100h 0256   4]                   Input base : 00001100
+[104h 0260   4]                     ID Count : 0000EEFF
+[108h 0264   4]                  Output Base : 00001100
+[10Ch 0268   4]             Output Reference : 00000030
+[110h 0272   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+For the smmuv3-dev test case, IORT has 2 SMMUV3 nodes,
+1 RC node and 1 ITS node.
+RC node features 4 ID mappings. 2 of them target the 2
+SMMU nodes while the others targets the ITS.
+
+        pcie.0 -> {SMMU0} -> {ITS}
+{RC}    pcie.1 -> {SMMU1} -> {ITS}
+        pcie.2            -> {ITS}
+        [all other ids]   -> {ITS}
+...
+[030h 0048   1]                         Type : 00
+[031h 0049   2]                       Length : 0018
+[033h 0051   1]                     Revision : 01
+[034h 0052   4]                   Identifier : 00000000
+[038h 0056   4]                Mapping Count : 00000000
+[03Ch 0060   4]               Mapping Offset : 00000000
+
+[040h 0064   4]                     ItsCount : 00000001
+[044h 0068   4]                  Identifiers : 00000000
+
+[048h 0072   1]                         Type : 04
+[049h 0073   2]                       Length : 0058
+[04Bh 0075   1]                     Revision : 04
+[04Ch 0076   4]                   Identifier : 00000001
+[050h 0080   4]                Mapping Count : 00000001
+[054h 0084   4]               Mapping Offset : 00000044
+
+[058h 0088   8]                 Base Address : 000000000C000000
+[060h 0096   4]        Flags (decoded below) : 00000001
+                             COHACC Override : 1
+                               HTTU Override : 0
+                      Proximity Domain Valid : 0
+[064h 0100   4]                     Reserved : 00000000
+[068h 0104   8]                VATOS Address : 0000000000000000
+[070h 0112   4]                        Model : 00000000
+[074h 0116   4]                   Event GSIV : 00000090
+[078h 0120   4]                     PRI GSIV : 00000091
+[07Ch 0124   4]                    GERR GSIV : 00000093
+[080h 0128   4]                    Sync GSIV : 00000092
+[084h 0132   4]             Proximity Domain : 00000000
+[088h 0136   4]      Device ID Mapping Index : 00000000
+
+[08Ch 0140   4]                   Input base : 00000000
+[090h 0144   4]                     ID Count : 0000FFFF
+[094h 0148   4]                  Output Base : 00000000
+[098h 0152   4]             Output Reference : 00000030
+[09Ch 0156   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[0A0h 0160   1]                         Type : 04
+[0A1h 0161   2]                       Length : 0058
+[0A3h 0163   1]                     Revision : 04
+[0A4h 0164   4]                   Identifier : 00000002
+[0A8h 0168   4]                Mapping Count : 00000001
+[0ACh 0172   4]               Mapping Offset : 00000044
+
+[0B0h 0176   8]                 Base Address : 000000000C020000
+[0B8h 0184   4]        Flags (decoded below) : 00000001
+                             COHACC Override : 1
+                               HTTU Override : 0
+                      Proximity Domain Valid : 0
+[0BCh 0188   4]                     Reserved : 00000000
+[0C0h 0192   8]                VATOS Address : 0000000000000000
+[0C8h 0200   4]                        Model : 00000000
+[0CCh 0204   4]                   Event GSIV : 00000094
+[0D0h 0208   4]                     PRI GSIV : 00000095
+[0D4h 0212   4]                    GERR GSIV : 00000097
+[0D8h 0216   4]                    Sync GSIV : 00000096
+[0DCh 0220   4]             Proximity Domain : 00000000
+[0E0h 0224   4]      Device ID Mapping Index : 00000000
+
+[0E4h 0228   4]                   Input base : 00000000
+[0E8h 0232   4]                     ID Count : 0000FFFF
+[0ECh 0236   4]                  Output Base : 00000000
+[0F0h 0240   4]             Output Reference : 00000030
+[0F4h 0244   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[0F8h 0248   1]                         Type : 02
+[0F9h 0249   2]                       Length : 0074
+[0FBh 0251   1]                     Revision : 03
+[0FCh 0252   4]                   Identifier : 00000003
+[100h 0256   4]                Mapping Count : 00000004
+[104h 0260   4]               Mapping Offset : 00000024
+
+[108h 0264   8]            Memory Properties : [IORT Memory Access Properties]
+[108h 0264   4]              Cache Coherency : 00000001
+[10Ch 0268   1]        Hints (decoded below) : 00
+                                   Transient : 0
+                              Write Allocate : 0
+                               Read Allocate : 0
+                                    Override : 0
+[10Dh 0269   2]                     Reserved : 0000
+[10Fh 0271   1] Memory Flags (decoded below) : 03
+                                   Coherency : 1
+                            Device Attribute : 1
+[110h 0272   4]                ATS Attribute : 00000000
+[114h 0276   4]           PCI Segment Number : 00000000
+[118h 0280   1]            Memory Size Limit : 40
+[119h 0281   2]           PASID Capabilities : 0000
+[11Bh 0283   1]                     Reserved : 00
+
+[11Ch 0284   4]                   Input base : 00000000
+[120h 0288   4]                     ID Count : 000001FF
+[124h 0292   4]                  Output Base : 00000000
+[128h 0296   4]             Output Reference : 00000048
+[12Ch 0300   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[130h 0304   4]                   Input base : 00001000
+[134h 0308   4]                     ID Count : 000000FF
+[138h 0312   4]                  Output Base : 00001000
+[13Ch 0316   4]             Output Reference : 000000A0
+[140h 0320   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[144h 0324   4]                   Input base : 00000200
+[148h 0328   4]                     ID Count : 00000DFF
+[14Ch 0332   4]                  Output Base : 00000200
+[150h 0336   4]             Output Reference : 00000030
+[154h 0340   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+[158h 0344   4]                   Input base : 00001100
+[15Ch 0348   4]                     ID Count : 0000EEFF
+[160h 0352   4]                  Output Base : 00001100
+[164h 0356   4]             Output Reference : 00000030
+[168h 0360   4]        Flags (decoded below) : 00000000
+                              Single Mapping : 0
+
+Note: DSDT changes are not described here as it is not impacted by the
+way the SMMUv3 is instantiated.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Message-id: 20250829082543.7680-12-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d35146a6606cf6ebb4e24bb97dfc0330f074f6e3)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ tests/data/acpi/aarch64/virt/DSDT.smmuv3-dev    | Bin 0 -> 10230 bytes
+ tests/data/acpi/aarch64/virt/DSDT.smmuv3-legacy | Bin 0 -> 10230 bytes
+ tests/data/acpi/aarch64/virt/IORT.smmuv3-dev    | Bin 0 -> 364 bytes
+ tests/data/acpi/aarch64/virt/IORT.smmuv3-legacy | Bin 0 -> 276 bytes
+ tests/qtest/bios-tables-test-allowed-diff.h     |   4 ----
+ 5 files changed, 4 deletions(-)
+
+diff --git a/tests/qtest/bios-tables-test-allowed-diff.h b/tests/qtest/bios-tables-test-allowed-diff.h
+index 2e3e3ccdce..dfb8523c8b 100644
+--- a/tests/qtest/bios-tables-test-allowed-diff.h
++++ b/tests/qtest/bios-tables-test-allowed-diff.h
+@@ -1,5 +1 @@
+ /* List of comma-separated changed AML files to ignore */
+-"tests/data/acpi/aarch64/virt/DSDT.smmuv3-legacy",
+-"tests/data/acpi/aarch64/virt/DSDT.smmuv3-dev",
+-"tests/data/acpi/aarch64/virt/IORT.smmuv3-legacy",
+-"tests/data/acpi/aarch64/virt/IORT.smmuv3-dev",
+-- 
+2.47.3
+

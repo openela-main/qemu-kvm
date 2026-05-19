@@ -1,0 +1,118 @@
+From 1b3c413355ee5f3917e8e39dbf7a281f8e31a0f5 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:26 +0100
+Subject: [PATCH 08/16] hw/arm/virt: Factor out common SMMUV3 dt bindings code
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [4/11] db5d2a44f4cd1583c839b93ae551a2ddbd68b83b (eauger1/centos-qemu-kvm)
+
+No functional changes intended. This will be useful when we
+add support for user-creatable smmuv3 device.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nathan Chen <nathanc@nvidia.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Message-id: 20250829082543.7680-5-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 7a276b7570266ec39611f9d91089741ec7e9295b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 54 +++++++++++++++++++++++++++------------------------
+ 1 file changed, 29 insertions(+), 25 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 0cc9e5f068..9b95a7c9a9 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1479,19 +1479,43 @@ static void create_pcie_irq_map(const MachineState *ms,
+                            0x7           /* PCI irq */);
+ }
+ 
++static void create_smmuv3_dt_bindings(const VirtMachineState *vms, hwaddr base,
++                                      hwaddr size, int irq)
++{
++    char *node;
++    const char compat[] = "arm,smmu-v3";
++    const char irq_names[] = "eventq\0priq\0cmdq-sync\0gerror";
++    MachineState *ms = MACHINE(vms);
++
++    node = g_strdup_printf("/smmuv3@%" PRIx64, base);
++    qemu_fdt_add_subnode(ms->fdt, node);
++    qemu_fdt_setprop(ms->fdt, node, "compatible", compat, sizeof(compat));
++    qemu_fdt_setprop_sized_cells(ms->fdt, node, "reg", 2, base, 2, size);
++
++    qemu_fdt_setprop_cells(ms->fdt, node, "interrupts",
++            GIC_FDT_IRQ_TYPE_SPI, irq    , GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
++            GIC_FDT_IRQ_TYPE_SPI, irq + 1, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
++            GIC_FDT_IRQ_TYPE_SPI, irq + 2, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
++            GIC_FDT_IRQ_TYPE_SPI, irq + 3, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
++
++    qemu_fdt_setprop(ms->fdt, node, "interrupt-names", irq_names,
++                     sizeof(irq_names));
++
++    qemu_fdt_setprop(ms->fdt, node, "dma-coherent", NULL, 0);
++    qemu_fdt_setprop_cell(ms->fdt, node, "#iommu-cells", 1);
++    qemu_fdt_setprop_cell(ms->fdt, node, "phandle", vms->iommu_phandle);
++    g_free(node);
++}
++
+ static void create_smmu(const VirtMachineState *vms,
+                         PCIBus *bus)
+ {
+     VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
+-    char *node;
+-    const char compat[] = "arm,smmu-v3";
+     int irq =  vms->irqmap[VIRT_SMMU];
+     int i;
+     hwaddr base = vms->memmap[VIRT_SMMU].base;
+     hwaddr size = vms->memmap[VIRT_SMMU].size;
+-    const char irq_names[] = "eventq\0priq\0cmdq-sync\0gerror";
+     DeviceState *dev;
+-    MachineState *ms = MACHINE(vms);
+ 
+     if (vms->iommu != VIRT_IOMMU_SMMUV3 || !vms->iommu_phandle) {
+         return;
+@@ -1510,27 +1534,7 @@ static void create_smmu(const VirtMachineState *vms,
+         sysbus_connect_irq(SYS_BUS_DEVICE(dev), i,
+                            qdev_get_gpio_in(vms->gic, irq + i));
+     }
+-
+-    node = g_strdup_printf("/smmuv3@%" PRIx64, base);
+-    qemu_fdt_add_subnode(ms->fdt, node);
+-    qemu_fdt_setprop(ms->fdt, node, "compatible", compat, sizeof(compat));
+-    qemu_fdt_setprop_sized_cells(ms->fdt, node, "reg", 2, base, 2, size);
+-
+-    qemu_fdt_setprop_cells(ms->fdt, node, "interrupts",
+-            GIC_FDT_IRQ_TYPE_SPI, irq    , GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+-            GIC_FDT_IRQ_TYPE_SPI, irq + 1, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+-            GIC_FDT_IRQ_TYPE_SPI, irq + 2, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+-            GIC_FDT_IRQ_TYPE_SPI, irq + 3, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
+-
+-    qemu_fdt_setprop(ms->fdt, node, "interrupt-names", irq_names,
+-                     sizeof(irq_names));
+-
+-    qemu_fdt_setprop(ms->fdt, node, "dma-coherent", NULL, 0);
+-
+-    qemu_fdt_setprop_cell(ms->fdt, node, "#iommu-cells", 1);
+-
+-    qemu_fdt_setprop_cell(ms->fdt, node, "phandle", vms->iommu_phandle);
+-    g_free(node);
++    create_smmuv3_dt_bindings(vms, base, size, irq);
+ }
+ 
+ static void create_virtio_iommu_dt_bindings(VirtMachineState *vms)
+-- 
+2.47.3
+

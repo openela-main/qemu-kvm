@@ -1,0 +1,56 @@
+From ee136e68450beb87b55e3668538b3a52fdf98736 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Wed, 29 Oct 2025 18:05:21 +0100
+Subject: [PATCH 09/10] x86: create new rhel 9.8 specific pc-q35 machine type
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 416: x86, arm: create new rhel 9.8, 10.2 specific machine types
+RH-Jira: RHEL-105826 RHEL-105828
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [4/4] 2bfa55e063b4551e8e3299cf4f7aa2520943076a (seott1/cos-qemu-kvm)
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/i386/pc_q35.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index aea4735dd3..efbb5695c2 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -719,16 +719,27 @@ static void pc_q35_rhel_machine_10_0_0_options(MachineClass *m)
+ }
+ DEFINE_Q35_MACHINE(10, 0, 0);
+ 
++static void pc_q35_rhel_machine_9_8_0_options(MachineClass *m)
++{
++    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
++    pc_q35_machine_options(m);
++    m->desc = "RHEL-9.8.0 PC (Q35 + ICH9, 2009)";
++    pcmc->smbios_stream_product = "RHEL";
++    pcmc->smbios_stream_version = "9.8.0";
++
++    /* NB: remember to move this line to the *latest* RHEL 9 machine */
++    compat_props_add(m->compat_props, hw_compat_rhel_9, hw_compat_rhel_9_len);
++}
++DEFINE_Q35_MACHINE(9, 8, 0);
++
+ static void pc_q35_rhel_machine_9_6_0_options(MachineClass *m)
+ {
+     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+     pc_q35_rhel_machine_10_0_0_options(m);
++    pc_q35_rhel_machine_9_8_0_options(m);
+     m->desc = "RHEL-9.6.0 PC (Q35 + ICH9, 2009)";
+     pcmc->smbios_stream_product = "RHEL";
+     pcmc->smbios_stream_version = "9.6.0";
+-
+-    /* NB: remember to move this line to the *latest* RHEL 9 machine */
+-    compat_props_add(m->compat_props, hw_compat_rhel_9, hw_compat_rhel_9_len);
+ }
+ 
+ DEFINE_Q35_MACHINE(9, 6, 0);
+-- 
+2.47.3
+

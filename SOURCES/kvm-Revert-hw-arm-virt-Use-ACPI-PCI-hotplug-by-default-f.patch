@@ -1,0 +1,81 @@
+From eee1f8abab9cbcb64ab690737f1a8db293d87c05 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Wed, 11 Feb 2026 09:57:37 -0500
+Subject: [PATCH 7/7] Revert "hw/arm/virt: Use ACPI PCI hotplug by default from
+ 10.2 onwards"
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 465: Revert "hw/arm/virt: Use ACPI PCI hotplug by default from 10.2 onwards"
+RH-Jira: RHEL-134989 RHEL-146584
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [1/1] e22612dc81813762f8d7f4bc9f75df0b9f2135e0 (eauger1/centos-qemu-kvm)
+
+JIRA: https://issues.redhat.com/browse/RHEL-134989
+JIRA: https://issues.redhat.com/browse/RHEL-146584
+UPSTREAM: RHEL-only
+
+This reverts commit 58cba97a715fa3f506234e718191fcc34286f333.
+
+Conflicts: small contextual conflict when reverting changes in
+hw/arm/virt.c  due to subsequent fix by commit
+fa0a758781fc ("arm: fix oob access in compat handling")
+
+Unfortunately the change of the default for the PCI hotplug method
+introduced some regressions that cannot be fixed in 10.2 cycle. An
+example is hotplugging a virtio-net-pci device with page-per-vq=true.
+This induces an increase in the BAR size which is larger than the
+default size the FW accomodates. At the moment we do not have any
+workaround for those devices with large BARs, ie. we noticed
+pcie-root-port pref64-reserve does not work as on x86 and we do not
+have any way to opt-in for legacy PCIe hotplug at libvirt
+level. So let's revert the change until we get all those stuff
+properly fixed.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 10 ----------
+ 1 file changed, 10 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 1cfb386f64..752dc08720 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -95,16 +95,9 @@
+ 
+ static GlobalProperty arm_virt_compat[] = {
+     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
+-    { TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "on" },
+ };
+ static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
+ 
+-GlobalProperty arm_acpi_pci_hp_disabled_compat[] = {
+-    { TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "off" },
+-};
+-static const size_t arm_acpi_pci_hp_disabled_compat_len =
+-    G_N_ELEMENTS(arm_acpi_pci_hp_disabled_compat);
+-
+ /*
+  * RHEL9 kernels have pauth disabled while RHEL10 has it enabled,
+  * since qemu will setup the VM with pauth when KVM supports it we
+@@ -112,7 +105,6 @@ static const size_t arm_acpi_pci_hp_disabled_compat_len =
+  */
+ GlobalProperty arm_rhel9_compat[] = {
+     {TYPE_ARM_CPU, "pauth", "off", .optional = true},
+-    {TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "off" },
+ };
+ const size_t arm_rhel9_compat_len = G_N_ELEMENTS(arm_rhel9_compat);
+ 
+@@ -3768,8 +3760,6 @@ static void virt_rhel_machine_10_0_0_options(MachineClass *mc)
+ 
+     /* QEMU 9.1 and earlier have only a stage-1 SMMU, not a nested s1+2 one */
+     vmc->no_nested_smmu = true;
+-    compat_props_add(mc->compat_props, arm_acpi_pci_hp_disabled_compat,
+-                     arm_acpi_pci_hp_disabled_compat_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_10_2, hw_compat_rhel_10_2_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_10_1, hw_compat_rhel_10_1_len);
+ }
+-- 
+2.47.3
+

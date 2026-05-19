@@ -1,4 +1,4 @@
-From 9da015b8759b082330459277058c014e71bff62b Mon Sep 17 00:00:00 2001
+From 59b7559dfa658e325e8c1e23f13f48cf6952ac2e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:25:47 +0100
 Subject: Add downstream aarch64 versioned 'virt' machine types
@@ -20,6 +20,9 @@ Rebase notes (10.0.0)
 - Set no_nested_smmu
 - Use upstream compat
 
+Rebase notes (10.1.0):
+- Use rebase compat
+
 Merged patches (9.1.0):
 - 043ad5ce97 Add upstream compatibility bits (partial)
 
@@ -32,15 +35,15 @@ Merged patches (10.0.0 rc0):
 - d93fcb3940 virtio-net: disable USO for all RHEL9 (partial)
 - 0440f3d003 arm: disable pauth for virt-rhel9* in RHEL10
 ---
- hw/arm/virt.c         | 152 ++++++++++++++++++++++++++++++++++++------
+ hw/arm/virt.c         | 154 +++++++++++++++++++++++++++++++++++++-----
  include/hw/arm/virt.h |   1 +
- 2 files changed, 134 insertions(+), 19 deletions(-)
+ 2 files changed, 137 insertions(+), 18 deletions(-)
 
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index 6d5ea31e46..12bf754b6a 100644
+index e6e98fef1c..d37d1bb3cf 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -93,6 +93,32 @@ static GlobalProperty arm_virt_compat[] = {
+@@ -97,6 +97,32 @@ static GlobalProperty arm_virt_compat[] = {
  };
  static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
  
@@ -73,7 +76,7 @@ index 6d5ea31e46..12bf754b6a 100644
  /*
   * This cannot be called from the virt_machine_class_init() because
   * TYPE_VIRT_MACHINE is abstract and mc->compat_props g_ptr_array_new()
-@@ -102,6 +128,8 @@ static void arm_virt_compat_set(MachineClass *mc)
+@@ -106,6 +132,8 @@ static void arm_virt_compat_set(MachineClass *mc)
  {
      compat_props_add(mc->compat_props, arm_virt_compat,
                       arm_virt_compat_len);
@@ -82,7 +85,7 @@ index 6d5ea31e46..12bf754b6a 100644
  }
  
  #define DEFINE_VIRT_MACHINE_IMPL(latest, ...) \
-@@ -112,10 +140,11 @@ static void arm_virt_compat_set(MachineClass *mc)
+@@ -116,10 +144,11 @@ static void arm_virt_compat_set(MachineClass *mc)
          MachineClass *mc = MACHINE_CLASS(oc); \
          arm_virt_compat_set(mc); \
          MACHINE_VER_SYM(options, virt, __VA_ARGS__)(mc); \
@@ -95,7 +98,7 @@ index 6d5ea31e46..12bf754b6a 100644
          } \
      } \
      static const TypeInfo MACHINE_VER_SYM(info, virt, __VA_ARGS__) = \
-@@ -131,10 +160,10 @@ static void arm_virt_compat_set(MachineClass *mc)
+@@ -135,10 +164,10 @@ static void arm_virt_compat_set(MachineClass *mc)
      } \
      type_init(MACHINE_VER_SYM(register, virt, __VA_ARGS__));
  
@@ -110,20 +113,23 @@ index 6d5ea31e46..12bf754b6a 100644
  
  
  /* Number of external interrupt lines to configure the GIC with */
-@@ -1708,14 +1737,21 @@ static void virt_build_smbios(VirtMachineState *vms)
+@@ -1746,16 +1775,26 @@ static void virt_build_smbios(VirtMachineState *vms)
+ {
+     MachineClass *mc = MACHINE_GET_CLASS(vms);
+     MachineState *ms = MACHINE(vms);
++    VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
      uint8_t *smbios_tables, *smbios_anchor;
      size_t smbios_tables_len, smbios_anchor_len;
      struct smbios_phys_mem_area mem_array;
 +    const char *manufacturer = "QEMU";
      const char *product = "QEMU Virtual Machine";
-+    const char *version = vmc->smbios_old_sys_ver ? "1.0" : mc->name;
++    const char *version = mc->name;
  
      if (kvm_enabled()) {
          product = "KVM Virtual Machine";
      }
  
--    smbios_set_defaults("QEMU", product,
--                        vmc->smbios_old_sys_ver ? "1.0" : mc->name,
+-    smbios_set_defaults("QEMU", product, mc->name, NULL, NULL);
 +    if (!vmc->manufacturer_product_compat) {
 +        manufacturer = "Red Hat";
 +        product = "KVM";
@@ -131,10 +137,11 @@ index 6d5ea31e46..12bf754b6a 100644
 +    }
 +
 +    smbios_set_defaults(manufacturer, product, version,
-                         NULL, NULL);
++                        NULL, NULL);
  
      /* build the array of physical mem area from base_memmap */
-@@ -2464,6 +2500,7 @@ static void machvirt_init(MachineState *machine)
+     mem_array.address = vms->memmap[VIRT_MEM].base;
+@@ -2517,6 +2556,7 @@ static void machvirt_init(MachineState *machine)
      qemu_add_machine_init_done_notifier(&vms->machine_done);
  }
  
@@ -142,7 +149,7 @@ index 6d5ea31e46..12bf754b6a 100644
  static bool virt_get_secure(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2491,6 +2528,7 @@ static void virt_set_virt(Object *obj, bool value, Error **errp)
+@@ -2544,6 +2584,7 @@ static void virt_set_virt(Object *obj, bool value, Error **errp)
  
      vms->virt = value;
  }
@@ -150,7 +157,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
  static bool virt_get_highmem(Object *obj, Error **errp)
  {
-@@ -2506,6 +2544,7 @@ static void virt_set_highmem(Object *obj, bool value, Error **errp)
+@@ -2559,6 +2600,7 @@ static void virt_set_highmem(Object *obj, bool value, Error **errp)
      vms->highmem = value;
  }
  
@@ -158,7 +165,7 @@ index 6d5ea31e46..12bf754b6a 100644
  static bool virt_get_compact_highmem(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2519,6 +2558,7 @@ static void virt_set_compact_highmem(Object *obj, bool value, Error **errp)
+@@ -2572,6 +2614,7 @@ static void virt_set_compact_highmem(Object *obj, bool value, Error **errp)
  
      vms->highmem_compact = value;
  }
@@ -166,7 +173,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
  static bool virt_get_highmem_redists(Object *obj, Error **errp)
  {
-@@ -2611,6 +2651,7 @@ static void virt_set_its(Object *obj, bool value, Error **errp)
+@@ -2664,6 +2707,7 @@ static void virt_set_its(Object *obj, bool value, Error **errp)
      vms->its = value;
  }
  
@@ -174,7 +181,7 @@ index 6d5ea31e46..12bf754b6a 100644
  static bool virt_get_dtb_randomness(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2624,6 +2665,7 @@ static void virt_set_dtb_randomness(Object *obj, bool value, Error **errp)
+@@ -2677,6 +2721,7 @@ static void virt_set_dtb_randomness(Object *obj, bool value, Error **errp)
  
      vms->dtb_randomness = value;
  }
@@ -182,7 +189,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
  static char *virt_get_oem_id(Object *obj, Error **errp)
  {
-@@ -2707,6 +2749,7 @@ static void virt_set_ras(Object *obj, bool value, Error **errp)
+@@ -2760,6 +2805,7 @@ static void virt_set_ras(Object *obj, bool value, Error **errp)
      vms->ras = value;
  }
  
@@ -190,7 +197,7 @@ index 6d5ea31e46..12bf754b6a 100644
  static bool virt_get_mte(Object *obj, Error **errp)
  {
      VirtMachineState *vms = VIRT_MACHINE(obj);
-@@ -2720,6 +2763,7 @@ static void virt_set_mte(Object *obj, bool value, Error **errp)
+@@ -2773,6 +2819,7 @@ static void virt_set_mte(Object *obj, bool value, Error **errp)
  
      vms->mte = value;
  }
@@ -198,7 +205,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
  static char *virt_get_gic_version(Object *obj, Error **errp)
  {
-@@ -3160,16 +3204,16 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3213,16 +3260,16 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
          NULL
      };
  
@@ -221,7 +228,7 @@ index 6d5ea31e46..12bf754b6a 100644
      machine_class_allow_dynamic_sysbus_dev(mc, TYPE_UEFI_VARS_SYSBUS);
  #ifdef CONFIG_TPM
      machine_class_allow_dynamic_sysbus_dev(mc, TYPE_TPM_TIS_SYSBUS);
-@@ -3181,11 +3225,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3234,11 +3281,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
      mc->minimum_page_bits = 12;
      mc->possible_cpu_arch_ids = virt_possible_cpu_arch_ids;
      mc->cpu_index_to_instance_props = virt_cpu_index_to_props;
@@ -234,7 +241,7 @@ index 6d5ea31e46..12bf754b6a 100644
      mc->valid_cpu_types = valid_cpu_types;
      mc->get_default_cpu_node_id = virt_get_default_cpu_node_id;
      mc->kvm_type = virt_kvm_type;
-@@ -3210,6 +3250,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3263,6 +3306,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
          NULL, NULL);
      object_class_property_set_description(oc, "acpi",
          "Enable ACPI");
@@ -242,7 +249,7 @@ index 6d5ea31e46..12bf754b6a 100644
      object_class_property_add_bool(oc, "secure", virt_get_secure,
                                     virt_set_secure);
      object_class_property_set_description(oc, "secure",
-@@ -3222,6 +3263,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3275,6 +3319,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                            "Set on/off to enable/disable emulating a "
                                            "guest CPU which implements the ARM "
                                            "Virtualization Extensions");
@@ -250,7 +257,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
      object_class_property_add_bool(oc, "highmem", virt_get_highmem,
                                     virt_set_highmem);
-@@ -3229,12 +3271,14 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3282,12 +3327,14 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                            "Set on/off to enable/disable using "
                                            "physical address space above 32 bits");
  
@@ -265,7 +272,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
      object_class_property_add_bool(oc, "highmem-redists",
                                     virt_get_highmem_redists,
-@@ -3270,7 +3314,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3323,7 +3370,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                    virt_set_gic_version);
      object_class_property_set_description(oc, "gic-version",
                                            "Set GIC version. "
@@ -274,7 +281,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
      object_class_property_add_str(oc, "iommu", virt_get_iommu, virt_set_iommu);
      object_class_property_set_description(oc, "iommu",
-@@ -3290,11 +3334,13 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3343,11 +3390,13 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                            "Set on/off to enable/disable reporting host memory errors "
                                            "to a KVM guest using ACPI and guest external abort exceptions");
  
@@ -288,7 +295,7 @@ index 6d5ea31e46..12bf754b6a 100644
  
      object_class_property_add_bool(oc, "its", virt_get_its,
                                     virt_set_its);
-@@ -3302,6 +3348,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3355,6 +3404,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                            "Set on/off to enable/disable "
                                            "ITS instantiation");
  
@@ -296,7 +303,7 @@ index 6d5ea31e46..12bf754b6a 100644
      object_class_property_add_bool(oc, "dtb-randomness",
                                     virt_get_dtb_randomness,
                                     virt_set_dtb_randomness);
-@@ -3314,6 +3361,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3367,6 +3417,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
                                     virt_set_dtb_randomness);
      object_class_property_set_description(oc, "dtb-kaslr-seed",
                                            "Deprecated synonym of dtb-randomness");
@@ -304,9 +311,9 @@ index 6d5ea31e46..12bf754b6a 100644
  
      object_class_property_add_str(oc, "x-oem-id",
                                    virt_get_oem_id,
-@@ -3679,3 +3727,69 @@ static void virt_machine_2_6_options(MachineClass *mc)
+@@ -3636,3 +3687,70 @@ static void virt_machine_4_1_options(MachineClass *mc)
  }
- DEFINE_VIRT_MACHINE(2, 6)
+ DEFINE_VIRT_MACHINE(4, 1)
  #endif /* disabled for RHEL */
 +
 +static void virt_rhel_machine_10_0_0_options(MachineClass *mc)
@@ -315,6 +322,7 @@ index 6d5ea31e46..12bf754b6a 100644
 +
 +    /* QEMU 9.1 and earlier have only a stage-1 SMMU, not a nested s1+2 one */
 +    vmc->no_nested_smmu = true;
++    compat_props_add(mc->compat_props, hw_compat_rhel_10_2, hw_compat_rhel_10_2_len);
 +    compat_props_add(mc->compat_props, hw_compat_rhel_10_1, hw_compat_rhel_10_1_len);
 +}
 +DEFINE_VIRT_MACHINE_AS_LATEST(10, 0, 0)
@@ -375,10 +383,10 @@ index 6d5ea31e46..12bf754b6a 100644
 +}
 +DEFINE_VIRT_MACHINE(9, 0, 0)
 diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
-index c8e94e6aed..26cfdf1d41 100644
+index 365a28b082..94c79d6c6d 100644
 --- a/include/hw/arm/virt.h
 +++ b/include/hw/arm/virt.h
-@@ -135,6 +135,7 @@ struct VirtMachineClass {
+@@ -132,6 +132,7 @@ struct VirtMachineClass {
      bool no_tcg_lpa2;
      bool no_ns_el2_virt_timer_irq;
      bool no_nested_smmu;

@@ -1,0 +1,89 @@
+From b12eac2c22066ee4ff568a4108b38d7bdcd958cc Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Wed, 4 Mar 2026 08:05:34 +0100
+Subject: [PATCH 1/2] hw/uefi: add variable digest to vmstate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Gerd Hoffmann <kraxel@redhat.com>
+RH-MergeRequest: 471: hw/uefi: add variable digest to vmstate
+RH-Jira: RHEL-153058
+RH-Acked-by: Peter Xu <peterx@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] c300b30db6bafaacd11b8383531f04873bc8b428 (kraxel.rh/centos-src-qemu-kvm)
+
+Add digest to vmstate if needed.  Also clear digest before loading
+to make sure it is initialized.
+
+Fixes: db1ecfb473ac ("hw/uefi: add var-service-vars.c")
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-ID: <20260304075954.584423-1-kraxel@redhat.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit b28c3ad1d63c2fe167b6f93fad1616ecd769e599)
+
+Resolves: RHEL-153058
+---
+ hw/uefi/var-service-vars.c | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/hw/uefi/var-service-vars.c b/hw/uefi/var-service-vars.c
+index 8533533ea5..ed4e0a6494 100644
+--- a/hw/uefi/var-service-vars.c
++++ b/hw/uefi/var-service-vars.c
+@@ -37,8 +37,40 @@ const VMStateDescription vmstate_uefi_time = {
+     },
+ };
+ 
++static int uefi_vars_pre_load(void *opaque)
++{
++    uefi_variable *var = opaque;
++
++    /* clear digest which is optional in the live migration data stream */
++    var->digest = NULL;
++    var->digest_size = 0;
++    return 0;
++}
++
++static bool uefi_vars_digest_is_needed(void *opaque)
++{
++    uefi_variable *var = opaque;
++
++    if ((var->attributes & EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS) &&
++        !uefi_vars_is_sb_any(var)) {
++        return true;
++    }
++    return false;
++}
++
++const VMStateDescription vmstate_uefi_variable_digest = {
++    .name = "uefi-variable-digest",
++    .needed = uefi_vars_digest_is_needed,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT32(digest_size, uefi_variable),
++        VMSTATE_VBUFFER_ALLOC_UINT32(digest, uefi_variable, 0, NULL, digest_size),
++        VMSTATE_END_OF_LIST()
++    },
++};
++
+ const VMStateDescription vmstate_uefi_variable = {
+     .name = "uefi-variable",
++    .pre_load = uefi_vars_pre_load,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8_ARRAY_V(guid.data, uefi_variable, sizeof(QemuUUID), 0),
+         VMSTATE_UINT32(name_size, uefi_variable),
+@@ -49,6 +81,10 @@ const VMStateDescription vmstate_uefi_variable = {
+         VMSTATE_STRUCT(time, uefi_variable, 0, vmstate_uefi_time, efi_time),
+         VMSTATE_END_OF_LIST()
+     },
++    .subsections = (const VMStateDescription * const []) {
++        &vmstate_uefi_variable_digest,
++        NULL
++    }
+ };
+ 
+ uefi_variable *uefi_vars_find_variable(uefi_vars_state *uv, QemuUUID guid,
+-- 
+2.47.3
+

@@ -1,4 +1,4 @@
-From ff5cdaa4c69d89d7c6429b30fbdc5b9e1f0a6968 Mon Sep 17 00:00:00 2001
+From 8a5eef9fcb74b2fa82ac6122caf3c3d38a26b195 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 26 May 2021 10:56:02 +0200
 Subject: Initial redhat build
@@ -13,7 +13,7 @@ several issues are fixed in QEMU tree:
 
 We disable make check due to issues with some of the tests.
 
-We are rebasing from qemu-kvm-9.1.0-17.el10.
+We are rebasing from qemu-kvm-10.0.0-12.el10.
 
 Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 
@@ -23,36 +23,42 @@ Rebase notes (9.1.0):
 - Removed --disable-avx512f configure option
 - Removed qemu-vsmr-helper (changed upstream)
 
-Rebase notes (10.0.0 rc0):
+Rebase notes (10.0.0):
 - Split --disable-sanitazers configure option (upstream change)
 - Removed s390x-netboot.img (upstream)
 - accel-tcg module no longer built (upstream)
 - Removed new upstream npcm8xx board rom
 - Not package hw-uefi-vars.so
 - Not package pnv-pnor.bin on build
-
-Rebase notes (10.0.0):
 - Include riscv support
+
+Rebase notes (10.1.0 rc0):
+- Remove avocado tests installation (removed upstream)
+- dtb files installed in special directory (upstream change)
+- Remove ast27x0_bootrom.bin
+- Removed --disable-avx* configure options
+- Removed 32bit archs conditionals
+- Conditional qemu-kvm-block-rbd requirement
+- Flip ipxe roms and seavgabios arch condition
 
 Merged patches (9.1.0):
 - b206b8f7cb redhat: Remove the s390-netboot.img from the spec file
 - 95605107f1 Require new dtrace package
 
-Merged patches (10.0.0 rc0):
+Merged patches (10.0.0):
 - 07c8c9b9ff qemu-guest-agent: Update the logfile path of qga-fsfreeze-hook.log
-
-Merged patches (10.0.0 rc1):
 - 1f54babd2a Recommend systemtap-client from qemu-tools
-
-Merged patches (10.0.0 rc3):
 - 3e4d2a0fb8 Also recommend systemtap-devel from qemu-tools
+
+Merged patches (10.1.0 rc0):
+- 72119e03ea distro: add an explicit valgrind-devel build dep
 ---
  .distro/Makefile                        |  101 ++
  .distro/Makefile.common                 |   42 +
  .distro/README.tests                    |   39 +
  .distro/modules-load.conf               |    4 +
  .distro/qemu-guest-agent.service        |    1 -
- .distro/qemu-kvm.spec.template          | 1606 +++++++++++++++++++++++
+ .distro/qemu-kvm.spec.template          | 1795 +++++++++++++++++++++++
  .distro/rpminspect.yaml                 |    6 +-
  .distro/scripts/extract_build_cmd.py    |   12 +
  .distro/scripts/frh.py                  |    4 +-
@@ -63,7 +69,7 @@ Merged patches (10.0.0 rc3):
  scripts/systemtap/conf.d/qemu_kvm.conf  |    4 +
  scripts/systemtap/script.d/qemu_kvm.stp |    1 +
  ui/vnc-auth-sasl.c                      |    2 +-
- 16 files changed, 1868 insertions(+), 8 deletions(-)
+ 16 files changed, 2057 insertions(+), 8 deletions(-)
  create mode 100644 .distro/Makefile
  create mode 100644 .distro/Makefile.common
  create mode 100644 .distro/README.tests

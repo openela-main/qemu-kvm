@@ -1,0 +1,30 @@
+From 3b21c60b771087e7d566bf738e04e01a7a1bdf09 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Fri, 14 Nov 2025 06:46:07 +0100
+Subject: [PATCH 16/16] qtest: Do not run bios-tables-test on aarch64
+
+We do several disruptive downstream only changes that make
+bios-tables-test to fail. Disabling it for now.
+
+This is done to enable fixing RHEL-126573 and RHEL-67323.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/qtest/meson.build | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/tests/qtest/meson.build b/tests/qtest/meson.build
+index ef44ffaf78..13b52ea41a 100644
+--- a/tests/qtest/meson.build
++++ b/tests/qtest/meson.build
+@@ -252,7 +252,6 @@ qtests_arm = \
+ 
+ # TODO: once aarch64 TCG is fixed on ARM 32 bit host, make bios-tables-test unconditional
+ qtests_aarch64 = \
+-  (cpu != 'arm' and unpack_edk2_blobs ? ['bios-tables-test'] : []) +                            \
+   (config_all_accel.has_key('CONFIG_TCG') and config_all_devices.has_key('CONFIG_TPM_TIS_SYSBUS') ?            \
+     ['tpm-tis-device-test', 'tpm-tis-device-swtpm-test'] : []) +                                         \
+   (config_all_devices.has_key('CONFIG_XLNX_ZYNQMP_ARM') ? ['xlnx-can-test', 'fuzz-xlnx-dp-test'] : []) + \
+-- 
+2.47.3
+

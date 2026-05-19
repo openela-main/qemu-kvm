@@ -1,4 +1,4 @@
-From e56f9e1921ab836e454ee003812487cd520580b1 Mon Sep 17 00:00:00 2001
+From 03cf16ca98c4ed835c4da8c4424bfac5a9ae3aa6 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Wed, 7 Dec 2022 03:05:48 -0500
 Subject: Enable/disable devices for RHEL
@@ -19,19 +19,19 @@ Rebase notes (9.1.0):
 - Remove unnecessary chunks
 - Removed CONFIG_VHOST_USER_SCMI and CONFIG_VHOST_USER_SND from some archs
 
-Rebase notes (10.0.0 rc0):
+Rebase notes (10.0.0):
 - Added CONFIG_PCI_BRIDGE for aarch64 and x86_64 (new upstream)
 - Do not add deprecation_note member as it was added upstream (target/arm/cpu.h)
 - Rename CONFIG_ARM_GICV3_TCG to CONFIG_ARM_GICV3
-
-Rebase notes (10.0.0 rc1):
 - Remove deprecated line change for code commented out
 - Do not change minimal revision for piix4
 - Remove YongFeng vcpu
-
-Rebase notes (10.0.0):
 - Add rebase devices changes
 - Enable virtio-mem on s390x
+
+Rebase notes (10.1.0 rc0):
+- Improved riscv cpu chunk re-added
+- Comment out unused code
 
 Merged commits (9.1.0):
 - f24c7a1fee Disable FDC devices
@@ -43,31 +43,42 @@ Merged commits (9.1.0):
 - cd57d17e3c target/s390x: Revert the old s390x CPU model disablement code
 - 42af7b3ad5 Enable vhost-user-scmi devices
 - aa374ce5ea x86/cpu: update deprecation string to match lowest undeprecated model
+
+Merged commits (10.1.0 rc0):
+- 312cdc116e Enable vhost-user-gpu-pci for RHIVOS
+- be460986c1 Enable amd-iommu device
+
+Merged commits (10.1.0 rc2):
+- 6306605028 Declare rtl8139 as deprecated
+
+Merged commits (10.1.0 rc3):
+- f06f55a179 Enable uefi variable service for edk2
 ---
  .distro/qemu-kvm.spec.template                |  20 +--
- .../aarch64-softmmu/aarch64-rh-devices.mak    |  47 +++++++
+ .../aarch64-softmmu/aarch64-rh-devices.mak    |  49 ++++++++
  configs/devices/rh-virtio.mak                 |  10 ++
  .../riscv64-softmmu/riscv64-rh-devices.mak    |  39 ++++++
  .../s390x-softmmu/s390x-rh-devices.mak        |  20 +++
- .../x86_64-softmmu/x86_64-rh-devices.mak      | 115 ++++++++++++++++++
+ .../x86_64-softmmu/x86_64-rh-devices.mak      | 118 ++++++++++++++++++
  hw/arm/virt.c                                 |   4 +
  hw/cxl/meson.build                            |   3 +-
  hw/ide/piix.c                                 |   5 +-
  hw/input/pckbd.c                              |   2 +
  hw/net/e1000.c                                |   2 +
+ hw/net/rtl8139.c                              |   4 +
  hw/usb/meson.build                            |   2 +-
  hw/virtio/meson.build                         |   6 +-
  target/arm/arm-qmp-cmds.c                     |   2 +
  target/arm/cpu.h                              |   2 +
- target/arm/cpu64.c                            |  12 +-
+ target/arm/cpu64.c                            |   7 +-
  target/arm/tcg/cpu32.c                        |   2 +
  target/arm/tcg/cpu64.c                        |   8 ++
  target/arm/tcg/meson.build                    |   2 +-
- target/i386/cpu.c                             |  18 +++
+ target/i386/cpu.c                             |  20 +++
  target/riscv/cpu.c                            |   6 +
  target/s390x/cpu_models.c                     |   2 +-
  tests/qtest/arm-cpu-features.c                |   4 +
- 23 files changed, 317 insertions(+), 16 deletions(-)
+ 24 files changed, 323 insertions(+), 16 deletions(-)
  create mode 100644 configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
  create mode 100644 configs/devices/rh-virtio.mak
  create mode 100644 configs/devices/riscv64-softmmu/riscv64-rh-devices.mak
@@ -76,10 +87,10 @@ Merged commits (9.1.0):
 
 diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
 new file mode 100644
-index 0000000000..dce5fca821
+index 0000000000..855278f70e
 --- /dev/null
 +++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,49 @@
 +include ../rh-virtio.mak
 +
 +CONFIG_ARM_GIC_KVM=y
@@ -127,6 +138,8 @@ index 0000000000..dce5fca821
 +CONFIG_IOMMUFD=y
 +CONFIG_VHOST_USER_SND=y
 +CONFIG_VHOST_USER_SCMI=y
++CONFIG_VHOST_USER_GPU=y
++CONFIG_UEFI_VARS=y
 diff --git a/configs/devices/rh-virtio.mak b/configs/devices/rh-virtio.mak
 new file mode 100644
 index 0000000000..94ede1b5f6
@@ -216,10 +229,10 @@ index 0000000000..834281d872
 +CONFIG_IOMMUFD=y
 diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
 new file mode 100644
-index 0000000000..8da1a8f82f
+index 0000000000..828cb8aa6f
 --- /dev/null
 +++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,118 @@
 +include ../rh-virtio.mak
 +
 +CONFIG_ACPI=y
@@ -319,6 +332,7 @@ index 0000000000..8da1a8f82f
 +CONFIG_VIRTIO_PCI=y
 +CONFIG_VIRTIO_VGA=y
 +CONFIG_VIRTIO_IOMMU=y
++CONFIG_AMD_IOMMU=y
 +CONFIG_VMMOUSE=y
 +CONFIG_VMPORT=y
 +CONFIG_VTD=y
@@ -335,11 +349,13 @@ index 0000000000..8da1a8f82f
 +CONFIG_VHOST_USER_FS=y
 +CONFIG_IOMMUFD=y
 +CONFIG_VHOST_USER_SND=y
++CONFIG_VHOST_USER_GPU=y
++CONFIG_UEFI_VARS=y
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index a96452f17a..68bb983ecf 100644
+index ef6be3660f..b525e00365 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -3129,6 +3129,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3183,6 +3183,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
      MachineClass *mc = MACHINE_CLASS(oc);
      HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
      static const char * const valid_cpu_types[] = {
@@ -347,7 +363,7 @@ index a96452f17a..68bb983ecf 100644
  #ifdef CONFIG_TCG
          ARM_CPU_TYPE_NAME("cortex-a7"),
          ARM_CPU_TYPE_NAME("cortex-a15"),
-@@ -3144,8 +3145,11 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -3198,8 +3199,11 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
          ARM_CPU_TYPE_NAME("neoverse-n2"),
  #endif /* TARGET_AARCH64 */
  #endif /* CONFIG_TCG */
@@ -374,10 +390,10 @@ index 3e375f61a9..613adb3ebb 100644
                 if_false: files(
                     'cxl-host-stubs.c',
 diff --git a/hw/ide/piix.c b/hw/ide/piix.c
-index 818ff60d6f..2a1caca7f7 100644
+index a0f2709c69..8c3962443b 100644
 --- a/hw/ide/piix.c
 +++ b/hw/ide/piix.c
-@@ -191,7 +191,8 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
+@@ -191,7 +191,8 @@ static void piix3_ide_class_init(ObjectClass *klass, const void *data)
      k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
      k->class_id = PCI_CLASS_STORAGE_IDE;
      set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
@@ -387,7 +403,7 @@ index 818ff60d6f..2a1caca7f7 100644
  }
  
  static const TypeInfo piix3_ide_info = {
-@@ -215,6 +216,8 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
+@@ -215,6 +216,8 @@ static void piix4_ide_class_init(ObjectClass *klass, const void *data)
      k->class_id = PCI_CLASS_STORAGE_IDE;
      set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
      dc->hotpluggable = false;
@@ -397,10 +413,10 @@ index 818ff60d6f..2a1caca7f7 100644
  
  static const TypeInfo piix4_ide_info = {
 diff --git a/hw/input/pckbd.c b/hw/input/pckbd.c
-index fa0c549eb9..9aa92c1f76 100644
+index 71f5f976e9..794078ed84 100644
 --- a/hw/input/pckbd.c
 +++ b/hw/input/pckbd.c
-@@ -950,6 +950,8 @@ static void i8042_class_initfn(ObjectClass *klass, void *data)
+@@ -950,6 +950,8 @@ static void i8042_class_initfn(ObjectClass *klass, const void *data)
      dc->vmsd = &vmstate_kbd_isa;
      adevc->build_dev_aml = i8042_build_aml;
      set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
@@ -410,10 +426,10 @@ index fa0c549eb9..9aa92c1f76 100644
  
  static const TypeInfo i8042_info = {
 diff --git a/hw/net/e1000.c b/hw/net/e1000.c
-index 3d0b227703..6b96be40ef 100644
+index a80a7b0cdb..7eb5a3b19d 100644
 --- a/hw/net/e1000.c
 +++ b/hw/net/e1000.c
-@@ -1745,6 +1745,7 @@ static const E1000Info e1000_devices[] = {
+@@ -1732,6 +1732,7 @@ static const E1000Info e1000_devices[] = {
          .revision  = 0x03,
          .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
      },
@@ -421,7 +437,7 @@ index 3d0b227703..6b96be40ef 100644
      {
          .name      = "e1000-82544gc",
          .device_id = E1000_DEV_ID_82544GC_COPPER,
-@@ -1757,6 +1758,7 @@ static const E1000Info e1000_devices[] = {
+@@ -1744,6 +1745,7 @@ static const E1000Info e1000_devices[] = {
          .revision  = 0x03,
          .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
      },
@@ -429,6 +445,28 @@ index 3d0b227703..6b96be40ef 100644
  };
  
  static void e1000_register_types(void)
+diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
+index 324fb932aa..f4dd693abb 100644
+--- a/hw/net/rtl8139.c
++++ b/hw/net/rtl8139.c
+@@ -57,6 +57,7 @@
+ #include "system/dma.h"
+ #include "qemu/module.h"
+ #include "qemu/timer.h"
++#include "qemu/error-report.h"
+ #include "qemu/bswap.h"
+ #include "net/net.h"
+ #include "net/eth.h"
+@@ -3363,6 +3364,9 @@ static void pci_rtl8139_realize(PCIDevice *dev, Error **errp)
+     DeviceState *d = DEVICE(dev);
+     uint8_t *pci_conf;
+ 
++    warn_report("'rtl8139' is deprecated, "
++                "please use a different Network Interface Card");
++
+     pci_conf = dev->config;
+     pci_conf[PCI_INTERRUPT_PIN] = 1;    /* interrupt pin A */
+     /* TODO: start of capability list, but no capability
 diff --git a/hw/usb/meson.build b/hw/usb/meson.build
 index 17360a5b5a..3c4fdfc31d 100644
 --- a/hw/usb/meson.build
@@ -443,10 +481,10 @@ index 17360a5b5a..3c4fdfc31d 100644
  endif
  
 diff --git a/hw/virtio/meson.build b/hw/virtio/meson.build
-index 164f6fd995..43f9c477da 100644
+index 3ea7b3cec8..3102d68bec 100644
 --- a/hw/virtio/meson.build
 +++ b/hw/virtio/meson.build
-@@ -21,7 +21,8 @@ if have_vhost
+@@ -22,7 +22,8 @@ if have_vhost
      system_virtio_ss.add(files('vhost-user-base.c'))
  
      # MMIO Stubs
@@ -456,7 +494,7 @@ index 164f6fd995..43f9c477da 100644
      system_virtio_ss.add(when: 'CONFIG_VHOST_USER_GPIO', if_true: files('vhost-user-gpio.c'))
      system_virtio_ss.add(when: 'CONFIG_VHOST_USER_I2C', if_true: files('vhost-user-i2c.c'))
      system_virtio_ss.add(when: 'CONFIG_VHOST_USER_RNG', if_true: files('vhost-user-rng.c'))
-@@ -29,7 +30,8 @@ if have_vhost
+@@ -30,7 +31,8 @@ if have_vhost
      system_virtio_ss.add(when: 'CONFIG_VHOST_USER_INPUT', if_true: files('vhost-user-input.c'))
  
      # PCI Stubs
@@ -467,10 +505,10 @@ index 164f6fd995..43f9c477da 100644
                           if_true: files('vhost-user-gpio-pci.c'))
      system_virtio_ss.add(when: ['CONFIG_VIRTIO_PCI', 'CONFIG_VHOST_USER_I2C'],
 diff --git a/target/arm/arm-qmp-cmds.c b/target/arm/arm-qmp-cmds.c
-index 883c0a0e8c..dc06eb6778 100644
+index d292c974c4..9bb68866e1 100644
 --- a/target/arm/arm-qmp-cmds.c
 +++ b/target/arm/arm-qmp-cmds.c
-@@ -223,6 +223,7 @@ CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
+@@ -225,6 +225,7 @@ CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
  static void arm_cpu_add_definition(gpointer data, gpointer user_data)
  {
      ObjectClass *oc = data;
@@ -478,7 +516,7 @@ index 883c0a0e8c..dc06eb6778 100644
      CpuDefinitionInfoList **cpu_list = user_data;
      CpuDefinitionInfo *info;
      const char *typename;
-@@ -231,6 +232,7 @@ static void arm_cpu_add_definition(gpointer data, gpointer user_data)
+@@ -233,6 +234,7 @@ static void arm_cpu_add_definition(gpointer data, gpointer user_data)
      info = g_malloc0(sizeof(*info));
      info->name = cpu_model_from_type(typename);
      info->q_typename = g_strdup(typename);
@@ -487,12 +525,12 @@ index 883c0a0e8c..dc06eb6778 100644
      QAPI_LIST_PREPEND(*cpu_list, info);
  }
 diff --git a/target/arm/cpu.h b/target/arm/cpu.h
-index a8177c6c2e..6d1055a90c 100644
+index dc9b6dce4c..dc0da8b0ae 100644
 --- a/target/arm/cpu.h
 +++ b/target/arm/cpu.h
-@@ -35,6 +35,8 @@
- #define KVM_HAVE_MCE_INJECTION 1
- #endif
+@@ -34,6 +34,8 @@
+ #include "target/arm/gtimer.h"
+ #include "target/arm/cpu-sysregs.h"
  
 +#define RHEL_CPU_DEPRECATION "use 'host' / 'max'"
 +
@@ -500,10 +538,10 @@ index a8177c6c2e..6d1055a90c 100644
  #define EXCP_SWI             2   /* software interrupt */
  #define EXCP_PREFETCH_ABORT  3
 diff --git a/target/arm/cpu64.c b/target/arm/cpu64.c
-index 8188ede5cc..550232f362 100644
+index 26cf7e6dfa..051d5d653b 100644
 --- a/target/arm/cpu64.c
 +++ b/target/arm/cpu64.c
-@@ -675,6 +675,7 @@ static void aarch64_a57_initfn(Object *obj)
+@@ -698,6 +698,7 @@ static void aarch64_a57_initfn(Object *obj)
      define_cortex_a72_a57_a53_cp_reginfo(cpu);
  }
  
@@ -511,7 +549,7 @@ index 8188ede5cc..550232f362 100644
  static void aarch64_a53_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -735,6 +736,7 @@ static void aarch64_a53_initfn(Object *obj)
+@@ -759,6 +760,7 @@ static void aarch64_a53_initfn(Object *obj)
      cpu->gic_pribits = 5;
      define_cortex_a72_a57_a53_cp_reginfo(cpu);
  }
@@ -519,7 +557,7 @@ index 8188ede5cc..550232f362 100644
  
  static void aarch64_host_initfn(Object *obj)
  {
-@@ -773,8 +775,11 @@ static void aarch64_max_initfn(Object *obj)
+@@ -797,8 +799,11 @@ static void aarch64_max_initfn(Object *obj)
  }
  
  static const ARMCPUInfo aarch64_cpus[] = {
@@ -532,39 +570,25 @@ index 8188ede5cc..550232f362 100644
      { .name = "max",                .initfn = aarch64_max_initfn },
  #if defined(CONFIG_KVM) || defined(CONFIG_HVF)
      { .name = "host",               .initfn = aarch64_host_initfn },
-@@ -845,8 +850,13 @@ static void aarch64_cpu_instance_init(Object *obj)
- static void cpu_register_class_init(ObjectClass *oc, void *data)
- {
-     ARMCPUClass *acc = ARM_CPU_CLASS(oc);
-+    CPUClass *cc = CPU_CLASS(oc);
- 
-     acc->info = data;
-+
-+    if (acc->info->deprecation_note) {
-+        cc->deprecation_note = acc->info->deprecation_note;
-+    }
- }
- 
- void aarch64_cpu_register(const ARMCPUInfo *info)
 diff --git a/target/arm/tcg/cpu32.c b/target/arm/tcg/cpu32.c
-index 2c45b7eddd..09c5f3f74a 100644
+index a2a23eae0d..c362759d65 100644
 --- a/target/arm/tcg/cpu32.c
 +++ b/target/arm/tcg/cpu32.c
-@@ -120,6 +120,7 @@ void aa32_max_features(ARMCPU *cpu)
-     cpu->isar.id_dfr1 = t;
+@@ -115,6 +115,7 @@ void aa32_max_features(ARMCPU *cpu)
+     FIELD_DP32_IDREG(isar, ID_DFR1, HPMN0, 1);         /* FEAT_HPMN0 */
  }
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
  /* CPU models. These are not needed for the AArch64 linux-user build. */
  #if !defined(CONFIG_USER_ONLY) || !defined(TARGET_AARCH64)
  
-@@ -1078,3 +1079,4 @@ static void arm_tcg_cpu_register_types(void)
+@@ -1084,3 +1085,4 @@ static void arm_tcg_cpu_register_types(void)
  type_init(arm_tcg_cpu_register_types)
  
  #endif /* !CONFIG_USER_ONLY || !TARGET_AARCH64 */
 +#endif /* disabled for RHEL */
 diff --git a/target/arm/tcg/cpu64.c b/target/arm/tcg/cpu64.c
-index 29ab0ac79d..be3baf5fba 100644
+index 35cddbafa4..c7c464a0af 100644
 --- a/target/arm/tcg/cpu64.c
 +++ b/target/arm/tcg/cpu64.c
 @@ -29,6 +29,7 @@
@@ -575,7 +599,7 @@ index 29ab0ac79d..be3baf5fba 100644
  static void aarch64_a35_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -112,6 +113,7 @@ static void aarch64_a35_initfn(Object *obj)
+@@ -113,6 +114,7 @@ static void aarch64_a35_initfn(Object *obj)
      /* These values are the same with A53/A57/A72. */
      define_cortex_a72_a57_a53_cp_reginfo(cpu);
  }
@@ -583,7 +607,7 @@ index 29ab0ac79d..be3baf5fba 100644
  
  static void cpu_max_get_sve_max_vq(Object *obj, Visitor *v, const char *name,
                                     void *opaque, Error **errp)
-@@ -201,6 +203,7 @@ static void cpu_max_get_l0gptsz(Object *obj, Visitor *v, const char *name,
+@@ -199,6 +201,7 @@ static void cpu_max_get_l0gptsz(Object *obj, Visitor *v, const char *name,
  static const Property arm_cpu_lpa2_property =
      DEFINE_PROP_BOOL("lpa2", ARMCPU, prop_lpa2, true);
  
@@ -591,7 +615,7 @@ index 29ab0ac79d..be3baf5fba 100644
  static void aarch64_a55_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
-@@ -1074,6 +1077,7 @@ static void aarch64_neoverse_n2_initfn(Object *obj)
+@@ -1080,6 +1083,7 @@ static void aarch64_neoverse_n2_initfn(Object *obj)
      aarch64_add_pauth_properties(obj);
      aarch64_add_sve_properties(obj);
  }
@@ -599,7 +623,7 @@ index 29ab0ac79d..be3baf5fba 100644
  
  /*
   * -cpu max: a CPU with as many features enabled as our emulation supports.
-@@ -1299,6 +1303,7 @@ void aarch64_max_tcg_initfn(Object *obj)
+@@ -1310,6 +1314,7 @@ void aarch64_max_tcg_initfn(Object *obj)
      qdev_property_add_static(DEVICE(obj), &arm_cpu_lpa2_property);
  }
  
@@ -607,7 +631,7 @@ index 29ab0ac79d..be3baf5fba 100644
  static const ARMCPUInfo aarch64_cpus[] = {
      { .name = "cortex-a35",         .initfn = aarch64_a35_initfn },
      { .name = "cortex-a55",         .initfn = aarch64_a55_initfn },
-@@ -1310,14 +1315,17 @@ static const ARMCPUInfo aarch64_cpus[] = {
+@@ -1321,14 +1326,17 @@ static const ARMCPUInfo aarch64_cpus[] = {
      { .name = "neoverse-v1",        .initfn = aarch64_neoverse_v1_initfn },
      { .name = "neoverse-n2",        .initfn = aarch64_neoverse_n2_initfn },
  };
@@ -619,28 +643,46 @@ index 29ab0ac79d..be3baf5fba 100644
      size_t i;
  
      for (i = 0; i < ARRAY_SIZE(aarch64_cpus); ++i) {
-         aarch64_cpu_register(&aarch64_cpus[i]);
+         arm_cpu_register(&aarch64_cpus[i]);
      }
 +#endif
  }
  
  type_init(aarch64_cpu_register_types)
 diff --git a/target/arm/tcg/meson.build b/target/arm/tcg/meson.build
-index dd12ccedb1..545c2cc3a7 100644
+index 895facdc30..f1a9e01c51 100644
 --- a/target/arm/tcg/meson.build
 +++ b/target/arm/tcg/meson.build
-@@ -61,5 +61,5 @@ arm_system_ss.add(files(
+@@ -53,7 +53,7 @@ arm_system_ss.add(files(
    'psci.c',
  ))
  
 -arm_system_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('cpu-v7m.c'))
 +#arm_system_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('cpu-v7m.c'))
  arm_user_ss.add(when: 'TARGET_AARCH64', if_false: files('cpu-v7m.c'))
+ 
+ arm_common_ss.add(zlib)
 diff --git a/target/i386/cpu.c b/target/i386/cpu.c
-index 1b64ceaaba..0b09990a8f 100644
+index 6d85149e6e..9c756a05f2 100644
 --- a/target/i386/cpu.c
 +++ b/target/i386/cpu.c
-@@ -2481,9 +2481,13 @@ static const CPUCaches epyc_genoa_cache_info = {
+@@ -3163,6 +3163,7 @@ static const CPUCaches xeon_srf_cache_info = {
+     },
+ };
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static const CPUCaches yongfeng_cache_info = {
+     .l1d_cache = &(CPUCacheInfo) {
+         /* CPUID 0x4.0x0.EAX */
+@@ -3261,6 +3262,7 @@ static const CPUCaches yongfeng_cache_info = {
+         .share_level = CPU_TOPOLOGY_LEVEL_DIE,
+     },
+ };
++#endif
+ 
+ /* The following VMX features are not supported by KVM and are left out in the
+  * CPU definitions:
+@@ -3290,9 +3292,13 @@ static const CPUCaches yongfeng_cache_info = {
   *  PT in VMX operation
   */
  
@@ -654,7 +696,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_AMD,
          .family = 15,
-@@ -2502,6 +2506,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3311,6 +3317,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
          .xlevel = 0x8000000A,
          .model_id = "QEMU Virtual CPU version " QEMU_HW_VERSION,
      },
@@ -662,7 +704,7 @@ index 1b64ceaaba..0b09990a8f 100644
      {
          .name = "phenom",
          .level = 5,
-@@ -2866,8 +2871,10 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3679,8 +3686,10 @@ static const X86CPUDefinition builtin_x86_defs[] = {
          .xlevel = 0x80000008,
          .model_id = "Intel Core 2 Duo P9xxx (Penryn Class Core 2)",
      },
@@ -673,7 +715,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 11,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -2945,6 +2952,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3758,6 +3767,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Westmere",
@@ -681,7 +723,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 11,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -3026,6 +3034,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3839,6 +3849,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "SandyBridge",
@@ -689,7 +731,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -3112,6 +3121,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -3925,6 +3936,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "IvyBridge",
@@ -697,7 +739,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -4711,6 +4721,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -5551,6 +5563,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Denverton",
@@ -705,7 +747,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 21,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -4821,6 +4832,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -5661,6 +5674,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Snowridge",
@@ -713,7 +755,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 27,
          .vendor = CPUID_VENDOR_INTEL,
          .family = 6,
-@@ -5002,6 +5014,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -5842,6 +5856,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
          .xlevel = 0x80000008,
          .model_id = "Intel Xeon Phi Processor (Knights Mill)",
      },
@@ -721,7 +763,7 @@ index 1b64ceaaba..0b09990a8f 100644
      {
          .name = "Opteron_G1",
          .level = 5,
-@@ -5069,8 +5082,10 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -5909,8 +5924,10 @@ static const X86CPUDefinition builtin_x86_defs[] = {
          .xlevel = 0x80000008,
          .model_id = "AMD Opteron 23xx (Gen 3 Class Opteron)",
      },
@@ -732,7 +774,7 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_AMD,
          .family = 21,
-@@ -5103,6 +5118,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+@@ -5943,6 +5960,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
      },
      {
          .name = "Opteron_G5",
@@ -740,76 +782,68 @@ index 1b64ceaaba..0b09990a8f 100644
          .level = 0xd,
          .vendor = CPUID_VENDOR_AMD,
          .family = 21,
-@@ -5498,6 +5514,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
-         .model_id = "AMD EPYC-Genoa Processor",
-         .cache_info = &epyc_genoa_cache_info,
+@@ -6420,6 +6438,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+             { /* end of list */ }
+         }
      },
 +#if 0 // Disabled for Red Hat Enterprise Linux
      {
          .name = "YongFeng",
          .level = 0x1F,
-@@ -5622,6 +5639,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
-         .xlevel = 0x80000008,
-         .model_id = "Zhaoxin YongFeng Processor",
+@@ -6565,6 +6584,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
+             { /* end of list */ }
+         }
      },
 +#endif
- };
- 
- /*
+     {
+         .name = "EPYC-Turin",
+         .level = 0xd,
 diff --git a/target/riscv/cpu.c b/target/riscv/cpu.c
-index 09ded6829a..1893ad2f0d 100644
+index d055ddf462..bca50a39be 100644
 --- a/target/riscv/cpu.c
 +++ b/target/riscv/cpu.c
-@@ -481,6 +481,7 @@ static void riscv_max_cpu_init(Object *obj)
- #endif
- }
- 
-+#if 0 /* Disabled for Red Hat Enterprise Linux */
- #if defined(TARGET_RISCV64)
- static void rv64_base_cpu_init(Object *obj)
- {
-@@ -831,6 +832,7 @@ static void rv32e_bare_cpu_init(Object *obj)
-     riscv_cpu_set_misa_ext(env, RVE);
- }
- #endif
-+#endif /* disabled for RHEL */
- 
- static ObjectClass *riscv_cpu_class_by_name(const char *cpu_model)
- {
-@@ -2970,6 +2972,7 @@ static const Property riscv_cpu_properties[] = {
-     DEFINE_PROP_BOOL("x-misa-w", RISCVCPU, cfg.misa_w, false),
+@@ -2035,6 +2035,7 @@ static const PropertyInfo prop_marchid = {
+     .set = prop_marchid_set,
  };
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
- #if defined(TARGET_RISCV64)
- static void rva22u64_profile_cpu_init(Object *obj)
- {
-@@ -2999,6 +3002,7 @@ static void rva23s64_profile_cpu_init(Object *obj)
-     RVA23S64.enabled = true;
- }
- #endif
-+#endif /* disabled for RHEL */
+ /*
+  * RVA22U64 defines some 'named features' that are cache
+  * related: Za64rs, Zic64b, Ziccif, Ziccrse, Ziccamoa
+@@ -2143,12 +2144,15 @@ static RISCVCPUProfile RVA23S64 = {
+         RISCV_PROFILE_EXT_LIST_END
+     }
+ };
++#endif
  
- static const gchar *riscv_gdb_arch_name(CPUState *cs)
- {
-@@ -3236,6 +3240,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
-     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_MAX,       MXL_RV64,  riscv_max_cpu_init),
- #endif
+ RISCVCPUProfile *riscv_profiles[] = {
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     &RVA22U64,
+     &RVA22S64,
+     &RVA23U64,
+     &RVA23S64,
++#endif
+     NULL,
+ };
+ 
+@@ -2993,6 +2997,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
+         .cfg.pmp_regions = 8
+     ),
  
 +#if 0 /* Disabled for Red Hat Enterprise Linux */
  #if defined(TARGET_RISCV32) || \
      (defined(TARGET_RISCV64) && !defined(CONFIG_USER_ONLY))
-     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_BASE32,    MXL_RV32,  rv32_base_cpu_init),
-@@ -3271,6 +3276,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
-     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA23U64,  MXL_RV64,  rva23u64_profile_cpu_init),
-     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA23S64,  MXL_RV64,  rva23s64_profile_cpu_init),
+     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_BASE32, TYPE_RISCV_DYNAMIC_CPU,
+@@ -3287,6 +3292,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
+     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA23U64,  TYPE_RISCV_CPU_RV64I,  RVA23U64),
+     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA23S64,  TYPE_RISCV_CPU_RV64I,  RVA23S64),
  #endif /* TARGET_RISCV64 */
 +#endif /* disabled for RHEL */
  };
  
  DEFINE_TYPES(riscv_cpu_type_infos)
 diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
-index 93a05e43d7..111d46a59a 100644
+index 954a7a99a9..fe29f5c5b7 100644
 --- a/target/s390x/cpu_models.c
 +++ b/target/s390x/cpu_models.c
 @@ -72,7 +72,6 @@ static S390CPUDef s390_cpu_defs[] = {

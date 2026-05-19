@@ -1,15 +1,33 @@
-From e4f00a4fc134fd14a63fa189d6f8c5054eb5ebcf Mon Sep 17 00:00:00 2001
+From 966c9312152322e6c2bb434861388a34754911c8 Mon Sep 17 00:00:00 2001
 From: Paolo Bonzini <pbonzini@redhat.com>
 Date: Fri, 18 Jul 2025 18:03:50 +0200
-Subject: [PATCH 095/100] redhat: allow 5-level paging for TDX VMs
+Subject: [PATCH 4/4] redhat: allow 5-level paging for TDX VMs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 450: redhat: allow 5-level paging for TDX VMs
+RH-Jira: RHEL-111853
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Daniel P. Berrangé <berrange@redhat.com>
+RH-Commit: [1/1] d3ffac324cfbf79d99763b9d3d29797d883f4969 (bonzini/qemu-kvm-centos)
+
+Without this patch, when booting a TDX guest, qemu outputs,
+
+qemu-kvm: TDX requires guest CPU physical bits (48) to match host CPU physical bits (52)
+
+This is due to different machine types in RHEL vs. upstream, and therefore
+must be kept forever as a delta from upstream.
+
+Resolves: https://issues.redhat.com/browse/RHEL-111853
 Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
 ---
  target/i386/kvm/tdx.c | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
-index cc46c0e2f1..33223a550d 100644
+index dbf0fa2c91..91fe19b7d4 100644
 --- a/target/i386/kvm/tdx.c
 +++ b/target/i386/kvm/tdx.c
 @@ -754,6 +754,7 @@ static void tdx_cpu_instance_init(X86ConfidentialGuest *cg, CPUState *cpu)

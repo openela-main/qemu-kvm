@@ -1,0 +1,45 @@
+From cfe4b6407a08b56490c3cadd4e01f810fb22070c Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Mon, 10 Nov 2025 16:48:46 +0100
+Subject: [PATCH 04/19] qcow2: Re-initialize lock in invalidate_cache
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 454: Multithreading fixes for rbd, curl, qcow2
+RH-Jira: RHEL-79118
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/5] 48ead2f35d8558fda48a2098240c0203f4c547b0 (hreitz/qemu-kvm-c-9-s)
+
+After clearing our state (memset()-ing it to 0), we should
+re-initialize objects that need it.  Specifically, that applies to
+s->lock, which is originally initialized in qcow2_open().
+
+Given qemu_co_mutex_init() is just a memset() to 0, this is functionally
+a no-op, but still seems like the right thing to do.
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20251110154854.151484-12-hreitz@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 90db3a1721b30daf839901813616c0854f383cc5)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/qcow2.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/block/qcow2.c b/block/qcow2.c
+index 6df65aab93..374ca53829 100644
+--- a/block/qcow2.c
++++ b/block/qcow2.c
+@@ -2879,6 +2879,8 @@ qcow2_co_invalidate_cache(BlockDriverState *bs, Error **errp)
+     data_file = s->data_file;
+     memset(s, 0, sizeof(BDRVQcow2State));
+     s->data_file = data_file;
++    /* Re-initialize objects initialized in qcow2_open() */
++    qemu_co_mutex_init(&s->lock);
+ 
+     options = qdict_clone_shallow(bs->options);
+ 
+-- 
+2.47.3
+

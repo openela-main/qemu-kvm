@@ -1,0 +1,53 @@
+From bf0ecadea242c05671bf057fc45d8c58862032d3 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:30 +0100
+Subject: [PATCH 12/16] qemu-options.hx: Document the arm-smmuv3 device
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [8/11] 775310b784fd7631a58e8bab1e8fcc36973fceca (eauger1/centos-qemu-kvm)
+
+Now that arm,virt can have user-creatable smmuv3 devices, document it.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Message-id: 20250829082543.7680-9-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 73d3d0187bc6b482d8b15116edce1475c7975b89)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ qemu-options.hx | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/qemu-options.hx b/qemu-options.hx
+index 3837456a61..5f146c1860 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -1231,6 +1231,13 @@ SRST
+     ``aw-bits=val`` (val between 32 and 64, default depends on machine)
+         This decides the address width of the IOVA address space.
+ 
++``-device arm-smmuv3,primary-bus=id``
++    This is only supported by ``-machine virt`` (ARM).
++
++    ``primary-bus=id``
++        Accepts either the default root complex (pcie.0) or a
++        pxb-pcie based root complex.
++
+ ERST
+ 
+ DEF("name", HAS_ARG, QEMU_OPTION_name,
+-- 
+2.47.3
+

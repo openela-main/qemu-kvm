@@ -1,4 +1,4 @@
-From db31addfd949b587e937dc39137fc93aa9596990 Mon Sep 17 00:00:00 2001
+From dcaeeab5909a41372c9445e9f97282e8dd3d1d44 Mon Sep 17 00:00:00 2001
 From: Miroslav Rezanina <mrezanin@redhat.com>
 Date: Fri, 11 Jan 2019 09:54:45 +0100
 Subject: Machine type related general changes
@@ -20,6 +20,12 @@ Rebase notes (10.0.0):
 - Add riscv changes
 - Added upstream compat changes
 
+Rebase notes (10.1.0 rc2):
+- Remove downstream change to i8254 (review comment)
+
+Rebase notes (10.1.0):
+- Added upstream compat changes from 10.1
+
 Merged commits (9.1.0):
 - 043ad5ce97 Add upstream compatibility bits (partial)
 - bfbdab5824 rhel 9.4.0 machine type compat for virtio-gpu migration
@@ -30,23 +36,22 @@ Merged commits (10.0.0 rc0):
 - d93fcb3940 virtio-net: disable USO for all RHEL9 (partial)
 ---
  hw/acpi/piix4.c              |   2 +-
- hw/arm/virt.c                |   3 +-
- hw/core/machine.c            | 133 +++++++++++++++++++++++++++++++++++
+ hw/arm/virt.c                |   2 +-
+ hw/core/machine.c            | 145 +++++++++++++++++++++++++++++++++++
  hw/i386/fw_cfg.c             |   3 +-
  hw/net/rtl8139.c             |   4 +-
  hw/riscv/virt.c              |   4 +-
- hw/smbios/smbios.c           |  46 +++++++++++-
- hw/timer/i8254_common.c      |   2 +-
- hw/usb/hcd-xhci-pci.c        |  55 +++++++++++----
+ hw/smbios/smbios.c           |  46 ++++++++++-
+ hw/usb/hcd-xhci-pci.c        |  54 +++++++++----
  hw/usb/hcd-xhci-pci.h        |   1 +
  hw/virtio/virtio-mem.c       |   3 +-
- include/hw/boards.h          |  28 ++++++++
+ include/hw/boards.h          |  31 ++++++++
  include/hw/firmware/smbios.h |   4 +-
  include/hw/i386/pc.h         |   3 +
- 14 files changed, 265 insertions(+), 26 deletions(-)
+ 13 files changed, 277 insertions(+), 25 deletions(-)
 
 diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
-index 6d023e595b..8b8aa6b3aa 100644
+index 7a18f18dda..2b3678b8c6 100644
 --- a/hw/acpi/piix4.c
 +++ b/hw/acpi/piix4.c
 @@ -245,7 +245,7 @@ static bool vmstate_test_migrate_acpi_index(void *opaque, int version_id)
@@ -59,32 +64,43 @@ index 6d023e595b..8b8aa6b3aa 100644
      .fields = (const VMStateField[]) {
          VMSTATE_PCI_DEVICE(parent_obj, PIIX4PMState),
 diff --git a/hw/arm/virt.c b/hw/arm/virt.c
-index 68bb983ecf..904596ae3b 100644
+index b525e00365..1800981317 100644
 --- a/hw/arm/virt.c
 +++ b/hw/arm/virt.c
-@@ -1715,7 +1715,8 @@ static void virt_build_smbios(VirtMachineState *vms)
+@@ -1755,7 +1755,7 @@ static void virt_build_smbios(VirtMachineState *vms)
+         product = "KVM Virtual Machine";
      }
  
-     smbios_set_defaults("QEMU", product,
--                        vmc->smbios_old_sys_ver ? "1.0" : mc->name);
-+                        vmc->smbios_old_sys_ver ? "1.0" : mc->name,
-+                        NULL, NULL);
+-    smbios_set_defaults("QEMU", product, mc->name);
++    smbios_set_defaults("QEMU", product, mc->name, NULL, NULL);
  
      /* build the array of physical mem area from base_memmap */
      mem_array.address = vms->memmap[VIRT_MEM].base;
 diff --git a/hw/core/machine.c b/hw/core/machine.c
-index 63c6ef93d2..c219ae589c 100644
+index bd47527479..2a1a42cebc 100644
 --- a/hw/core/machine.c
 +++ b/hw/core/machine.c
-@@ -298,6 +298,139 @@ GlobalProperty hw_compat_2_4[] = {
+@@ -288,6 +288,151 @@ GlobalProperty hw_compat_2_6[] = {
  };
- const size_t hw_compat_2_4_len = G_N_ELEMENTS(hw_compat_2_4);
+ const size_t hw_compat_2_6_len = G_N_ELEMENTS(hw_compat_2_6);
  
 +/*
 + * RHEL only: machine types for previous major releases are deprecated
 + */
 +const char *rhel_old_machine_deprecation =
 +    "machine types for previous major releases are deprecated";
++
++GlobalProperty hw_compat_rhel_10_2[] = {
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { "scsi-hd", "dpofua", "off" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { "vfio-pci", "x-migration-load-config-after-iter", "off" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { "ramfb", "use-legacy-x86-rom", "true"},
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { "vfio-pci-nohotplug", "use-legacy-x86-rom", "true" },
++};
++const size_t hw_compat_rhel_10_2_len = G_N_ELEMENTS(hw_compat_10_0);
 +
 +GlobalProperty hw_compat_rhel_10_1[] = {
 +  /* hw_compat_rhel_10_1 from hw_compat_9_1 */
@@ -231,10 +247,10 @@ index 5c0bcd5f8a..07df7281d2 100644
  
      /* tell smbios about cpuid version and features */
 diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
-index 135ab57160..6c57a8985b 100644
+index f4dd693abb..ac3a7376ad 100644
 --- a/hw/net/rtl8139.c
 +++ b/hw/net/rtl8139.c
-@@ -3171,7 +3171,7 @@ static int rtl8139_pre_save(void *opaque)
+@@ -3173,7 +3173,7 @@ static int rtl8139_pre_save(void *opaque)
  
  static const VMStateDescription vmstate_rtl8139 = {
      .name = "rtl8139",
@@ -243,7 +259,7 @@ index 135ab57160..6c57a8985b 100644
      .minimum_version_id = 3,
      .post_load = rtl8139_post_load,
      .pre_save  = rtl8139_pre_save,
-@@ -3252,7 +3252,9 @@ static const VMStateDescription vmstate_rtl8139 = {
+@@ -3254,7 +3254,9 @@ static const VMStateDescription vmstate_rtl8139 = {
          VMSTATE_UINT32(tally_counters.TxMCol, RTL8139State),
          VMSTATE_UINT64(tally_counters.RxOkPhy, RTL8139State),
          VMSTATE_UINT64(tally_counters.RxOkBrd, RTL8139State),
@@ -254,10 +270,10 @@ index 135ab57160..6c57a8985b 100644
          VMSTATE_UINT16(tally_counters.TxUndrn, RTL8139State),
  
 diff --git a/hw/riscv/virt.c b/hw/riscv/virt.c
-index e517002fdf..b8d20575af 100644
+index 47e573f85a..ab5a9ec613 100644
 --- a/hw/riscv/virt.c
 +++ b/hw/riscv/virt.c
-@@ -1400,7 +1400,7 @@ static void virt_build_smbios(RISCVVirtState *s)
+@@ -1402,7 +1402,7 @@ static void virt_build_smbios(RISCVVirtState *s)
          product = "KVM Virtual Machine";
      }
  
@@ -266,7 +282,7 @@ index e517002fdf..b8d20575af 100644
  
      if (riscv_is_32bit(&s->soc[0])) {
          smbios_set_default_processor_family(0x200);
-@@ -1919,7 +1919,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
+@@ -1920,7 +1920,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
      mc->desc = "RISC-V VirtIO board";
      mc->init = virt_machine_init;
      mc->max_cpus = VIRT_CPUS_MAX;
@@ -276,10 +292,10 @@ index e517002fdf..b8d20575af 100644
      mc->no_cdrom = 1;
      mc->pci_allow_0_address = true;
 diff --git a/hw/smbios/smbios.c b/hw/smbios/smbios.c
-index ad4cd6721e..813b9b43ec 100644
+index 1ac063cfb4..03f7a00ed1 100644
 --- a/hw/smbios/smbios.c
 +++ b/hw/smbios/smbios.c
-@@ -38,6 +38,10 @@ size_t usr_blobs_len;
+@@ -39,6 +39,10 @@ size_t usr_blobs_len;
  static unsigned usr_table_max;
  static unsigned usr_table_cnt;
  
@@ -290,7 +306,7 @@ index ad4cd6721e..813b9b43ec 100644
  uint8_t *smbios_tables;
  size_t smbios_tables_len;
  unsigned smbios_table_max;
-@@ -626,7 +630,7 @@ static void smbios_build_type_1_table(void)
+@@ -627,7 +631,7 @@ static void smbios_build_type_1_table(void)
  
  static void smbios_build_type_2_table(void)
  {
@@ -299,7 +315,7 @@ index ad4cd6721e..813b9b43ec 100644
  
      SMBIOS_TABLE_SET_STR(2, manufacturer_str, type2.manufacturer);
      SMBIOS_TABLE_SET_STR(2, product_str, type2.product);
-@@ -1014,15 +1018,51 @@ void smbios_set_default_processor_family(uint16_t processor_family)
+@@ -1015,15 +1019,51 @@ void smbios_set_default_processor_family(uint16_t processor_family)
  }
  
  void smbios_set_defaults(const char *manufacturer, const char *product,
@@ -353,21 +369,8 @@ index ad4cd6721e..813b9b43ec 100644
      SMBIOS_SET_DEFAULT(type2.version, version);
      SMBIOS_SET_DEFAULT(type3.manufacturer, manufacturer);
      SMBIOS_SET_DEFAULT(type3.version, version);
-diff --git a/hw/timer/i8254_common.c b/hw/timer/i8254_common.c
-index 29105afcc3..cef91c9a79 100644
---- a/hw/timer/i8254_common.c
-+++ b/hw/timer/i8254_common.c
-@@ -229,7 +229,7 @@ static const VMStateDescription vmstate_pit_common = {
-     .pre_save = pit_dispatch_pre_save,
-     .post_load = pit_dispatch_post_load,
-     .fields = (const VMStateField[]) {
--        VMSTATE_UINT32_V(channels[0].irq_disabled, PITCommonState, 3),
-+        VMSTATE_UINT32(channels[0].irq_disabled, PITCommonState), /* qemu-kvm's v2 had 'flags' here */
-         VMSTATE_STRUCT_ARRAY(channels, PITCommonState, 3, 2,
-                              vmstate_pit_channel, PITChannelState),
-         VMSTATE_INT64(channels[0].next_transition_time,
 diff --git a/hw/usb/hcd-xhci-pci.c b/hw/usb/hcd-xhci-pci.c
-index d908eb787d..401a2734ed 100644
+index b93c80b09d..f4a2f1a1de 100644
 --- a/hw/usb/hcd-xhci-pci.c
 +++ b/hw/usb/hcd-xhci-pci.c
 @@ -120,6 +120,33 @@ static int xhci_pci_vmstate_post_load(void *opaque, int version_id)
@@ -446,7 +449,7 @@ index d908eb787d..401a2734ed 100644
      if (s->msix != ON_OFF_AUTO_OFF) {
          /* TODO check for errors, and should fail when msix=on */
          msix_init(dev, s->xhci.numintrs,
-@@ -221,8 +245,11 @@ static const Property xhci_pci_properties[] = {
+@@ -221,6 +245,8 @@ static const Property xhci_pci_properties[] = {
      DEFINE_PROP_ON_OFF_AUTO("msix", XHCIPciState, msix, ON_OFF_AUTO_AUTO),
      DEFINE_PROP_BOOL("conditional-intr-mapping", XHCIPciState,
                       conditional_intr_mapping, false),
@@ -454,10 +457,7 @@ index d908eb787d..401a2734ed 100644
 +    DEFINE_PROP_BOOL("x-rh-late-msi-cap", XHCIPciState, rh_late_msi_cap, true),
  };
  
-+
- static void xhci_class_init(ObjectClass *klass, void *data)
- {
-     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+ static void xhci_class_init(ObjectClass *klass, const void *data)
 diff --git a/hw/usb/hcd-xhci-pci.h b/hw/usb/hcd-xhci-pci.h
 index 5b61ae8455..3170db064b 100644
 --- a/hw/usb/hcd-xhci-pci.h
@@ -471,10 +471,10 @@ index 5b61ae8455..3170db064b 100644
  
  #endif
 diff --git a/hw/virtio/virtio-mem.c b/hw/virtio/virtio-mem.c
-index 5f57eccbb6..391d85c652 100644
+index c46f6f9c3e..1805597879 100644
 --- a/hw/virtio/virtio-mem.c
 +++ b/hw/virtio/virtio-mem.c
-@@ -1717,8 +1717,9 @@ static const Property virtio_mem_properties[] = {
+@@ -1699,8 +1699,9 @@ static const Property virtio_mem_properties[] = {
  #endif
      DEFINE_PROP_BOOL(VIRTIO_MEM_EARLY_MIGRATION_PROP, VirtIOMEM,
                       early_migration, true),
@@ -486,13 +486,16 @@ index 5f57eccbb6..391d85c652 100644
  
  static uint64_t virtio_mem_rdm_get_min_granularity(const RamDiscardManager *rdm,
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index f22b2e7fc7..d7fa968dca 100644
+index f94713e6e2..a434b21909 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -848,4 +848,32 @@ extern const size_t hw_compat_2_5_len;
- extern GlobalProperty hw_compat_2_4[];
- extern const size_t hw_compat_2_4_len;
+@@ -863,4 +863,35 @@ extern const size_t hw_compat_2_7_len;
+ extern GlobalProperty hw_compat_2_6[];
+ extern const size_t hw_compat_2_6_len;
  
++extern GlobalProperty hw_compat_rhel_10_2[];
++extern const size_t hw_compat_rhel_10_2_len;
++
 +extern GlobalProperty hw_compat_rhel_10_1[];
 +extern const size_t hw_compat_rhel_10_1_len;
 +
@@ -538,7 +541,7 @@ index f066ab7262..e805d25fbe 100644
  uint8_t *smbios_get_table_legacy(size_t *length, Error **errp);
  void smbios_get_tables(MachineState *ms,
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index 103b54301f..e4d32f8aea 100644
+index 79b72c54dd..3b4ea24c20 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
 @@ -103,6 +103,9 @@ struct PCMachineClass {

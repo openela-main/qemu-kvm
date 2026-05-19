@@ -1,0 +1,44 @@
+From c2c080f94d9107273650ebdaf50ca78e8cb2f866 Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Tue, 25 Nov 2025 09:19:30 +0100
+Subject: [PATCH 2/2] arm: fix oob access in compat handling
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 430: arm: fix oob access in compat handling
+RH-Jira: RHEL-130478
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Commit: [1/1] 5d6ab0821b0ffce732862969f275aa50f6917bf1 (seott1/cos-qemu-kvm)
+
+Upstream: RHEL only
+Fixes: 58cba97a "hw/arm/virt: Use ACPI PCI hotplug by default from 10.2 onwards"
+
+Due to incorrect length information arm_acpi_pci_hp_disabled_compat[]
+was accessed out of bounds. This led to the weird side effect that the
+1st member of arm_rhel9_compat[] was applied to the virt-rhel10.0
+machine type causing migration failures. Fix the length.
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/arm/virt.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index e8e64fe7fe..1cfb386f64 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -102,7 +102,8 @@ static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
+ GlobalProperty arm_acpi_pci_hp_disabled_compat[] = {
+     { TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "off" },
+ };
+-static const size_t arm_acpi_pci_hp_disabled_compat_len = G_N_ELEMENTS(arm_virt_compat);
++static const size_t arm_acpi_pci_hp_disabled_compat_len =
++    G_N_ELEMENTS(arm_acpi_pci_hp_disabled_compat);
+ 
+ /*
+  * RHEL9 kernels have pauth disabled while RHEL10 has it enabled,
+-- 
+2.47.3
+

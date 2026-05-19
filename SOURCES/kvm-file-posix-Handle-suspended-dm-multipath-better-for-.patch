@@ -1,15 +1,15 @@
-From de31859a877ad2db185399d50dc6a97f9d7be0ed Mon Sep 17 00:00:00 2001
+From 56703080fdf6630d6d844c736f3195b3b7b80f74 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Fri, 28 Nov 2025 23:14:40 +0100
-Subject: [PATCH 1/2] file-posix: Handle suspended dm-multipath better for
+Subject: [PATCH 02/32] file-posix: Handle suspended dm-multipath better for
  SG_IO
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 520: file-posix: Handle suspended dm-multipath better for SG_IO
-RH-Jira: RHEL-133521
-RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 436: file-posix: Handle suspended dm-multipath better for SG_IO
+RH-Jira: RHEL-121543
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [1/1] 18d03efe156e6ec0ccff3e05e678de4adc829488 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [1/1] f90d36aba5b374dcb9d5986f968c2dbde4bdd18d (kmwolf/centos-qemu-kvm)
 
 When introducing DM_MPATH_PROBE_PATHS, we already anticipated that
 dm-multipath devices might be suspended for a short time when the DM
@@ -38,10 +38,10 @@ Signed-off-by: Kevin Wolf <kwolf@redhat.com>
  1 file changed, 34 insertions(+), 22 deletions(-)
 
 diff --git a/block/file-posix.c b/block/file-posix.c
-index d3c7dcc7e4..d5ce09700b 100644
+index cb2e94d7db..ffca37130b 100644
 --- a/block/file-posix.c
 +++ b/block/file-posix.c
-@@ -4293,25 +4293,8 @@ hdev_open_Mac_error:
+@@ -4289,25 +4289,8 @@ hdev_open_Mac_error:
  static bool coroutine_fn sgio_path_error(int ret, sg_io_hdr_t *io_hdr)
  {
      if (ret < 0) {
@@ -69,7 +69,7 @@ index d3c7dcc7e4..d5ce09700b 100644
      }
  
      if (io_hdr->host_status != SCSI_HOST_OK) {
-@@ -4380,6 +4363,7 @@ hdev_co_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
+@@ -4376,6 +4359,7 @@ hdev_co_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
  {
      BDRVRawState *s = bs->opaque;
      RawPosixAIOData acb;
@@ -77,7 +77,7 @@ index d3c7dcc7e4..d5ce09700b 100644
      int retries = SG_IO_MAX_RETRIES;
      int ret;
  
-@@ -4408,9 +4392,37 @@ hdev_co_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
+@@ -4404,9 +4388,37 @@ hdev_co_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
          },
      };
  

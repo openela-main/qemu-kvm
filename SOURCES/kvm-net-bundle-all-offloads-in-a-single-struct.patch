@@ -1,0 +1,366 @@
+From e98a5779344e632fab5cce16508fb6fbdb847332 Mon Sep 17 00:00:00 2001
+From: Paolo Abeni <pabeni@redhat.com>
+Date: Mon, 22 Sep 2025 16:18:15 +0200
+Subject: [PATCH 06/19] net: bundle all offloads in a single struct
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 456: backport support for GSO over UDP tunnel offload
+RH-Jira: RHEL-143785
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [1/14] 6895db45d4c3490df93d5156a72fa11f706fa5d2 (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-143785
+
+The set_offload() argument list is already pretty long and
+we are going to introduce soon a bunch of additional offloads.
+
+Replace the offload arguments with a single struct and update
+all the relevant call-sites.
+
+No functional changes intended.
+
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-ID: <a9d4dd043b8c71b791e9ff05e17ef06072d9714e.1758549625.git.pabeni@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit e5fd02d8253abdc25c0eb145765734890c256b71)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/net/e1000e_core.c |  5 +++--
+ hw/net/igb_core.c    |  5 +++--
+ hw/net/virtio-net.c  | 19 +++++++++++--------
+ hw/net/vmxnet3.c     | 13 +++++--------
+ include/net/net.h    | 15 ++++++++++++---
+ net/net.c            |  5 ++---
+ net/netmap.c         |  3 +--
+ net/tap-bsd.c        |  3 +--
+ net/tap-linux.c      | 21 ++++++++++++---------
+ net/tap-solaris.c    |  4 ++--
+ net/tap-stub.c       |  3 +--
+ net/tap.c            |  8 ++++----
+ net/tap_int.h        |  4 ++--
+ 13 files changed, 59 insertions(+), 49 deletions(-)
+
+diff --git a/hw/net/e1000e_core.c b/hw/net/e1000e_core.c
+index 06657bb3ac..8fef598b49 100644
+--- a/hw/net/e1000e_core.c
++++ b/hw/net/e1000e_core.c
+@@ -2822,8 +2822,9 @@ e1000e_update_rx_offloads(E1000ECore *core)
+     trace_e1000e_rx_set_cso(cso_state);
+ 
+     if (core->has_vnet) {
+-        qemu_set_offload(qemu_get_queue(core->owner_nic)->peer,
+-                         cso_state, 0, 0, 0, 0, 0, 0);
++        NetOffloads ol = { .csum = cso_state };
++
++        qemu_set_offload(qemu_get_queue(core->owner_nic)->peer, &ol);
+     }
+ }
+ 
+diff --git a/hw/net/igb_core.c b/hw/net/igb_core.c
+index 39e3ce1c8f..45d8fd795b 100644
+--- a/hw/net/igb_core.c
++++ b/hw/net/igb_core.c
+@@ -3058,8 +3058,9 @@ igb_update_rx_offloads(IGBCore *core)
+     trace_e1000e_rx_set_cso(cso_state);
+ 
+     if (core->has_vnet) {
+-        qemu_set_offload(qemu_get_queue(core->owner_nic)->peer,
+-                         cso_state, 0, 0, 0, 0, 0, 0);
++        NetOffloads ol = {.csum = cso_state };
++
++        qemu_set_offload(qemu_get_queue(core->owner_nic)->peer, &ol);
+     }
+ }
+ 
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 6b5b5dace3..b86ba1fd27 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -773,14 +773,17 @@ static uint64_t virtio_net_bad_features(VirtIODevice *vdev)
+ 
+ static void virtio_net_apply_guest_offloads(VirtIONet *n)
+ {
+-    qemu_set_offload(qemu_get_queue(n->nic)->peer,
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_CSUM)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_TSO4)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_TSO6)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_ECN)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_UFO)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO4)),
+-            !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO6)));
++    NetOffloads ol = {
++       .csum = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_CSUM)),
++       .tso4 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_TSO4)),
++       .tso6 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_TSO6)),
++       .ecn  = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_ECN)),
++       .ufo  = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_UFO)),
++       .uso4 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO4)),
++       .uso6 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO6)),
++    };
++
++    qemu_set_offload(qemu_get_queue(n->nic)->peer, &ol);
+ }
+ 
+ static uint64_t virtio_net_guest_offloads_by_features(uint64_t features)
+diff --git a/hw/net/vmxnet3.c b/hw/net/vmxnet3.c
+index af73aa8ef2..03732375a7 100644
+--- a/hw/net/vmxnet3.c
++++ b/hw/net/vmxnet3.c
+@@ -1322,14 +1322,11 @@ static void vmxnet3_update_features(VMXNET3State *s)
+               s->lro_supported, rxcso_supported,
+               s->rx_vlan_stripping);
+     if (s->peer_has_vhdr) {
+-        qemu_set_offload(qemu_get_queue(s->nic)->peer,
+-                         rxcso_supported,
+-                         s->lro_supported,
+-                         s->lro_supported,
+-                         0,
+-                         0,
+-                         0,
+-                         0);
++        NetOffloads ol = { .csum = rxcso_supported,
++                           .tso4 = s->lro_supported,
++                           .tso6 = s->lro_supported };
++
++        qemu_set_offload(qemu_get_queue(s->nic)->peer, &ol);
+     }
+ }
+ 
+diff --git a/include/net/net.h b/include/net/net.h
+index 84ee18e0f9..48ba333d02 100644
+--- a/include/net/net.h
++++ b/include/net/net.h
+@@ -35,6 +35,16 @@ typedef struct NICConf {
+     int32_t bootindex;
+ } NICConf;
+ 
++typedef struct NetOffloads {
++    bool csum;
++    bool tso4;
++    bool tso6;
++    bool ecn;
++    bool ufo;
++    bool uso4;
++    bool uso6;
++} NetOffloads;
++
+ #define DEFINE_NIC_PROPERTIES(_state, _conf)                            \
+     DEFINE_PROP_MACADDR("mac",   _state, _conf.macaddr),                \
+     DEFINE_PROP_NETDEV("netdev", _state, _conf.peers)
+@@ -57,7 +67,7 @@ typedef bool (HasUfo)(NetClientState *);
+ typedef bool (HasUso)(NetClientState *);
+ typedef bool (HasVnetHdr)(NetClientState *);
+ typedef bool (HasVnetHdrLen)(NetClientState *, int);
+-typedef void (SetOffload)(NetClientState *, int, int, int, int, int, int, int);
++typedef void (SetOffload)(NetClientState *, const NetOffloads *);
+ typedef int (GetVnetHdrLen)(NetClientState *);
+ typedef void (SetVnetHdrLen)(NetClientState *, int);
+ typedef bool (GetVnetHashSupportedTypes)(NetClientState *, uint32_t *);
+@@ -189,8 +199,7 @@ bool qemu_has_ufo(NetClientState *nc);
+ bool qemu_has_uso(NetClientState *nc);
+ bool qemu_has_vnet_hdr(NetClientState *nc);
+ bool qemu_has_vnet_hdr_len(NetClientState *nc, int len);
+-void qemu_set_offload(NetClientState *nc, int csum, int tso4, int tso6,
+-                      int ecn, int ufo, int uso4, int uso6);
++void qemu_set_offload(NetClientState *nc, const NetOffloads *ol);
+ int qemu_get_vnet_hdr_len(NetClientState *nc);
+ void qemu_set_vnet_hdr_len(NetClientState *nc, int len);
+ bool qemu_get_vnet_hash_supported_types(NetClientState *nc, uint32_t *types);
+diff --git a/net/net.c b/net/net.c
+index da275db86e..63872b6855 100644
+--- a/net/net.c
++++ b/net/net.c
+@@ -540,14 +540,13 @@ bool qemu_has_vnet_hdr_len(NetClientState *nc, int len)
+     return nc->info->has_vnet_hdr_len(nc, len);
+ }
+ 
+-void qemu_set_offload(NetClientState *nc, int csum, int tso4, int tso6,
+-                          int ecn, int ufo, int uso4, int uso6)
++void qemu_set_offload(NetClientState *nc, const NetOffloads *ol)
+ {
+     if (!nc || !nc->info->set_offload) {
+         return;
+     }
+ 
+-    nc->info->set_offload(nc, csum, tso4, tso6, ecn, ufo, uso4, uso6);
++    nc->info->set_offload(nc, ol);
+ }
+ 
+ int qemu_get_vnet_hdr_len(NetClientState *nc)
+diff --git a/net/netmap.c b/net/netmap.c
+index 297510e190..6cd8f2bdc5 100644
+--- a/net/netmap.c
++++ b/net/netmap.c
+@@ -366,8 +366,7 @@ static void netmap_set_vnet_hdr_len(NetClientState *nc, int len)
+     }
+ }
+ 
+-static void netmap_set_offload(NetClientState *nc, int csum, int tso4, int tso6,
+-                               int ecn, int ufo, int uso4, int uso6)
++static void netmap_set_offload(NetClientState *nc, const NetOffloads *ol)
+ {
+     NetmapState *s = DO_UPCAST(NetmapState, nc, nc);
+ 
+diff --git a/net/tap-bsd.c b/net/tap-bsd.c
+index b4c84441ba..86b6edee94 100644
+--- a/net/tap-bsd.c
++++ b/net/tap-bsd.c
+@@ -231,8 +231,7 @@ int tap_fd_set_vnet_be(int fd, int is_be)
+     return -EINVAL;
+ }
+ 
+-void tap_fd_set_offload(int fd, int csum, int tso4,
+-                        int tso6, int ecn, int ufo, int uso4, int uso6)
++void tap_fd_set_offload(int fd, const NetOffloads *ol)
+ {
+ }
+ 
+diff --git a/net/tap-linux.c b/net/tap-linux.c
+index 22ec2f45d2..a1c58f74f5 100644
+--- a/net/tap-linux.c
++++ b/net/tap-linux.c
+@@ -239,8 +239,7 @@ int tap_fd_set_vnet_be(int fd, int is_be)
+     abort();
+ }
+ 
+-void tap_fd_set_offload(int fd, int csum, int tso4,
+-                        int tso6, int ecn, int ufo, int uso4, int uso6)
++void tap_fd_set_offload(int fd, const NetOffloads *ol)
+ {
+     unsigned int offload = 0;
+ 
+@@ -249,20 +248,24 @@ void tap_fd_set_offload(int fd, int csum, int tso4,
+         return;
+     }
+ 
+-    if (csum) {
++    if (ol->csum) {
+         offload |= TUN_F_CSUM;
+-        if (tso4)
++        if (ol->tso4) {
+             offload |= TUN_F_TSO4;
+-        if (tso6)
++        }
++        if (ol->tso6) {
+             offload |= TUN_F_TSO6;
+-        if ((tso4 || tso6) && ecn)
++        }
++        if ((ol->tso4 || ol->tso6) && ol->ecn) {
+             offload |= TUN_F_TSO_ECN;
+-        if (ufo)
++        }
++        if (ol->ufo) {
+             offload |= TUN_F_UFO;
+-        if (uso4) {
++        }
++        if (ol->uso4) {
+             offload |= TUN_F_USO4;
+         }
+-        if (uso6) {
++        if (ol->uso6) {
+             offload |= TUN_F_USO6;
+         }
+     }
+diff --git a/net/tap-solaris.c b/net/tap-solaris.c
+index 51b7830bef..833c066bee 100644
+--- a/net/tap-solaris.c
++++ b/net/tap-solaris.c
+@@ -27,6 +27,7 @@
+ #include "tap_int.h"
+ #include "qemu/ctype.h"
+ #include "qemu/cutils.h"
++#include "net/net.h"
+ 
+ #include <sys/ethernet.h>
+ #include <sys/sockio.h>
+@@ -235,8 +236,7 @@ int tap_fd_set_vnet_be(int fd, int is_be)
+     return -EINVAL;
+ }
+ 
+-void tap_fd_set_offload(int fd, int csum, int tso4,
+-                        int tso6, int ecn, int ufo, int uso4, int uso6)
++void tap_fd_set_offload(int fd, const NetOffloads *ol)
+ {
+ }
+ 
+diff --git a/net/tap-stub.c b/net/tap-stub.c
+index 38673434cb..67d14ad4d5 100644
+--- a/net/tap-stub.c
++++ b/net/tap-stub.c
+@@ -66,8 +66,7 @@ int tap_fd_set_vnet_be(int fd, int is_be)
+     return -EINVAL;
+ }
+ 
+-void tap_fd_set_offload(int fd, int csum, int tso4,
+-                        int tso6, int ecn, int ufo, int uso4, int uso6)
++void tap_fd_set_offload(int fd, const NetOffloads *ol)
+ {
+ }
+ 
+diff --git a/net/tap.c b/net/tap.c
+index f7df702f97..72046a43aa 100644
+--- a/net/tap.c
++++ b/net/tap.c
+@@ -285,15 +285,14 @@ static int tap_set_vnet_be(NetClientState *nc, bool is_be)
+     return tap_fd_set_vnet_be(s->fd, is_be);
+ }
+ 
+-static void tap_set_offload(NetClientState *nc, int csum, int tso4,
+-                     int tso6, int ecn, int ufo, int uso4, int uso6)
++static void tap_set_offload(NetClientState *nc, const NetOffloads *ol)
+ {
+     TAPState *s = DO_UPCAST(TAPState, nc, nc);
+     if (s->fd < 0) {
+         return;
+     }
+ 
+-    tap_fd_set_offload(s->fd, csum, tso4, tso6, ecn, ufo, uso4, uso6);
++    tap_fd_set_offload(s->fd, ol);
+ }
+ 
+ static void tap_exit_notify(Notifier *notifier, void *data)
+@@ -391,6 +390,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
+                                  int fd,
+                                  int vnet_hdr)
+ {
++    NetOffloads ol = {};
+     NetClientState *nc;
+     TAPState *s;
+ 
+@@ -404,7 +404,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
+     s->has_ufo = tap_probe_has_ufo(s->fd);
+     s->has_uso = tap_probe_has_uso(s->fd);
+     s->enabled = true;
+-    tap_set_offload(&s->nc, 0, 0, 0, 0, 0, 0, 0);
++    tap_set_offload(&s->nc, &ol);
+     /*
+      * Make sure host header length is set correctly in tap:
+      * it might have been modified by another instance of qemu.
+diff --git a/net/tap_int.h b/net/tap_int.h
+index 8857ff299d..f8bbe1cb0c 100644
+--- a/net/tap_int.h
++++ b/net/tap_int.h
+@@ -27,6 +27,7 @@
+ #define NET_TAP_INT_H
+ 
+ #include "qapi/qapi-types-net.h"
++#include "net/net.h"
+ 
+ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
+              int vnet_hdr_required, int mq_required, Error **errp);
+@@ -37,8 +38,7 @@ void tap_set_sndbuf(int fd, const NetdevTapOptions *tap, Error **errp);
+ int tap_probe_vnet_hdr(int fd, Error **errp);
+ int tap_probe_has_ufo(int fd);
+ int tap_probe_has_uso(int fd);
+-void tap_fd_set_offload(int fd, int csum, int tso4, int tso6, int ecn, int ufo,
+-                        int uso4, int uso6);
++void tap_fd_set_offload(int fd, const NetOffloads *ol);
+ void tap_fd_set_vnet_hdr_len(int fd, int len);
+ int tap_fd_set_vnet_le(int fd, int vnet_is_le);
+ int tap_fd_set_vnet_be(int fd, int vnet_is_be);
+-- 
+2.47.3
+

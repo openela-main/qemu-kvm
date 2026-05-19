@@ -1,0 +1,66 @@
+From 5264d9ea8c029dab0663a3da82f4d8241ad0f1b9 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 7 Nov 2025 05:23:16 -0500
+Subject: [PATCH 04/16] hw/arm/virt: Use ACPI PCI hotplug by default from 10.2
+ onwards
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 422: hw/arm/virt: Use ACPI PCI hotplug by default from 10.2 onwards
+RH-Jira: RHEL-67323
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Commit: [1/1] 4539ba6526fef80adb9893a643eb001449397447 (eauger1/centos-qemu-kvm)
+
+UPSTREAM: RHEL-only
+
+Use ACPI PCI hotplug by default from 10.2 onwards. For older
+rhel10 machine types and all rhel9 machine types ACPI PCI hotplug
+is kept disabled.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index dcdd53043e..542d702513 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -94,9 +94,15 @@
+ 
+ static GlobalProperty arm_virt_compat[] = {
+     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
++    { TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "on" },
+ };
+ static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
+ 
++GlobalProperty arm_acpi_pci_hp_disabled_compat[] = {
++    { TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "off" },
++};
++static const size_t arm_acpi_pci_hp_disabled_compat_len = G_N_ELEMENTS(arm_virt_compat);
++
+ /*
+  * RHEL9 kernels have pauth disabled while RHEL10 has it enabled,
+  * since qemu will setup the VM with pauth when KVM supports it we
+@@ -104,6 +110,7 @@ static const size_t arm_virt_compat_len = G_N_ELEMENTS(arm_virt_compat);
+  */
+ GlobalProperty arm_rhel9_compat[] = {
+     {TYPE_ARM_CPU, "pauth", "off", .optional = true},
++    {TYPE_ACPI_GED, "acpi-pci-hotplug-with-bridge-support", "off" },
+ };
+ const size_t arm_rhel9_compat_len = G_N_ELEMENTS(arm_rhel9_compat);
+ 
+@@ -3701,6 +3708,8 @@ static void virt_rhel_machine_10_0_0_options(MachineClass *mc)
+ 
+     /* QEMU 9.1 and earlier have only a stage-1 SMMU, not a nested s1+2 one */
+     vmc->no_nested_smmu = true;
++    compat_props_add(mc->compat_props, arm_acpi_pci_hp_disabled_compat,
++                     arm_acpi_pci_hp_disabled_compat_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_10_2, hw_compat_rhel_10_2_len);
+     compat_props_add(mc->compat_props, hw_compat_rhel_10_1, hw_compat_rhel_10_1_len);
+ }
+-- 
+2.47.3
+

@@ -1,0 +1,36 @@
+From c4415936b6033aff4b2e38b1c470c920e14fa35a Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Mon, 12 Jan 2026 09:19:07 +0100
+Subject: [PATCH 1/4] fix pc_rhel_10_2_compat_len
+
+RH-Author: Gerd Hoffmann <kraxel@redhat.com>
+RH-MergeRequest: 447: q35: increase default tseg size
+RH-Jira: RHEL-126707
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/2] b9291186e031c0c018dfdc87960b04817421ecec (kraxel.rh/centos-src-qemu-kvm)
+
+There is an (apparently) cut+paste error in the definition
+pc_rhel_10_2_compat_len variable, it calculates the length
+of the wrong array.  Fix it.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+---
+ hw/i386/pc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 446d4a7c93..394a84eb8a 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -304,7 +304,7 @@ GlobalProperty pc_rhel_10_2_compat[] = {
+     { TYPE_X86_CPU, "x-arch-cap-always-on", "true" },
+     { TYPE_X86_CPU, "x-pdcm-on-even-without-pmu", "true" },
+ };
+-const size_t pc_rhel_10_2_compat_len = G_N_ELEMENTS(pc_compat_10_0);
++const size_t pc_rhel_10_2_compat_len = G_N_ELEMENTS(pc_rhel_10_2_compat);
+ 
+ GlobalProperty pc_rhel_10_1_compat[] = {
+     /* pc_rhel_10_1_compat from pc_compat_9_1 */
+-- 
+2.47.3
+

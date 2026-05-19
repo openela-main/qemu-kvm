@@ -1,0 +1,54 @@
+From b4eeed1e8633df76598de0fe6ca5df4be359222c Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:31 +0100
+Subject: [PATCH 13/16] bios-tables-test: Allow for smmuv3 test data.
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [9/11] cf98e2e7589b794775c1d9c4f564e3cd536b886e (eauger1/centos-qemu-kvm)
+
+The tests to be added exercise both legacy(iommu=smmuv3) and new
+-device arm-smmuv3,.. cases.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Message-id: 20250829082543.7680-10-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit c69520c13d6ea45a69a7a49361806fa05b19046d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ tests/data/acpi/aarch64/virt/DSDT.smmuv3-dev    | 0
+ tests/data/acpi/aarch64/virt/DSDT.smmuv3-legacy | 0
+ tests/data/acpi/aarch64/virt/IORT.smmuv3-dev    | 0
+ tests/data/acpi/aarch64/virt/IORT.smmuv3-legacy | 0
+ tests/qtest/bios-tables-test-allowed-diff.h     | 4 ++++
+ 5 files changed, 4 insertions(+)
+ create mode 100644 tests/data/acpi/aarch64/virt/DSDT.smmuv3-dev
+ create mode 100644 tests/data/acpi/aarch64/virt/DSDT.smmuv3-legacy
+ create mode 100644 tests/data/acpi/aarch64/virt/IORT.smmuv3-dev
+ create mode 100644 tests/data/acpi/aarch64/virt/IORT.smmuv3-legacy
+
+diff --git a/tests/qtest/bios-tables-test-allowed-diff.h b/tests/qtest/bios-tables-test-allowed-diff.h
+index dfb8523c8b..2e3e3ccdce 100644
+--- a/tests/qtest/bios-tables-test-allowed-diff.h
++++ b/tests/qtest/bios-tables-test-allowed-diff.h
+@@ -1 +1,5 @@
+ /* List of comma-separated changed AML files to ignore */
++"tests/data/acpi/aarch64/virt/DSDT.smmuv3-legacy",
++"tests/data/acpi/aarch64/virt/DSDT.smmuv3-dev",
++"tests/data/acpi/aarch64/virt/IORT.smmuv3-legacy",
++"tests/data/acpi/aarch64/virt/IORT.smmuv3-dev",
+-- 
+2.47.3
+

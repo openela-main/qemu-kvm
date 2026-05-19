@@ -1,0 +1,209 @@
+From 97f8e0bbaddf37dcf147f6405a8a96921469d60d Mon Sep 17 00:00:00 2001
+From: Paolo Abeni <pabeni@redhat.com>
+Date: Mon, 22 Sep 2025 16:18:28 +0200
+Subject: [PATCH 19/19] net: implement UDP tunnel features offloading
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 456: backport support for GSO over UDP tunnel offload
+RH-Jira: RHEL-143785
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [14/14] 5ff3488d210020730a71b944519a9938f1628dcc (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-143785
+
+When any host or guest GSO over UDP tunnel offload is enabled the
+virtio net header includes the additional tunnel-related fields,
+update the size accordingly.
+
+Push the GSO over UDP tunnel offloads all the way down to the tap
+device extending the newly introduced NetFeatures struct, and
+eventually enable the associated features.
+
+As per virtio specification, to convert features bit to offload bit,
+map the extended features into the reserved range.
+
+Finally, make the vhost backend aware of the exact header layout, to
+copy it correctly. The tunnel-related field are present if either
+the guest or the host negotiated any UDP tunnel related feature:
+add them to the kernel supported features list, to allow qemu
+transfer to the backend the needed information.
+
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-ID: <093b4bc68368046bffbcab2202227632d6e4e83b.1758549625.git.pabeni@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit a5289563ad74a2a37e8d2101d82935454c71fef4)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/net/virtio-net.c | 34 ++++++++++++++++++++++++++--------
+ include/net/net.h   |  2 ++
+ net/net.c           |  3 ++-
+ net/tap-linux.c     |  6 ++++++
+ net/tap.c           |  2 ++
+ 5 files changed, 38 insertions(+), 9 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 0abb8c8a62..f021663f92 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -103,6 +103,12 @@
+ #define VIRTIO_NET_F2O_SHIFT          (VIRTIO_NET_OFFLOAD_MAP_MIN - \
+                                        VIRTIO_NET_FEATURES_MAP_MIN + 64)
+ 
++static bool virtio_has_tunnel_hdr(const uint64_t *features)
++{
++    return virtio_has_feature_ex(features, VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO) ||
++           virtio_has_feature_ex(features, VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO);
++}
++
+ static const VirtIOFeature feature_sizes[] = {
+     {.flags = 1ULL << VIRTIO_NET_F_MAC,
+      .end = endof(struct virtio_net_config, mac)},
+@@ -659,7 +665,8 @@ static bool peer_has_tunnel(VirtIONet *n)
+ }
+ 
+ static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
+-                                       int version_1, int hash_report)
++                                       int version_1, int hash_report,
++                                       int tunnel)
+ {
+     int i;
+     NetClientState *nc;
+@@ -667,9 +674,11 @@ static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
+     n->mergeable_rx_bufs = mergeable_rx_bufs;
+ 
+     if (version_1) {
+-        n->guest_hdr_len = hash_report ?
+-            sizeof(struct virtio_net_hdr_v1_hash) :
+-            sizeof(struct virtio_net_hdr_mrg_rxbuf);
++        n->guest_hdr_len = tunnel ?
++            sizeof(struct virtio_net_hdr_v1_hash_tunnel) :
++            (hash_report ?
++             sizeof(struct virtio_net_hdr_v1_hash) :
++             sizeof(struct virtio_net_hdr_mrg_rxbuf));
+         n->rss_data.populate_hash = !!hash_report;
+     } else {
+         n->guest_hdr_len = n->mergeable_rx_bufs ?
+@@ -803,6 +812,10 @@ static void virtio_net_apply_guest_offloads(VirtIONet *n)
+        .ufo  = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_UFO)),
+        .uso4 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO4)),
+        .uso6 = !!(n->curr_guest_offloads & (1ULL << VIRTIO_NET_F_GUEST_USO6)),
++       .tnl  = !!(n->curr_guest_offloads &
++                  (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO_MAPPED)),
++       .tnl_csum = !!(n->curr_guest_offloads &
++                      (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO_CSUM_MAPPED)),
+     };
+ 
+     qemu_set_offload(qemu_get_queue(n->nic)->peer, &ol);
+@@ -824,7 +837,9 @@ virtio_net_guest_offloads_by_features(const uint64_t *features)
+         (1ULL << VIRTIO_NET_F_GUEST_ECN)  |
+         (1ULL << VIRTIO_NET_F_GUEST_UFO)  |
+         (1ULL << VIRTIO_NET_F_GUEST_USO4) |
+-        (1ULL << VIRTIO_NET_F_GUEST_USO6);
++        (1ULL << VIRTIO_NET_F_GUEST_USO6) |
++        (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO_MAPPED) |
++        (1ULL << VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO_CSUM_MAPPED);
+ 
+     return guest_offloads_mask & virtio_net_features_to_offload(features);
+ }
+@@ -937,7 +952,8 @@ static void virtio_net_set_features(VirtIODevice *vdev,
+                                virtio_has_feature_ex(features,
+                                                   VIRTIO_F_VERSION_1),
+                                virtio_has_feature_ex(features,
+-                                                  VIRTIO_NET_F_HASH_REPORT));
++                                                  VIRTIO_NET_F_HASH_REPORT),
++                               virtio_has_tunnel_hdr(features));
+ 
+     n->rsc4_enabled = virtio_has_feature_ex(features, VIRTIO_NET_F_RSC_EXT) &&
+         virtio_has_feature_ex(features, VIRTIO_NET_F_GUEST_TSO4);
+@@ -3163,13 +3179,15 @@ static int virtio_net_post_load_device(void *opaque, int version_id)
+     VirtIONet *n = opaque;
+     VirtIODevice *vdev = VIRTIO_DEVICE(n);
+     int i, link_down;
++    bool has_tunnel_hdr = virtio_has_tunnel_hdr(vdev->guest_features_ex);
+ 
+     trace_virtio_net_post_load_device();
+     virtio_net_set_mrg_rx_bufs(n, n->mergeable_rx_bufs,
+                                virtio_vdev_has_feature(vdev,
+                                                        VIRTIO_F_VERSION_1),
+                                virtio_vdev_has_feature(vdev,
+-                                                       VIRTIO_NET_F_HASH_REPORT));
++                                                      VIRTIO_NET_F_HASH_REPORT),
++                               has_tunnel_hdr);
+ 
+     /* MAC_TABLE_ENTRIES may be different from the saved image */
+     if (n->mac_table.in_use > MAC_TABLE_ENTRIES) {
+@@ -3989,7 +4007,7 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
+ 
+     n->vqs[0].tx_waiting = 0;
+     n->tx_burst = n->net_conf.txburst;
+-    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0);
++    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0, 0);
+     n->promisc = 1; /* for compatibility */
+ 
+     n->mac_table.macs = g_malloc0(MAC_TABLE_ENTRIES * ETH_ALEN);
+diff --git a/include/net/net.h b/include/net/net.h
+index 9a9084690d..72b476ee1d 100644
+--- a/include/net/net.h
++++ b/include/net/net.h
+@@ -43,6 +43,8 @@ typedef struct NetOffloads {
+     bool ufo;
+     bool uso4;
+     bool uso6;
++    bool tnl;
++    bool tnl_csum;
+ } NetOffloads;
+ 
+ #define DEFINE_NIC_PROPERTIES(_state, _conf)                            \
+diff --git a/net/net.c b/net/net.c
+index 9536184a0c..27e0d27807 100644
+--- a/net/net.c
++++ b/net/net.c
+@@ -575,7 +575,8 @@ void qemu_set_vnet_hdr_len(NetClientState *nc, int len)
+ 
+     assert(len == sizeof(struct virtio_net_hdr_mrg_rxbuf) ||
+            len == sizeof(struct virtio_net_hdr) ||
+-           len == sizeof(struct virtio_net_hdr_v1_hash));
++           len == sizeof(struct virtio_net_hdr_v1_hash) ||
++           len == sizeof(struct virtio_net_hdr_v1_hash_tunnel));
+ 
+     nc->vnet_hdr_len = len;
+     nc->info->set_vnet_hdr_len(nc, len);
+diff --git a/net/tap-linux.c b/net/tap-linux.c
+index e2628be798..8e275d2ea4 100644
+--- a/net/tap-linux.c
++++ b/net/tap-linux.c
+@@ -279,6 +279,12 @@ void tap_fd_set_offload(int fd, const NetOffloads *ol)
+         if (ol->uso6) {
+             offload |= TUN_F_USO6;
+         }
++        if (ol->tnl) {
++            offload |= TUN_F_UDP_TUNNEL_GSO;
++        }
++        if (ol->tnl_csum) {
++            offload |= TUN_F_UDP_TUNNEL_GSO_CSUM;
++        }
+     }
+ 
+     if (ioctl(fd, TUNSETOFFLOAD, offload) != 0) {
+diff --git a/net/tap.c b/net/tap.c
+index 9f65e3fb3d..dc2a2859ec 100644
+--- a/net/tap.c
++++ b/net/tap.c
+@@ -62,6 +62,8 @@ static const int kernel_feature_bits[] = {
+     VIRTIO_F_NOTIFICATION_DATA,
+     VIRTIO_NET_F_RSC_EXT,
+     VIRTIO_NET_F_HASH_REPORT,
++    VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO,
++    VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO,
+     VHOST_INVALID_FEATURE_BIT
+ };
+ 
+-- 
+2.47.3
+

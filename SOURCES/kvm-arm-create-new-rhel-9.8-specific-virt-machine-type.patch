@@ -1,0 +1,49 @@
+From c6b6b0d2969f8baf5f09bc1d4953df5e7445820c Mon Sep 17 00:00:00 2001
+From: Sebastian Ott <sebott@redhat.com>
+Date: Wed, 29 Oct 2025 16:05:12 +0100
+Subject: [PATCH 07/10] arm: create new rhel 9.8 specific virt machine type
+
+RH-Author: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 416: x86, arm: create new rhel 9.8, 10.2 specific machine types
+RH-Jira: RHEL-105826 RHEL-105828
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Commit: [2/4] fb3fc4decafd0c6e94ef31c0120b843512089573 (seott1/cos-qemu-kvm)
+
+Signed-off-by: Sebastian Ott <sebott@redhat.com>
+---
+ hw/arm/virt.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index e68979d2c5..dcdd53043e 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3706,14 +3706,19 @@ static void virt_rhel_machine_10_0_0_options(MachineClass *mc)
+ }
+ DEFINE_VIRT_MACHINE(10, 0, 0)
+ 
+-static void virt_rhel_machine_9_6_0_options(MachineClass *mc)
++static void virt_rhel_machine_9_8_0_options(MachineClass *mc)
+ {
+-    virt_rhel_machine_10_0_0_options(mc);
+-
++    /* NB: remember to move these lines to the *latest* RHEL 9 machine */
+     compat_props_add(mc->compat_props, arm_rhel9_compat, arm_rhel9_compat_len);
+-    /* NB: remember to move this line to the *latest* RHEL 9 machine */
+     compat_props_add(mc->compat_props, hw_compat_rhel_9, hw_compat_rhel_9_len);
+ }
++DEFINE_VIRT_MACHINE(9, 8, 0)
++
++static void virt_rhel_machine_9_6_0_options(MachineClass *mc)
++{
++    virt_rhel_machine_10_0_0_options(mc);
++    virt_rhel_machine_9_8_0_options(mc);
++}
+ DEFINE_VIRT_MACHINE(9, 6, 0)
+ 
+ static void virt_rhel_machine_9_4_0_options(MachineClass *mc)
+-- 
+2.47.3
+

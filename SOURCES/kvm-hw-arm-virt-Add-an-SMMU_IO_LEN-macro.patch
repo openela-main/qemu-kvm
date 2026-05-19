@@ -1,0 +1,61 @@
+From c62e5defde6f02bdd316b772169571d0de5d2d83 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:27 +0100
+Subject: [PATCH 09/16] hw/arm/virt: Add an SMMU_IO_LEN macro
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [5/11] 72c82e228bb256db07fbe28728ad47dbd8b04dc3 (eauger1/centos-qemu-kvm)
+
+This is useful as the subsequent support for new SMMUv3 dev will also
+use the same.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nathan Chen <nathanc@nvidia.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Message-id: 20250829082543.7680-6-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 466197fc7a25658f9187d538c26887f5738d1ac9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 9b95a7c9a9..b435efafe1 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -186,6 +186,9 @@ static void arm_virt_compat_set(MachineClass *mc)
+ #define LEGACY_RAMLIMIT_GB 255
+ #define LEGACY_RAMLIMIT_BYTES (LEGACY_RAMLIMIT_GB * GiB)
+ 
++/* MMIO region size for SMMUv3 */
++#define SMMU_IO_LEN 0x20000
++
+ /* Addresses and sizes of our components.
+  * 0..128MB is space for a flash device so we can run bootrom code such as UEFI.
+  * 128MB..256MB is used for miscellaneous device I/O.
+@@ -217,7 +220,7 @@ static const MemMapEntry base_memmap[] = {
+     [VIRT_FW_CFG] =             { 0x09020000, 0x00000018 },
+     [VIRT_GPIO] =               { 0x09030000, 0x00001000 },
+     [VIRT_UART1] =              { 0x09040000, 0x00001000 },
+-    [VIRT_SMMU] =               { 0x09050000, 0x00020000 },
++    [VIRT_SMMU] =               { 0x09050000, SMMU_IO_LEN },
+     [VIRT_PCDIMM_ACPI] =        { 0x09070000, MEMORY_HOTPLUG_IO_LEN },
+     [VIRT_ACPI_GED] =           { 0x09080000, ACPI_GED_EVT_SEL_LEN },
+     [VIRT_NVDIMM_ACPI] =        { 0x09090000, NVDIMM_ACPI_IO_LEN},
+-- 
+2.47.3
+

@@ -1,4 +1,4 @@
-From 869dc39b548550c0b7b6a2bd8ab13746ec1b50c1 Mon Sep 17 00:00:00 2001
+From f7424ca0a529f1f3a76a4044b535d1ecd7b5b114 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:44:41 +0100
 Subject: Add downstream x86_64 versioned 'pc' & 'q35' machine types
@@ -19,6 +19,9 @@ Rebase notes (10.0.0 rc0):
 - Add downstream specific compat
 - Fixing rhel-9.4 compat issue
 
+Rebase notes (10.1.0):
+- Use rebase compat
+
 Merged patches (9.1.0):
 - 043ad5ce97 Add upstream compatibility bits (partial)
 
@@ -34,16 +37,16 @@ Merged patches (10.0.0 rc0):
 - d93fcb3940 virtio-net: disable USO for all RHEL9 (partial)
 ---
  hw/i386/fw_cfg.c           |   2 +-
- hw/i386/pc.c               |  63 +++++++++++++++++++-
- hw/i386/pc_piix.c          |  49 +++++++++++++--
- hw/i386/pc_q35.c           | 119 ++++++++++++++++++++++++++++++++++---
+ hw/i386/pc.c               |  70 ++++++++++++++++++++-
+ hw/i386/pc_piix.c          |  55 +++++++++++++++--
+ hw/i386/pc_q35.c           | 123 ++++++++++++++++++++++++++++++++++---
  include/hw/boards.h        |   2 +
- include/hw/i386/pc.h       |  18 ++++++
+ include/hw/i386/pc.h       |  21 +++++++
  target/i386/kvm/kvm-cpu.c  |   1 +
  target/i386/kvm/kvm.c      |   4 ++
  tests/qtest/meson.build    |   2 +-
  tests/qtest/pvpanic-test.c |   5 +-
- 10 files changed, 247 insertions(+), 18 deletions(-)
+ 10 files changed, 267 insertions(+), 18 deletions(-)
 
 diff --git a/hw/i386/fw_cfg.c b/hw/i386/fw_cfg.c
 index 07df7281d2..8009f5f31f 100644
@@ -59,10 +62,10 @@ index 07df7281d2..8009f5f31f 100644
      }
  
 diff --git a/hw/i386/pc.c b/hw/i386/pc.c
-index 01d0581f62..5ae388789b 100644
+index 2f58e73d33..439abe8f46 100644
 --- a/hw/i386/pc.c
 +++ b/hw/i386/pc.c
-@@ -287,6 +287,65 @@ const size_t pc_compat_2_4_len = G_N_ELEMENTS(pc_compat_2_4);
+@@ -273,6 +273,72 @@ const size_t pc_compat_2_6_len = G_N_ELEMENTS(pc_compat_2_6);
   */
  #define PC_FW_DATA (0x20000 + 0x8000)
  
@@ -87,6 +90,13 @@ index 01d0581f62..5ae388789b 100644
 +    { TYPE_X86_CPU, "kvm-asyncpf-int", "on" },
 +};
 +const size_t pc_rhel_compat_len = G_N_ELEMENTS(pc_rhel_compat);
++
++GlobalProperty pc_rhel_10_2_compat[] = {
++    /* pc_rhel_10_2_compat from pc_compat_10_0 */
++    { TYPE_X86_CPU, "x-consistent-cache", "false" },
++    { TYPE_X86_CPU, "x-vendor-cpuid-only-v2", "false" },
++};
++const size_t pc_rhel_10_2_compat_len = G_N_ELEMENTS(pc_compat_10_0);
 +
 +GlobalProperty pc_rhel_10_1_compat[] = {
 +    /* pc_rhel_10_1_compat from pc_compat_9_1 */
@@ -128,7 +138,7 @@ index 01d0581f62..5ae388789b 100644
  GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled)
  {
      GSIState *s;
-@@ -1780,6 +1839,7 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+@@ -1754,6 +1820,7 @@ static void pc_machine_class_init(ObjectClass *oc, const void *data)
      pcmc->kvmclock_create_always = true;
      x86mc->apic_xrupt_override = true;
      assert(!mc->get_hotplug_handler);
@@ -136,7 +146,7 @@ index 01d0581f62..5ae388789b 100644
      mc->get_hotplug_handler = pc_get_hotplug_handler;
      mc->hotplug_allowed = pc_hotplug_allowed;
      mc->auto_enable_numa_with_memhp = true;
-@@ -1787,7 +1847,8 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+@@ -1761,7 +1828,8 @@ static void pc_machine_class_init(ObjectClass *oc, const void *data)
      mc->has_hotpluggable_cpus = true;
      mc->default_boot_order = "cad";
      mc->block_default_type = IF_IDE;
@@ -147,10 +157,10 @@ index 01d0581f62..5ae388789b 100644
      mc->wakeup = pc_machine_wakeup;
      hc->pre_plug = pc_machine_device_pre_plug_cb;
 diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
-index 1b58988c9a..78e9534a2c 100644
+index acf010e20f..d546c4a8a9 100644
 --- a/hw/i386/pc_piix.c
 +++ b/hw/i386/pc_piix.c
-@@ -52,6 +52,7 @@
+@@ -53,6 +53,7 @@
  #include "qapi/error.h"
  #include "qemu/error-report.h"
  #include "system/xen.h"
@@ -158,7 +168,7 @@ index 1b58988c9a..78e9534a2c 100644
  #ifdef CONFIG_XEN
  #include <xen/hvm/hvm_info_table.h>
  #include "hw/xen/xen_pt.h"
-@@ -446,11 +447,11 @@ static void pc_i440fx_init(MachineState *machine)
+@@ -469,11 +470,11 @@ static void pc_i440fx_init(MachineState *machine)
      pc_init1(machine, TYPE_I440FX_PCI_DEVICE);
  }
  
@@ -174,7 +184,7 @@ index 1b58988c9a..78e9534a2c 100644
  
  #if 0 /* Disabled for Red Hat Enterprise Linux */
  static void pc_i440fx_machine_options(MachineClass *m)
-@@ -845,3 +846,43 @@ static void xenfv_machine_3_1_options(MachineClass *m)
+@@ -853,3 +854,49 @@ static void xenfv_machine_3_1_options(MachineClass *m)
  DEFINE_PC_MACHINE(xenfv, "xenfv-3.1", pc_xen_hvm_init,
                    xenfv_machine_3_1_options);
  #endif
@@ -203,6 +213,8 @@ index 1b58988c9a..78e9534a2c 100644
 +                                   pc_set_south_bridge);
 +    object_class_property_set_description(oc, "x-south-bridge",
 +                                     "Use a different south bridge than PIIX3");
++    compat_props_add(m->compat_props,
++                     pc_piix_compat_defaults, pc_piix_compat_defaults_len);
 +}
 +
 +static void pc_i440fx_rhel_machine_10_0_0_options(MachineClass *m)
@@ -212,18 +224,22 @@ index 1b58988c9a..78e9534a2c 100644
 +    m->desc = "RHEL 10.0.0 PC (i440FX + PIIX, 1996)";
 +    m->deprecation_reason = rhel_old_machine_deprecation;
 +
++    compat_props_add(m->compat_props, hw_compat_rhel_10_2,
++		     hw_compat_rhel_10_2_len);
 +    compat_props_add(m->compat_props, hw_compat_rhel_10_1,
 +                     hw_compat_rhel_10_1_len);
++    compat_props_add(m->compat_props, pc_rhel_10_2_compat,
++                     pc_rhel_10_2_compat_len);
 +    compat_props_add(m->compat_props, pc_rhel_10_1_compat,
 +                     pc_rhel_10_1_compat_len);
 +}
 +DEFINE_I440FX_MACHINE_AS_LATEST(10, 0, 0);
 diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
-index 97a40a3a9c..2f19204304 100644
+index 2203ffd67e..e5d10c0335 100644
 --- a/hw/i386/pc_q35.c
 +++ b/hw/i386/pc_q35.c
-@@ -327,11 +327,11 @@ static void pc_q35_init(MachineState *machine)
-     }
+@@ -340,11 +340,11 @@ static void pc_q35_init(MachineState *machine)
+ #endif
  }
  
 -#define DEFINE_Q35_MACHINE(major, minor) \
@@ -238,7 +254,7 @@ index 97a40a3a9c..2f19204304 100644
  
  #define DEFINE_Q35_MACHINE_BUGFIX(major, minor, micro) \
      DEFINE_PC_VER_MACHINE(pc_q35, "pc-q35", pc_q35_init, false, NULL, major, minor, micro);
-@@ -342,21 +342,21 @@ static void pc_q35_machine_options(MachineClass *m)
+@@ -355,21 +355,21 @@ static void pc_q35_machine_options(MachineClass *m)
      pcmc->pci_root_uid = 0;
      pcmc->default_cpu_version = 1;
  
@@ -265,9 +281,9 @@ index 97a40a3a9c..2f19204304 100644
      compat_props_add(m->compat_props,
                       pc_q35_compat_defaults, pc_q35_compat_defaults_len);
  }
-@@ -691,3 +691,104 @@ static void pc_q35_machine_2_4_options(MachineClass *m)
+@@ -687,3 +687,108 @@ static void pc_q35_machine_2_6_options(MachineClass *m)
  
- DEFINE_Q35_MACHINE(2, 4);
+ DEFINE_Q35_MACHINE(2, 6);
  #endif /* Disabled for Red Hat Enterprise Linux */
 +
 +/* Red Hat Enterprise Linux machine types */
@@ -280,8 +296,12 @@ index 97a40a3a9c..2f19204304 100644
 +    pcmc->smbios_stream_product = "RHEL";
 +    pcmc->smbios_stream_version = "10.0.0";
 +
++    compat_props_add(m->compat_props, hw_compat_rhel_10_2,
++		     hw_compat_rhel_10_2_len);
 +    compat_props_add(m->compat_props, hw_compat_rhel_10_1,
 +                     hw_compat_rhel_10_1_len);
++    compat_props_add(m->compat_props, pc_rhel_10_2_compat,
++                     pc_rhel_10_2_compat_len);
 +    compat_props_add(m->compat_props, pc_rhel_10_1_compat,
 +                     pc_rhel_10_1_compat_len);
 +}
@@ -371,10 +391,10 @@ index 97a40a3a9c..2f19204304 100644
 +
 +DEFINE_Q35_MACHINE(9, 0, 0);
 diff --git a/include/hw/boards.h b/include/hw/boards.h
-index 182c11dc2c..a43847767f 100644
+index aca254ea18..22c3abd51e 100644
 --- a/include/hw/boards.h
 +++ b/include/hw/boards.h
-@@ -309,6 +309,8 @@ struct MachineClass {
+@@ -308,6 +308,8 @@ struct MachineClass {
      strList *allowed_dynamic_sysbus_devices;
      bool auto_enable_numa_with_memhp;
      bool auto_enable_numa_with_memdev;
@@ -384,15 +404,18 @@ index 182c11dc2c..a43847767f 100644
      bool smbus_no_migration_support;
      bool nvdimm_supported;
 diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
-index e4d32f8aea..5306b6d7cb 100644
+index 3b4ea24c20..633df2fcf8 100644
 --- a/include/hw/i386/pc.h
 +++ b/include/hw/i386/pc.h
-@@ -305,6 +305,24 @@ extern const size_t pc_compat_2_5_len;
- extern GlobalProperty pc_compat_2_4[];
- extern const size_t pc_compat_2_4_len;
+@@ -301,6 +301,27 @@ extern const size_t pc_compat_2_7_len;
+ extern GlobalProperty pc_compat_2_6[];
+ extern const size_t pc_compat_2_6_len;
  
 +extern GlobalProperty pc_rhel_compat[];
 +extern const size_t pc_rhel_compat_len;
++
++extern GlobalProperty pc_rhel_10_2_compat[];
++extern const size_t pc_rhel_10_2_compat_len;
 +
 +extern GlobalProperty pc_rhel_10_1_compat[];
 +extern const size_t pc_rhel_10_1_compat_len;
@@ -410,13 +433,13 @@ index e4d32f8aea..5306b6d7cb 100644
 +extern const size_t pc_rhel_9_0_compat_len;
 +
  #define DEFINE_PC_MACHINE(suffix, namestr, initfn, optsfn) \
-     static void pc_machine_##suffix##_class_init(ObjectClass *oc, void *data) \
-     { \
+     static void pc_machine_##suffix##_class_init(ObjectClass *oc, \
+                                                  const void *data) \
 diff --git a/target/i386/kvm/kvm-cpu.c b/target/i386/kvm/kvm-cpu.c
-index 6269fa8045..8f455c24e9 100644
+index 89a7953659..74c0b036e3 100644
 --- a/target/i386/kvm/kvm-cpu.c
 +++ b/target/i386/kvm/kvm-cpu.c
-@@ -174,6 +174,7 @@ static PropValue kvm_default_props[] = {
+@@ -175,6 +175,7 @@ static PropValue kvm_default_props[] = {
      { "acpi", "off" },
      { "monitor", "off" },
      { "svm", "off" },
@@ -425,10 +448,10 @@ index 6269fa8045..8f455c24e9 100644
  };
  
 diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
-index 6c749d4ee8..9cb2512c7c 100644
+index 369626f8c8..0eb39d22d6 100644
 --- a/target/i386/kvm/kvm.c
 +++ b/target/i386/kvm/kvm.c
-@@ -4366,6 +4366,7 @@ static int kvm_get_msrs(X86CPU *cpu)
+@@ -4389,6 +4389,7 @@ static int kvm_get_msrs(X86CPU *cpu)
      struct kvm_msr_entry *msrs = cpu->kvm_msr_buf->entries;
      int ret, i;
      uint64_t mtrr_top_bits;
@@ -436,7 +459,7 @@ index 6c749d4ee8..9cb2512c7c 100644
  
      kvm_msr_buf_reset(cpu);
  
-@@ -4763,6 +4764,9 @@ static int kvm_get_msrs(X86CPU *cpu)
+@@ -4786,6 +4787,9 @@ static int kvm_get_msrs(X86CPU *cpu)
              break;
          case MSR_KVM_ASYNC_PF_EN:
              env->async_pf_en_msr = msrs[i].data;
@@ -447,7 +470,7 @@ index 6c749d4ee8..9cb2512c7c 100644
          case MSR_KVM_ASYNC_PF_INT:
              env->async_pf_int_msr = msrs[i].data;
 diff --git a/tests/qtest/meson.build b/tests/qtest/meson.build
-index 3136d15e0f..7749ec4b2f 100644
+index 669d07c06b..b96aa06084 100644
 --- a/tests/qtest/meson.build
 +++ b/tests/qtest/meson.build
 @@ -49,6 +49,7 @@ qtests_filter = \

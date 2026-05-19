@@ -1,0 +1,131 @@
+From ad929c3b2e90eeb1f81a3f7074cdaaa922b073b9 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 29 Aug 2025 09:25:23 +0100
+Subject: [PATCH 05/16] hw/arm/smmu-common: Check SMMU has PCIe Root Complex
+ association
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 423: hw/arm/virt: Add support for user creatable SMMUv3 device
+RH-Jira: RHEL-73800
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [1/11] 9e7a87070ebfef643848d31fe66f5b4e82bfe0cf (eauger1/centos-qemu-kvm)
+
+We only allow default PCIe Root Complex(pcie.0) or pxb-pcie based extra
+root complexes to be associated with SMMU.
+
+Although this change does not affect functionality at present, it is
+required when we add support for user-creatable SMMUv3 devices in
+future patches.
+
+Note: Added a specific check to identify pxb-pcie to avoid matching
+pxb-cxl host bridges, which are also of type PCI_HOST_BRIDGE. This
+restriction can be relaxed once support for CXL devices on arm/virt
+is added and validated with SMMUv3.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Donald Dutile <ddutile@redhat.com>
+Message-id: 20250829082543.7680-2-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d9e6b8424fd2523a0361972d5dd841471879479c)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmu-common.c                | 31 ++++++++++++++++++++++++++---
+ hw/pci-bridge/pci_expander_bridge.c |  1 -
+ include/hw/pci/pci_bridge.h         |  1 +
+ 3 files changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/hw/arm/smmu-common.c b/hw/arm/smmu-common.c
+index 0dcaf2f589..7f64ea48d0 100644
+--- a/hw/arm/smmu-common.c
++++ b/hw/arm/smmu-common.c
+@@ -20,6 +20,7 @@
+ #include "trace.h"
+ #include "exec/target_page.h"
+ #include "hw/core/cpu.h"
++#include "hw/pci/pci_bridge.h"
+ #include "hw/qdev-properties.h"
+ #include "qapi/error.h"
+ #include "qemu/jhash.h"
+@@ -925,6 +926,7 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+ {
+     SMMUState *s = ARM_SMMU(dev);
+     SMMUBaseClass *sbc = ARM_SMMU_GET_CLASS(dev);
++    PCIBus *pci_bus = s->primary_bus;
+     Error *local_err = NULL;
+ 
+     sbc->parent_realize(dev, &local_err);
+@@ -937,11 +939,34 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+                                      g_free, g_free);
+     s->smmu_pcibus_by_busptr = g_hash_table_new(NULL, NULL);
+ 
+-    if (s->primary_bus) {
+-        pci_setup_iommu(s->primary_bus, &smmu_ops, s);
+-    } else {
++    if (!pci_bus) {
+         error_setg(errp, "SMMU is not attached to any PCI bus!");
++        return;
++    }
++
++    /*
++     * We only allow default PCIe Root Complex(pcie.0) or pxb-pcie based extra
++     * root complexes to be associated with SMMU.
++     */
++    if (pci_bus_is_express(pci_bus) && pci_bus_is_root(pci_bus) &&
++        object_dynamic_cast(OBJECT(pci_bus)->parent, TYPE_PCI_HOST_BRIDGE)) {
++        /*
++         * This condition matches either the default pcie.0, pxb-pcie, or
++         * pxb-cxl. For both pxb-pcie and pxb-cxl, parent_dev will be set.
++         * Currently, we don't allow pxb-cxl as it requires further
++         * verification. Therefore, make sure this is indeed pxb-pcie.
++         */
++        if (pci_bus->parent_dev) {
++            if (!object_dynamic_cast(OBJECT(pci_bus), TYPE_PXB_PCIE_BUS)) {
++                goto out_err;
++            }
++        }
++        pci_setup_iommu(pci_bus, &smmu_ops, s);
++        return;
+     }
++out_err:
++    error_setg(errp, "SMMU should be attached to a default PCIe root complex"
++               "(pcie.0) or a pxb-pcie based root complex");
+ }
+ 
+ /*
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index 3a29dfefc2..1bcceddbc4 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -34,7 +34,6 @@ typedef struct PXBBus PXBBus;
+ DECLARE_INSTANCE_CHECKER(PXBBus, PXB_BUS,
+                          TYPE_PXB_BUS)
+ 
+-#define TYPE_PXB_PCIE_BUS "pxb-pcie-bus"
+ DECLARE_INSTANCE_CHECKER(PXBBus, PXB_PCIE_BUS,
+                          TYPE_PXB_PCIE_BUS)
+ 
+diff --git a/include/hw/pci/pci_bridge.h b/include/hw/pci/pci_bridge.h
+index 8cdacbc4e1..a055fd8d32 100644
+--- a/include/hw/pci/pci_bridge.h
++++ b/include/hw/pci/pci_bridge.h
+@@ -104,6 +104,7 @@ typedef struct PXBPCIEDev {
+     PXBDev parent_obj;
+ } PXBPCIEDev;
+ 
++#define TYPE_PXB_PCIE_BUS "pxb-pcie-bus"
+ #define TYPE_PXB_CXL_BUS "pxb-cxl-bus"
+ #define TYPE_PXB_DEV "pxb"
+ OBJECT_DECLARE_SIMPLE_TYPE(PXBDev, PXB_DEV)
+-- 
+2.47.3
+

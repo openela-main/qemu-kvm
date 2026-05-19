@@ -1,0 +1,177 @@
+From 36d73722360db85d210bacef0c8386e5af031447 Mon Sep 17 00:00:00 2001
+From: Damien Bergamini <damien.bergamini@eviden.com>
+Date: Mon, 1 Sep 2025 15:14:23 +0000
+Subject: [PATCH 1/2] pcie_sriov: Fix broken MMIO accesses from SR-IOV VFs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 431: pcie_sriov: Fix broken MMIO accesses from SR-IOV VFs
+RH-Jira: RHEL-120115
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [1/1] b6bb40d37376db589852cb07a915d6f0eae29f67 (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-120115
+
+Starting with commit cab1398a60eb, SR-IOV VFs are realized as soon as
+pcie_sriov_pf_init() is called.  Because pcie_sriov_pf_init() must be
+called before pcie_sriov_pf_init_vf_bar(), the VF BARs types won't be
+known when the VF realize function calls pcie_sriov_vf_register_bar().
+
+This breaks the memory regions of the VFs (for instance with igbvf):
+
+$ lspci
+...
+    Region 0: Memory at 281a00000 (64-bit, prefetchable) [virtual] [size=16K]
+    Region 3: Memory at 281a20000 (64-bit, prefetchable) [virtual] [size=16K]
+
+$ info mtree
+...
+address-space: pci_bridge_pci_mem
+  0000000000000000-ffffffffffffffff (prio 0, i/o): pci_bridge_pci
+    0000000081a00000-0000000081a03fff (prio 1, i/o): igbvf-mmio
+    0000000081a20000-0000000081a23fff (prio 1, i/o): igbvf-msix
+
+and causes MMIO accesses to fail:
+
+    Invalid write at addr 0x281A01520, size 4, region '(null)', reason: rejected
+    Invalid read at addr 0x281A00C40, size 4, region '(null)', reason: rejected
+
+To fix this, VF BARs are now registered with pci_register_bar() which
+has a type parameter and pcie_sriov_vf_register_bar() is removed.
+
+Fixes: cab1398a60eb ("pcie_sriov: Reuse SR-IOV VF device instances")
+Signed-off-by: Damien Bergamini <damien.bergamini@eviden.com>
+Signed-off-by: Clement Mathieu--Drif <clement.mathieu--drif@eviden.com>
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-ID: <20250901151314.1038020-1-clement.mathieu--drif@eviden.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 2e54e5fda779a7ba45578884276dca62462f7a06)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ docs/pcie_sriov.txt         |  5 ++---
+ hw/net/igbvf.c              |  6 ++++--
+ hw/nvme/ctrl.c              |  8 ++------
+ hw/pci/pci.c                |  3 ---
+ hw/pci/pcie_sriov.c         | 11 -----------
+ include/hw/pci/pcie_sriov.h |  4 ----
+ 6 files changed, 8 insertions(+), 29 deletions(-)
+
+diff --git a/docs/pcie_sriov.txt b/docs/pcie_sriov.txt
+index ab2142807f..00d7bd93fd 100644
+--- a/docs/pcie_sriov.txt
++++ b/docs/pcie_sriov.txt
+@@ -72,8 +72,7 @@ setting up a BAR for a VF.
+ 2) Similarly in the implementation of the virtual function, you need to
+    make it a PCI Express device and add a similar set of capabilities
+    except for the SR/IOV capability. Then you need to set up the VF BARs as
+-   subregions of the PFs SR/IOV VF BARs by calling
+-   pcie_sriov_vf_register_bar() instead of the normal pci_register_bar() call:
++   subregions of the PFs SR/IOV VF BARs by calling pci_register_bar():
+ 
+    pci_your_vf_dev_realize( ... )
+    {
+@@ -83,7 +82,7 @@ setting up a BAR for a VF.
+       pcie_ari_init(d, 0x100);
+       ...
+       memory_region_init(mr, ... )
+-      pcie_sriov_vf_register_bar(d, bar_nr, mr);
++      pci_register_bar(d, bar_nr, bar_type, mr);
+       ...
+    }
+ 
+diff --git a/hw/net/igbvf.c b/hw/net/igbvf.c
+index 31d72c4977..9b0db8f841 100644
+--- a/hw/net/igbvf.c
++++ b/hw/net/igbvf.c
+@@ -251,10 +251,12 @@ static void igbvf_pci_realize(PCIDevice *dev, Error **errp)
+ 
+     memory_region_init_io(&s->mmio, OBJECT(dev), &mmio_ops, s, "igbvf-mmio",
+         IGBVF_MMIO_SIZE);
+-    pcie_sriov_vf_register_bar(dev, IGBVF_MMIO_BAR_IDX, &s->mmio);
++    pci_register_bar(dev, IGBVF_MMIO_BAR_IDX, PCI_BASE_ADDRESS_MEM_TYPE_64 |
++                     PCI_BASE_ADDRESS_MEM_PREFETCH, &s->mmio);
+ 
+     memory_region_init(&s->msix, OBJECT(dev), "igbvf-msix", IGBVF_MSIX_SIZE);
+-    pcie_sriov_vf_register_bar(dev, IGBVF_MSIX_BAR_IDX, &s->msix);
++    pci_register_bar(dev, IGBVF_MSIX_BAR_IDX, PCI_BASE_ADDRESS_MEM_TYPE_64 |
++                     PCI_BASE_ADDRESS_MEM_PREFETCH, &s->msix);
+ 
+     ret = msix_init(dev, IGBVF_MSIX_VEC_NUM, &s->msix, IGBVF_MSIX_BAR_IDX, 0,
+         &s->msix, IGBVF_MSIX_BAR_IDX, 0x2000, 0x70, errp);
+diff --git a/hw/nvme/ctrl.c b/hw/nvme/ctrl.c
+index f5ee6bf260..cd81f73997 100644
+--- a/hw/nvme/ctrl.c
++++ b/hw/nvme/ctrl.c
+@@ -8708,12 +8708,8 @@ static bool nvme_init_pci(NvmeCtrl *n, PCIDevice *pci_dev, Error **errp)
+                               msix_table_offset);
+         memory_region_add_subregion(&n->bar0, 0, &n->iomem);
+ 
+-        if (pci_is_vf(pci_dev)) {
+-            pcie_sriov_vf_register_bar(pci_dev, 0, &n->bar0);
+-        } else {
+-            pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY |
+-                             PCI_BASE_ADDRESS_MEM_TYPE_64, &n->bar0);
+-        }
++        pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY |
++                         PCI_BASE_ADDRESS_MEM_TYPE_64, &n->bar0);
+ 
+         ret = msix_init(pci_dev, nr_vectors,
+                         &n->bar0, 0, msix_table_offset,
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 0012cc12e7..d2ebb066e1 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -1490,9 +1490,6 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
+                         : pci_get_bus(pci_dev)->address_space_mem;
+ 
+     if (pci_is_vf(pci_dev)) {
+-        PCIDevice *pf = pci_dev->exp.sriov_vf.pf;
+-        assert(!pf || type == pf->exp.sriov_pf.vf_bar_type[region_num]);
+-
+         r->addr = pci_bar_address(pci_dev, region_num, r->type, r->size);
+         if (r->addr != PCI_BAR_UNMAPPED) {
+             memory_region_add_subregion_overlap(r->address_space,
+diff --git a/hw/pci/pcie_sriov.c b/hw/pci/pcie_sriov.c
+index cf1b5b5c05..c4f88f0975 100644
+--- a/hw/pci/pcie_sriov.c
++++ b/hw/pci/pcie_sriov.c
+@@ -246,17 +246,6 @@ void pcie_sriov_pf_init_vf_bar(PCIDevice *dev, int region_num,
+     dev->exp.sriov_pf.vf_bar_type[region_num] = type;
+ }
+ 
+-void pcie_sriov_vf_register_bar(PCIDevice *dev, int region_num,
+-                                MemoryRegion *memory)
+-{
+-    uint8_t type;
+-
+-    assert(dev->exp.sriov_vf.pf);
+-    type = dev->exp.sriov_vf.pf->exp.sriov_pf.vf_bar_type[region_num];
+-
+-    return pci_register_bar(dev, region_num, type, memory);
+-}
+-
+ static gint compare_vf_devfns(gconstpointer a, gconstpointer b)
+ {
+     return (*(PCIDevice **)a)->devfn - (*(PCIDevice **)b)->devfn;
+diff --git a/include/hw/pci/pcie_sriov.h b/include/hw/pci/pcie_sriov.h
+index aeaa38cf34..b0ea6a62c7 100644
+--- a/include/hw/pci/pcie_sriov.h
++++ b/include/hw/pci/pcie_sriov.h
+@@ -37,10 +37,6 @@ void pcie_sriov_pf_exit(PCIDevice *dev);
+ void pcie_sriov_pf_init_vf_bar(PCIDevice *dev, int region_num,
+                                uint8_t type, dma_addr_t size);
+ 
+-/* Instantiate a bar for a VF */
+-void pcie_sriov_vf_register_bar(PCIDevice *dev, int region_num,
+-                                MemoryRegion *memory);
+-
+ /**
+  * pcie_sriov_pf_init_from_user_created_vfs() - Initialize PF with user-created
+  *                                              VFs, adding ARI to PF
+-- 
+2.47.3
+

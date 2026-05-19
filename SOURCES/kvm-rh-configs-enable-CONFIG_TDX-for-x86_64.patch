@@ -1,0 +1,37 @@
+From 94e93fc7673af3236dc13cd8cfe90953c48bc813 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Fri, 12 Dec 2025 12:30:30 +0100
+Subject: [PATCH 6/6] rh: configs: enable CONFIG_TDX for x86_64
+
+RH-Author: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 445: rh: configs: enable CONFIG_TDX for x86_64
+RH-Jira: RHEL-111853
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+RH-Commit: [1/1] 282972aa9e4f94097c68b046f6bb09c4b03705fc (bonzini/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-111853
+
+TDX support is included in 10.1 but we still need to enable it,
+because RHEL is built --without-default-devices.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ configs/devices/x86_64-softmmu/x86_64-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+index 1f244f766d..9063ae1b53 100644
+--- a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
++++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+@@ -74,6 +74,7 @@ CONFIG_SERIAL_PCI=y
+ CONFIG_SEV=y
+ CONFIG_SMBIOS=y
+ CONFIG_SMBUS_EEPROM=y
++CONFIG_TDX=y
+ CONFIG_TEST_DEVICES=y
+ CONFIG_USB=y
+ CONFIG_USB_EHCI=y
+-- 
+2.47.3
+

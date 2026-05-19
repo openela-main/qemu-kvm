@@ -1,17 +1,16 @@
-From 51078ffb1274b7e75faab6a09aeefae2c9c1d552 Mon Sep 17 00:00:00 2001
+From d635b553683b9a057d7a1a4b7e3348c88dcab6d6 Mon Sep 17 00:00:00 2001
 From: Cornelia Huck <cohuck@redhat.com>
 Date: Thu, 11 Sep 2025 17:41:59 +0200
-Subject: [PATCH] arm/kvm: report registers we failed to set
+Subject: [PATCH 1/4] arm/kvm: report registers we failed to set
 
 RH-Author: Eric Auger <eric.auger@redhat.com>
-RH-MergeRequest: 487: [10.1-z] arm/kvm: report registers we failed to set
-RH-Jira: RHEL-120074
-RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-MergeRequest: 410: arm/kvm: report registers we failed to set
+RH-Jira: RHEL-119368
 RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
 RH-Acked-by: Gavin Shan <gshan@redhat.com>
-RH-Commit: [1/1] bc937c7e7b613078248649a897e19606444b298e
-
-JIRA: https://issues.redhat.com/browse/RHEL-120074
+RH-Acked-by: Donald Dutile <None>
+RH-Commit: [1/1] 82b4496284ff0a4dd2dd0eae7bb1cf114dded61e (eauger1/centos-qemu-kvm)
 
 If we fail migration because of a mismatch of some registers between
 source and destination, the error message is not very informative:
@@ -42,10 +41,10 @@ Signed-off-by: Eric Auger <eric.auger@redhat.com>
  1 file changed, 86 insertions(+)
 
 diff --git a/target/arm/kvm.c b/target/arm/kvm.c
-index d53ac64bf1..d139a965e9 100644
+index 6672344855..c1ec6654ca 100644
 --- a/target/arm/kvm.c
 +++ b/target/arm/kvm.c
-@@ -932,6 +932,58 @@ bool write_kvmstate_to_list(ARMCPU *cpu)
+@@ -900,6 +900,58 @@ bool write_kvmstate_to_list(ARMCPU *cpu)
      return ok;
  }
  
@@ -104,7 +103,7 @@ index d53ac64bf1..d139a965e9 100644
  bool write_list_to_kvmstate(ARMCPU *cpu, int level)
  {
      CPUState *cs = CPU(cpu);
-@@ -959,11 +1011,45 @@ bool write_list_to_kvmstate(ARMCPU *cpu, int level)
+@@ -927,11 +979,45 @@ bool write_list_to_kvmstate(ARMCPU *cpu, int level)
              g_assert_not_reached();
          }
          if (ret) {

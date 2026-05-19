@@ -1,4 +1,4 @@
-From 68460abb11ff9a65c7e9d988609954c2845d32e4 Mon Sep 17 00:00:00 2001
+From 0976e78ca34a38fbc21c71c2f05e884c0264b62e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
 Date: Wed, 3 Jul 2024 13:44:36 +0100
 Subject: Add downstream s390x versioned 's390-ccw-virtio' machine types
@@ -14,6 +14,9 @@ Rebase notes (10.0.0):
 - Use upstream compat
 - Disabled relaxed-translation for older types
 
+Rebase notes (10.1.0):
+- Use rebase compat
+
 Merged patches (9.1.0):
 - 043ad5ce97 Add upstream compatibility bits (partial)
 - 04596b496e s390x: remove deprecated rhel machine types
@@ -24,17 +27,17 @@ Merged patches (10.0.0 rc0):
 - 926a9d0ca2 redhat: Add rhel9.6.0 and rhel10.0.0 machine types
 - d93fcb3940 virtio-net: disable USO for all RHEL9 (partial)
 ---
- hw/s390x/s390-virtio-ccw.c       | 103 +++++++++++++++++++++++++++++--
+ hw/s390x/s390-virtio-ccw.c       | 106 +++++++++++++++++++++++++++++--
  target/s390x/cpu_models.c        |  11 ++++
  target/s390x/cpu_models.h        |   2 +
  target/s390x/cpu_models_system.c |   2 +
- 4 files changed, 113 insertions(+), 5 deletions(-)
+ 4 files changed, 116 insertions(+), 5 deletions(-)
 
 diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
-index 5aa5910399..59b545740e 100644
+index 2fca2bcf4d..9be423858d 100644
 --- a/hw/s390x/s390-virtio-ccw.c
 +++ b/hw/s390x/s390-virtio-ccw.c
-@@ -696,6 +696,7 @@ static void s390_nmi(NMIState *n, int cpu_index, Error **errp)
+@@ -716,6 +716,7 @@ static void s390_nmi(NMIState *n, int cpu_index, Error **errp)
      s390_cpu_restart(S390_CPU(cs));
  }
  
@@ -42,7 +45,7 @@ index 5aa5910399..59b545740e 100644
  static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
  {
      /* same logic as in sclp.c */
-@@ -715,6 +716,7 @@ static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
+@@ -735,6 +736,7 @@ static ram_addr_t s390_fixup_ram_size(ram_addr_t sz)
      }
      return newsz;
  }
@@ -50,7 +53,7 @@ index 5aa5910399..59b545740e 100644
  
  static inline bool machine_get_aes_key_wrap(Object *obj, Error **errp)
  {
-@@ -893,7 +895,7 @@ static const TypeInfo ccw_machine_info = {
+@@ -883,7 +885,7 @@ static const TypeInfo ccw_machine_info = {
      {                                                                         \
          MachineClass *mc = MACHINE_CLASS(oc);                                 \
          MACHINE_VER_SYM(class_options, ccw, __VA_ARGS__)(mc);                 \
@@ -59,7 +62,7 @@ index 5aa5910399..59b545740e 100644
          mc->init = MACHINE_VER_SYM(mach_init, ccw, __VA_ARGS__);              \
          MACHINE_VER_DEPRECATION(__VA_ARGS__);                                 \
          if (latest) {                                                         \
-@@ -914,11 +916,11 @@ static const TypeInfo ccw_machine_info = {
+@@ -904,11 +906,11 @@ static const TypeInfo ccw_machine_info = {
      }                                                                         \
      type_init(MACHINE_VER_SYM(register, ccw, __VA_ARGS__))
  
@@ -75,8 +78,8 @@ index 5aa5910399..59b545740e 100644
  
  
  #if 0 /* Disabled for Red Hat Enterprise Linux */
-@@ -1298,6 +1300,97 @@ DEFINE_CCW_MACHINE(2, 9);
- #endif
+@@ -1170,6 +1172,100 @@ DEFINE_CCW_MACHINE(4, 2);
+ 
  #endif /* disabled for RHEL */
  
 +static void ccw_rhel_machine_10_0_0_instance_options(MachineState *machine)
@@ -85,12 +88,15 @@ index 5aa5910399..59b545740e 100644
 +
 +static void ccw_rhel_machine_10_0_0_class_options(MachineClass *mc)
 +{
++    S390CcwMachineClass *s390mc = S390_CCW_MACHINE_CLASS(mc);
 +    static GlobalProperty compat[] = {
 +        { TYPE_S390_PCI_DEVICE, "relaxed-translation", "off", },
 +    };
 +
 +    compat_props_add(mc->compat_props, compat, G_N_ELEMENTS(compat));
++    compat_props_add(mc->compat_props, hw_compat_rhel_10_2, hw_compat_rhel_10_2_len);
 +    compat_props_add(mc->compat_props, hw_compat_rhel_10_1, hw_compat_rhel_10_1_len);
++    s390mc->use_cpi = false;
 +}
 +DEFINE_CCW_MACHINE_AS_LATEST(10, 0, 0);
 +
@@ -174,7 +180,7 @@ index 5aa5910399..59b545740e 100644
  {
      type_register_static(&ccw_machine_info);
 diff --git a/target/s390x/cpu_models.c b/target/s390x/cpu_models.c
-index 111d46a59a..156bcf0d22 100644
+index fe29f5c5b7..2a7fc949a4 100644
 --- a/target/s390x/cpu_models.c
 +++ b/target/s390x/cpu_models.c
 @@ -47,6 +47,9 @@
@@ -187,8 +193,8 @@ index 111d46a59a..156bcf0d22 100644
  static S390CPUDef s390_cpu_defs[] = {
      /*
       * Linux requires at least z10 nowadays, and IBM only supports recent CPUs
-@@ -932,22 +935,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, void *data)
- static void s390_base_cpu_model_class_init(ObjectClass *oc, void *data)
+@@ -931,22 +934,30 @@ static void s390_host_cpu_model_class_init(ObjectClass *oc, const void *data)
+ static void s390_base_cpu_model_class_init(ObjectClass *oc, const void *data)
  {
      S390CPUClass *xcc = S390_CPU_CLASS(oc);
 +    CPUClass *cc = CPU_CLASS(oc);
@@ -203,7 +209,7 @@ index 111d46a59a..156bcf0d22 100644
 +    }
  }
  
- static void s390_cpu_model_class_init(ObjectClass *oc, void *data)
+ static void s390_cpu_model_class_init(ObjectClass *oc, const void *data)
  {
      S390CPUClass *xcc = S390_CPU_CLASS(oc);
 +    CPUClass *cc = CPU_CLASS(oc);
@@ -217,9 +223,9 @@ index 111d46a59a..156bcf0d22 100644
 +    }
  }
  
- static void s390_qemu_cpu_model_class_init(ObjectClass *oc, void *data)
+ static void s390_qemu_cpu_model_class_init(ObjectClass *oc, const void *data)
 diff --git a/target/s390x/cpu_models.h b/target/s390x/cpu_models.h
-index 71d4bc2dd4..d6c7c2cb50 100644
+index f701bc0b53..670a567c67 100644
 --- a/target/s390x/cpu_models.h
 +++ b/target/s390x/cpu_models.h
 @@ -38,6 +38,8 @@ typedef struct S390CPUDef {
@@ -232,7 +238,7 @@ index 71d4bc2dd4..d6c7c2cb50 100644
  
  /* CPU model based on a CPU definition */
 diff --git a/target/s390x/cpu_models_system.c b/target/s390x/cpu_models_system.c
-index 4351182f72..4074124c44 100644
+index 5b84604867..d715bdc870 100644
 --- a/target/s390x/cpu_models_system.c
 +++ b/target/s390x/cpu_models_system.c
 @@ -56,6 +56,7 @@ static void create_cpu_model_list(ObjectClass *klass, void *opaque)

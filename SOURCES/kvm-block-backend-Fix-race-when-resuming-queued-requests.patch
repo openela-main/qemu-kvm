@@ -1,14 +1,14 @@
-From 6f335cf5480889940e43a5359f718f1b5ea8b6aa Mon Sep 17 00:00:00 2001
+From 1393ba1b8f4ee2b7ec9dcb12317ec2d53c7d793e Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Wed, 19 Nov 2025 18:27:20 +0100
-Subject: [PATCH 2/2] block-backend: Fix race when resuming queued requests
+Subject: [PATCH 01/32] block-backend: Fix race when resuming queued requests
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 519: block-backend: Fix race when resuming queued requests [10.1.z]
-RH-Jira: RHEL-133527
-RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 432: block-backend: Fix race when resuming queued requests [c10s]
+RH-Jira: RHEL-129540
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [1/1] fa127e3871427f65c754d5bd912c2853050a911e (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [1/1] fa7ead79ae44d89054ed574deb3fbd196536fef3 (kmwolf/centos-qemu-kvm)
 
 When new requests arrive at a BlockBackend that is currently drained,
 these requests are queued until the drain section ends.
@@ -40,10 +40,10 @@ Signed-off-by: Kevin Wolf <kwolf@redhat.com>
  1 file changed, 5 insertions(+), 3 deletions(-)
 
 diff --git a/block/block-backend.c b/block/block-backend.c
-index 68209bb2f7..626b84c96a 100644
+index f8d6ba65c1..d6df369188 100644
 --- a/block/block-backend.c
 +++ b/block/block-backend.c
-@@ -1322,9 +1322,9 @@ static void coroutine_fn blk_wait_while_drained(BlockBackend *blk)
+@@ -1318,9 +1318,9 @@ static void coroutine_fn blk_wait_while_drained(BlockBackend *blk)
           * section.
           */
          qemu_mutex_lock(&blk->queued_requests_lock);
@@ -54,7 +54,7 @@ index 68209bb2f7..626b84c96a 100644
          qemu_mutex_unlock(&blk->queued_requests_lock);
      }
  }
-@@ -2771,9 +2771,11 @@ static void blk_root_drained_end(BdrvChild *child)
+@@ -2767,9 +2767,11 @@ static void blk_root_drained_end(BdrvChild *child)
              blk->dev_ops->drained_end(blk->dev_opaque);
          }
          qemu_mutex_lock(&blk->queued_requests_lock);

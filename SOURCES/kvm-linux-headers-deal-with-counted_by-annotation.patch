@@ -1,0 +1,47 @@
+From aa56db1a8eb6ede62e58ab4827fc8a7ba8a2ec4a Mon Sep 17 00:00:00 2001
+From: Paolo Abeni <pabeni@redhat.com>
+Date: Mon, 22 Sep 2025 16:18:16 +0200
+Subject: [PATCH 07/19] linux-headers: deal with counted_by annotation
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 456: backport support for GSO over UDP tunnel offload
+RH-Jira: RHEL-143785
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [2/14] dacb8059a0de06a0b9665152e0725da7da08467e (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-143785
+
+Such annotation is present into the kernel uAPI headers since
+v6.7, and will be used soon by the vhost_type.h. Deal with it
+just stripping it.
+
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-ID: <a1430f43cc954d2a931fa60581bda6d6af4bc771.1758549625.git.pabeni@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit c3d9dcd87f0d228ea3ac5a42076da829cff401f0)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ scripts/update-linux-headers.sh | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/update-linux-headers.sh b/scripts/update-linux-headers.sh
+index 828a7809f7..844d9cb9f5 100755
+--- a/scripts/update-linux-headers.sh
++++ b/scripts/update-linux-headers.sh
+@@ -90,6 +90,7 @@ cp_portable() {
+         -e 's/<linux\/\([^>]*\)>/"standard-headers\/linux\/\1"/' \
+         -e "$arch_cmd" \
+         -e 's/__bitwise//' \
++        -e 's/__counted_by(\w*)//' \
+         -e 's/__attribute__((packed))/QEMU_PACKED/' \
+         -e 's/__inline__/inline/' \
+         -e 's/__BITS_PER_LONG/HOST_LONG_BITS/' \
+-- 
+2.47.3
+

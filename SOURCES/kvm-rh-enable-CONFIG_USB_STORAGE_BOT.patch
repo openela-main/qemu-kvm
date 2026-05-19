@@ -1,0 +1,62 @@
+From c70f4d1ef65ee432a5f2cedb94447d705f6d8686 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Marc-Andr=C3=A9=20Lureau?= <marcandre.lureau@redhat.com>
+Date: Mon, 3 Nov 2025 14:35:38 +0400
+Subject: [PATCH 10/10] rh: enable CONFIG_USB_STORAGE_BOT
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Marc-André Lureau <marcandre.lureau@redhat.com>
+RH-MergeRequest: 417: rh: enable CONFIG_USB_STORAGE_BOT
+RH-Jira: RHEL-101929
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/1] 612acd1d19c799c7441f63548648eb70b9e1dfd6 (marcandre.lureau-rh/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-101929
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+---
+ configs/devices/aarch64-softmmu/aarch64-rh-devices.mak | 1 +
+ configs/devices/riscv64-softmmu/riscv64-rh-devices.mak | 1 +
+ configs/devices/x86_64-softmmu/x86_64-rh-devices.mak   | 1 +
+ 3 files changed, 3 insertions(+)
+
+diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+index 855278f70e..92d0b322d0 100644
+--- a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
++++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+@@ -19,6 +19,7 @@ CONFIG_SEMIHOSTING=y
+ CONFIG_USB=y
+ CONFIG_USB_XHCI=y
+ CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_STORAGE_BOT=y
+ CONFIG_USB_STORAGE_CORE=y
+ CONFIG_USB_STORAGE_CLASSIC=y
+ CONFIG_USB_HUB=y
+diff --git a/configs/devices/riscv64-softmmu/riscv64-rh-devices.mak b/configs/devices/riscv64-softmmu/riscv64-rh-devices.mak
+index b5e55de916..5ac051f90b 100644
+--- a/configs/devices/riscv64-softmmu/riscv64-rh-devices.mak
++++ b/configs/devices/riscv64-softmmu/riscv64-rh-devices.mak
+@@ -15,6 +15,7 @@ CONFIG_SEMIHOSTING=y
+ CONFIG_USB=y
+ CONFIG_USB_XHCI=y
+ CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_STORAGE_BOT=y
+ CONFIG_USB_STORAGE_CORE=y
+ CONFIG_USB_STORAGE_CLASSIC=y
+ CONFIG_USB_HUB=y
+diff --git a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+index 828cb8aa6f..1f244f766d 100644
+--- a/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
++++ b/configs/devices/x86_64-softmmu/x86_64-rh-devices.mak
+@@ -79,6 +79,7 @@ CONFIG_USB=y
+ CONFIG_USB_EHCI=y
+ CONFIG_USB_EHCI_PCI=y
+ CONFIG_USB_SMARTCARD=y
++CONFIG_USB_STORAGE_BOT=y
+ CONFIG_USB_STORAGE_CORE=y
+ CONFIG_USB_STORAGE_CLASSIC=y
+ CONFIG_USB_UHCI=y
+-- 
+2.47.3
+

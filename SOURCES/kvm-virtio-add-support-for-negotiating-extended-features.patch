@@ -1,0 +1,133 @@
+From d7e0acde126d1f5385096d6b7247de82ee6b0e8d Mon Sep 17 00:00:00 2001
+From: Paolo Abeni <pabeni@redhat.com>
+Date: Mon, 22 Sep 2025 16:18:20 +0200
+Subject: [PATCH 11/19] virtio: add support for negotiating extended features
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 456: backport support for GSO over UDP tunnel offload
+RH-Jira: RHEL-143785
+RH-Acked-by: Cindy Lu <lulu@redhat.com>
+RH-Acked-by: MST <mst@redhat.com>
+RH-Commit: [6/14] 56553123a4941b457a34af8be01b5757a97706e6 (lvivier/qemu-kvm-centos)
+
+JIRA: https://issues.redhat.com/browse/RHEL-143785
+
+The virtio specifications allows for a device features space up
+to 128 bits and more. Soon we are going to use some of the 'extended'
+bits features for the virtio net driver.
+
+Add support to allow extended features negotiation on a per
+devices basis. Devices willing to negotiated extended features
+need to implemented a new pair of features getter/setter, the
+core will conditionally use them instead of the basic one.
+
+Note that 'bad_features' don't need to be extended, as they are
+bound to the 64 bits limit.
+
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Acked-by: Jason Wang <jasowang@redhat.com>
+Acked-by: Stefano Garzarella <sgarzare@redhat.com>
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+Tested-by: Lei Yang <leiyang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-ID: <9bb29d70adc3f2b8c7756d4e3cd076cffee87826.1758549625.git.pabeni@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 64a6a336f42bc6305ab7589fd874cb4a3d403bd0)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/virtio/virtio-bus.c     | 11 ++++++++---
+ hw/virtio/virtio.c         | 14 +++++++++++---
+ include/hw/virtio/virtio.h |  4 ++++
+ 3 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/hw/virtio/virtio-bus.c b/hw/virtio/virtio-bus.c
+index 11adfbf3ab..cef944e015 100644
+--- a/hw/virtio/virtio-bus.c
++++ b/hw/virtio/virtio-bus.c
+@@ -62,9 +62,14 @@ void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp)
+     }
+ 
+     /* Get the features of the plugged device. */
+-    assert(vdc->get_features != NULL);
+-    vdev->host_features = vdc->get_features(vdev, vdev->host_features,
+-                                            &local_err);
++    if (vdc->get_features_ex) {
++        vdc->get_features_ex(vdev, vdev->host_features_ex, &local_err);
++    } else {
++        assert(vdc->get_features != NULL);
++        virtio_features_from_u64(vdev->host_features_ex,
++                                 vdc->get_features(vdev, vdev->host_features,
++                                                   &local_err));
++    }
+     if (local_err) {
+         error_propagate(errp, local_err);
+         return;
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index bf53c211e5..34f977a3c9 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -3103,7 +3103,9 @@ static int virtio_set_features_nocheck(VirtIODevice *vdev, const uint64_t *val)
+     bad = virtio_features_andnot(tmp, val, vdev->host_features_ex);
+     virtio_features_and(tmp, val, vdev->host_features_ex);
+ 
+-    if (k->set_features) {
++    if (k->set_features_ex) {
++        k->set_features_ex(vdev, val);
++    } else if (k->set_features) {
+         bad = bad || virtio_features_use_ex(tmp);
+         k->set_features(vdev, tmp[0]);
+     }
+@@ -3149,6 +3151,13 @@ virtio_set_features_nocheck_maybe_co(VirtIODevice *vdev,
+ int virtio_set_features(VirtIODevice *vdev, uint64_t val)
+ {
+     uint64_t features[VIRTIO_FEATURES_NU64S];
++
++    virtio_features_from_u64(features, val);
++    return virtio_set_features_ex(vdev, features);
++}
++
++int virtio_set_features_ex(VirtIODevice *vdev, const uint64_t *features)
++{
+     int ret;
+     /*
+      * The driver must not attempt to set features after feature negotiation
+@@ -3158,13 +3167,12 @@ int virtio_set_features(VirtIODevice *vdev, uint64_t val)
+         return -EINVAL;
+     }
+ 
+-    if (val & (1ull << VIRTIO_F_BAD_FEATURE)) {
++    if (features[0] & (1ull << VIRTIO_F_BAD_FEATURE)) {
+         qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: guest driver for %s has enabled UNUSED(30) feature bit!\n",
+                       __func__, vdev->name);
+     }
+ 
+-    virtio_features_from_u64(features, val);
+     ret = virtio_set_features_nocheck(vdev, features);
+     if (virtio_vdev_has_feature(vdev, VIRTIO_RING_F_EVENT_IDX)) {
+         /* VIRTIO_RING_F_EVENT_IDX changes the size of the caches.  */
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 39e4059a66..2aeb021fb3 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -178,6 +178,9 @@ struct VirtioDeviceClass {
+     /* This is what a VirtioDevice must implement */
+     DeviceRealize realize;
+     DeviceUnrealize unrealize;
++    void (*get_features_ex)(VirtIODevice *vdev, uint64_t *requested_features,
++                            Error **errp);
++    void (*set_features_ex)(VirtIODevice *vdev, const uint64_t *val);
+     uint64_t (*get_features)(VirtIODevice *vdev,
+                              uint64_t requested_features,
+                              Error **errp);
+@@ -373,6 +376,7 @@ void virtio_queue_reset(VirtIODevice *vdev, uint32_t queue_index);
+ void virtio_queue_enable(VirtIODevice *vdev, uint32_t queue_index);
+ void virtio_update_irq(VirtIODevice *vdev);
+ int virtio_set_features(VirtIODevice *vdev, uint64_t val);
++int virtio_set_features_ex(VirtIODevice *vdev, const uint64_t *val);
+ 
+ /* Base devices.  */
+ typedef struct VirtIOBlkConf VirtIOBlkConf;
+-- 
+2.47.3
+

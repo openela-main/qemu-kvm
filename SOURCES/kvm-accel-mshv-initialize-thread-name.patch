@@ -1,0 +1,39 @@
+From f102098ed05c9157f2cffb4ffef8324c4f83f005 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Wed, 22 Oct 2025 14:52:48 +0200
+Subject: [PATCH 31/32] accel/mshv: initialize thread name
+
+RH-Author: Igor Mammedov <imammedo@redhat.com>
+RH-MergeRequest: 437: el10: x86: enablement for Azure L1VH OCP readiness
+RH-Jira: RHEL-134212
+RH-Acked-by: Vitaly Kuznetsov <vkuznets@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [29/30] 3e7286070c5ce162001fd407ebb1fa3920e300fa
+
+The initialization was dropped when the code was copied from existing
+accelerators.  Coverity knows (CID 1641400).  Fix it.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 2cd3c1d35a06a62b25afa80c5baf381ce4b56805)
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+---
+ accel/mshv/mshv-all.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/accel/mshv/mshv-all.c b/accel/mshv/mshv-all.c
+index 45174f7c4e..80428d130d 100644
+--- a/accel/mshv/mshv-all.c
++++ b/accel/mshv/mshv-all.c
+@@ -596,6 +596,9 @@ static void mshv_start_vcpu_thread(CPUState *cpu)
+ {
+     char thread_name[VCPU_THREAD_NAME_SIZE];
+ 
++    snprintf(thread_name, VCPU_THREAD_NAME_SIZE, "CPU %d/MSHV",
++             cpu->cpu_index);
++
+     cpu->thread = g_malloc0(sizeof(QemuThread));
+     cpu->halt_cond = g_malloc0(sizeof(QemuCond));
+ 
+-- 
+2.47.3
+
