@@ -1,0 +1,61 @@
+From fdb5967b1f898fdcb894c625681e9adc144b40c8 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Mon, 30 Mar 2026 14:16:35 +0200
+Subject: [PATCH] scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest
+ recoverable
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 547: scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest recoverable [10.2.z]
+RH-Jira: RHEL-164536
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [1/1] af2700383121412776eb034ecc846ce9d48e3750 (kmwolf/rhel-qemu-kvm)
+
+When commit bdf9613b introduced scsi_sense_buf_is_guest_recoverable(),
+it included LOGICAL UNIT NOT SUPPORTED in the list of guest recoverable
+sense codes. It doesn't really explain how the codes to be in the list
+were selected.
+
+As the LUN doesn't come from the guest, but from the block backend
+(usually the SCSI device on the host that was opened with host_device,
+but it could also be the iscsi block driver), there is really no way the
+guest could influence this.
+
+It seems that on some storage arrays, LOGICAL UNIT NOT SUPPORTED can
+happen during failover operations. When combined with multipath, the
+request should be retried on another path instead of being reported to
+the guest, which would offline the filesystem in response.
+
+Simply returning false in scsi_sense_buf_is_guest_recoverable() will
+enable the retry logic in file-posix, and will also make sure that if
+the error persists, the configured error policy is respected so that the
+VM can be stopped.
+
+Buglink: https://redhat.atlassian.net/browse/RHEL-158212
+Fixes: bdf9613b7f87 ('scsi: explicitly list guest-recoverable sense codes')
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260330121635.49205-1-kwolf@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ccc613f96c66eb5401185ff6eeba18143892055d)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ scsi/utils.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/scsi/utils.c b/scsi/utils.c
+index 545956f4f9..daee90ecf0 100644
+--- a/scsi/utils.c
++++ b/scsi/utils.c
+@@ -373,7 +373,6 @@ static bool scsi_sense_is_guest_recoverable(int key, int asc, int ascq)
+     case 0x1a00: /* PARAMETER LIST LENGTH ERROR */
+     case 0x2000: /* INVALID OPERATION CODE */
+     case 0x2400: /* INVALID FIELD IN CDB */
+-    case 0x2500: /* LOGICAL UNIT NOT SUPPORTED */
+     case 0x2600: /* INVALID FIELD IN PARAMETER LIST */
+ 
+     case 0x2104: /* UNALIGNED WRITE COMMAND */
+-- 
+2.52.0
+

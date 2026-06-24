@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.1
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -422,6 +422,8 @@ Patch132: kvm-linux-aio-Resubmit-tails-of-short-reads-writes.patch
 Patch133: kvm-block-io_uring-avoid-potentially-getting-stuck-after.patch
 # For RHEL-158224 - qemu-kvm: disk writes of fewer bytes than requested is a retry condition, not necessarily an indication of ENOSPC [rhel-10.2]
 Patch134: kvm-io-uring-Resubmit-tails-of-short-writes.patch
+# For RHEL-164536 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.2.z]
+Patch135: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1501,6 +1503,11 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Tue May 12 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.1
+- kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164536]
+- Resolves: RHEL-164536
+  (qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.2.z])
+
 * Mon Mar 30 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16
 - kvm-linux-aio-Put-all-parameters-into-qemu_laiocb.patch [RHEL-158224]
 - kvm-linux-aio-Resubmit-tails-of-short-reads-writes.patch [RHEL-158224]
