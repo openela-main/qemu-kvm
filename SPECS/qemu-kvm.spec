@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 17%{?rcrel}%{?dist}%{?cc_suffix}.1
+Release: 17%{?rcrel}%{?dist}%{?cc_suffix}.3
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -347,6 +347,16 @@ Patch100: kvm-block-io_uring-avoid-potentially-getting-stuck-after.patch
 Patch101: kvm-io-uring-Resubmit-tails-of-short-writes.patch
 # For RHEL-164534 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-9.8.z]
 Patch102: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
+# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
+Patch103: kvm-scsi-adjust-error_prepend-formatting.patch
+# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
+Patch104: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
+# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
+Patch105: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
+# For RHEL-184951 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z]
+Patch106: kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch
+# For RHEL-184951 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z]
+Patch107: kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch
 
 
 # For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
@@ -2061,6 +2071,19 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Wed Jun 17 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.3
+- kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch [RHEL-184951]
+- kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch [RHEL-184951]
+- Resolves: RHEL-184951
+  (MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z])
+
+* Mon Jun 15 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.2
+- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-166008]
+- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-166008]
+- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-166008]
+- Resolves: RHEL-166008
+  (live migration failed the VM just register key only [rhel-9.8.z])
+
 * Tue May 05 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.1
 - kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164534]
 - Resolves: RHEL-164534

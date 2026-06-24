@@ -1,0 +1,49 @@
+From e3be4702eeaefb442f56500024302dd076edb3d3 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 1 Apr 2026 13:19:25 -0400
+Subject: [PATCH 1/3] scsi: adjust error_prepend() formatting
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 551: scsi: PR live migration PREEMPT fixes [9.8.z]
+RH-Jira: RHEL-166008
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
+RH-Commit: [1/3] fb6b13112a5cdc9a662b2a21619470b2f01deeef
+
+The error strings will be concatenated so add a separator to make the
+combined error message easy to read.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Link: https://lore.kernel.org/r/20260401171927.396672-2-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 15c57ac351ccb4af625cd7dc582831f472c1a68f)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-generic.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index b8b3f399f0..5825a47311 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -438,7 +438,7 @@ static bool scsi_generic_pr_register(SCSIDevice *s, uint64_t key, Error **errp)
+     ret = scsi_SG_IO(s->conf.blk, SG_DXFER_TO_DEV, cmd, sizeof(cmd),
+                      buf, sizeof(buf), s->io_timeout, errp);
+     if (ret < 0) {
+-        error_prepend(errp, "PERSISTENT RESERVE OUT with REGISTER");
++        error_prepend(errp, "PERSISTENT RESERVE OUT with REGISTER: ");
+         return false;
+     }
+     return true;
+@@ -462,7 +462,7 @@ static bool scsi_generic_pr_preempt(SCSIDevice *s, uint64_t key,
+     ret = scsi_SG_IO(s->conf.blk, SG_DXFER_TO_DEV, cmd, sizeof(cmd),
+                      buf, sizeof(buf), s->io_timeout, errp);
+     if (ret < 0) {
+-        error_prepend(errp, "PERSISTENT RESERVE OUT with PREEMPT");
++        error_prepend(errp, "PERSISTENT RESERVE OUT with PREEMPT: ");
+         return false;
+     }
+     return true;
+-- 
+2.52.0
+
