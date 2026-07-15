@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.1
+Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.2
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -424,6 +424,16 @@ Patch133: kvm-block-io_uring-avoid-potentially-getting-stuck-after.patch
 Patch134: kvm-io-uring-Resubmit-tails-of-short-writes.patch
 # For RHEL-164536 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.2.z]
 Patch135: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
+# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
+Patch136: kvm-scsi-adjust-error_prepend-formatting.patch
+# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
+Patch137: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
+# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
+Patch138: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
+# For RHEL-166033 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z]
+Patch139: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
+# For RHEL-166033 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z]
+Patch140: kvm-scsi-handle-reservation-changes-across-migration.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1503,6 +1513,17 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Mon Jun 15 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.2
+- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-166007]
+- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-166007]
+- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-166007]
+- kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch [RHEL-166033]
+- kvm-scsi-handle-reservation-changes-across-migration.patch [RHEL-166033]
+- Resolves: RHEL-166007
+  (live migration failed the VM just register key only [rhel-10.2.z])
+- Resolves: RHEL-166033
+  (live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z])
+
 * Tue May 12 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.1
 - kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164536]
 - Resolves: RHEL-164536

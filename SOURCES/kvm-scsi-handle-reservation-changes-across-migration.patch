@@ -1,0 +1,247 @@
+From 15712493872c1c203125d2be8e4fc80abc9a2f5d Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 15 Apr 2026 19:29:06 -0400
+Subject: [PATCH 5/5] scsi: handle reservation changes across migration
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 554: scsi: handle reservation changes across migration
+RH-Jira: RHEL-166033
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [5/5] 034c2ae4c0618c71a493ecbe2fea3c2c5313a2cd
+
+Other nodes in the cluster can preempt or clear SCSI Persistent
+Reservations at any time. When this happens across live migration, the
+reservation state transferred with the guest might be outdated.
+
+Attempt to handle such cases gracefully by checking the current
+reservation or registered keys to detect stale state before restoring.
+If the actual state of the disk has changed, do not modify it and accept
+that as the most up-to-date state.
+
+Do this using READ RESERVATION when the guest holds a reservation or
+READ KEYS when the guest has registered a key but does not hold a
+reservation.
+
+There is still a race condition between checking and restoring state,
+but it seems unavoidable and is no worse than before.
+
+Buglink: https://redhat.atlassian.net/browse/RHEL-153123
+Fixes: ab57b51f1375b6a6f098a74c6f79207a9630948d ("scsi: save/load SCSI reservation state")
+Reported-by: Qing Wang
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Link: https://lore.kernel.org/r/20260415232906.212349-3-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 87c7b07fe4aa43dc7257b1e711faa835fac1cccb)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-generic.c | 173 +++++++++++++++++++++++++++++++++++------
+ 1 file changed, 149 insertions(+), 24 deletions(-)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index c2f61b320f..452908ba95 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -478,13 +478,84 @@ static bool scsi_generic_pr_preempt(SCSIDevice *s, uint64_t key,
+     return true;
+ }
+ 
++/*
++ * Returns true if the given key is registered or false otherwise (including
++ * errors).
++ */
++static bool scsi_generic_pr_key_registered(SCSIDevice *s, uint64_t key,
++                                           Error **errp)
++{
++    const size_t key_list_offset = 8; /* in READ KEYS parameter data */
++    uint64_t key_be = cpu_to_be64(key);
++    uint8_t cmd[10] = {};
++    size_t buf_len;
++    g_autofree uint8_t *buf = NULL;
++    uint32_t additional_length = 16 * 8; /* initial key list size */
++
++    /*
++     * Loop to resize parameter data buffer when there are many keys. It would
++     * be simpler to hardcode the maximum buffer size (it's only 64 KB), but
++     * SG_IO can fail with EINVAL if the host kernel blkdev queue limits are
++     * too low.
++     */
++    do {
++        uint16_t allocation_length_be;
++        int ret;
++
++        buf_len = key_list_offset + additional_length;
++        buf = g_realloc(buf, buf_len);
++        memset(buf, 0, buf_len);
++
++        cmd[0] = PERSISTENT_RESERVE_IN;
++        cmd[1] = PRI_READ_KEYS;
++        allocation_length_be = cpu_to_be16(buf_len);
++        memcpy(&cmd[7], &allocation_length_be, sizeof(allocation_length_be));
++
++        ret = scsi_SG_IO(s->conf.blk, SG_DXFER_FROM_DEV, cmd, sizeof(cmd),
++                         buf, buf_len, s->io_timeout, errp);
++        if (ret < 0) {
++            error_prepend(errp, "PERSISTENT RESERVE IN with READ KEYS: ");
++            return false;
++        }
++
++        memcpy(&additional_length, &buf[4], sizeof(additional_length));
++        be32_to_cpus(&additional_length);
++
++        /*
++         * The parameter data's ADDITIONAL LENGTH must not overflow the CDB's
++         * 16-bit ALLOCATION LENGTH field since the next loop iteration will
++         * compute ALLOCATION LENGTH based on ADDITIONAL LENGTH.
++         */
++        if (additional_length > UINT16_MAX - key_list_offset) {
++            error_setg(errp, "got invalid ADDITIONAL LENGTH %" PRIu32
++                       " from READ KEYS", additional_length);
++            return false;
++        }
++
++        for (size_t i = key_list_offset; i < buf_len; i += sizeof(key_be)) {
++            if (i - key_list_offset >= additional_length) {
++                break; /* end of parameter list */
++            }
++
++            if (memcmp(&key_be, &buf[i], sizeof(key_be)) == 0) {
++                return true; /* key found */
++            }
++        }
++    } while (additional_length > buf_len - key_list_offset);
++
++    return false; /* key not found */
++}
++
+ /* Register keys and preempt reservations after live migration */
+ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+ {
+     SCSIPRState *pr_state = &s->pr_state;
++    Error *local_err = NULL;
++    bool check_stale_key = true;
+     uint64_t key;
+     uint8_t resv_type;
+ 
++    /* Get the migrated PR state */
+     WITH_QEMU_LOCK_GUARD(&pr_state->mutex) {
+         key = pr_state->key;
+         resv_type = pr_state->resv_type;
+@@ -492,36 +563,90 @@ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+ 
+     trace_scsi_generic_pr_state_preempt(key, resv_type);
+ 
+-    if (key) {
+-        if (!scsi_generic_pr_register(s, key, errp)) {
++    /* Handle stale PR state (e.g. another node preempted) */
++    if (resv_type) {
++        uint64_t dev_key;
++        uint8_t dev_resv_type;
++
++        if (scsi_generic_read_reservation(s, &dev_key, &dev_resv_type,
++                                          errp) < 0) {
+             return false;
+         }
+ 
+-        /*
+-         * Two cases:
+-         *
+-         * 1. There is no reservation (resv_type is 0) and the other I_T nexus
+-         *    will be unregistered. This is important so the source host does
+-         *    not leak registered keys across live migration.
+-         *
+-         * 2. There is a reservation (resv_type is not 0) and the other I_T
+-         *    nexus will be unregistered and its reservation is atomically
+-         *    taken over by us. This is the scenario where a reservation is
+-         *    migrated along with the guest.
+-         */
+-        if (!scsi_generic_pr_preempt(s, key, resv_type, errp)) {
+-            return false;
++        if (dev_resv_type != resv_type) {
++            /* vmstate had a stale reservation type */
++            g_autofree char *name = qdev_get_human_name(&s->qdev);
++            warn_report("Expected SCSI reservation type 0x%x on device '%s', "
++                        "got 0x%x, using new type",
++                        resv_type, name, dev_resv_type);
++            resv_type = dev_resv_type;
+         }
+ 
+-        /*
+-         * Some SCSI targets, like the Linux LIO target, remove our
+-         * registration when preempting without a reservation (resv_type is 0).
+-         * Try to register again but ignore the error since a RESERVATION
+-         * CONFLICT is expected if our registration remained in place.
+-         */
+-        if (resv_type == 0) {
+-            scsi_generic_pr_register(s, key, NULL);
++        if (dev_key == key) {
++            /* The reservation exists, no need to check for a stale key */
++            check_stale_key = false;
++        } else {
++            g_autofree char *name = qdev_get_human_name(&s->qdev);
++            warn_report("Expected SCSI reservation with key 0x%" PRIx64
++                        " on device '%s', got 0x%" PRIx64 ", ignoring "
++                        "reservation",
++                        key, name, dev_key);
++            resv_type = 0; /* vmstate had a stale reservation */
++        }
++    }
++
++    if (key != 0 && check_stale_key &&
++        !scsi_generic_pr_key_registered(s, key, &local_err)) {
++        if (local_err) {
++            error_propagate(errp, local_err);
++            return false;
+         }
++
++        g_autofree char *name = qdev_get_human_name(&s->qdev);
++        warn_report("SCSI reservation key 0x%" PRIx64 " on device '%s' not "
++                    "registered after migration, ignoring",
++                    key, name);
++        key = 0; /* vmstate had a stale key */
++    }
++
++    /* Stale PR state may have been updated */
++    WITH_QEMU_LOCK_GUARD(&pr_state->mutex) {
++        pr_state->key = key;
++        pr_state->resv_type = resv_type;
++    }
++
++    if (key == 0) {
++        return true; /* no PR state, do nothing */
++    }
++
++    if (!scsi_generic_pr_register(s, key, errp)) {
++        return false;
++    }
++
++    /*
++     * Two cases:
++     *
++     * 1. There is no reservation (resv_type is 0) and the other I_T nexus
++     *    will be unregistered. This is important so the source host does
++     *    not leak registered keys across live migration.
++     *
++     * 2. There is a reservation (resv_type is not 0) and the other I_T
++     *    nexus will be unregistered and its reservation is atomically
++     *    taken over by us. This is the scenario where a reservation is
++     *    migrated along with the guest.
++     */
++    if (!scsi_generic_pr_preempt(s, key, resv_type, errp)) {
++        return false;
++    }
++
++    /*
++     * Some SCSI targets, like the Linux LIO target, remove our
++     * registration when preempting without a reservation (resv_type is 0).
++     * Try to register again but ignore the error since a RESERVATION
++     * CONFLICT is expected if our registration remained in place.
++     */
++    if (resv_type == 0) {
++        scsi_generic_pr_register(s, key, NULL);
+     }
+     return true;
+ }
+-- 
+2.52.0
+

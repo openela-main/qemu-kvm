@@ -1,0 +1,54 @@
+From ffe8f1972383bde08056e31339f7be6f64a944c4 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 1 Apr 2026 13:19:27 -0400
+Subject: [PATCH 3/5] scsi: register again after PREEMPT without reservation
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 550: scsi: PR live migration PREEMPT fixes [10.2.z]
+RH-Jira: RHEL-166007
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [3/3] 1696ae6abf0533744236cb2dc53c237e6eb6af09
+
+The SCSI specification says PREEMPT without a reservation removes all
+registrations with the given key. Try to register again after PREEMPT
+since our key will have been removed.
+
+In practice some SCSI targets keep the calling I_T nexus' registration
+instead of removing it. Therefore we need to handle both the
+spec-compliant and the non-compliant behavior.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Link: https://lore.kernel.org/r/20260401171927.396672-4-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit b9a3b329d09dea5a4692de483419693ef0e23052)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-generic.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 8a57473623..9c5927b543 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -512,6 +512,16 @@ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+         if (!scsi_generic_pr_preempt(s, key, resv_type, errp)) {
+             return false;
+         }
++
++        /*
++         * Some SCSI targets, like the Linux LIO target, remove our
++         * registration when preempting without a reservation (resv_type is 0).
++         * Try to register again but ignore the error since a RESERVATION
++         * CONFLICT is expected if our registration remained in place.
++         */
++        if (resv_type == 0) {
++            scsi_generic_pr_register(s, key, NULL);
++        }
+     }
+     return true;
+ }
+-- 
+2.52.0
+

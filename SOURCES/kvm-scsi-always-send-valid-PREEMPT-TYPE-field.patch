@@ -1,0 +1,73 @@
+From e8de786d6b6eb530d9100ebb040861394c0ac447 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Wed, 1 Apr 2026 13:19:26 -0400
+Subject: [PATCH 2/5] scsi: always send valid PREEMPT TYPE field
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 550: scsi: PR live migration PREEMPT fixes [10.2.z]
+RH-Jira: RHEL-166007
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [2/3] ad135c23007b24131a961f9992d8ed25ed0f1891
+
+The SPC-6 specification says that the PREEMPT service action ignores the
+TYPE field when there is no reservation. However, the LIO Linux iSCSI
+target rejects commands with a zero TYPE field. The field never ends up
+being used in this case, so replace it with a "valid" value to work
+around the issue.
+
+Reported-by: Qing Wang <qinwang@redhat.com>
+Buglink: https://redhat.atlassian.net/browse/RHEL-155807
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Link: https://lore.kernel.org/r/20260401171927.396672-3-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 15a202656cd553911272f9666aa067c706fc3dfe)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-generic.c   | 10 ++++++++++
+ include/scsi/constants.h | 10 ++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 5825a47311..8a57473623 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -452,6 +452,16 @@ static bool scsi_generic_pr_preempt(SCSIDevice *s, uint64_t key,
+     uint64_t key_be = cpu_to_be64(key);
+     int ret;
+ 
++    /*
++     * The LIO iSCSI target in Linux up to at least version 7.0 rejects PREEMPT
++     * commands with a zero TYPE field although the SPC-6 specification says
++     * the field should be ignored when there is no persistent reservation.
++     * Work around this by choosing an arbitrary valid PR type value.
++     */
++    if (resv_type == 0) {
++        resv_type = PR_TYPE_WRITE_EXCLUSIVE;
++    }
++
+     cmd[0] = PERSISTENT_RESERVE_OUT;
+     cmd[1] = PRO_PREEMPT;
+     cmd[2] = resv_type & 0xf;
+diff --git a/include/scsi/constants.h b/include/scsi/constants.h
+index cb97bdb636..717e470a5d 100644
+--- a/include/scsi/constants.h
++++ b/include/scsi/constants.h
+@@ -340,4 +340,14 @@
+ #define PRO_REGISTER_AND_MOVE                   0x07
+ #define PRO_REPLACE_LOST_RESERVATION            0x08
+ 
++/*
++ * Persistent reservation types
++ */
++#define PR_TYPE_WRITE_EXCLUSIVE             0x1
++#define PR_TYPE_EXCLUSIVE_ACCESS            0x3
++#define PR_TYPE_WRITE_EXCLUSIVE_REG_ONLY    0x5
++#define PR_TYPE_EXCLUSIVE_ACCESS_REG_ONLY   0x6
++#define PR_TYPE_WRITE_EXCLUSIVE_ALL_REGS    0x7
++#define PR_TYPE_EXCLUSIVE_ACCESS_ALL_REGS   0x8
++
+ #endif
+-- 
+2.52.0
+
