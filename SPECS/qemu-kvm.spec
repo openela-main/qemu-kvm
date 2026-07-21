@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 17%{?rcrel}%{?dist}%{?cc_suffix}.4
+Release: 17%{?rcrel}%{?dist}%{?cc_suffix}.5
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -359,6 +359,12 @@ Patch106: kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch
 Patch107: kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch
 # For RHEL-184527 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-9.8.z]
 Patch108: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
+# For RHEL-207387 - file-posix: populate pwrite_zeroes_alignment [rhel-9.8.z]
+Patch109: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
+# For RHEL-207387 - block: use pwrite_zeroes_alignment when writing first sector [rhel-9.8.z]
+Patch110: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
+# For RHEL-207387 - iotests: add Linux loop device image creation test [rhel-9.8.z]
+Patch111: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
 
 
 # For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
@@ -2073,6 +2079,13 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Thu Jul 17 2026 Danilo de Paula <ddepaula@redhat.com> - 10.1.0-17.el9_8.5
+- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-207387]
+- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-207387]
+- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-207387]
+- Resolves: RHEL-207387
+  (qemu-img create/convert fails on target block device with 4k sector size [rhel-9.8.z])
+
 * Mon Jun 22 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.4
 - kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184527]
 - Resolves: RHEL-184527
