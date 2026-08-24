@@ -1,0 +1,174 @@
+From f834c37186b266b515c3f7e6b15a5e87e153f699 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 21 Apr 2026 18:11:28 +0200
+Subject: [PATCH 3/8] block: Add flags parameter to blk_*_pdiscard()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
+RH-Jira: RHEL-190702
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/8] 6ce7ccfc577d41eda1283271dd5ee7913a1266c5 (kmwolf/rhel-qemu-kvm)
+
+All existing callers pass 0, but we need a way to pass BDRV_REQ_NO_QUEUE
+for discard requests.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260421161132.99878-4-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 53074ba0330ae8831abbae2521c012e1d9072ed3)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/block-backend.c             | 11 ++++++-----
+ block/export/virtio-blk-handler.c |  2 +-
+ block/mirror.c                    |  4 ++--
+ include/system/block-backend-io.h |  4 ++--
+ nbd/server.c                      |  2 +-
+ qemu-io-cmds.c                    |  2 +-
+ tests/unit/test-block-iothread.c  |  4 ++--
+ 7 files changed, 15 insertions(+), 14 deletions(-)
+
+diff --git a/block/block-backend.c b/block/block-backend.c
+index a0f4c841da..d97b26b743 100644
+--- a/block/block-backend.c
++++ b/block/block-backend.c
+@@ -1803,12 +1803,13 @@ BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,
+ 
+ /* To be called between exactly one pair of blk_inc/dec_in_flight() */
+ static int coroutine_fn
+-blk_co_do_pdiscard(BlockBackend *blk, int64_t offset, int64_t bytes)
++blk_co_do_pdiscard(BlockBackend *blk, int64_t offset, int64_t bytes,
++                   BdrvRequestFlags flags)
+ {
+     int ret;
+     IO_CODE();
+ 
+-    blk_wait_while_drained(blk, 0);
++    blk_wait_while_drained(blk, flags);
+     GRAPH_RDLOCK_GUARD();
+ 
+     ret = blk_check_byte_request(blk, offset, bytes);
+@@ -1824,7 +1825,7 @@ static void coroutine_fn blk_aio_pdiscard_entry(void *opaque)
+     BlkAioEmAIOCB *acb = opaque;
+     BlkRwCo *rwco = &acb->rwco;
+ 
+-    rwco->ret = blk_co_do_pdiscard(rwco->blk, rwco->offset, acb->bytes);
++    rwco->ret = blk_co_do_pdiscard(rwco->blk, rwco->offset, acb->bytes, 0);
+     blk_aio_complete(acb);
+ }
+ 
+@@ -1838,13 +1839,13 @@ BlockAIOCB *blk_aio_pdiscard(BlockBackend *blk,
+ }
+ 
+ int coroutine_fn blk_co_pdiscard(BlockBackend *blk, int64_t offset,
+-                                 int64_t bytes)
++                                 int64_t bytes, BdrvRequestFlags flags)
+ {
+     int ret;
+     IO_OR_GS_CODE();
+ 
+     blk_inc_in_flight(blk);
+-    ret = blk_co_do_pdiscard(blk, offset, bytes);
++    ret = blk_co_do_pdiscard(blk, offset, bytes, flags);
+     blk_dec_in_flight(blk);
+ 
+     return ret;
+diff --git a/block/export/virtio-blk-handler.c b/block/export/virtio-blk-handler.c
+index bc1cec6757..b82baae553 100644
+--- a/block/export/virtio-blk-handler.c
++++ b/block/export/virtio-blk-handler.c
+@@ -121,7 +121,7 @@ virtio_blk_discard_write_zeroes(VirtioBlkHandler *handler, struct iovec *iov,
+         }
+ 
+         if (blk_co_pdiscard(blk, sector << VIRTIO_BLK_SECTOR_BITS,
+-                            bytes) == 0) {
++                            bytes, 0) == 0) {
+             return VIRTIO_BLK_S_OK;
+         }
+     }
+diff --git a/block/mirror.c b/block/mirror.c
+index f01be99b55..c87f1e205b 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -454,7 +454,7 @@ static void coroutine_fn mirror_co_discard(void *opaque)
+     *op->bytes_handled = op->bytes;
+     op->is_in_flight = true;
+ 
+-    ret = blk_co_pdiscard(op->s->target, op->offset, op->bytes);
++    ret = blk_co_pdiscard(op->s->target, op->offset, op->bytes, 0);
+     mirror_write_complete(op, ret);
+ }
+ 
+@@ -1527,7 +1527,7 @@ do_sync_target_write(MirrorBlockJob *job, MirrorMethod method,
+                          zero_bitmap_end - zero_bitmap_offset);
+         }
+         assert(!qiov);
+-        ret = blk_co_pdiscard(job->target, offset, bytes);
++        ret = blk_co_pdiscard(job->target, offset, bytes, 0);
+         break;
+ 
+     default:
+diff --git a/include/system/block-backend-io.h b/include/system/block-backend-io.h
+index 59841e04a8..91c48299b7 100644
+--- a/include/system/block-backend-io.h
++++ b/include/system/block-backend-io.h
+@@ -217,9 +217,9 @@ int co_wrapper_mixed blk_zone_append(BlockBackend *blk, int64_t *offset,
+                                          BdrvRequestFlags flags);
+ 
+ int co_wrapper_mixed blk_pdiscard(BlockBackend *blk, int64_t offset,
+-                                  int64_t bytes);
++                                  int64_t bytes, BdrvRequestFlags flags);
+ int coroutine_fn blk_co_pdiscard(BlockBackend *blk, int64_t offset,
+-                                 int64_t bytes);
++                                 int64_t bytes, BdrvRequestFlags flags);
+ 
+ int co_wrapper_mixed blk_flush(BlockBackend *blk);
+ int coroutine_fn blk_co_flush(BlockBackend *blk);
+diff --git a/nbd/server.c b/nbd/server.c
+index d242be9811..c72dee7a3b 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -2982,7 +2982,7 @@ static coroutine_fn int nbd_handle_request(NBDClient *client,
+                                       "flush failed", errp);
+ 
+     case NBD_CMD_TRIM:
+-        ret = blk_co_pdiscard(exp->common.blk, request->from, request->len);
++        ret = blk_co_pdiscard(exp->common.blk, request->from, request->len, 0);
+         if (ret >= 0 && request->flags & NBD_CMD_FLAG_FUA) {
+             ret = blk_co_flush(exp->common.blk);
+         }
+diff --git a/qemu-io-cmds.c b/qemu-io-cmds.c
+index 13e0330162..f6d077908f 100644
+--- a/qemu-io-cmds.c
++++ b/qemu-io-cmds.c
+@@ -2201,7 +2201,7 @@ static int discard_f(BlockBackend *blk, int argc, char **argv)
+     }
+ 
+     clock_gettime(CLOCK_MONOTONIC, &t1);
+-    ret = blk_pdiscard(blk, offset, bytes);
++    ret = blk_pdiscard(blk, offset, bytes, 0);
+     clock_gettime(CLOCK_MONOTONIC, &t2);
+ 
+     if (ret < 0) {
+diff --git a/tests/unit/test-block-iothread.c b/tests/unit/test-block-iothread.c
+index e26b3be593..5273ff235a 100644
+--- a/tests/unit/test-block-iothread.c
++++ b/tests/unit/test-block-iothread.c
+@@ -270,11 +270,11 @@ static void test_sync_op_blk_pdiscard(BlockBackend *blk)
+     int ret;
+ 
+     /* Early success: UNMAP not supported */
+-    ret = blk_pdiscard(blk, 0, 512);
++    ret = blk_pdiscard(blk, 0, 512, 0);
+     g_assert_cmpint(ret, ==, 0);
+ 
+     /* Early error: Negative offset */
+-    ret = blk_pdiscard(blk, -2, 512);
++    ret = blk_pdiscard(blk, -2, 512, 0);
+     g_assert_cmpint(ret, ==, -EIO);
+ }
+ 
+-- 
+2.52.0
+

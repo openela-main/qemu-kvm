@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.2
+Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.5
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -434,6 +434,28 @@ Patch138: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
 Patch139: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
 # For RHEL-166033 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z]
 Patch140: kvm-scsi-handle-reservation-changes-across-migration.patch
+# For RHEL-184529 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.2.z]
+Patch141: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch142: kvm-blkdebug-Add-delay-ns-option.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch143: kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch144: kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch145: kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch146: kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch147: kvm-ide-test-Factor-out-wait_dma_completion.patch
+# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
+Patch148: kvm-ide-test-Test-reset-during-TRIM.patch
+# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
+Patch149: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
+# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
+Patch150: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
+# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
+Patch151: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1131,6 +1153,7 @@ install -D -p -m 0644 %{modprobe_kvm_conf} $RPM_BUILD_ROOT%{_sysconfdir}/modprob
 mkdir -p %{buildroot}%{testsdir}/python
 mkdir -p %{buildroot}%{testsdir}/tests
 mkdir -p %{buildroot}%{testsdir}/tests/qemu-iotests
+mkdir -p %{buildroot}%{testsdir}/tests/qtest
 mkdir -p %{buildroot}%{testsdir}/scripts/qmp
 
 
@@ -1148,6 +1171,9 @@ cp -R tests/qemu-iotests/* %{buildroot}%{testsdir}/tests/qemu-iotests/
 cp -ur %{qemu_kvm_build}/tests/qemu-iotests/* %{buildroot}%{testsdir}/tests/qemu-iotests/
 
 install -p -m 0644 %{_sourcedir}/README.tests %{buildroot}%{testsdir}/README
+
+# Install qtests
+find %{qemu_kvm_build}/tests/qtest/ -type f -executable -exec install -p -m 0755 {} %{buildroot}%{testsdir}/tests/qtest/ \;
 
 # Do the actual qemu tree install
 pushd %{qemu_kvm_build}
@@ -1513,6 +1539,30 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Tue Aug 04 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.5
+- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-207389]
+- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-207389]
+- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-207389]
+- Resolves: RHEL-207389
+  (qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z])
+
+* Thu Jul 09 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.4
+- kvm-blkdebug-Add-delay-ns-option.patch [RHEL-190702]
+- kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch [RHEL-190702]
+- kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch [RHEL-190702]
+- kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch [RHEL-190702]
+- kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch [RHEL-190702]
+- kvm-ide-test-Factor-out-wait_dma_completion.patch [RHEL-190702]
+- kvm-ide-test-Test-reset-during-TRIM.patch [RHEL-190702]
+- kvm-spec-Install-qtests-into-qemu-kvm-tests-package.patch [RHEL-190702]
+- Resolves: RHEL-190702
+  (qemu-kvm hung during drain after double pause [rhel-10.2.z])
+
+* Fri Jun 19 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.3
+- kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184529]
+- Resolves: RHEL-184529
+  (CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.2.z])
+
 * Mon Jun 15 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.2
 - kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-166007]
 - kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-166007]

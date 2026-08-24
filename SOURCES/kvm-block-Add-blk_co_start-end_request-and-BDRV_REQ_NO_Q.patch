@@ -1,0 +1,203 @@
+From bd929a4dbcd20cb9f6314c867726b59e18254994 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 21 Apr 2026 18:11:27 +0200
+Subject: [PATCH 2/8] block: Add blk_co_start/end_request() and
+ BDRV_REQ_NO_QUEUE
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
+RH-Jira: RHEL-190702
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/8] 12df3f715235d07f3b45fa3ee56e5e8aa45e866c (kmwolf/rhel-qemu-kvm)
+
+If a device uses blk_inc/dec_in_flight() in order to build macro
+operations that involve multiple requests for the block layer and that
+need to be completed as a unit before the BlockBackend can be considered
+drained, it sets the stage for a deadlock: When a drain is requested,
+the inner request at the BlockBackend level will be queued in
+blk_wait_while_drained() and wait until the drained section ends, but at
+the same time, drain_begin can only return if the whole macro operation
+at the device level has completed.
+
+Introduce a new interface to allow implementing the logic correctly:
+Instead of queueing individual requests, blk_co_start_request() calls
+blk_wait_while_drained() once at the beginning. The individual requests
+must then set BDRV_REQ_NO_QUEUE to avoid being queued and running into
+the deadlock; being wrapped in blk_co_start/end_request() makes sure
+that drain_begin waits for them and they don't sneak in when the
+BlockBackend is supposed to already be quiescent.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260421161132.99878-3-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 34a67637767d3ed1ac813c44effe827bbfba5996)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/block-backend.c             | 38 +++++++++++++++++++++++--------
+ include/block/block-common.h      | 11 ++++++++-
+ include/system/block-backend-io.h |  2 ++
+ 3 files changed, 41 insertions(+), 10 deletions(-)
+
+diff --git a/block/block-backend.c b/block/block-backend.c
+index d6df369188..a0f4c841da 100644
+--- a/block/block-backend.c
++++ b/block/block-backend.c
+@@ -82,6 +82,7 @@ struct BlockBackend {
+     QemuMutex queued_requests_lock; /* protects queued_requests */
+     CoQueue queued_requests;
+     bool disable_request_queuing; /* atomic */
++    int start_request_count; /* atomic */
+ 
+     VMChangeStateEntry *vmsh;
+     bool force_allow_inactivate;
+@@ -1306,10 +1307,16 @@ bool blk_in_drain(BlockBackend *blk)
+ }
+ 
+ /* To be called between exactly one pair of blk_inc/dec_in_flight() */
+-static void coroutine_fn blk_wait_while_drained(BlockBackend *blk)
++static void coroutine_fn blk_wait_while_drained(BlockBackend *blk,
++                                                BdrvRequestFlags flags)
+ {
+     assert(blk->in_flight > 0);
+ 
++    if (flags & BDRV_REQ_NO_QUEUE) {
++        assert(qatomic_read(&blk->start_request_count));
++        return;
++    }
++
+     if (qatomic_read(&blk->quiesce_counter) &&
+         !qatomic_read(&blk->disable_request_queuing)) {
+         /*
+@@ -1335,7 +1342,7 @@ blk_co_do_preadv_part(BlockBackend *blk, int64_t offset, int64_t bytes,
+     BlockDriverState *bs;
+     IO_CODE();
+ 
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, flags);
+     GRAPH_RDLOCK_GUARD();
+ 
+     /* Call blk_bs() only after waiting, the graph may have changed */
+@@ -1410,7 +1417,7 @@ blk_co_do_pwritev_part(BlockBackend *blk, int64_t offset, int64_t bytes,
+     BlockDriverState *bs;
+     IO_CODE();
+ 
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, flags);
+     GRAPH_RDLOCK_GUARD();
+ 
+     /* Call blk_bs() only after waiting, the graph may have changed */
+@@ -1523,6 +1530,19 @@ void blk_dec_in_flight(BlockBackend *blk)
+     aio_wait_kick();
+ }
+ 
++void coroutine_fn blk_co_start_request(BlockBackend *blk)
++{
++    blk_inc_in_flight(blk);
++    blk_wait_while_drained(blk, 0);
++    qatomic_inc(&blk->start_request_count);
++}
++
++void blk_end_request(BlockBackend *blk)
++{
++    qatomic_dec(&blk->start_request_count);
++    blk_dec_in_flight(blk);
++}
++
+ static void error_callback_bh(void *opaque)
+ {
+     struct BlockBackendAIOCB *acb = opaque;
+@@ -1741,7 +1761,7 @@ blk_co_do_ioctl(BlockBackend *blk, unsigned long int req, void *buf)
+ {
+     IO_CODE();
+ 
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, 0);
+     GRAPH_RDLOCK_GUARD();
+ 
+     if (!blk_co_is_available(blk)) {
+@@ -1788,7 +1808,7 @@ blk_co_do_pdiscard(BlockBackend *blk, int64_t offset, int64_t bytes)
+     int ret;
+     IO_CODE();
+ 
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, 0);
+     GRAPH_RDLOCK_GUARD();
+ 
+     ret = blk_check_byte_request(blk, offset, bytes);
+@@ -1834,7 +1854,7 @@ int coroutine_fn blk_co_pdiscard(BlockBackend *blk, int64_t offset,
+ static int coroutine_fn blk_co_do_flush(BlockBackend *blk)
+ {
+     IO_CODE();
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, 0);
+     GRAPH_RDLOCK_GUARD();
+ 
+     if (!blk_co_is_available(blk)) {
+@@ -2009,7 +2029,7 @@ int coroutine_fn blk_co_zone_report(BlockBackend *blk, int64_t offset,
+     IO_CODE();
+ 
+     blk_inc_in_flight(blk); /* increase before waiting */
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, 0);
+     GRAPH_RDLOCK_GUARD();
+     if (!blk_is_available(blk)) {
+         blk_dec_in_flight(blk);
+@@ -2034,7 +2054,7 @@ int coroutine_fn blk_co_zone_mgmt(BlockBackend *blk, BlockZoneOp op,
+     IO_CODE();
+ 
+     blk_inc_in_flight(blk);
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, 0);
+     GRAPH_RDLOCK_GUARD();
+ 
+     ret = blk_check_byte_request(blk, offset, len);
+@@ -2058,7 +2078,7 @@ int coroutine_fn blk_co_zone_append(BlockBackend *blk, int64_t *offset,
+     IO_CODE();
+ 
+     blk_inc_in_flight(blk);
+-    blk_wait_while_drained(blk);
++    blk_wait_while_drained(blk, flags);
+     GRAPH_RDLOCK_GUARD();
+     if (!blk_is_available(blk)) {
+         blk_dec_in_flight(blk);
+diff --git a/include/block/block-common.h b/include/block/block-common.h
+index c8c626daea..895ea17541 100644
+--- a/include/block/block-common.h
++++ b/include/block/block-common.h
+@@ -215,8 +215,17 @@ typedef enum {
+      */
+     BDRV_REQ_NO_WAIT = 0x400,
+ 
++    /*
++     * Used between blk_co_start_request() and blk_end_request() to avoid
++     * that the request waits in a drained BlockBackend until the drained
++     * section ends. Waiting would cause a deadlock because drain waits for
++     * blk_end_request() to be called, but the request never completes
++     * because it waits for the drain to end.
++     */
++    BDRV_REQ_NO_QUEUE = 0x800,
++
+     /* Mask of valid flags */
+-    BDRV_REQ_MASK               = 0x7ff,
++    BDRV_REQ_MASK               = 0xfff,
+ } BdrvRequestFlags;
+ 
+ #define BDRV_O_NO_SHARE    0x0001 /* don't share permissions */
+diff --git a/include/system/block-backend-io.h b/include/system/block-backend-io.h
+index ba8dfcc7d0..59841e04a8 100644
+--- a/include/system/block-backend-io.h
++++ b/include/system/block-backend-io.h
+@@ -71,6 +71,8 @@ BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,
+ 
+ void blk_inc_in_flight(BlockBackend *blk);
+ void blk_dec_in_flight(BlockBackend *blk);
++void coroutine_fn blk_co_start_request(BlockBackend *blk);
++void blk_end_request(BlockBackend *blk);
+ 
+ bool coroutine_fn GRAPH_RDLOCK blk_co_is_inserted(BlockBackend *blk);
+ bool co_wrapper_mixed_bdrv_rdlock blk_is_inserted(BlockBackend *blk);
+-- 
+2.52.0
+

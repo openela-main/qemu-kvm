@@ -1,0 +1,116 @@
+From f55e897a36ddca7116d08445a9237b6d34ceacd6 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 7 Oct 2025 10:17:00 -0400
+Subject: [PATCH 3/3] iotests: add Linux loop device image creation test
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 565: block: Fix image creation on storage with 4k sector size
+RH-Jira: RHEL-207389
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/3] b878b225ca4cbe5d1ef012122472d58bda27ffff (kmwolf/rhel-qemu-kvm)
+
+This qemu-iotests test case is based on the reproducer that Jean-Louis
+Dupond <jean-louis@dupond.be> shared in
+https://gitlab.com/qemu-project/qemu/-/issues/3127.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20251007141700.71891-4-stefanha@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Tested-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 59a1cf0cd31597d2f6e2c18dc400a1de8427d47d)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/tests/loop-create-file     | 59 +++++++++++++++++++
+ tests/qemu-iotests/tests/loop-create-file.out |  8 +++
+ 2 files changed, 67 insertions(+)
+ create mode 100755 tests/qemu-iotests/tests/loop-create-file
+ create mode 100644 tests/qemu-iotests/tests/loop-create-file.out
+
+diff --git a/tests/qemu-iotests/tests/loop-create-file b/tests/qemu-iotests/tests/loop-create-file
+new file mode 100755
+index 0000000000..5ec75b046b
+--- /dev/null
++++ b/tests/qemu-iotests/tests/loop-create-file
+@@ -0,0 +1,59 @@
++#!/usr/bin/env bash
++# group: quick
++#
++# SPDX-License-Identifier: GPL-2.0-or-later
++#
++# Copyright Red Hat, Inc.
++#
++# Test Linux loop device image creation
++#
++# This test verifies #3127 "qemu-img create fails on loop device with sector size 4096"
++# https://gitlab.com/qemu-project/qemu/-/issues/3127
++
++seq="$(basename $0)"
++echo "QA output created by $seq"
++
++status=1	# failure is the default!
++
++_cleanup() {
++    if [ -n "$loopdev" ]; then
++        sudo losetup --detach "$loopdev"
++    fi
++
++    _cleanup_test_img
++}
++
++trap "_cleanup; exit \$status" 0 1 2 3 15
++
++# get standard environment, filters and checks
++cd ..
++. ./common.rc
++. ./common.filter
++
++_supported_fmt raw
++_supported_proto file
++_supported_os Linux
++
++if ! sudo -n losetup &>/dev/null; then
++    _notrun "sudo losetup not available"
++fi
++
++echo
++echo "=== Create image on a 4 KB sector size loop device ==="
++echo
++
++_make_test_img -f $IMGFMT 1M
++
++loopdev=$(sudo losetup --sector-size 4096 --find --show "$TEST_IMG")
++if [ -z "$loopdev" ]; then
++    _fail
++fi
++
++sudo $QEMU_IMG_PROG create -f raw "$loopdev" 1M | \
++    sed -e "s#/dev/loop[0-9]\\+#LOOPDEV#g"
++
++# success, all done
++echo
++echo '*** done'
++rm -f $seq.full
++status=0
+diff --git a/tests/qemu-iotests/tests/loop-create-file.out b/tests/qemu-iotests/tests/loop-create-file.out
+new file mode 100644
+index 0000000000..32d4155695
+--- /dev/null
++++ b/tests/qemu-iotests/tests/loop-create-file.out
+@@ -0,0 +1,8 @@
++QA output created by loop-create-file
++
++=== Create image on a 4 KB sector size loop device ===
++
++Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
++Formatting 'LOOPDEV', fmt=raw size=1048576
++
++*** done
+-- 
+2.52.0
+

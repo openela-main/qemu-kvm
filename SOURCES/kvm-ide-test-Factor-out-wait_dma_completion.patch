@@ -1,0 +1,91 @@
+From 16cf591d59298ccc7cc1fe55427f2e2066d852d1 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 21 Apr 2026 18:11:31 +0200
+Subject: [PATCH 6/8] ide-test: Factor out wait_dma_completion()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
+RH-Jira: RHEL-190702
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/8] 52ad17b4233e8589241928f2cbc8def83a0863de (kmwolf/rhel-qemu-kvm)
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260421161132.99878-7-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 92854c9c7539bdbf4f9c1abb33dd3ba59ff91e58)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qtest/ide-test.c | 48 +++++++++++++++++++++++++-----------------
+ 1 file changed, 29 insertions(+), 19 deletions(-)
+
+diff --git a/tests/qtest/ide-test.c b/tests/qtest/ide-test.c
+index ceee444a9e..c6dcb2c074 100644
+--- a/tests/qtest/ide-test.c
++++ b/tests/qtest/ide-test.c
+@@ -200,6 +200,34 @@ static uint64_t trim_range_le(uint64_t sector, uint16_t count)
+     return cpu_to_le64(((uint64_t)count << 48) + sector);
+ }
+ 
++static uint8_t wait_dma_completion(QTestState *qts, QPCIDevice *dev,
++                                   QPCIBar bmdma_bar, QPCIBar ide_bar)
++{
++    uint8_t status;
++
++    /* Wait for the DMA transfer to complete */
++    do {
++        status = qpci_io_readb(dev, bmdma_bar, bmreg_status);
++    } while ((status & (BM_STS_ACTIVE | BM_STS_INTR)) == BM_STS_ACTIVE);
++
++    g_assert_cmpint(qtest_get_irq(qts, IDE_PRIMARY_IRQ), ==,
++                    !!(status & BM_STS_INTR));
++
++    /* Check IDE status code */
++    assert_bit_set(qpci_io_readb(dev, ide_bar, reg_status), DRDY);
++    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), BSY | DRQ);
++
++    /* Reading the status register clears the IRQ */
++    g_assert(!qtest_get_irq(qts, IDE_PRIMARY_IRQ));
++
++    /* Stop DMA transfer if still active */
++    if (status & BM_STS_ACTIVE) {
++        qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
++    }
++
++    return status;
++}
++
+ static int send_dma_request(QTestState *qts, int cmd, uint64_t sector,
+                             int nb_sectors, PrdtEntry *prdt, int prdt_entries,
+                             void(*post_exec)(QPCIDevice *dev, QPCIBar ide_bar,
+@@ -280,25 +308,7 @@ static int send_dma_request(QTestState *qts, int cmd, uint64_t sector,
+         qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
+     }
+ 
+-    /* Wait for the DMA transfer to complete */
+-    do {
+-        status = qpci_io_readb(dev, bmdma_bar, bmreg_status);
+-    } while ((status & (BM_STS_ACTIVE | BM_STS_INTR)) == BM_STS_ACTIVE);
+-
+-    g_assert_cmpint(qtest_get_irq(qts, IDE_PRIMARY_IRQ), ==,
+-                    !!(status & BM_STS_INTR));
+-
+-    /* Check IDE status code */
+-    assert_bit_set(qpci_io_readb(dev, ide_bar, reg_status), DRDY);
+-    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), BSY | DRQ);
+-
+-    /* Reading the status register clears the IRQ */
+-    g_assert(!qtest_get_irq(qts, IDE_PRIMARY_IRQ));
+-
+-    /* Stop DMA transfer if still active */
+-    if (status & BM_STS_ACTIVE) {
+-        qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
+-    }
++    status = wait_dma_completion(qts, dev, bmdma_bar, ide_bar);
+ 
+     free_pci_device(dev);
+ 
+-- 
+2.52.0
+

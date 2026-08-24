@@ -1,0 +1,65 @@
+From 9aa4988b7506ff56f7c02ac0794f29b0766adb6f Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 7 Oct 2025 10:16:58 -0400
+Subject: [PATCH 1/3] file-posix: populate pwrite_zeroes_alignment
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 565: block: Fix image creation on storage with 4k sector size
+RH-Jira: RHEL-207389
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: German Maglione <None>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/3] dd57fecd1f1d62be600451c47efb061925e89154 (kmwolf/rhel-qemu-kvm)
+
+Linux block devices require write zeroes alignment whereas files do not.
+
+It may come as a surprise that block devices opened in buffered I/O mode
+require the alignment for write zeroes requests although normal
+read/write requests do not.
+
+Therefore it is necessary to populate the pwrite_zeroes_alignment field.
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-ID: <20251007141700.71891-2-stefanha@redhat.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Tested-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 98e788b91ad037193b1fb375561ef7e0fef3c2fd)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/file-posix.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/block/file-posix.c b/block/file-posix.c
+index ffca37130b..0129413273 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -1607,6 +1607,22 @@ static void raw_refresh_limits(BlockDriverState *bs, Error **errp)
+ 
+             bs->bl.pdiscard_alignment = dalign;
+         }
++
++#ifdef __linux__
++        /*
++         * Linux requires logical block size alignment for write zeroes even
++         * when normal reads/writes do not require alignment.
++         */
++        if (!s->needs_alignment) {
++            ret = probe_logical_blocksize(s->fd,
++                                          &bs->bl.pwrite_zeroes_alignment);
++            if (ret < 0) {
++                error_setg_errno(errp, -ret,
++                                 "Failed to probe logical block size");
++                return;
++            }
++        }
++#endif /* __linux__ */
+     }
+ 
+     raw_refresh_zoned_limits(bs, &st, errp);
+-- 
+2.52.0
+
