@@ -1,0 +1,85 @@
+From 2871ed35b74e99d9c19d08200814d219888d5379 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 13 Oct 2026 14:17:52 -0400
+Subject: [PATCH 14/15] scsi: use REGISTER AND IGNORE EXISTING KEY for
+ robustness
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 583: scsi: clean up persistent reservation state after migration
+RH-Jira: RHEL-280223
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [8/9] db5072e2bb80e65d93aadfcbd68556dcac550964
+
+The regular REGISTER service action fails with RESERVATION CONFLICT when
+the I_T nexus already has a key registered. While we don't expect a key
+to be registered, it is fragile to rely on this. If there is a key
+registered for some reason, live migration will fail when the
+destination hits the RESERVATION CONFLICT error.
+
+Use REGISTER AND IGNORE EXISTING KEY so that the command is likely to
+succeed.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Link: https://lore.kernel.org/r/20261013181752.1299456-9-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 9dbf31c5be137b308d86c7012192d5f5c5d8f101)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-generic.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 0d0166bf40..600baf138f 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -423,7 +423,8 @@ static void scsi_handle_persistent_reserve_out_reply(
+     }
+ }
+ 
+-static bool scsi_generic_pr_register(SCSIDevice *s, uint64_t key, Error **errp)
++static bool scsi_generic_pr_register_ignore(SCSIDevice *s, uint64_t key,
++                                            Error **errp)
+ {
+     uint8_t cmd[10] = {};
+     uint8_t buf[24] = {};
+@@ -431,14 +432,15 @@ static bool scsi_generic_pr_register(SCSIDevice *s, uint64_t key, Error **errp)
+     int ret;
+ 
+     cmd[0] = PERSISTENT_RESERVE_OUT;
+-    cmd[1] = PRO_REGISTER;
++    cmd[1] = PRO_REGISTER_AND_IGNORE_EXISTING_KEY;
+     cmd[8] = sizeof(buf);
+     memcpy(&buf[8], &key_be, sizeof(key_be));
+ 
+     ret = scsi_SG_IO(s->conf.blk, SG_DXFER_TO_DEV, cmd, sizeof(cmd),
+                      buf, sizeof(buf), s->io_timeout, errp);
+     if (ret < 0) {
+-        error_prepend(errp, "PERSISTENT RESERVE OUT with REGISTER: ");
++        error_prepend(errp, "PERSISTENT RESERVE OUT with "
++                      "REGISTER AND IGNORE EXISTING KEY: ");
+         return false;
+     }
+     return true;
+@@ -619,7 +621,7 @@ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+         return true; /* no PR state, do nothing */
+     }
+ 
+-    if (!scsi_generic_pr_register(s, key, errp)) {
++    if (!scsi_generic_pr_register_ignore(s, key, errp)) {
+         return false;
+     }
+ 
+@@ -646,7 +648,7 @@ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+      * CONFLICT is expected if our registration remained in place.
+      */
+     if (resv_type == 0) {
+-        scsi_generic_pr_register(s, key, NULL);
++        scsi_generic_pr_register_ignore(s, key, NULL);
+     }
+     return true;
+ }
+-- 
+2.52.0
+

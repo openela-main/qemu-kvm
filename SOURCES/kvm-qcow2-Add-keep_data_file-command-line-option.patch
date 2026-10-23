@@ -1,0 +1,340 @@
+From 354df92d8556e38e818df1b4d0388cf2fdd4eb6a Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Fri, 30 May 2025 10:44:44 +0200
+Subject: [PATCH 01/15] qcow2: Add keep_data_file command-line option
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 577: qcow2: Add keep_data_file command-line option
+RH-Jira: RHEL-164549
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/4] 7fe452d5b1642d2ecff629c727bc6a9aa6374ebb
+
+Add a command-line-only option to prevent overwriting the file specified
+as external data file.
+
+This option is only available on the qemu-img create command line, not
+via blockdev-create, as it makes no sense there: That interface
+separates file creation and formatting, so where the external data file
+attached to a newly formatted qcow2 node comes from is completely up to
+the user.
+
+Implementation detail: Enabling this option will not only not overwrite
+the external data file, but also assume it already exists, for two
+reasons:
+- It is simpler than checking whether the file exists, and only skipping
+  creating it when it does not.  It is therefore also less error-prone,
+  i.e. we can never accidentally overwrite an existing file because we
+  made some mistake in checking whether it exists.
+- I think it makes sense from a user's perspective: You set this option
+  when you want to use an existing data file, and you unset it when you
+  want a new one.  Getting an error when you expect to use an existing
+  data file seems to me a nice warning that something is not right.
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20250530084448.192369-2-hreitz@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+[kwolf: Removed redundant has_data_file_raw check]
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 910451bc5b08b45863e173b58cbf2288b82d9fd2)
+
+Conflicts:
+- block/qcow2.c: 1bd7bfbc2ba ("block: Allow drivers to control protocol
+  prefix at creation") added a boolean to bdrv_co_create_file()
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ block/qcow2.c                    | 72 ++++++++++++++++++++++++++++++--
+ include/block/block_int-common.h |  1 +
+ tests/qemu-iotests/082.out       | 18 ++++++++
+ 3 files changed, 87 insertions(+), 4 deletions(-)
+
+diff --git a/block/qcow2.c b/block/qcow2.c
+index a6adfa9f84..cd7a1959c8 100644
+--- a/block/qcow2.c
++++ b/block/qcow2.c
+@@ -3997,6 +3997,8 @@ qcow2_co_create_opts(BlockDriver *drv, const char *filename, QemuOpts *opts,
+     BlockDriverState *bs = NULL;
+     BlockDriverState *data_bs = NULL;
+     const char *val;
++    bool keep_data_file = false;
++    BlockdevCreateOptionsQcow2 *qcow2_opts;
+     int ret;
+ 
+     /* Only the keyval visitor supports the dotted syntax needed for
+@@ -4028,6 +4030,22 @@ qcow2_co_create_opts(BlockDriver *drv, const char *filename, QemuOpts *opts,
+         qdict_put_str(qdict, BLOCK_OPT_COMPAT_LEVEL, "v3");
+     }
+ 
++    val = qdict_get_try_str(qdict, BLOCK_OPT_KEEP_DATA_FILE);
++    if (val) {
++        if (!strcmp(val, "on")) {
++            keep_data_file = true;
++        } else if (!strcmp(val, "off")) {
++            keep_data_file = false;
++        } else {
++            error_setg(errp,
++                       "Invalid value '%s' for '%s': Must be 'on' or 'off'",
++                       val, BLOCK_OPT_KEEP_DATA_FILE);
++            ret = -EINVAL;
++            goto finish;
++        }
++        qdict_del(qdict, BLOCK_OPT_KEEP_DATA_FILE);
++    }
++
+     /* Change legacy command line options into QMP ones */
+     static const QDictRenames opt_renames[] = {
+         { BLOCK_OPT_BACKING_FILE,       "backing-file" },
+@@ -4064,9 +4082,11 @@ qcow2_co_create_opts(BlockDriver *drv, const char *filename, QemuOpts *opts,
+     /* Create and open an external data file (protocol layer) */
+     val = qdict_get_try_str(qdict, BLOCK_OPT_DATA_FILE);
+     if (val) {
+-        ret = bdrv_co_create_file(val, opts, errp);
+-        if (ret < 0) {
+-            goto finish;
++        if (!keep_data_file) {
++            ret = bdrv_co_create_file(val, opts, errp);
++            if (ret < 0) {
++                goto finish;
++            }
+         }
+ 
+         data_bs = bdrv_co_open(val, NULL, NULL,
+@@ -4079,6 +4099,11 @@ qcow2_co_create_opts(BlockDriver *drv, const char *filename, QemuOpts *opts,
+ 
+         qdict_del(qdict, BLOCK_OPT_DATA_FILE);
+         qdict_put_str(qdict, "data-file", data_bs->node_name);
++    } else if (keep_data_file) {
++        error_setg(errp, "Must not use '%s=on' without '%s'",
++                   BLOCK_OPT_KEEP_DATA_FILE, BLOCK_OPT_DATA_FILE);
++        ret = -EINVAL;
++        goto finish;
+     }
+ 
+     /* Set 'driver' and 'node' options */
+@@ -4099,6 +4124,37 @@ qcow2_co_create_opts(BlockDriver *drv, const char *filename, QemuOpts *opts,
+         goto finish;
+     }
+ 
++    qcow2_opts = &create_options->u.qcow2;
++
++    if (!qcow2_opts->has_preallocation) {
++        qcow2_opts->preallocation = PREALLOC_MODE_OFF;
++    }
++
++    if (keep_data_file &&
++        qcow2_opts->preallocation != PREALLOC_MODE_OFF &&
++        qcow2_opts->preallocation != PREALLOC_MODE_METADATA)
++    {
++        error_setg(errp, "Preallocating more than only metadata would "
++                   "overwrite the external data file's content and is "
++                   "therefore incompatible with '%s=on'",
++                   BLOCK_OPT_KEEP_DATA_FILE);
++        ret = -EINVAL;
++        goto finish;
++    }
++
++    if (keep_data_file &&
++        qcow2_opts->preallocation == PREALLOC_MODE_OFF &&
++        !qcow2_opts->data_file_raw)
++    {
++        error_setg(errp, "'%s=on' requires '%s=metadata' or '%s=on', or the "
++                   "file contents will not be visible",
++                   BLOCK_OPT_KEEP_DATA_FILE,
++                   BLOCK_OPT_PREALLOC,
++                   BLOCK_OPT_DATA_FILE_RAW);
++        ret = -EINVAL;
++        goto finish;
++    }
++
+     /* Silently round up size */
+     create_options->u.qcow2.size = ROUND_UP(create_options->u.qcow2.size,
+                                             BDRV_SECTOR_SIZE);
+@@ -4109,7 +4165,9 @@ finish:
+     if (ret < 0) {
+         bdrv_graph_co_rdlock();
+         bdrv_co_delete_file_noerr(bs);
+-        bdrv_co_delete_file_noerr(data_bs);
++        if (!keep_data_file) {
++            bdrv_co_delete_file_noerr(data_bs);
++        }
+         bdrv_graph_co_rdunlock();
+     } else {
+         ret = 0;
+@@ -6208,6 +6266,12 @@ static QemuOptsList qcow2_create_opts = {
+             .help = "Compression method used for image cluster "        \
+                     "compression",                                      \
+             .def_value_str = "zlib"                                     \
++        },                                                              \
++        {                                                               \
++            .name = BLOCK_OPT_KEEP_DATA_FILE,                           \
++            .type = QEMU_OPT_BOOL,                                      \
++            .help = "Assume the external data file already exists and " \
++                    "do not overwrite it"                               \
+         },
+         QCOW_COMMON_OPTIONS,
+         { /* end of list */ }
+diff --git a/include/block/block_int-common.h b/include/block/block_int-common.h
+index 5206f32d53..aa739fbc35 100644
+--- a/include/block/block_int-common.h
++++ b/include/block/block_int-common.h
+@@ -57,6 +57,7 @@
+ #define BLOCK_OPT_DATA_FILE_RAW     "data_file_raw"
+ #define BLOCK_OPT_COMPRESSION_TYPE  "compression_type"
+ #define BLOCK_OPT_EXTL2             "extended_l2"
++#define BLOCK_OPT_KEEP_DATA_FILE    "keep_data_file"
+ 
+ #define BLOCK_PROBE_BUF_SIZE        512
+ 
+diff --git a/tests/qemu-iotests/082.out b/tests/qemu-iotests/082.out
+index d0dd333117..e0463815c6 100644
+--- a/tests/qemu-iotests/082.out
++++ b/tests/qemu-iotests/082.out
+@@ -66,6 +66,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -92,6 +93,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -118,6 +120,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -144,6 +147,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -170,6 +174,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -196,6 +201,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -222,6 +228,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -248,6 +255,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -288,6 +296,7 @@ Supported qcow2 options:
+   encrypt.key-secret=<str> - ID of secret providing qcow AES key or LUKS passphrase
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+   refcount_bits=<num>    - Width of a reference count entry in bits
+@@ -376,6 +385,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -402,6 +412,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -428,6 +439,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -454,6 +466,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -480,6 +493,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -506,6 +520,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -532,6 +547,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -558,6 +574,7 @@ Supported options:
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
+   extent_size_hint=<size> - Extent size hint for the image file, 0 to disable
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   nocow=<bool (on/off)>  - Turn off copy-on-write (valid only on btrfs)
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+@@ -598,6 +615,7 @@ Supported qcow2 options:
+   encrypt.key-secret=<str> - ID of secret providing qcow AES key or LUKS passphrase
+   encryption=<bool (on/off)> - Encrypt the image with format 'aes'. (Deprecated in favor of encrypt.format=aes)
+   extended_l2=<bool (on/off)> - Extended L2 tables
++  keep_data_file=<bool (on/off)> - Assume the external data file already exists and do not overwrite it
+   lazy_refcounts=<bool (on/off)> - Postpone refcount updates
+   preallocation=<str>    - Preallocation mode (allowed values: off, metadata, falloc, full)
+   refcount_bits=<num>    - Width of a reference count entry in bits
+-- 
+2.52.0
+

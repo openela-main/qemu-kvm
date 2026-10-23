@@ -1,0 +1,94 @@
+From 8c81f317f023c44ad6c9f3a75907869dd15f6e6d Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 13 Oct 2026 14:17:49 -0400
+Subject: [PATCH 11/15] pr-manager-helper: add PR_HELPER_CLEANUP command
+ support
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 583: scsi: clean up persistent reservation state after migration
+RH-Jira: RHEL-280223
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [5/9] 64031b4f58c5a238b1661ecc26b22061411b4671
+
+qemu-pr-helper now supports the vendor-specific PR_HELPER_CLEANUP SCSI
+command. Add support to the client side.
+
+pr_manager_helper_run() uses scsi_cdb_xfer() to determine the number of
+bytes to transfer. Extend scsi_cdb_xfer() to know that this
+vendor-specific command does not transfer any bytes.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Link: https://lore.kernel.org/r/20261013181752.1299456-6-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 179e9fa5f3fc37cc79e29e0834c4e244970c7447)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ scsi/pr-manager-helper.c | 20 +++++++++++++++++---
+ scsi/utils.c             |  3 +++
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/scsi/pr-manager-helper.c b/scsi/pr-manager-helper.c
+index ee2e954e51..bd4eb9c993 100644
+--- a/scsi/pr-manager-helper.c
++++ b/scsi/pr-manager-helper.c
+@@ -37,6 +37,8 @@ struct PRManagerHelper {
+ 
+     QemuMutex lock;
+     QIOChannel *ioc;
++
++    uint32_t proto_flags; /* flags negotiated with pr-helper */
+ };
+ 
+ static void pr_manager_send_status_changed_event(PRManagerHelper *pr_mgr)
+@@ -133,7 +135,9 @@ static int pr_manager_helper_initialize(PRManagerHelper *pr_mgr,
+         goto out_close;
+     }
+ 
+-    flags = 0;
++    pr_mgr->proto_flags = be32_to_cpu(flags) & PR_HELPER_FEATURE_CLEANUP;
++
++    flags = cpu_to_be32(pr_mgr->proto_flags);
+     r = pr_manager_helper_write(pr_mgr, -1, &flags, sizeof(flags), errp);
+     if (r < 0) {
+         goto out_close;
+@@ -165,9 +169,19 @@ static int pr_manager_helper_run(PRManager *p,
+     }
+ 
+     memcpy(cdb, io_hdr->cmdp, io_hdr->cmd_len);
+-    assert(cdb[0] == PERSISTENT_RESERVE_OUT || cdb[0] == PERSISTENT_RESERVE_IN);
++    assert(cdb[0] == PERSISTENT_RESERVE_OUT ||
++           cdb[0] == PERSISTENT_RESERVE_IN ||
++           cdb[0] == PR_HELPER_CLEANUP);
++
++    /* The command is only available when pr-helper supports it */
++    if (cdb[0] == PR_HELPER_CLEANUP &&
++        !(pr_mgr->proto_flags & PR_HELPER_FEATURE_CLEANUP)) {
++        return -ENOTSUP;
++    }
++
+     expected_dir =
+-        (cdb[0] == PERSISTENT_RESERVE_OUT ? SG_DXFER_TO_DEV : SG_DXFER_FROM_DEV);
++        (cdb[0] == PERSISTENT_RESERVE_IN ?
++         SG_DXFER_FROM_DEV : SG_DXFER_TO_DEV);
+     if (io_hdr->dxfer_direction != expected_dir) {
+         return -EINVAL;
+     }
+diff --git a/scsi/utils.c b/scsi/utils.c
+index daee90ecf0..1ee68e6822 100644
+--- a/scsi/utils.c
++++ b/scsi/utils.c
+@@ -29,6 +29,9 @@ uint32_t scsi_data_cdb_xfer(uint8_t *buf)
+ 
+ uint32_t scsi_cdb_xfer(uint8_t *buf)
+ {
++    if (buf[0] == PR_HELPER_CLEANUP) {
++        return 0;
++    }
+     switch (buf[0] >> 5) {
+     case 0:
+         return buf[4];
+-- 
+2.52.0
+

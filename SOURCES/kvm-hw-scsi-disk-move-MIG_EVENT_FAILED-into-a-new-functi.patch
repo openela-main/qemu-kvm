@@ -1,0 +1,76 @@
+From d76f85237f8d68661e2cb34524508d2fbba597b1 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 13 Oct 2026 14:17:47 -0400
+Subject: [PATCH 09/15] hw/scsi-disk: move MIG_EVENT_FAILED into a new function
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 583: scsi: clean up persistent reservation state after migration
+RH-Jira: RHEL-280223
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [3/9] 79f3faf4cb5396df8f974f87b4072a619781ba5d
+
+Move the MIG_EVENT_FAILED logic from scsi_block_migration_notifier()
+into its own new scsi_block_migration_failed() function. The next commit
+adds logic for handling another event, so doing that in dedicated
+functions makes the code easier to read.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Link: https://lore.kernel.org/r/20261013181752.1299456-4-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 2e5e075635967d3974fc893b9f44af6e418ff858)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Conflicts:
+- hw/scsi/scsi-disk.c
+  Downstream uses the older MIG_EVENT_PRECOPY_FAILED constant rather
+  than MIG_EVENT_FAILED.
+---
+ hw/scsi/scsi-disk.c | 26 ++++++++++++++++----------
+ 1 file changed, 16 insertions(+), 10 deletions(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index e7b821ad19..55dc515158 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -2744,20 +2744,26 @@ static SCSIRequest *scsi_new_request(SCSIDevice *d, uint32_t tag, uint32_t lun,
+  * fails because the destination may have already preempted and we need to get
+  * the reservation back.
+  */
++static void scsi_block_migration_failed(SCSIDiskState *s)
++{
++    SCSIDevice *d = &s->qdev;
++    Error *local_err = NULL;
++
++    if (!scsi_generic_pr_state_preempt(d, &local_err)) {
++        /* MIG_EVENT_PRECOPY_FAILED cannot fail, so just warn */
++        error_prepend(&local_err, "scsi-block migration rollback: ");
++        warn_report_err(local_err);
++    }
++}
++
+ static int scsi_block_migration_notifier(NotifierWithReturn *notifier,
+                                          MigrationEvent *e, Error **errp)
+ {
+-    if (e->type == MIG_EVENT_PRECOPY_FAILED) {
+-        SCSIDiskState *s =
+-            container_of(notifier, SCSIDiskState, migration_notifier);
+-        SCSIDevice *d = &s->qdev;
+-        Error *local_err = NULL;
++    SCSIDiskState *s =
++        container_of(notifier, SCSIDiskState, migration_notifier);
+ 
+-        if (!scsi_generic_pr_state_preempt(d, &local_err)) {
+-            /* MIG_EVENT_PRECOPY_FAILED cannot fail, so just warn */
+-            error_prepend(&local_err, "scsi-block migration rollback: ");
+-            warn_report_err(local_err);
+-        }
++    if (e->type == MIG_EVENT_PRECOPY_FAILED) {
++        scsi_block_migration_failed(s);
+     }
+     return 0;
+ }
+-- 
+2.52.0
+

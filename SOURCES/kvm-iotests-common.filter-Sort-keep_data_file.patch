@@ -1,0 +1,42 @@
+From ef70e31aeb7382fde927da92be0831c448286a95 Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Fri, 30 May 2025 10:44:46 +0200
+Subject: [PATCH 03/15] iotests/common.filter: Sort keep_data_file
+
+RH-Author: Hanna Czenczek <hreitz@redhat.com>
+RH-MergeRequest: 577: qcow2: Add keep_data_file command-line option
+RH-Jira: RHEL-164549
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/4] d8387237dc8089f9f4adcb798b3045e65fcf12c3
+
+Sort the new keep_data_file creation option together with data_file and
+data_file_raw.
+
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20250530084448.192369-4-hreitz@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 21b4e03b7d2f12ec269168380fe1f99afeda3835)
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+---
+ tests/qemu-iotests/common.filter | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/qemu-iotests/common.filter b/tests/qemu-iotests/common.filter
+index cd8b506dba..1b39328c9b 100644
+--- a/tests/qemu-iotests/common.filter
++++ b/tests/qemu-iotests/common.filter
+@@ -183,7 +183,7 @@ _do_filter_img_create()
+             -e 's/^\(fmt\)/0-\1/' \
+             -e 's/^\(size\)/1-\1/' \
+             -e 's/^\(backing\)/2-\1/' \
+-            -e 's/^\(data_file\)/3-\1/' \
++            -e 's/^\(\(keep_\)\?data_file\)/3-\1/' \
+             -e 's/^\(encryption\)/4-\1/' \
+             -e 's/^\(preallocation\)/8-\1/' \
+         | LC_ALL=C sort \
+-- 
+2.52.0
+

@@ -1,0 +1,147 @@
+From 1ba3859cf9d807b4c8fc6c5446bb3ae497520efe Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 13 Oct 2026 14:17:51 -0400
+Subject: [PATCH 13/15] scsi: clean up persistent reservation state after
+ migration
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 583: scsi: clean up persistent reservation state after migration
+RH-Jira: RHEL-280223
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [7/9] e5796e861f84f3a861af56ff1de0bd654a8277a0
+
+Live migration of persistent reservations is designed to work without
+coordination between the source and destination. The destination uses
+the PREEMPT command to atomically take over the reservation or
+unregister keys belonging to the source. This approach avoids race
+conditions where other nodes in the cluster might acquire the
+reservation and it minimizes communication during the downtime window.
+
+While this works at the SCSI level, this approach is incomplete when
+using multipathd. Multipathd tracks registered keys and automatically
+registers them again when paths come up. It is unaware that the
+destination has preempted the reservation and therefore it will still
+attempt to register the key on the source host.
+
+Use the new PR_HELPER_CLEANUP command to communicate with multipathd on
+the source after migration completes successfully. The effect is similar
+to REGISTER AND IGNORE EXISTING KEY, except it also discards
+multipathd's state so that the source will no longer attempt to register
+the key.
+
+PR_HELPER_CLEANUP is a QEMU-internal command that is rejected by
+scsi_req_new(), so note that this command is not exposed to guests
+although direct blk_aio_ioctl(SG_IO) calls can make use of it.
+
+Buglink: https://redhat.atlassian.net/browse/RHEL-274966
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Link: https://lore.kernel.org/r/20261013181752.1299456-8-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 2d38eb7c741eb8c176881c355e0084d0f508885d)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Conflicts:
+- hw/scsi/scsi-disk.c
+  Downstream uses the old MIG_EVENT_PRECOPY_DONE constant instead of
+  MIG_EVENT_DONE.
+---
+ hw/scsi/scsi-disk.c    | 21 ++++++++++++++++++++-
+ hw/scsi/scsi-generic.c | 29 +++++++++++++++++++++++++++++
+ include/hw/scsi/scsi.h |  1 +
+ 3 files changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 55dc515158..0e50d6f1ab 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -2756,13 +2756,32 @@ static void scsi_block_migration_failed(SCSIDiskState *s)
+     }
+ }
+ 
++/*
++ * Unregister keys on the source after migration since the destination has
++ * preempted and taken over. This cleanup is not necessary at the SCSI level
++ * but multipathd tracks registered keys and must be informed that this host no
++ * longer wishes to be registered.
++ */
++static void scsi_block_migration_done(SCSIDiskState *s)
++{
++    SCSIDevice *d = &s->qdev;
++    Error *local_err = NULL;
++
++    if (!scsi_generic_pr_state_cleanup(d, &local_err)) {
++        error_prepend(&local_err, "scsi-block migration done: ");
++        warn_report_err(local_err);
++    }
++}
++
+ static int scsi_block_migration_notifier(NotifierWithReturn *notifier,
+                                          MigrationEvent *e, Error **errp)
+ {
+     SCSIDiskState *s =
+         container_of(notifier, SCSIDiskState, migration_notifier);
+ 
+-    if (e->type == MIG_EVENT_PRECOPY_FAILED) {
++    if (e->type == MIG_EVENT_PRECOPY_DONE) {
++        scsi_block_migration_done(s);
++    } else if (e->type == MIG_EVENT_PRECOPY_FAILED) {
+         scsi_block_migration_failed(s);
+     }
+     return 0;
+diff --git a/hw/scsi/scsi-generic.c b/hw/scsi/scsi-generic.c
+index 2f55de8440..0d0166bf40 100644
+--- a/hw/scsi/scsi-generic.c
++++ b/hw/scsi/scsi-generic.c
+@@ -651,6 +651,35 @@ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp)
+     return true;
+ }
+ 
++/* Clean up keys on source after migration */
++bool scsi_generic_pr_state_cleanup(SCSIDevice *s, Error **errp)
++{
++    SCSIPRState *pr_state = &s->pr_state;
++    uint8_t cmd[10] = {
++        PR_HELPER_CLEANUP, /* OPCODE */
++    };
++    int ret;
++
++    WITH_QEMU_LOCK_GUARD(&pr_state->mutex) {
++        if (pr_state->key == 0) {
++            return true; /* nothing to do */
++        }
++    }
++
++    ret = scsi_SG_IO(s->conf.blk, SG_DXFER_TO_DEV, cmd, sizeof(cmd), NULL, 0,
++                     s->io_timeout, errp);
++    if (ret < 0) {
++        error_prepend(errp, "pr-helper CLEANUP failed: ");
++        return false;
++    }
++
++    WITH_QEMU_LOCK_GUARD(&pr_state->mutex) {
++        pr_state->key = 0;
++        pr_state->resv_type = 0;
++    }
++    return true;
++}
++
+ static void scsi_read_complete(void * opaque, int ret)
+ {
+     SCSIGenericReq *r = (SCSIGenericReq *)opaque;
+diff --git a/include/hw/scsi/scsi.h b/include/hw/scsi/scsi.h
+index 640a11522b..2ad80f4d65 100644
+--- a/include/hw/scsi/scsi.h
++++ b/include/hw/scsi/scsi.h
+@@ -255,6 +255,7 @@ SCSIDevice *scsi_device_get(SCSIBus *bus, int channel, int target, int lun);
+ /* scsi-generic.c. */
+ extern const SCSIReqOps scsi_generic_req_ops;
+ bool scsi_generic_pr_state_preempt(SCSIDevice *s, Error **errp);
++bool scsi_generic_pr_state_cleanup(SCSIDevice *s, Error **errp);
+ 
+ /* scsi-disk.c */
+ #define SCSI_DISK_QUIRK_MODE_PAGE_APPLE_VENDOR             0
+-- 
+2.52.0
+

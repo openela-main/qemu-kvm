@@ -1,0 +1,315 @@
+From ca4805c3d556509b014d1a823fb7f5c0c935ed4c Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Tue, 13 Oct 2026 14:17:48 -0400
+Subject: [PATCH 10/15] qemu-pr-helper: add PR_HELPER_CLEANUP for live
+ migration
+
+RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
+RH-MergeRequest: 583: scsi: clean up persistent reservation state after migration
+RH-Jira: RHEL-280223
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [4/9] 51f6e95d88b386bfb6d62880e4baa6285441d372
+
+Introduce a new vendor-specific SCSI command that acts similar to
+REGISTER AND IGNORE EXISTING KEY but also discards multipathd's state
+(including /etc/multipath/prkeys). This command will be used on the
+source after live migration completes successfully.
+
+This cleanup step is necessary because multipathd will register the key
+it has stored when the path comes up again. This is undesirable when the
+guest has migrated to another host and can interfere with the migration
+process or the application running inside the guest.
+
+Add a qemu-pr-manager protocol feature bit indicating that the new
+PR_HELPER_CLEANUP command is available. The command has no CDB fields
+other than OPCODE and the response contains no data aside from the usual
+result and sense data.
+
+Note that the linker needs an explicit libmpathcmd dependency for
+mpath_disconnect() even though qemu-pr-helper.c already #included the
+mpath_cmd.h header before.
+
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Link: https://lore.kernel.org/r/20261013181752.1299456-5-stefanha@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e974bdd134e00d4b9789deace7b58dd35829aae4)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+---
+ hw/scsi/scsi-bus.c       |  10 +++
+ include/scsi/constants.h |   1 +
+ meson.build              |   2 +
+ scsi/pr-helper.h         |   3 +
+ scsi/qemu-pr-helper.c    | 146 ++++++++++++++++++++++++++++++++++++---
+ 5 files changed, 153 insertions(+), 9 deletions(-)
+
+diff --git a/hw/scsi/scsi-bus.c b/hw/scsi/scsi-bus.c
+index 878ccf62c9..e2f42a7e01 100644
+--- a/hw/scsi/scsi-bus.c
++++ b/hw/scsi/scsi-bus.c
+@@ -881,6 +881,16 @@ SCSIRequest *scsi_req_new(SCSIDevice *d, uint32_t tag, uint32_t lun,
+           */
+          !(buf[0] == REQUEST_SENSE && d->sense_is_ua))) {
+         ops = &reqops_unit_attention;
++    } else if (buf[0] == PR_HELPER_CLEANUP) {
++        /*
++         * This is a QEMU-internal vendor-specific SCSI command that must only
++         * be submitted directly via blk_aio_ioctl() and not through SCSI
++         * emulation. Reject the command explicitly to guarantee a guest cannot
++         * execute it, although vendor-specific commands are not supported by
++         * SCSI emulation (including passthrough) anyway.
++         */
++        trace_scsi_req_parse_bad(d->id, lun, tag, buf[0]);
++        goto invalid_opcode;
+     } else if (lun != d->lun ||
+                buf[0] == REPORT_LUNS ||
+                (buf[0] == REQUEST_SENSE && d->sense_len)) {
+diff --git a/include/scsi/constants.h b/include/scsi/constants.h
+index 717e470a5d..bb3981a779 100644
+--- a/include/scsi/constants.h
++++ b/include/scsi/constants.h
+@@ -149,6 +149,7 @@
+ #define MECHANISM_STATUS      0xbd
+ #define READ_CD               0xbe
+ #define SEND_DVD_STRUCTURE    0xbf
++#define PR_HELPER_CLEANUP     0xff /* vendor-specific QEMU command */
+ 
+ /*
+  * SERVICE ACTION IN subcodes
+diff --git a/meson.build b/meson.build
+index f7b21c818d..45c0f9af06 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1477,6 +1477,8 @@ if host_os == 'linux' and have_tools and get_option('mpath').allowed()
+     endif
+     mpathlibs += cc.find_library('multipath',
+                                  required: get_option('mpath'))
++    mpathlibs += cc.find_library('mpathcmd',
++                                 required: get_option('mpath'))
+     foreach lib: mpathlibs
+       if not lib.found()
+         mpathlibs = []
+diff --git a/scsi/pr-helper.h b/scsi/pr-helper.h
+index e26e104ec7..d088d0dc19 100644
+--- a/scsi/pr-helper.h
++++ b/scsi/pr-helper.h
+@@ -31,6 +31,9 @@
+ #define PR_HELPER_SENSE_SIZE   96
+ #define PR_HELPER_DATA_SIZE    8192
+ 
++/* Protocol features */
++#define PR_HELPER_FEATURE_CLEANUP (1u << 0)
++
+ typedef struct PRHelperResponse {
+     int32_t result;
+     int32_t sz;
+diff --git a/scsi/qemu-pr-helper.c b/scsi/qemu-pr-helper.c
+index b69dd982d6..373b32ec83 100644
+--- a/scsi/qemu-pr-helper.c
++++ b/scsi/qemu-pr-helper.c
+@@ -538,6 +538,110 @@ static int coroutine_fn multipath_pr_out(int fd, const uint8_t *cdb, uint8_t *se
+                                      paramp, noisy, verbose);
+     return mpath_reconstruct_sense(fd, r, sense);
+ }
++
++/* Get the device-mapper device name given its block device fd */
++static char *get_dm_name(int fd, Error **errp)
++{
++    struct stat st;
++    int ret;
++
++    assert(is_mpath(fd));
++
++    ret = fstat(fd, &st);
++    if (ret != 0) {
++        error_setg_errno(errp, errno, "fstat failed on fd %d", fd);
++        return NULL;
++    }
++
++    return g_strdup_printf("dm-%u", minor(st.st_rdev));
++}
++
++/* Perform a multipathd command */
++static bool multipathd_cmd(int fd, const char *cmd, Error **errp)
++{
++    const unsigned int timeout_ms = 60000;
++    char *reply = NULL;
++    int last_errno;
++    int ret;
++
++    ret = mpath_process_cmd(fd, cmd, &reply, timeout_ms);
++    last_errno = errno;
++    if (reply && strcmp(reply, "ok\n") != 0) {
++        error_setg(errp, "mpath_process_cmd(%d, \"%s\") replied \"%s\"",
++                   fd, cmd, reply);
++        free(reply);
++        return false;
++    }
++    free(reply);
++    if (ret == -1) {
++        error_setg_errno(errp, last_errno,
++                         "mpath_process_cmd(%d, \"%s\") failed",
++                         fd, cmd);
++        return false;
++    }
++    return true;
++}
++
++/* Unregister so this I_T nexus has no key registered anymore */
++static int coroutine_fn multipath_pr_cleanup_unregister(int fd, uint8_t *sense,
++                                                        Error **errp)
++{
++    uint8_t cdb[PR_HELPER_CDB_SIZE] = {};
++    uint8_t param[PR_OUT_FIXED_PARAM_SIZE] = {};
++
++    /* Fill in CDB */
++    cdb[0] = PERSISTENT_RESERVE_OUT;               /* OPERATION CODE */
++    cdb[1] = PRO_REGISTER_AND_IGNORE_EXISTING_KEY; /* SERVICE ACTION */
++    stl_be_p(&cdb[5], sizeof(param));              /* PARAMETER LIST LENGTH */
++
++    /* The parameter list is all zeroes, so there is nothing to fill in */
++
++    return multipath_pr_out(fd, cdb, sense, param, sizeof(param));
++}
++
++/*
++ * A special version of REGISTER AND IGNORE EXISTING KEY with sark=0 to
++ * unregister the key without triggering multipathd's preemption. This succeeds
++ * when no key is registered too. This is essential so the migration source
++ * cleans up its registered key without multipathd preempting the destination
++ * host.
++ */
++static int coroutine_fn multipath_pr_cleanup(int bdev_fd, uint8_t *sense,
++                                             Error **errp)
++{
++    g_autofree char *bdev_dm_name = get_dm_name(bdev_fd, errp);
++    g_autofree char *cmd = NULL;
++    int multipathd_fd;
++
++    if (bdev_dm_name == NULL) {
++        return -1;
++    }
++
++    /* First make multipathd forget the key and reservation state */
++    multipathd_fd = mpath_connect();
++    if (multipathd_fd == -1) {
++        error_setg_errno(errp, errno, "mpath_connect() failed");
++        return -1;
++    }
++
++    cmd = g_strdup_printf("unsetprkey map %s", bdev_dm_name);
++    if (!multipathd_cmd(multipathd_fd, cmd, errp)) {
++        mpath_disconnect(multipathd_fd);
++        return -1;
++    }
++
++    g_free(cmd);
++    cmd = g_strdup_printf("unsetprstatus map %s", bdev_dm_name);
++    if (!multipathd_cmd(multipathd_fd, cmd, errp)) {
++        mpath_disconnect(multipathd_fd);
++        return -1;
++    }
++
++    mpath_disconnect(multipathd_fd);
++
++    /* Now unregister the key at the SCSI level */
++    return multipath_pr_cleanup_unregister(bdev_fd, sense, errp);
++}
+ #endif
+ 
+ static int coroutine_fn do_pr_in(int fd, const uint8_t *cdb, uint8_t *sense,
+@@ -579,6 +683,21 @@ static int coroutine_fn do_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
+                    SG_DXFER_TO_DEV);
+ }
+ 
++static int coroutine_fn do_pr_cleanup(int fd, uint8_t *sense, Error **errp)
++{
++    if ((fcntl(fd, F_GETFL) & O_ACCMODE) == O_RDONLY) {
++        scsi_build_sense(sense, SENSE_CODE(INVALID_OPCODE));
++        return CHECK_CONDITION;
++    }
++
++#ifdef CONFIG_MPATH
++    if (is_mpath(fd)) {
++        return multipath_pr_cleanup(fd, sense, errp);
++    }
++#endif
++    return GOOD;
++}
++
+ /* Client */
+ 
+ typedef struct PRHelperClient {
+@@ -668,7 +787,8 @@ static int coroutine_fn prh_read_request(PRHelperClient *client,
+     }
+ 
+     if (req->cdb[0] != PERSISTENT_RESERVE_OUT &&
+-        req->cdb[0] != PERSISTENT_RESERVE_IN) {
++        req->cdb[0] != PERSISTENT_RESERVE_IN &&
++        req->cdb[0] != PR_HELPER_CLEANUP) {
+         error_setg(errp, "Invalid CDB, closing socket.");
+         goto out_close;
+     }
+@@ -704,7 +824,8 @@ static int coroutine_fn prh_write_response(PRHelperClient *client,
+     ssize_t r;
+     size_t sz;
+ 
+-    if (req->cdb[0] == PERSISTENT_RESERVE_IN && resp->result == GOOD) {
++    if (req->cdb[0] == PERSISTENT_RESERVE_IN &&
++        resp->result == GOOD) {
+         assert(resp->sz <= req->sz && resp->sz <= sizeof(client->data));
+     } else {
+         assert(resp->sz == 0);
+@@ -737,10 +858,8 @@ static void coroutine_fn prh_co_entry(void *opaque)
+                              false, NULL);
+     qio_channel_set_follow_coroutine_ctx(QIO_CHANNEL(client->ioc), true);
+ 
+-    /* A very simple negotiation for future extensibility.  No features
+-     * are defined so write 0.
+-     */
+-    flags = cpu_to_be32(0);
++    /* A very simple negotiation for future extensibility */
++    flags = cpu_to_be32(PR_HELPER_FEATURE_CLEANUP);
+     r = qio_channel_write_all(QIO_CHANNEL(client->ioc),
+                              (char *) &flags, sizeof(flags), NULL);
+     if (r < 0) {
+@@ -749,7 +868,7 @@ static void coroutine_fn prh_co_entry(void *opaque)
+ 
+     r = qio_channel_read_all(QIO_CHANNEL(client->ioc),
+                              (char *) &flags, sizeof(flags), NULL);
+-    if (be32_to_cpu(flags) != 0 || r < 0) {
++    if ((be32_to_cpu(flags) & ~PR_HELPER_FEATURE_CLEANUP) != 0 || r < 0) {
+         goto out;
+     }
+ 
+@@ -764,15 +883,24 @@ static void coroutine_fn prh_co_entry(void *opaque)
+         }
+ 
+         num_active_sockets++;
+-        if (req.cdb[0] == PERSISTENT_RESERVE_OUT) {
++        switch (req.cdb[0]) {
++        case PERSISTENT_RESERVE_OUT:
+             r = do_pr_out(req.fd, req.cdb, resp.sense,
+                           client->data, sz);
+             resp.sz = 0;
+-        } else {
++            break;
++        case PERSISTENT_RESERVE_IN:
+             resp.sz = sizeof(client->data);
+             r = do_pr_in(req.fd, req.cdb, resp.sense,
+                          client->data, &resp.sz);
+             resp.sz = MIN(resp.sz, sz);
++            break;
++        case PR_HELPER_CLEANUP:
++            r = do_pr_cleanup(req.fd, resp.sense, &local_err);
++            resp.sz = 0;
++            break;
++        default:
++            abort();
+         }
+         num_active_sockets--;
+         close(req.fd);
+-- 
+2.52.0
+
