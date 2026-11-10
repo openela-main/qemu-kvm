@@ -1,7 +1,14 @@
-From 760fc5137eda66c2066595fd8abfe5273cf34664 Mon Sep 17 00:00:00 2001
+From fa47e0832aa1cb3dfc4c687143ef6eacd4678b56 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 7 Oct 2025 10:17:00 -0400
-Subject: [PATCH] iotests: add Linux loop device image creation test
+Subject: [PATCH 29/45] iotests: add Linux loop device image creation test
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [29/45] dac8e390827dab70b29954d588276c12c4a434c3 (kmwolf/centos-qemu-kvm)
 
 This qemu-iotests test case is based on the reproducer that Jean-Louis
 Dupond <jean-louis@dupond.be> shared in
@@ -16,6 +23,7 @@ Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
 Reviewed-by: Kevin Wolf <kwolf@redhat.com>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 (cherry picked from commit 59a1cf0cd31597d2f6e2c18dc400a1de8427d47d)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 ---
  tests/qemu-iotests/tests/loop-create-file     | 59 +++++++++++++++++++
@@ -103,3 +111,6 @@ index 0000000000..32d4155695
 +Formatting 'LOOPDEV', fmt=raw size=1048576
 +
 +*** done
+-- 
+2.52.0
+

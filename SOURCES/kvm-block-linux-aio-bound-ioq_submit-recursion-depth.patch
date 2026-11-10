@@ -1,0 +1,140 @@
+From dea92ae9c911a6f6d717086e3b8935546a4add7d Mon Sep 17 00:00:00 2001
+From: "Denis V. Lunev" <den@openvz.org>
+Date: Sat, 13 Jun 2026 23:03:08 +0300
+Subject: [PATCH 25/45] block/linux-aio: bound ioq_submit() recursion depth
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [25/45] 5ef81c69d8fd75e479bb296ef3713a09a72d8e01 (kmwolf/centos-qemu-kvm)
+
+qemu_laio_process_completions() wraps its body in defer_call_begin /
+defer_call_end. Inside the section, completion callbacks wake coroutines
+that queue new aiocbs; laio_do_submit() defers laio_deferred_fn. At the
+bottom of qemu_laio_process_completions() the defer_call_end() fires
+laio_deferred_fn, which calls ioq_submit(), closing the cycle:
+
+  ioq_submit
+    -> io_submit(2)                           // some sync completions
+    -> qemu_laio_process_completions          // defer_call_begin
+         -> aio_co_wake                       // resumes coroutine
+              -> laio_do_submit
+                   -> defer_call(laio_deferred_fn, s)   // enqueued
+         -> defer_call_end                    // nesting drops to 0
+              -> laio_deferred_fn
+                   -> ioq_submit              // +1 stack frame, loop
+
+When io_submit(2) returns asynchronously (O_DIRECT) the cycle
+terminates in one extra frame: the fresh aiocb is still in flight, no
+completion is drained, no coroutine wakes, no new submission queues.
+When submissions complete synchronously (non-O_DIRECT, or per-descriptor
+drivers such as vmdk) each level enqueues more work for the next
+defer_call_end() to drain, so recursion grows without bound and QEMU
+crashes with SIGSEGV on the thread guard page.
+
+The cycle was closed by two performance commits, each correct in
+isolation:
+
+  076682885d ("block/linux-aio: convert to blk_io_plug_call() API")
+    -- introduced laio_deferred_fn and wired
+       laio_do_submit -> defer_call(laio_deferred_fn, s).
+
+  84d61e5f36 ("virtio: use defer_call() in virtio_irqfd_notify()")
+    -- added defer_call_begin/end around qemu_laio_process_completions
+       so virtio-irqfd notifications batch across a completion pass.
+
+The supported aio=native + cache=none pairing keeps submissions
+asynchronous, so the cycle stays bounded; nothing in the code enforces
+that contract. Observed in production as a SIGSEGV during a backup job
+configured with --cached + aio=native; reproducible on upstream with
+qemu-io against vmdk.
+
+Cap ioq_submit() recursion with a counter on LaioQueue, which is only
+accessed from the AioContext home thread. On overflow, return without
+submitting. The pending work is drained by s->completion_bh, which
+qemu_laio_process_completions() has already scheduled on entry -- no
+work is lost; one event-loop round-trip of latency is paid only when
+the bound is hit, which cannot happen on a supported configuration.
+
+Signed-off-by: Denis V. Lunev <den@openvz.org>
+CC: Kevin Wolf <kwolf@redhat.com>
+CC: Hanna Reitz <hreitz@redhat.com>
+CC: Stefan Hajnoczi <stefanha@redhat.com>
+CC: Paolo Bonzini <pbonzini@redhat.com>
+Message-ID: <20260520142503.251959-2-den@openvz.org>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 6864bec553b2e37699739615e604fc3c7bae0e1d)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+Message-ID: <20260613200411.1808021-25-mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/linux-aio.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/block/linux-aio.c b/block/linux-aio.c
+index 84397de54c..37de9b564b 100644
+--- a/block/linux-aio.c
++++ b/block/linux-aio.c
+@@ -36,6 +36,19 @@
+ /* Maximum number of requests in a batch. (default value) */
+ #define DEFAULT_MAX_BATCH 32
+ 
++/*
++ * Bound on how deep ioq_submit() may recurse on a single LaioQueue via the
++ * ioq_submit -> qemu_laio_process_completions -> defer_call_end ->
++ * laio_deferred_fn -> ioq_submit cycle. The cycle terminates naturally
++ * when io_submit(2) returns asynchronously (O_DIRECT), but can grow
++ * without bound when submissions complete synchronously. On overflow
++ * the caller returns without submitting; the outermost
++ * qemu_laio_process_completions() has already scheduled s->completion_bh
++ * (via qemu_bh_schedule() at the top of that function), which resumes
++ * submission from the next event-loop dispatch.
++ */
++#define IOQ_SUBMIT_MAX_DEPTH 8
++
+ struct qemu_laiocb {
+     Coroutine *co;
+     LinuxAioState *ctx;
+@@ -61,6 +74,7 @@ typedef struct {
+     unsigned int in_queue;
+     unsigned int in_flight;
+     bool blocked;
++    unsigned int submit_depth;
+     QSIMPLEQ_HEAD(, qemu_laiocb) pending;
+ } LaioQueue;
+ 
+@@ -331,6 +345,7 @@ static void ioq_init(LaioQueue *io_q)
+     io_q->in_queue = 0;
+     io_q->in_flight = 0;
+     io_q->blocked = false;
++    io_q->submit_depth = 0;
+ }
+ 
+ static void ioq_submit(LinuxAioState *s)
+@@ -340,6 +355,11 @@ static void ioq_submit(LinuxAioState *s)
+     QEMU_UNINITIALIZED struct iocb *iocbs[MAX_EVENTS];
+     QSIMPLEQ_HEAD(, qemu_laiocb) completed;
+ 
++    if (s->io_q.submit_depth >= IOQ_SUBMIT_MAX_DEPTH) {
++        return;
++    }
++    s->io_q.submit_depth++;
++
+     do {
+         if (s->io_q.in_flight >= MAX_EVENTS) {
+             break;
+@@ -385,6 +405,8 @@ static void ioq_submit(LinuxAioState *s)
+          * pended requests will be submitted from there.
+          */
+     }
++
++    s->io_q.submit_depth--;
+ }
+ 
+ static uint64_t laio_max_batch(LinuxAioState *s, uint64_t dev_max_batch)
+-- 
+2.52.0
+

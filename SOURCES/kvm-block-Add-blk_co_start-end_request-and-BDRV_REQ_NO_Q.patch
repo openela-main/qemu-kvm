@@ -1,15 +1,15 @@
-From acdaabb07f4a54d55fa4116cf0539e7d0c87b2d1 Mon Sep 17 00:00:00 2001
+From 1ac3891e229f686f9f249753d1d26f44342ef6fd Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:27 +0200
-Subject: [PATCH 04/10] block: Add blk_co_start/end_request() and
+Subject: [PATCH 04/20] block: Add blk_co_start/end_request() and
  BDRV_REQ_NO_QUEUE
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/8] ebca63c4ff1e7d7ddce3ff3d4797a38701a4e8f0 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [2/8] bb2ce413ce753eedc3fde09fb44ea601d1688ffa (kmwolf/centos-qemu-kvm)
 
 If a device uses blk_inc/dec_in_flight() in order to build macro
 operations that involve multiple requests for the block layer and that
@@ -41,7 +41,7 @@ Signed-off-by: Kevin Wolf <kwolf@redhat.com>
  3 files changed, 41 insertions(+), 10 deletions(-)
 
 diff --git a/block/block-backend.c b/block/block-backend.c
-index 98315d4470..b8d877c4e7 100644
+index d6df369188..a0f4c841da 100644
 --- a/block/block-backend.c
 +++ b/block/block-backend.c
 @@ -82,6 +82,7 @@ struct BlockBackend {
@@ -186,7 +186,7 @@ index c8c626daea..895ea17541 100644
  
  #define BDRV_O_NO_SHARE    0x0001 /* don't share permissions */
 diff --git a/include/system/block-backend-io.h b/include/system/block-backend-io.h
-index 6d5ac476fc..0248c1c36e 100644
+index ba8dfcc7d0..59841e04a8 100644
 --- a/include/system/block-backend-io.h
 +++ b/include/system/block-backend-io.h
 @@ -71,6 +71,8 @@ BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,

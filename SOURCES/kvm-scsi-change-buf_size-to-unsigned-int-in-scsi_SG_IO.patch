@@ -1,14 +1,14 @@
-From ba29b8453063bf8dd519c58e9d19c8a7e1439dd9 Mon Sep 17 00:00:00 2001
+From b7514cfc511cd644808889e9a8825584e2671269 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Wed, 15 Apr 2026 19:29:05 -0400
-Subject: [PATCH 01/10] scsi: change buf_size to unsigned int in scsi_SG_IO()
+Subject: [PATCH 01/20] scsi: change buf_size to unsigned int in scsi_SG_IO()
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 555: scsi: handle reservation changes across migration
-RH-Jira: RHEL-166032
-RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 499: scsi: handle reservation changes across migration
+RH-Jira: RHEL-158244
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
-RH-Commit: [1/2] 47132a8baea29250c24c63b9e40dca981f838af2
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Commit: [1/2] 059e4b7557e72419428b4fe3a9a9a29e4b54b69e (stefanha/centos-stream-qemu-kvm)
 
 SG_IO supports an unsigned int dxfer_len value. Existing callers use
 less than 256 bytes, so scsi_SG_IO()'s uint8_t buf_size type was

@@ -1,0 +1,75 @@
+From 722974584b77734f8f04faef1a5892127d5c1db5 Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Wed, 11 Mar 2026 15:54:25 +0100
+Subject: [PATCH 39/45] block/mirror: fix assertion failure upon duplicate
+ complete for job using 'replaces'
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [39/45] f340f869afc8155de122133f13adba3bcd38f1f5 (kmwolf/centos-qemu-kvm)
+
+If s->replace_blocker was already set by an earlier invocation of
+mirror_complete(), then there will be an assertion failure when
+error_setg() is called for it a second time. The bdrv_op_block_all()
+and bdrv_ref() operations should only be done a single time too.
+
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-Id: <20260311145717.668492-2-f.ebner@proxmox.com>
+Reviewed-by: Hanna Czenczek <hreitz@redhat.com>
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+(cherry picked from commit 9ac85f4cc7995217db8f736733b990d6addcb036)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/mirror.c | 28 +++++++++++++++-------------
+ 1 file changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index d22f168ff0..089856f4a8 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -1276,23 +1276,25 @@ static void mirror_complete(Job *job, Error **errp)
+         return;
+     }
+ 
+-    /* block all operations on to_replace bs */
+-    if (s->replaces) {
+-        s->to_replace = bdrv_find_node(s->replaces);
+-        if (!s->to_replace) {
+-            error_setg(errp, "Node name '%s' not found", s->replaces);
+-            return;
++    if (!s->should_complete) {
++        /* block all operations on to_replace bs */
++        if (s->replaces) {
++            s->to_replace = bdrv_find_node(s->replaces);
++            if (!s->to_replace) {
++                error_setg(errp, "Node name '%s' not found", s->replaces);
++                return;
++            }
++
++            /* TODO Translate this into child freeze system. */
++            error_setg(&s->replace_blocker,
++                       "block device is in use by block-job-complete");
++            bdrv_op_block_all(s->to_replace, s->replace_blocker);
++            bdrv_ref(s->to_replace);
+         }
+ 
+-        /* TODO Translate this into child freeze system. */
+-        error_setg(&s->replace_blocker,
+-                   "block device is in use by block-job-complete");
+-        bdrv_op_block_all(s->to_replace, s->replace_blocker);
+-        bdrv_ref(s->to_replace);
++        s->should_complete = true;
+     }
+ 
+-    s->should_complete = true;
+-
+     /* If the job is paused, it will be re-entered when it is resumed */
+     WITH_JOB_LOCK_GUARD() {
+         if (!job->paused) {
+-- 
+2.52.0
+

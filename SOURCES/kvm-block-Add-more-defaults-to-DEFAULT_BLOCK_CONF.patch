@@ -1,0 +1,56 @@
+From 9f374c808ca32fe81e1f37a283b2848a02820423 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 10 Apr 2026 17:23:14 +0200
+Subject: [PATCH 36/45] block: Add more defaults to DEFAULT_BLOCK_CONF
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [36/45] 02356066e52ea61acd80c72b665b9fd7094107a8 (kmwolf/centos-qemu-kvm)
+
+discard_granularity was missing from this, which means that SCSI disks
+created with -drive if=scsi would default to 0 (i.e. disabling discards)
+instead of -1, which makes scsi-hd automatically pick a granularity and
+is the default of the corresponding qdev property for -device scsi-hd.
+
+This was broken in QEMU 9.0 with commit 3089637.
+
+Also set other fields whose default isn't an obvious 0. These are not
+actual bug fixes because ON_OFF_AUTO_AUTO in fact happens to be 0, but
+it's better not to rely on the order of enums.
+
+Cc: qemu-stable@nongnu.org
+Fixes: 308963746169 ('scsi: Don't ignore most usb-storage properties')
+Reported-by: Lexi Winter <ivy@FreeBSD.org>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260410152314.86412-3-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit f27aea1896338f4dd085a0e2cb2ab3797c5fe3e9)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ include/hw/block/block.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/include/hw/block/block.h b/include/hw/block/block.h
+index 7da643faff..9225e75925 100644
+--- a/include/hw/block/block.h
++++ b/include/hw/block/block.h
+@@ -53,7 +53,12 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
+ 
+ #define DEFAULT_BLOCK_CONF (BlockConf) {                                \
+     .bootindex = -1,                                                    \
++    .backend_defaults = ON_OFF_AUTO_AUTO,                               \
++    .discard_granularity = -1,                                          \
++    .wce = ON_OFF_AUTO_AUTO,                                            \
+     .share_rw = false,                                                  \
++    .account_invalid = ON_OFF_AUTO_AUTO,                                \
++    .account_failed = ON_OFF_AUTO_AUTO,                                 \
+     .rerror = BLOCKDEV_ON_ERROR_AUTO,                                   \
+     .werror = BLOCKDEV_ON_ERROR_AUTO,                                   \
+ }
+-- 
+2.52.0
+

@@ -1,0 +1,153 @@
+From c294cade27a33db6d03f80fb46555809edf7697f Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Sat, 13 Jun 2026 23:03:38 +0300
+Subject: [PATCH 43/45] iotests/046: Test that discard/write_zeroes wait for
+ dependencies
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [43/45] 551a8416e87017e15cae972b1e6e8bfd4515fb6f (kmwolf/centos-qemu-kvm)
+
+This is a regression test for the bug fixed in the previous commit where
+discard and write_zeroes operations wouldn't consider their dependencies
+in s->cluster_allocs. Without the fix, this results in a corrupted
+image.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260427170520.101242-5-kwolf@redhat.com>
+Reviewed-by: Denis V. Lunev <den@openvz.org>
+Tested-by: Denis V. Lunev <den@openvz.org>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 389f5bcc744d3ddc127d550a57261aed9bbba1f3)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+Message-ID: <20260613200411.1808021-55-mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/046     | 46 ++++++++++++++++++++++++++++++++++++++
+ tests/qemu-iotests/046.out | 36 +++++++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+)
+
+diff --git a/tests/qemu-iotests/046 b/tests/qemu-iotests/046
+index 4c9ed4d26e..e03dd40147 100755
+--- a/tests/qemu-iotests/046
++++ b/tests/qemu-iotests/046
+@@ -184,6 +184,48 @@ aio_write -P 160 0x104000 0x18000
+ resume A
+ aio_flush
+ EOF
++
++# Create a pre-allocated zero cluster, then start a write on it and discard it
++# before the L2 update is made
++cat  <<EOF
++write -P 181 0x120000 0x10000
++write -z 0x120000 0x10000
++
++break write_aio A
++aio_write -P 180 0x120000 0x10000
++wait_break A
++aio_discard 0x120000 0x10000
++resume A
++aio_flush
++EOF
++
++# Create a pre-allocated zero cluster, then start a write on it and a
++# concurrent zero write with MAY_UNMAP before the L2 update is made
++cat  <<EOF
++write -P 181 0x130000 0x10000
++write -z 0x130000 0x10000
++
++break write_aio A
++aio_write -P 180 0x130000 0x10000
++wait_break A
++aio_write -z -u 0x130000 0x10000
++resume A
++aio_flush
++EOF
++
++# Create a pre-allocated zero cluster, then start a write on it and a
++# concurrent zero write without MAY_UNMAP before the L2 update is made
++cat  <<EOF
++write -P 181 0x140000 0x10000
++write -z 0x140000 0x10000
++
++break write_aio A
++aio_write -P 180 0x140000 0x10000
++wait_break A
++aio_write -z 0x140000 0x10000
++resume A
++aio_flush
++EOF
+ }
+ 
+ overlay_io | $QEMU_IO blkdebug::"$TEST_IMG" | _filter_qemu_io |\
+@@ -264,6 +306,10 @@ verify_io()
+     # Undefined content for 0x10c000 0x8000
+     echo read -P 160 0x114000 0x8000
+     echo read -P 17  0x11c000 0x4000
++
++    echo read -P 0   0x120000 0x10000
++    echo read -P 0   0x130000 0x10000
++    echo read -P 0   0x140000 0x10000
+ }
+ 
+ verify_io | $QEMU_IO "$TEST_IMG" | _filter_qemu_io
+diff --git a/tests/qemu-iotests/046.out b/tests/qemu-iotests/046.out
+index b1a03f4041..6341df335c 100644
+--- a/tests/qemu-iotests/046.out
++++ b/tests/qemu-iotests/046.out
+@@ -139,6 +139,36 @@ wrote XXX/XXX bytes at offset XXX
+ XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ wrote XXX/XXX bytes at offset XXX
+ XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++blkdebug: Suspended request 'A'
++blkdebug: Resuming request 'A'
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++discarded  XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++blkdebug: Suspended request 'A'
++blkdebug: Resuming request 'A'
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++blkdebug: Suspended request 'A'
++blkdebug: Resuming request 'A'
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++wrote XXX/XXX bytes at offset XXX
++XXX KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ 
+ == Verify image content ==
+ read 65536/65536 bytes at offset 0
+@@ -239,5 +269,11 @@ read 32768/32768 bytes at offset 1130496
+ 32 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ read 16384/16384 bytes at offset 1163264
+ 16 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++read 65536/65536 bytes at offset 1179648
++64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++read 65536/65536 bytes at offset 1245184
++64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++read 65536/65536 bytes at offset 1310720
++64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ No errors were found on the image.
+ *** done
+-- 
+2.52.0
+

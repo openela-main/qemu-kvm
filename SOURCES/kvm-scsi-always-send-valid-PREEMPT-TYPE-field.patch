@@ -1,14 +1,14 @@
-From b3307fe67b85ece828252592119e50ca790726a3 Mon Sep 17 00:00:00 2001
+From 45ca2a7d7a348dd1a48a5f218ca02331bc3d29a7 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Wed, 1 Apr 2026 13:19:26 -0400
-Subject: [PATCH 2/3] scsi: always send valid PREEMPT TYPE field
+Subject: [PATCH 2/5] scsi: always send valid PREEMPT TYPE field
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 551: scsi: PR live migration PREEMPT fixes [9.8.z]
-RH-Jira: RHEL-166008
-RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 493: scsi: PR live migration PREEMPT fixes [9.9]
+RH-Jira: RHEL-158243
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [2/3] f0858d6d5eff7f7e887937b84e895386e4f77f1e
+RH-Commit: [2/3] c1b10616023abe2ec648c1b0c4d095a87f0ff258 (stefanha/centos-stream-qemu-kvm)
 
 The SPC-6 specification says that the PREEMPT service action ignores the
 TYPE field when there is no reservation. However, the LIO Linux iSCSI

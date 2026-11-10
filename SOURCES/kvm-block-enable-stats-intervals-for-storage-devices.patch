@@ -1,0 +1,456 @@
+From 514b11e2ef98a92250f717baa97d1427382722fe Mon Sep 17 00:00:00 2001
+From: Chandan Somani <csomani@redhat.com>
+Date: Fri, 3 Oct 2025 14:59:26 -0700
+Subject: [PATCH 2/3] block: enable stats-intervals for storage devices
+
+RH-Author: Chandan Somani <None>
+RH-MergeRequest: 468: block: enable stats-intervals for storage devices
+RH-Jira: RHEL-135379
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [1/2] 8afc5d36f952df3b50e13f80ef34e1de34430f6e (csomani1/qemu-kvm)
+
+This patch allows stats-intervals to be used for storage
+devices with the -device option. It accepts a list of interval
+lengths in JSON format.
+
+It configures and collects the stats in the BlockBackend layer
+through the storage device that consumes the BlockBackend.
+
+Signed-off-by: Chandan Somani <csomani@redhat.com>
+Message-ID: <20251003220039.1336663-1-csomani@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/accounting.c         | 17 +++++++++++++++--
+ blockdev.c                 |  3 ++-
+ hw/block/block.c           |  7 +++++--
+ include/block/accounting.h |  5 +++--
+ include/hw/block/block.h   |  7 ++++++-
+ tests/qemu-iotests/172.out | 38 ++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 69 insertions(+), 8 deletions(-)
+
+diff --git a/block/accounting.c b/block/accounting.c
+index 3e46159569..0933c61f3a 100644
+--- a/block/accounting.c
++++ b/block/accounting.c
+@@ -28,6 +28,7 @@
+ #include "block/block_int.h"
+ #include "qemu/timer.h"
+ #include "system/qtest.h"
++#include "qapi/error.h"
+ 
+ static QEMUClockType clock_type = QEMU_CLOCK_REALTIME;
+ static const int qtest_latency_ns = NANOSECONDS_PER_SECOND / 1000;
+@@ -56,13 +57,25 @@ static bool bool_from_onoffauto(OnOffAuto val, bool def)
+     }
+ }
+ 
+-void block_acct_setup(BlockAcctStats *stats, enum OnOffAuto account_invalid,
+-                      enum OnOffAuto account_failed)
++bool block_acct_setup(BlockAcctStats *stats, enum OnOffAuto account_invalid,
++                      enum OnOffAuto account_failed, uint32_t *stats_intervals,
++                      uint32_t num_stats_intervals, Error **errp)
+ {
+     stats->account_invalid = bool_from_onoffauto(account_invalid,
+                                                  stats->account_invalid);
+     stats->account_failed = bool_from_onoffauto(account_failed,
+                                                 stats->account_failed);
++    if (stats_intervals) {
++        for (int i = 0; i < num_stats_intervals; i++) {
++            if (stats_intervals[i] <= 0) {
++                error_setg(errp, "Invalid interval length: %u", stats_intervals[i]);
++                return false;
++            }
++            block_acct_add_interval(stats, stats_intervals[i]);
++        }
++        g_free(stats_intervals);
++    }
++    return true;
+ }
+ 
+ void block_acct_cleanup(BlockAcctStats *stats)
+diff --git a/blockdev.c b/blockdev.c
+index 76c8dd0573..6e86c6262f 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -617,7 +617,8 @@ static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
+ 
+         bs->detect_zeroes = detect_zeroes;
+ 
+-        block_acct_setup(blk_get_stats(blk), account_invalid, account_failed);
++        block_acct_setup(blk_get_stats(blk), account_invalid, account_failed,
++                         NULL, 0, NULL);
+ 
+         if (!parse_stats_intervals(blk_get_stats(blk), interval_list, errp)) {
+             blk_unref(blk);
+diff --git a/hw/block/block.c b/hw/block/block.c
+index 2e10611d95..f187fa025d 100644
+--- a/hw/block/block.c
++++ b/hw/block/block.c
+@@ -249,8 +249,11 @@ bool blkconf_apply_backend_options(BlockConf *conf, bool readonly,
+     blk_set_enable_write_cache(blk, wce);
+     blk_set_on_error(blk, rerror, werror);
+ 
+-    block_acct_setup(blk_get_stats(blk), conf->account_invalid,
+-                     conf->account_failed);
++    if (!block_acct_setup(blk_get_stats(blk), conf->account_invalid,
++                          conf->account_failed, conf->stats_intervals,
++                          conf->num_stats_intervals, errp)) {
++        return false;
++    }
+     return true;
+ }
+ 
+diff --git a/include/block/accounting.h b/include/block/accounting.h
+index a59e39f49d..b1cf417b57 100644
+--- a/include/block/accounting.h
++++ b/include/block/accounting.h
+@@ -101,8 +101,9 @@ typedef struct BlockAcctCookie {
+ } BlockAcctCookie;
+ 
+ void block_acct_init(BlockAcctStats *stats);
+-void block_acct_setup(BlockAcctStats *stats, enum OnOffAuto account_invalid,
+-                      enum OnOffAuto account_failed);
++bool block_acct_setup(BlockAcctStats *stats, enum OnOffAuto account_invalid,
++                      enum OnOffAuto account_failed, uint32_t *stats_intervals,
++                      uint32_t num_stats_intervals, Error **errp);
+ void block_acct_cleanup(BlockAcctStats *stats);
+ void block_acct_add_interval(BlockAcctStats *stats, unsigned interval_length);
+ BlockAcctTimedStats *block_acct_interval_next(BlockAcctStats *stats,
+diff --git a/include/hw/block/block.h b/include/hw/block/block.h
+index de3946a5f1..b4d914624e 100644
+--- a/include/hw/block/block.h
++++ b/include/hw/block/block.h
+@@ -34,6 +34,8 @@ typedef struct BlockConf {
+     OnOffAuto account_invalid, account_failed;
+     BlockdevOnError rerror;
+     BlockdevOnError werror;
++    uint32_t num_stats_intervals;
++    uint32_t *stats_intervals;
+ } BlockConf;
+ 
+ static inline unsigned int get_physical_block_exp(BlockConf *conf)
+@@ -66,7 +68,10 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
+     DEFINE_PROP_ON_OFF_AUTO("account-invalid", _state,                  \
+                             _conf.account_invalid, ON_OFF_AUTO_AUTO),   \
+     DEFINE_PROP_ON_OFF_AUTO("account-failed", _state,                   \
+-                            _conf.account_failed, ON_OFF_AUTO_AUTO)
++                            _conf.account_failed, ON_OFF_AUTO_AUTO),    \
++    DEFINE_PROP_ARRAY("stats-intervals", _state,                        \
++                     _conf.num_stats_intervals, _conf.stats_intervals,  \
++                     qdev_prop_uint32, uint32_t)
+ 
+ #define DEFINE_BLOCK_PROPERTIES(_state, _conf)                          \
+     DEFINE_PROP_DRIVE("drive", _state, _conf.blk),                      \
+diff --git a/tests/qemu-iotests/172.out b/tests/qemu-iotests/172.out
+index 146fc72388..a023cd407d 100644
+--- a/tests/qemu-iotests/172.out
++++ b/tests/qemu-iotests/172.out
+@@ -30,6 +30,7 @@ Testing:
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ 
+ 
+@@ -59,6 +60,7 @@ Testing: -fda TEST_DIR/t.qcow2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -95,6 +97,7 @@ Testing: -fdb TEST_DIR/t.qcow2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -109,6 +112,7 @@ Testing: -fdb TEST_DIR/t.qcow2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ floppy1 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -149,6 +153,7 @@ Testing: -fda TEST_DIR/t.qcow2 -fdb TEST_DIR/t.qcow2.2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -163,6 +168,7 @@ Testing: -fda TEST_DIR/t.qcow2 -fdb TEST_DIR/t.qcow2.2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -204,6 +210,7 @@ Testing: -fdb
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -218,6 +225,7 @@ Testing: -fdb
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ 
+ 
+@@ -247,6 +255,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -283,6 +292,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2,index=1
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -297,6 +307,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2,index=1
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ floppy1 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -337,6 +348,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=floppy,file=TEST_DIR/t
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -351,6 +363,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=floppy,file=TEST_DIR/t
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -395,6 +408,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -431,6 +445,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0,unit=1
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -467,6 +482,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qco
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -481,6 +497,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qco
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -531,6 +548,7 @@ Testing: -fda TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -545,6 +563,7 @@ Testing: -fda TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -586,6 +605,7 @@ Testing: -fda TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -600,6 +620,7 @@ Testing: -fda TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -641,6 +662,7 @@ Testing: -fdb TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 1 (0x1)
+@@ -655,6 +677,7 @@ Testing: -fdb TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy1 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -696,6 +719,7 @@ Testing: -fdb TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 1 (0x1)
+@@ -710,6 +734,7 @@ Testing: -fdb TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.qcow2.2 -device fl
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy1 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -760,6 +785,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.q
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -774,6 +800,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.q
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -815,6 +842,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.q
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+               dev: floppy, id ""
+                 unit = 0 (0x0)
+@@ -829,6 +857,7 @@ Testing: -drive if=floppy,file=TEST_DIR/t.qcow2 -drive if=none,file=TEST_DIR/t.q
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ floppy0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/unattached/device[N]
+@@ -876,6 +905,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -global floppy.drive=none0 -device
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -942,6 +972,7 @@ Testing: -device floppy
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ 
+ Testing: -device floppy,drive-type=120
+@@ -968,6 +999,7 @@ Testing: -device floppy,drive-type=120
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "120"
+ 
+ Testing: -device floppy,drive-type=144
+@@ -994,6 +1026,7 @@ Testing: -device floppy,drive-type=144
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ 
+ Testing: -device floppy,drive-type=288
+@@ -1020,6 +1053,7 @@ Testing: -device floppy,drive-type=288
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ 
+ 
+@@ -1049,6 +1083,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0,drive-t
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "120"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -1085,6 +1120,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0,drive-t
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "288"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -1124,6 +1160,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0,logical
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+@@ -1160,6 +1197,7 @@ Testing: -drive if=none,file=TEST_DIR/t.qcow2 -device floppy,drive=none0,physica
+                 share-rw = false
+                 account-invalid = "auto"
+                 account-failed = "auto"
++                stats-intervals = <null>
+                 drive-type = "144"
+ none0 (NODE_NAME): TEST_DIR/t.qcow2 (qcow2)
+     Attached to:      /machine/peripheral-anon/device[N]
+-- 
+2.52.0
+

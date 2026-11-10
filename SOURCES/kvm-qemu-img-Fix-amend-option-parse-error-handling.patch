@@ -1,0 +1,49 @@
+From 1097051659646c6be37c475b1d4572090831b557 Mon Sep 17 00:00:00 2001
+From: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Date: Thu, 23 Oct 2025 17:10:58 +0900
+Subject: [PATCH 15/45] qemu-img: Fix amend option parse error handling
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [15/45] 6b7f5db7849b0605600535b1c92a129673f1748c (kmwolf/centos-qemu-kvm)
+
+qemu_opts_del(opts) dereferences opts->list, which is the old amend_opts
+pointer that can be dangling after executing
+qemu_opts_append(amend_opts, bs->drv->create_opts) and cause
+use-after-free.
+
+Fix the potential use-after-free by moving the qemu_opts_del() call
+before the qemu_opts_append() call.
+
+Signed-off-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Message-ID: <20251023-iotests-v1-1-fab143ca4c2f@rsg.ci.i.u-tokyo.ac.jp>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit f00bcc833790c72c08bc5eed97845fdaa7542507)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ qemu-img.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/qemu-img.c b/qemu-img.c
+index a7791896c1..7a32d2d16c 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -4597,9 +4597,9 @@ static int img_amend(const img_cmd_t *ccmd, int argc, char **argv)
+     amend_opts = qemu_opts_append(amend_opts, bs->drv->amend_opts);
+     opts = qemu_opts_create(amend_opts, NULL, 0, &error_abort);
+     if (!qemu_opts_do_parse(opts, options, NULL, &err)) {
++        qemu_opts_del(opts);
+         /* Try to parse options using the create options */
+         amend_opts = qemu_opts_append(amend_opts, bs->drv->create_opts);
+-        qemu_opts_del(opts);
+         opts = qemu_opts_create(amend_opts, NULL, 0, &error_abort);
+         if (qemu_opts_do_parse(opts, options, NULL, NULL)) {
+             error_append_hint(&err,
+-- 
+2.52.0
+

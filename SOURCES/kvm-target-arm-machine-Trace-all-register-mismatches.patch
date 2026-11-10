@@ -1,0 +1,78 @@
+From 7823f94dd9caf0ad228485b9610480722852a452 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 08/16] target/arm/machine: Trace all register mismatches
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [8/16] e12c90fe3ede53cbcedf0906434b08afc1d64632 (eauger1/centos-qemu-kvm)
+
+At the moment, cpu_post_load() exits with error on the first
+catch of unexpected register in the incoming stream. Let the code
+go further and trace all the issues before exiting.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-7-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit e25c63c3b368118dc109e49393554f85f1203d1e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/machine.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/target/arm/machine.c b/target/arm/machine.c
+index 36c9d9946e..70157e000b 100644
+--- a/target/arm/machine.c
++++ b/target/arm/machine.c
+@@ -971,6 +971,7 @@ static int cpu_post_load(void *opaque, int version_id)
+ {
+     ARMCPU *cpu = opaque;
+     CPUARMState *env = &cpu->env;
++    bool fail = false;
+     int i, v;
+ 
+     trace_cpu_post_load(cpu->cpreg_vmstate_array_len,
+@@ -1003,13 +1004,14 @@ static int cpu_post_load(void *opaque, int version_id)
+      */
+ 
+     for (i = 0, v = 0; i < cpu->cpreg_array_len
+-             && v < cpu->cpreg_vmstate_array_len; i++) {
++             && v < cpu->cpreg_vmstate_array_len;) {
+         if (cpu->cpreg_vmstate_indexes[v] > cpu->cpreg_indexes[i]) {
+             g_autofree gchar *name = print_register_name(cpu->cpreg_indexes[i]);
+ 
+             warn_report("%s: %s "
+                         "expected by the destination but not in the incoming stream: "
+                         "skip it", __func__, name);
++            i++;
+             continue;
+         }
+         if (cpu->cpreg_vmstate_indexes[v] < cpu->cpreg_indexes[i]) {
+@@ -1017,12 +1019,18 @@ static int cpu_post_load(void *opaque, int version_id)
+ 
+             error_report("%s: %s in the incoming stream but unknown on the destination: "
+                          "fail migration", __func__, name);
+-            return -1;
++            v++;
++            fail = true;
++            continue;
+         }
+         /* matching register, copy the value over */
+         cpu->cpreg_values[i] = cpu->cpreg_vmstate_values[v];
++        i++;
+         v++;
+     }
++    if (fail) {
++        return -1;
++    }
+ 
+     if (kvm_enabled()) {
+         if (!kvm_arm_cpu_post_load(cpu)) {
+-- 
+2.52.0
+

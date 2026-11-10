@@ -1,0 +1,160 @@
+From cad7ef26df27e3805a614b5345e28971bd0c615b Mon Sep 17 00:00:00 2001
+From: Fabiano Rosas <farosas@suse.de>
+Date: Sat, 13 Jun 2026 23:03:40 +0300
+Subject: [PATCH 11/45] qed: Don't try to flush during incoming migration
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [11/45] f4bdba2bc0149ec2b6259eb3c9f324f72d22fa47 (kmwolf/centos-qemu-kvm)
+
+It's not possible to access the image file while there is an incoming
+migration in progress, the QEMU process doesn't hold any locks to the
+storage at this point so nodes are inactive. Attempting to flush leads
+to an assert at bdrv_co_write_req_prepare():
+
+   assert(!(bs->open_flags & BDRV_O_INACTIVE))
+
+The issue is reproducible by running iotest 181 on a host under cpu
+load. The migration must coincide with the header already containing
+the QED_F_NEED_CHECK flag.
+
+The sequence of events is as follows, with the respective call stacks
+referenced below:
+
+During block device init, bdrv_qed_attach_aio_context() starts the
+'need_check' timer. The timer will not fire during incoming migration
+as it uses QEMU_CLOCK_VIRTUAL (to avoid this very issue, as the code
+comment indicates).                                                   (0)
+
+However, there's still bdrv_qed_drain_begin() which uses the fact that
+the timer is live to decide whether to start the
+qed_need_check_timer_entry() directly.                                (1)
+
+The qed_need_check_timer_entry() eventually calls into
+qed_write_header() -> bdrv_co_pwrite() leading to the assert.         (2)
+
+Skip creating the 'need_check' timer whenever the image is inactive.
+
+The stacks:
+
+(0) == issues timer_mod ==
+ #6  in qed_start_need_check_timer       at ../block/qed.c:340
+ #7  in bdrv_qed_attach_aio_context      at ../block/qed.c:373
+ #8  in bdrv_qed_do_open                 at ../block/qed.c:556
+ #9  in bdrv_qed_open_entry              at ../block/qed.c:582
+ #10 in coroutine_trampoline             at ../util/coroutine-ucontext.c:175
+ #0  in qemu_coroutine_switch<+120>      at ../util/coroutine-ucontext.c:321
+ #1  in qemu_aio_coroutine_enter<+356>   at ../util/qemu-coroutine.c:293
+ #2  in aio_co_enter<+179>               at ../util/async.c:710
+ #3  in aio_co_wake<+53>                 at ../util/async.c:695
+ #4  in thread_pool_co_cb<+47>           at ../util/thread-pool.c:283
+ #5  in thread_pool_completion_bh<+241>  at ../util/thread-pool.c:202
+ #6  in aio_bh_call<+109>                at ../util/async.c:173
+ #7  in aio_bh_poll<+299>                at ../util/async.c:220
+ #8  in aio_poll<+690>                   at ../util/aio-posix.c:745
+ #9  in bdrv_qed_open<+392>              at ../block/qed.c:607
+ #10 in bdrv_open_driver<+327>           at ../block.c:1678
+ #11 in bdrv_open_common<+1619>          at ../block.c:2008
+ #12 in bdrv_open_inherit<+2556>         at ../block.c:4191
+ #13 in bdrv_open<+118>                  at ../block.c:4286
+ #14 in blk_new_open<+199>               at ../block/block-backend.c:458
+ #15 in blockdev_init<+2011>             at ../blockdev.c:612
+ #16 in drive_new<+3008>                 at ../blockdev.c:1008
+ #17 in drive_init_func<+51>             at ../system/vl.c:662
+ #18 in qemu_opts_foreach<+227>          at ../util/qemu-option.c:1148
+ #19 in configure_blockdev<+350>         at ../system/vl.c:721
+ #20 in qemu_create_early_backends<+343> at ../system/vl.c:2076
+ #21 in qemu_init<+12483>                at ../system/vl.c:3778
+ #22 in main<+46>                        at ../system/main.c:71
+
+(1) == sees timer_pending ==
+ #6  in bdrv_qed_drain_begin             at ../block/qed.c:391
+ #7  in bdrv_do_drained_begin            at ../block/io.c:366
+ #8  in bdrv_do_drained_begin_quiesce    at ../block/io.c:386
+ #9  in bdrv_child_cb_drained_begin      at ../block.c:1207
+ #10 in bdrv_parent_drained_begin_single at ../block/io.c:133
+ #11 in bdrv_parent_drained_begin        at ../block/io.c:64
+ #12 in bdrv_do_drained_begin            at ../block/io.c:364
+ #13 in bdrv_drained_begin               at ../block/io.c:393
+ #14 in blk_drain                        at ../block/block-backend.c:2101
+ #15 in blk_unref                        at ../block/block-backend.c:544
+ #16 in bdrv_open_inherit                at ../block.c:4197
+ #17 in bdrv_open                        at ../block.c:4286
+ #18 in blk_new_open                     at ../block/block-backend.c:458
+ #19 in blockdev_init                    at ../blockdev.c:612
+ #20 in drive_new                        at ../blockdev.c:1008
+ #21 in drive_init_func                  at ../system/vl.c:662
+ #22 in qemu_opts_foreach                at ../util/qemu-option.c:1148
+ #23 in configure_blockdev               at ../system/vl.c:721
+ #24 in qemu_create_early_backends       at ../system/vl.c:2076
+ #25 in qemu_init                        at ../system/vl.c:3778
+ #26 in main                             at ../system/main.c:71
+
+(2) == crashes ==
+ #5  in __assert_fail (assertion="!(bs->open_flags & BDRV_O_INACTIVE)", file="../block/io.c", line=1977
+ #6  in bdrv_co_write_req_prepare  at ../block/io.c:1977
+ #7  in bdrv_aligned_pwritev       at ../block/io.c:2099
+ #8  in bdrv_co_pwritev_part       at ../block/io.c:2316
+ #9  in bdrv_co_pwritev            at ../block/io.c:2233
+ #10 in bdrv_co_pwrite             at ../include/block/block_int-io.h:77
+ #11 in qed_write_header           at ../block/qed.c:128
+ #12 in qed_need_check_timer       at ../block/qed.c:305
+ #13 in qed_need_check_timer_entry at ../block/qed.c:319
+
+Note that this issue is not exactly the same as what's been reported
+in Gitlab, but given how easily this reproduces, I imagine it has to
+be happening in that setup as well.
+
+Link: https://gitlab.com/qemu-project/qemu/-/work_items/3515
+Signed-off-by: Fabiano Rosas <farosas@suse.de>
+Message-ID: <20260603193813.2327596-1-farosas@suse.de>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 7e573b660fefdebd21cb755d0d34bb5942fd3af3)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+Message-ID: <20260613200411.1808021-57-mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/qed.c | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/block/qed.c b/block/qed.c
+index 4a36fb3929..917b8d91b5 100644
+--- a/block/qed.c
++++ b/block/qed.c
+@@ -351,16 +351,22 @@ static void bdrv_qed_detach_aio_context(BlockDriverState *bs)
+ {
+     BDRVQEDState *s = bs->opaque;
+ 
+-    qed_cancel_need_check_timer(s);
+-    timer_free(s->need_check_timer);
+-    s->need_check_timer = NULL;
++    if (s->need_check_timer) {
++        qed_cancel_need_check_timer(s);
++        timer_free(s->need_check_timer);
++        s->need_check_timer = NULL;
++    }
+ }
+ 
+-static void bdrv_qed_attach_aio_context(BlockDriverState *bs,
+-                                        AioContext *new_context)
++static void GRAPH_RDLOCK bdrv_qed_attach_aio_context(BlockDriverState *bs,
++                                                     AioContext *new_context)
+ {
+     BDRVQEDState *s = bs->opaque;
+ 
++    if (bdrv_is_inactive(bs)) {
++        return;
++    }
++
+     s->need_check_timer = aio_timer_new(new_context,
+                                         QEMU_CLOCK_VIRTUAL, SCALE_NS,
+                                         qed_need_check_timer_cb, s);
+-- 
+2.52.0
+

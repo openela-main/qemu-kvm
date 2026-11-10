@@ -1,14 +1,14 @@
-From 096997f024caea5b141bd2bcd07a714c983f677a Mon Sep 17 00:00:00 2001
+From 05f62e0b737a973069603cf4b89e400d51154afa Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:31 +0200
-Subject: [PATCH 08/10] ide-test: Factor out wait_dma_completion()
+Subject: [PATCH 08/20] ide-test: Factor out wait_dma_completion()
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [6/8] 391be30f5926f0ba27c2da8cdd5908113fa7d6e9 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [6/8] 61599fda86b004ed7a256a284bdd8bd3781b5d88 (kmwolf/centos-qemu-kvm)
 
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 Message-ID: <20260421161132.99878-7-kwolf@redhat.com>

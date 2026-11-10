@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 17%{?rcrel}%{?dist}%{?cc_suffix}.9
+Release: 24%{?rcrel}%{?dist}%{?cc_suffix}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -345,77 +345,825 @@ Patch99: kvm-linux-aio-Resubmit-tails-of-short-reads-writes.patch
 Patch100: kvm-block-io_uring-avoid-potentially-getting-stuck-after.patch
 # For RHEL-154174 - qemu-kvm: disk writes of fewer bytes than requested is a retry condition, not necessarily an indication of ENOSPC [rhel-9.8]
 Patch101: kvm-io-uring-Resubmit-tails-of-short-writes.patch
-# For RHEL-164534 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-9.8.z]
-Patch102: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
-# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
-Patch103: kvm-scsi-adjust-error_prepend-formatting.patch
-# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
-Patch104: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
-# For RHEL-166008 - live migration failed the VM just register key only [rhel-9.8.z]
-Patch105: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
-# For RHEL-184951 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z]
-Patch106: kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch
-# For RHEL-184951 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z]
-Patch107: kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch
-# For RHEL-184527 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-9.8.z]
-Patch108: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
-# For RHEL-207387 - file-posix: populate pwrite_zeroes_alignment [rhel-9.8.z]
-Patch109: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
-# For RHEL-207387 - block: use pwrite_zeroes_alignment when writing first sector [rhel-9.8.z]
-Patch110: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
-# For RHEL-207387 - iotests: add Linux loop device image creation test [rhel-9.8.z]
-Patch111: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
-# For RHEL-166032 - live migration failed or get failed WSFC test result during WSFC testing [rhel-9.8.z]
-Patch112: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
-# For RHEL-166032 - live migration failed or get failed WSFC test result during WSFC testing [rhel-9.8.z]
-Patch113: kvm-scsi-handle-reservation-changes-across-migration.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch114: kvm-blkdebug-Add-delay-ns-option.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch115: kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch116: kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch117: kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch118: kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch119: kvm-ide-test-Factor-out-wait_dma_completion.patch
-# For RHEL-190700 - qemu-kvm hung during drain after double pause [rhel-9.8.z]
-Patch120: kvm-ide-test-Test-reset-during-TRIM.patch
-# For RHEL-212575 - CVE-2026-12080 qemu-kvm: qemu-guest-agent: Local privilege escalation via symlink attack in guest-ssh-add-authorized-keys [rhel-9.8.z]
-Patch121: kvm-qga-Change-effective-user-group-ID-in-guest-ssh-comm.patch
-# For RHEL-164549 - qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z]
-Patch122: kvm-qcow2-Add-keep_data_file-command-line-option.patch
-# For RHEL-164549 - qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z]
-Patch123: kvm-qcow2-Simplify-size-round-up-in-co_create_opts.patch
-# For RHEL-164549 - qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z]
-Patch124: kvm-iotests-common.filter-Sort-keep_data_file.patch
-# For RHEL-164549 - qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z]
-Patch125: kvm-iotests-244-Add-test-cases-for-keep_data_file.patch
-# For RHEL-283121 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.8.z]
-Patch126: kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch
-# For RHEL-283121 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.8.z]
-Patch127: kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch128: kvm-pr-manager-helper-fix-sense-buffer-overflow.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch129: kvm-scsi-increase-sense-buffer-size-in-scsi_SG_IO.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch130: kvm-hw-scsi-disk-move-MIG_EVENT_FAILED-into-a-new-functi.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch131: kvm-qemu-pr-helper-add-PR_HELPER_CLEANUP-for-live-migrat.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch132: kvm-pr-manager-helper-add-PR_HELPER_CLEANUP-command-supp.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch133: kvm-file-posix-forward-PR_HELPER_CLEANUP-commands-to-pr-.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch134: kvm-scsi-clean-up-persistent-reservation-state-after-mig.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch135: kvm-scsi-use-REGISTER-AND-IGNORE-EXISTING-KEY-for-robust.patch
-# For RHEL-280223 - live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z]
-Patch136: kvm-scsi-document-PR_HELPER_CLEANUP-command.patch
+# For RHEL-156851 - RHEL9.8 - [KVM] Guest configured with different boot order, crashed during "virsh reset".
+Patch102: kvm-pc-bios-s390-ccw-Always-reset-virtio-device-on-faile.patch
+# For RHEL-135379 - Add stats-intervals support to --blockdev [rhel9]
+Patch103: kvm-block-enable-stats-intervals-for-storage-devices.patch
+# For RHEL-135379 - Add stats-intervals support to --blockdev [rhel9]
+Patch104: kvm-qdev-Free-property-array-on-release.patch
+# For RHEL-164535 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-9.9]
+Patch105: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch106: kvm-vmstate-Introduce-VMSTATE_VARRAY_INT32_ALLOC.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch107: kvm-target-arm-Move-compare_u64-to-helper.c.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch108: kvm-target-arm-Convert-init_cpreg_list-to-g_hash_table_f.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch109: kvm-target-arm-machine-Use-VMSTATE_VARRAY_INT32_ALLOC-fo.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch110: kvm-target-arm-kvm-Export-kvm_print_register_name.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch111: kvm-target-arm-kvm-Tweak-print_register_name-for-arm64-s.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch112: kvm-target-arm-machine-Trace-cpreg-names-which-do-not-ma.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch113: kvm-target-arm-machine-Trace-all-register-mismatches.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch114: kvm-target-arm-machine-Fix-detection-of-unknown-incoming.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch115: kvm-target-arm-cpu-Introduce-the-infrastructure-for-cpre.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch116: kvm-target-arm-machine-Handle-ToleranceNotOnBothEnds-mig.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch117: kvm-target-arm-machine-Handle-ToleranceOnlySrcTestValue-.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch118: kvm-target-arm-cpu64-Mitigate-migration-failures-due-to-.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch119: kvm-target-arm-cpu64-Define-cpreg-migration-tolerance-fo.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch120: kvm-target-arm-helper-Define-cpreg-migration-tolerance-f.patch
+# For RHEL-174859 - [rhel9] Backport qemu cross-kernel migration mitigation series
+Patch121: kvm-Revert-target-arm-Reinstate-bogus-AArch32-DBGDTRTX-r.patch
+# For RHEL-158243 - live migration failed the VM just register key only [rhel-9.9]
+Patch122: kvm-scsi-adjust-error_prepend-formatting.patch
+# For RHEL-158243 - live migration failed the VM just register key only [rhel-9.9]
+Patch123: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
+# For RHEL-158243 - live migration failed the VM just register key only [rhel-9.9]
+Patch124: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
+# For RHEL-177969 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests
+Patch125: kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch
+# For RHEL-177969 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests
+Patch126: kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch
+# For RHEL-184528 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-9.9]
+Patch127: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
+# For RHEL-158244 - live migration failed or get failed WSFC test result during WSFC testing [rhel-9.9]
+Patch128: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
+# For RHEL-158244 - live migration failed or get failed WSFC test result during WSFC testing [rhel-9.9]
+Patch129: kvm-scsi-handle-reservation-changes-across-migration.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch130: kvm-blkdebug-Add-delay-ns-option.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch131: kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch132: kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch133: kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch134: kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch135: kvm-ide-test-Factor-out-wait_dma_completion.patch
+# For RHEL-190701 - qemu-kvm hung during drain after double pause [rhel-9]
+Patch136: kvm-ide-test-Test-reset-during-TRIM.patch
+# For RHEL-45628 - qemu-kvm crashes after kill virtproxyd on destination host during migration [RHEL-9.9]
+Patch138: kvm-migration-introduce-MIGRATION_STATUS_FAILING.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch139: kvm-s390x-css-limit-number-of-CHPIDs-in-description.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch140: kvm-s390x-ioinst-Require-strict-length-and-format-for-SE.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch141: kvm-s390x-pci-Shrink-RPCIT-ranges-to-registered-window.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch142: kvm-s390x-pci-Tighten-region-detection-for-BAR-read-writ.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch143: kvm-s390x-sclp-reject-invalid-write-event-data-headers.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch144: kvm-s390x-kvm-clamp-stsi-3.2.2-size.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch145: kvm-s390x-sclp-prevent-re-reading-the-sclp-header.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch146: kvm-s390x-sclpcpi-check-event-length-field-before-readin.patch
+# For RHEL-193033 - RHEL9.4 - qemu s390x: interface harding fixes
+Patch147: kvm-s390x-css-firm-up-handling-of-chained-TIC-CCWs.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch148: kvm-block-graph-lock-fix-missed-wakeup-in-bdrv_graph_co_.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch149: kvm-block-curl-fix-curl-internal-handles-handling.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch150: kvm-block-curl.c-Use-explicit-long-constants-in-curl_eas.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch151: kvm-block-curl.c-Fix-CURLOPT_VERBOSE-parameter-type.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch152: kvm-block-curl-fix-concurrent-completion-handling.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch153: kvm-block-curl-free-s-password-in-cleanup-paths.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch154: kvm-nvme-Kick-and-check-completions-in-BDS-context.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch155: kvm-nvme-Note-in-which-AioContext-some-functions-run.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch156: kvm-block-remove-detached-header-option-from-opts-after-.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch157: kvm-block-fix-luks-amend-when-run-in-coroutine.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch158: kvm-qed-Don-t-try-to-flush-during-incoming-migration.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch159: kvm-block-vmdk-fix-OOB-read-in-vmdk_read_extent.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch160: kvm-block-throttle-groups-fix-deadlock-with-iolimits-and.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch161: kvm-throttle-group-Fix-race-condition-in-throttle_group_.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch162: kvm-qemu-img-Fix-amend-option-parse-error-handling.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch163: kvm-qemu-img-rebase-don-t-exceed-IO_BUF_SIZE-in-one-oper.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch164: kvm-python-backport-drop-Python3.6-workarounds.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch165: kvm-python-backport-Remove-deprecated-get_event_loop-cal.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch166: kvm-python-backport-avoid-creating-additional-event-loop.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch167: kvm-iotests-147-ensure-temporary-sockets-are-closed-befo.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch168: kvm-iotests-151-ensure-subprocesses-are-cleaned-up.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch169: kvm-tests-qemu-iotest-fix-iotest-024-with-qed-images.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch170: kvm-tests-qemu-iotests-Fix-check-for-existing-file-in-_r.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch171: kvm-async-access-bottom-half-flags-with-qatomic_read.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch172: kvm-block-linux-aio-bound-ioq_submit-recursion-depth.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch173: kvm-block-io-fallback-to-bounce-buffer-if-BLKZEROOUT-is-.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch174: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch175: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch176: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch177: kvm-virtio-Fix-crash-when-sriov-pf-is-set-for-non-PCI-Ex.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch178: kvm-virtio-scsi-pass-the-same-cdb_size-to-virtio_scsi_po.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch179: kvm-hw-scsi-avoid-deadlock-upon-TMF-request-cancelling-w.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch180: kvm-virtio-blk-fix-zone-report-buffer-out-of-memory-CVE-.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch181: kvm-ide-Fix-potential-assertion-failure-on-VM-stop-for-P.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch182: kvm-block-Create-DEFAULT_BLOCK_CONF-macro.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch183: kvm-block-Add-more-defaults-to-DEFAULT_BLOCK_CONF.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch184: kvm-block-mirror-check-range-when-setting-zero-bitmap-fo.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch185: kvm-iotests-test-active-mirror-with-unaligned-small-writ.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch186: kvm-block-mirror-fix-assertion-failure-upon-duplicate-co.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch187: kvm-commit-Drain-nodes-across-all-of-bdrv_commit.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch188: kvm-qemu-io-Add-aio_discard-command.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch189: kvm-qcow2-Fix-corruption-on-discard-during-write-with-CO.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch190: kvm-iotests-046-Test-that-discard-write_zeroes-wait-for-.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch191: kvm-qcow2-Fix-data-loss-on-zero-write-with-detect-zeroes.patch
+# For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
+Patch192: kvm-block-Fix-crash-after-setting-latency-historygram-wi.patch
 
+
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
+# For RHEL-64307 - High threshold value observed in vGPU live migration
+# For RHEL-64307 - High threshold value observed in vGPU live migration
+# For RHEL-60914 - Fail migration properly when put cpu register fails
+# For RHEL-60914 - Fail migration properly when put cpu register fails
+# For RHEL-11043 - [RFE] [HPEMC] [RHEL-9.6] qemu-kvm: support up to 4096 VCPUs
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-57682 - Bad migration performance when performing vGPU VM live migration 
+# For RHEL-67844 - qemu crashed after killed virtiofsd during migration
+# For RHEL-67935 - QEMU should fail gracefully with passthrough devices in SEV-SNP guests
+# For RHEL-68289 - [RHEL-9.6] QEMU core dump on applying merge property to memory backend
+# For RHEL-69477 - qemu crashed when migrate vm with multiqueue from rhel9.4 to rhel9.6
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-68440 - The new "boot order" feature is sometimes not working as expected [RHEL 9]
+# For RHEL-61633 - Qemu-kvm  crashed  if  no display device setting and switching display by remote-viewer [rhel-9]
+# For RHEL-66089 - warning: fd: migration to a file is deprecated when create or revert a snapshot
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-50212 - [IBM 9.6 FEAT] KVM: CPU model for new IBM Z HW - qemu part
+# For RHEL-71940 - qemu-ga cannot freeze filesystems with sentinelone
+# For RHEL-27832 - The post-copy migration of RT-VM leads to race while accessing vhost-user device and hung/stalled target VM
+# For RHEL-67107 - [aarch64] [rhel-9.6] Backport some important post 9.1 qemu fixes
+# For RHEL-39948 - qom-get iothread-vq-mapping is empty on new hotplug disk [rhel-9.5]
+# For RHEL-39948 - qom-get iothread-vq-mapping is empty on new hotplug disk [rhel-9.5]
+# For RHEL-39948 - qom-get iothread-vq-mapping is empty on new hotplug disk [rhel-9.5]
+# For RHEL-39948 - qom-get iothread-vq-mapping is empty on new hotplug disk [rhel-9.5]
+# For RHEL-53073 - kvm-unti kvm-hyperv_synic test is stuck on AMD with COS9
+# For RHEL-73688 - VM crashes when requesting domstats
+# For RHEL-52278 - fsfreeze hooks doesn't log error on system logs when running hook fails
+# For RHEL-56340 - qemu-ga logs only "guest-fsfreeze called" (but not "guest-fsthaw called")
+# For RHEL-65616 - Failed to hot add PCIe device behind xio3130 downstream port
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-30316 - [Intel 9.6 FEAT] [GNR] Virt-QEMU: Add AVX10.1 instruction support
+# For RHEL-45111 - [Intel 9.6 FEAT] [CWF][DMR] Virt-QEMU: Advertise new instructions SHA2-512NI, SM3, and SM4
+# For RHEL-75782 - [Nvidia "Grace"] Lack of "PAuth" CPU feature results in live migration failure from RHEL 9.6 to 10
+# For RHEL-75782 - [Nvidia "Grace"] Lack of "PAuth" CPU feature results in live migration failure from RHEL 9.6 to 10
+# For RHEL-72716 - Boot fall back to cdrom from network not always working
+# For RHEL-72716 - Boot fall back to cdrom from network not always working
+# For RHEL-72716 - Boot fall back to cdrom from network not always working
+# For RHEL-72716 - Boot fall back to cdrom from network not always working
+# For RHEL-67863 - Ensure qemu as NBD server does not flood logs [rhel 9.6]
+# For RHEL-78372 - Add vhost-user internal migration for passt [rhel-9]
+# For RHEL-78372 - Add vhost-user internal migration for passt [rhel-9]
+# For RHEL-73891 - No RARP packets on the destination after migration [rhel-9.6]
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-54296 - Provide QMP command for block device reactivation after migration [rhel-9.5]
+# For RHEL-78397 - backport fix for double migration of a paused VM (disk activation rewrite)
+# For RHEL-7188 - [intel iommu][PF] DMAR: DRHD: handling fault status reg
+# For RHEL-7188 - [intel iommu][PF] DMAR: DRHD: handling fault status reg
+# For RHEL-7188 - [intel iommu][PF] DMAR: DRHD: handling fault status reg
+# For RHEL-7188 - [intel iommu][PF] DMAR: DRHD: handling fault status reg
+# For RHEL-7188 - [intel iommu][PF] DMAR: DRHD: handling fault status reg
+# For RHEL-69622 - [qemu-guest-agent][RFE] Report CPU load average
+# For RHEL-69775 - Guest crashed on the target host when the migration was canceled
+# For RHEL-47340 - [Qemu RHEL-9] qemu-trace-stap should handle lack of stap more gracefully
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-7301 - [intel iommu] VFIO_MAP_DMA failed: Bad address on system_powerdown
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-72977 - [IBM 9.7 FEAT] KVM: Enable virtio-mem support - qemu part
+# For RHEL-7130 - [Hyper-V][RHEL9.2] Nested Hyper-V on KVM: L1 Windows VM with BIOS mode fails to boot up when using '-cpu host,hv_passthrough’ flag
+# For RHEL-7130 - [Hyper-V][RHEL9.2] Nested Hyper-V on KVM: L1 Windows VM with BIOS mode fails to boot up when using '-cpu host,hv_passthrough’ flag
+# For RHEL-80313 - Unable to migrate VM from RHEL10.0/qemu-kvm-9.6 to RHEL9.6/qemu-kvm-9.6
+# For RHEL-80313 - Unable to migrate VM from RHEL10.0/qemu-kvm-9.6 to RHEL9.6/qemu-kvm-9.6
+# For RHEL-86032 - QEMU sends unaligned discards on 4K devices [RHEL-9.7]
+# For RHEL-86032 - QEMU sends unaligned discards on 4K devices [RHEL-9.7]
+# For RHEL-86032 - QEMU sends unaligned discards on 4K devices [RHEL-9.7]
+# For RHEL-88153 - [s390x] valgrind not working with qemu-kvm for non-x86 builds
+# For RHEL-88153 - [s390x] valgrind not working with qemu-kvm for non-x86 builds
+# For RHEL-88533 - Improve VFIO mmapping performance with  huge  pfnmaps
+# For RHEL-88533 - Improve VFIO mmapping performance with  huge  pfnmaps
+# For RHEL-85159 - Video stuck about 1 min after switchover phase when play one video during postcopy-preempt migration
+# For RHEL-95120 - Allow libvirt to restart passt/vhost-user when the process is killed [rhel-9.7]
+# For RHEL-95408 - Support multipath failover with scsi-block [rhel-9]
+# For RHEL-95408 - Support multipath failover with scsi-block [rhel-9]
+# For RHEL-11430 - [IBM 9.7 FEAT] KVM: Performance Enhanced Refresh PCI Translation - qemu part
+# For RHEL-11430 - [IBM 9.7 FEAT] KVM: Performance Enhanced Refresh PCI Translation - qemu part
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-82906 - --migrate-disks-detect-zeroes doesn't take effect for disk migration [rhel-9.7]
+# For RHEL-83015 - Disk size of target raw image is full allocated when doing mirror with default discard value [rhel-9.7]
+# For RHEL-98554 - [s390x][RHEL9.7.0][virtio_block] there would be memory leak with virtio_blk disks
+# For RHEL-98554 - [s390x][RHEL9.7.0][virtio_block] there would be memory leak with virtio_blk disks
+# For RHEL-66202 - [AMDSERVER 9.6 Feature] qemu: Interrupt Remap support for emulated amd viommu
+# For RHEL-66202 - [AMDSERVER 9.6 Feature] qemu: Interrupt Remap support for emulated amd viommu
+# For RHEL-66202 - [AMDSERVER 9.6 Feature] qemu: Interrupt Remap support for emulated amd viommu
+# For RHEL-66202 - [AMDSERVER 9.6 Feature] qemu: Interrupt Remap support for emulated amd viommu
+# For RHEL-66202 - [AMDSERVER 9.6 Feature] qemu: Interrupt Remap support for emulated amd viommu
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-67104 - postcopy on the destination host can't switch into pause status under the network issue if boot VM with '-S'
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-52649 - [AMDSERVER 9.6 Feature] Turin: Qemu EPYC-Turin Model
+# For RHEL-70926 - Qemu/amd-iommu: Advertise a suitable device id
+# For RHEL-70925 - Qemu/amd-iommu: Add ability to manually specify the AMDVI-PCI device
+# For RHEL-70925 - Qemu/amd-iommu: Add ability to manually specify the AMDVI-PCI device
+# For RHEL-70925 - Qemu/amd-iommu: Add ability to manually specify the AMDVI-PCI device
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-99888 - -ftrivial-auto-var-init=zero reduced performance [rhel-9]
+# For RHEL-100741 - Video stuck after switchover phase when play one video during migration [rhel-9]
+# For RHEL-108726 - Openstack guest becomes inaccessible via network when storage network on the hypervisor is disabled/lost [rhel-9]
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-15710 - [Intel 9.7 FEAT] TDX: QEMU Support
+# For RHEL-20798 - [Intel 9.6 FEAT] TDX: host: Virt-QEMU: Add safe device pass-through for TD
+# For RHEL-49728 - [Intel 9.7 FEAT] Virt-QEMU: TDX: Allow to configure apic bus clock
+# For RHEL-17614 - VM reports Vulnerable to spec_rstack_overflow when reading status in '/sys/devices/system/cpu/vulnerabilities/'
 
 %if %{have_clang}
 BuildRequires: clang
@@ -1495,107 +2243,134 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
-* Mon Oct 19 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.9
-- kvm-qcow2-Add-keep_data_file-command-line-option.patch [RHEL-164549]
-- kvm-qcow2-Simplify-size-round-up-in-co_create_opts.patch [RHEL-164549]
-- kvm-iotests-common.filter-Sort-keep_data_file.patch [RHEL-164549]
-- kvm-iotests-244-Add-test-cases-for-keep_data_file.patch [RHEL-164549]
-- kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch [RHEL-283121]
-- kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch [RHEL-283121]
-- kvm-pr-manager-helper-fix-sense-buffer-overflow.patch [RHEL-280223]
-- kvm-scsi-increase-sense-buffer-size-in-scsi_SG_IO.patch [RHEL-280223]
-- kvm-hw-scsi-disk-move-MIG_EVENT_FAILED-into-a-new-functi.patch [RHEL-280223]
-- kvm-qemu-pr-helper-add-PR_HELPER_CLEANUP-for-live-migrat.patch [RHEL-280223]
-- kvm-pr-manager-helper-add-PR_HELPER_CLEANUP-command-supp.patch [RHEL-280223]
-- kvm-file-posix-forward-PR_HELPER_CLEANUP-commands-to-pr-.patch [RHEL-280223]
-- kvm-scsi-clean-up-persistent-reservation-state-after-mig.patch [RHEL-280223]
-- kvm-scsi-use-REGISTER-AND-IGNORE-EXISTING-KEY-for-robust.patch [RHEL-280223]
-- kvm-scsi-document-PR_HELPER_CLEANUP-command.patch [RHEL-280223]
-- Resolves: RHEL-164549
-  (qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z])
-- Resolves: RHEL-283121
-  (Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.8.z])
-- Resolves: RHEL-280223
-  (live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z])
+* Fri Aug 21 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-24
+- kvm-block-graph-lock-fix-missed-wakeup-in-bdrv_graph_co_.patch [RHEL-216952]
+- kvm-block-curl-fix-curl-internal-handles-handling.patch [RHEL-216952]
+- kvm-block-curl.c-Use-explicit-long-constants-in-curl_eas.patch [RHEL-216952]
+- kvm-block-curl.c-Fix-CURLOPT_VERBOSE-parameter-type.patch [RHEL-216952]
+- kvm-block-curl-fix-concurrent-completion-handling.patch [RHEL-216952]
+- kvm-block-curl-free-s-password-in-cleanup-paths.patch [RHEL-216952]
+- kvm-nvme-Kick-and-check-completions-in-BDS-context.patch [RHEL-216952]
+- kvm-nvme-Note-in-which-AioContext-some-functions-run.patch [RHEL-216952]
+- kvm-block-remove-detached-header-option-from-opts-after-.patch [RHEL-216952]
+- kvm-block-fix-luks-amend-when-run-in-coroutine.patch [RHEL-216952]
+- kvm-qed-Don-t-try-to-flush-during-incoming-migration.patch [RHEL-216952]
+- kvm-block-vmdk-fix-OOB-read-in-vmdk_read_extent.patch [RHEL-216952]
+- kvm-block-throttle-groups-fix-deadlock-with-iolimits-and.patch [RHEL-216952]
+- kvm-throttle-group-Fix-race-condition-in-throttle_group_.patch [RHEL-216952]
+- kvm-qemu-img-Fix-amend-option-parse-error-handling.patch [RHEL-216952]
+- kvm-qemu-img-rebase-don-t-exceed-IO_BUF_SIZE-in-one-oper.patch [RHEL-216952]
+- kvm-python-backport-drop-Python3.6-workarounds.patch [RHEL-216952]
+- kvm-python-backport-Remove-deprecated-get_event_loop-cal.patch [RHEL-216952]
+- kvm-python-backport-avoid-creating-additional-event-loop.patch [RHEL-216952]
+- kvm-iotests-147-ensure-temporary-sockets-are-closed-befo.patch [RHEL-216952]
+- kvm-iotests-151-ensure-subprocesses-are-cleaned-up.patch [RHEL-216952]
+- kvm-tests-qemu-iotest-fix-iotest-024-with-qed-images.patch [RHEL-216952]
+- kvm-tests-qemu-iotests-Fix-check-for-existing-file-in-_r.patch [RHEL-216952]
+- kvm-async-access-bottom-half-flags-with-qatomic_read.patch [RHEL-216952]
+- kvm-block-linux-aio-bound-ioq_submit-recursion-depth.patch [RHEL-216952]
+- kvm-block-io-fallback-to-bounce-buffer-if-BLKZEROOUT-is-.patch [RHEL-216952]
+- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-216952]
+- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-216952]
+- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-216952]
+- kvm-virtio-Fix-crash-when-sriov-pf-is-set-for-non-PCI-Ex.patch [RHEL-216952]
+- kvm-virtio-scsi-pass-the-same-cdb_size-to-virtio_scsi_po.patch [RHEL-216952]
+- kvm-hw-scsi-avoid-deadlock-upon-TMF-request-cancelling-w.patch [RHEL-216952]
+- kvm-virtio-blk-fix-zone-report-buffer-out-of-memory-CVE-.patch [RHEL-216952]
+- kvm-ide-Fix-potential-assertion-failure-on-VM-stop-for-P.patch [RHEL-216952]
+- kvm-block-Create-DEFAULT_BLOCK_CONF-macro.patch [RHEL-216952]
+- kvm-block-Add-more-defaults-to-DEFAULT_BLOCK_CONF.patch [RHEL-216952]
+- kvm-block-mirror-check-range-when-setting-zero-bitmap-fo.patch [RHEL-216952]
+- kvm-iotests-test-active-mirror-with-unaligned-small-writ.patch [RHEL-216952]
+- kvm-block-mirror-fix-assertion-failure-upon-duplicate-co.patch [RHEL-216952]
+- kvm-commit-Drain-nodes-across-all-of-bdrv_commit.patch [RHEL-216952]
+- kvm-qemu-io-Add-aio_discard-command.patch [RHEL-216952]
+- kvm-qcow2-Fix-corruption-on-discard-during-write-with-CO.patch [RHEL-216952]
+- kvm-iotests-046-Test-that-discard-write_zeroes-wait-for-.patch [RHEL-216952]
+- kvm-qcow2-Fix-data-loss-on-zero-write-with-detect-zeroes.patch [RHEL-216952]
+- kvm-block-Fix-crash-after-setting-latency-historygram-wi.patch [RHEL-216952]
+- Resolves: RHEL-216952
+  (virt-storage: Backport stable branch fixes [rhel-9])
 
-* Tue Oct 06 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.7
-- kvm-qga-Change-effective-user-group-ID-in-guest-ssh-comm.patch [RHEL-212575]
-- Resolves: RHEL-212575
-  (CVE-2026-12080 qemu-kvm: qemu-guest-agent: Local privilege escalation via symlink attack in guest-ssh-add-authorized-keys [rhel-9.8.z])
+* Wed Aug 05 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-23
+- kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch [RHEL-158244]
+- kvm-scsi-handle-reservation-changes-across-migration.patch [RHEL-158244]
+- kvm-blkdebug-Add-delay-ns-option.patch [RHEL-190701]
+- kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch [RHEL-190701]
+- kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch [RHEL-190701]
+- kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch [RHEL-190701]
+- kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch [RHEL-190701]
+- kvm-ide-test-Factor-out-wait_dma_completion.patch [RHEL-190701]
+- kvm-ide-test-Test-reset-during-TRIM.patch [RHEL-190701]
+- kvm-spec-Install-qtests-into-qemu-kvm-tests-package.patch [RHEL-190701]
+- kvm-migration-introduce-MIGRATION_STATUS_FAILING.patch [RHEL-45628]
+- kvm-s390x-css-limit-number-of-CHPIDs-in-description.patch [RHEL-193033]
+- kvm-s390x-ioinst-Require-strict-length-and-format-for-SE.patch [RHEL-193033]
+- kvm-s390x-pci-Shrink-RPCIT-ranges-to-registered-window.patch [RHEL-193033]
+- kvm-s390x-pci-Tighten-region-detection-for-BAR-read-writ.patch [RHEL-193033]
+- kvm-s390x-sclp-reject-invalid-write-event-data-headers.patch [RHEL-193033]
+- kvm-s390x-kvm-clamp-stsi-3.2.2-size.patch [RHEL-193033]
+- kvm-s390x-sclp-prevent-re-reading-the-sclp-header.patch [RHEL-193033]
+- kvm-s390x-sclpcpi-check-event-length-field-before-readin.patch [RHEL-193033]
+- kvm-s390x-css-firm-up-handling-of-chained-TIC-CCWs.patch [RHEL-193033]
+- Resolves: RHEL-158244
+  (live migration failed or get failed WSFC test result during WSFC testing [rhel-9.9])
+- Resolves: RHEL-190701
+  (qemu-kvm hung during drain after double pause [rhel-9])
+- Resolves: RHEL-45628
+  (qemu-kvm crashes after kill virtproxyd on destination host during migration [RHEL-9.9])
+- Resolves: RHEL-193033
+  (RHEL9.4 - qemu s390x: interface harding fixes)
 
-* Fri Oct 16 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.8
-- kvm-qcow2-Add-keep_data_file-command-line-option.patch [RHEL-164549]
-- kvm-qcow2-Simplify-size-round-up-in-co_create_opts.patch [RHEL-164549]
-- kvm-iotests-common.filter-Sort-keep_data_file.patch [RHEL-164549]
-- kvm-iotests-244-Add-test-cases-for-keep_data_file.patch [RHEL-164549]
-- kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch [RHEL-283121]
-- kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch [RHEL-283121]
-- kvm-pr-manager-helper-fix-sense-buffer-overflow.patch [RHEL-280223]
-- kvm-scsi-increase-sense-buffer-size-in-scsi_SG_IO.patch [RHEL-280223]
-- kvm-hw-scsi-disk-move-MIG_EVENT_FAILED-into-a-new-functi.patch [RHEL-280223]
-- kvm-qemu-pr-helper-add-PR_HELPER_CLEANUP-for-live-migrat.patch [RHEL-280223]
-- kvm-pr-manager-helper-add-PR_HELPER_CLEANUP-command-supp.patch [RHEL-280223]
-- kvm-file-posix-forward-PR_HELPER_CLEANUP-commands-to-pr-.patch [RHEL-280223]
-- kvm-scsi-clean-up-persistent-reservation-state-after-mig.patch [RHEL-280223]
-- kvm-scsi-use-REGISTER-AND-IGNORE-EXISTING-KEY-for-robust.patch [RHEL-280223]
-- kvm-scsi-document-PR_HELPER_CLEANUP-command.patch [RHEL-280223]
-- Resolves: RHEL-164549
-  (qemu-img can't create a qcow2 overlay with 'data_file' feature on top of a file without destroying the original image [rhel-9.8.z])
-- Resolves: RHEL-283121
-  (Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.8.z])
-- Resolves: RHEL-280223
-  (live migration of a VM with a scsi3pr to a node that previously held a reservation on that disk fails. [rhel-9.8.z])
+* Mon Jun 22 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-22
+- kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184528]
+- Resolves: RHEL-184528
+  (CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-9.9])
 
-* Tue Oct 06 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.7
-- kvm-qga-Change-effective-user-group-ID-in-guest-ssh-comm.patch [RHEL-212575]
-- Resolves: RHEL-212575
-  (CVE-2026-12080 qemu-kvm: qemu-guest-agent: Local privilege escalation via symlink attack in guest-ssh-add-authorized-keys [rhel-9.8.z])
+* Mon Jun 08 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-21
+- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-158243]
+- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-158243]
+- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-158243]
+- kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch [RHEL-177969]
+- kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch [RHEL-177969]
+- Resolves: RHEL-158243
+  (live migration failed the VM just register key only [rhel-9.9])
+- Resolves: RHEL-177969
+  (MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests)
 
-* Thu Aug 06 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-17.el9_8.6
-- kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch [RHEL-166032]
-- kvm-scsi-handle-reservation-changes-across-migration.patch [RHEL-166032]
-- kvm-blkdebug-Add-delay-ns-option.patch [RHEL-190700]
-- kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch [RHEL-190700]
-- kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch [RHEL-190700]
-- kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch [RHEL-190700]
-- kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch [RHEL-190700]
-- kvm-ide-test-Factor-out-wait_dma_completion.patch [RHEL-190700]
-- kvm-ide-test-Test-reset-during-TRIM.patch [RHEL-190700]
-- kvm-spec-Install-qtests-into-qemu-kvm-tests-package.patch [RHEL-190700]
-- Resolves: RHEL-166032
-  (live migration failed or get failed WSFC test result during WSFC testing [rhel-9.8.z])
-- Resolves: RHEL-190700
-  (qemu-kvm hung during drain after double pause [rhel-9.8.z])
+* Tue May 19 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-20
+- kvm-vmstate-Introduce-VMSTATE_VARRAY_INT32_ALLOC.patch [RHEL-174859]
+- kvm-target-arm-Move-compare_u64-to-helper.c.patch [RHEL-174859]
+- kvm-target-arm-Convert-init_cpreg_list-to-g_hash_table_f.patch [RHEL-174859]
+- kvm-target-arm-machine-Use-VMSTATE_VARRAY_INT32_ALLOC-fo.patch [RHEL-174859]
+- kvm-target-arm-kvm-Export-kvm_print_register_name.patch [RHEL-174859]
+- kvm-target-arm-kvm-Tweak-print_register_name-for-arm64-s.patch [RHEL-174859]
+- kvm-target-arm-machine-Trace-cpreg-names-which-do-not-ma.patch [RHEL-174859]
+- kvm-target-arm-machine-Trace-all-register-mismatches.patch [RHEL-174859]
+- kvm-target-arm-machine-Fix-detection-of-unknown-incoming.patch [RHEL-174859]
+- kvm-target-arm-cpu-Introduce-the-infrastructure-for-cpre.patch [RHEL-174859]
+- kvm-target-arm-machine-Handle-ToleranceNotOnBothEnds-mig.patch [RHEL-174859]
+- kvm-target-arm-machine-Handle-ToleranceOnlySrcTestValue-.patch [RHEL-174859]
+- kvm-target-arm-cpu64-Mitigate-migration-failures-due-to-.patch [RHEL-174859]
+- kvm-target-arm-cpu64-Define-cpreg-migration-tolerance-fo.patch [RHEL-174859]
+- kvm-target-arm-helper-Define-cpreg-migration-tolerance-f.patch [RHEL-174859]
+- kvm-Revert-target-arm-Reinstate-bogus-AArch32-DBGDTRTX-r.patch [RHEL-174859]
+- Resolves: RHEL-174859
+  ([rhel9] Backport qemu cross-kernel migration mitigation series)
 
-* Thu Jul 17 2026 Danilo de Paula <ddepaula@redhat.com> - 10.1.0-17.el9_8.5
-- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-207387]
-- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-207387]
-- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-207387]
-- Resolves: RHEL-207387
-  (qemu-img create/convert fails on target block device with 4k sector size [rhel-9.8.z])
+* Mon May 04 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-19
+- kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164535]
+- Resolves: RHEL-164535
+  (qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-9.9])
 
-* Mon Jun 22 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.4
-- kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184527]
-- Resolves: RHEL-184527
-  (CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-9.8.z])
-
-* Wed Jun 17 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.3
-- kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch [RHEL-184951]
-- kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch [RHEL-184951]
-- Resolves: RHEL-184951
-  (MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests [rhel-9.8.z])
-
-* Mon Jun 15 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.2
-- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-166008]
-- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-166008]
-- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-166008]
-- Resolves: RHEL-166008
-  (live migration failed the VM just register key only [rhel-9.8.z])
-
-* Tue May 05 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17.el9_8.1
-- kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164534]
-- Resolves: RHEL-164534
-  (qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-9.8.z])
+* Tue Apr 14 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-18
+- kvm-pc-bios-s390-ccw-Always-reset-virtio-device-on-faile.patch [RHEL-156851]
+- kvm-block-enable-stats-intervals-for-storage-devices.patch [RHEL-135379]
+- kvm-qdev-Free-property-array-on-release.patch [RHEL-135379]
+- Resolves: RHEL-156851
+  (RHEL9.8 - [KVM] Guest configured with different boot order, crashed during "virsh reset".)
+- Resolves: RHEL-135379
+  (Add stats-intervals support to --blockdev [rhel9])
 
 * Wed Apr 01 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-17
 - kvm-mirror-Fix-missed-dirty-bitmap-writes-during-startup.patch [RHEL-155947 RHEL-155948]

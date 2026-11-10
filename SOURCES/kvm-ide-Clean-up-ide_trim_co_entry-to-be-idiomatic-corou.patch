@@ -1,15 +1,15 @@
-From 54dde2bb36405cacdfb658dc6424f0df326ad1f2 Mon Sep 17 00:00:00 2001
+From d57240c9444e80b385475aca1c023dfbd81d50c6 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:30 +0200
-Subject: [PATCH 07/10] ide: Clean up ide_trim_co_entry() to be idiomatic
+Subject: [PATCH 07/20] ide: Clean up ide_trim_co_entry() to be idiomatic
  coroutine code
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [5/8] bb34bcfbc179944385c1136f659ffae9b3cad752 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [5/8] 7eca182e0d4ddc6c9ef51c972959fa761b1c7d37 (kmwolf/centos-qemu-kvm)
 
 The previous commit did a minimal conversion of the callback based state
 machine for TRIM to a coroutine in order to fix a bug. Refactor it to

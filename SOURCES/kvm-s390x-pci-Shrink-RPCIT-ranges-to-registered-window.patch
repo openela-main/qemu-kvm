@@ -1,0 +1,75 @@
+From 4ae11ae2b5d8efc469202bb30381854b21407adb Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 15:30:37 +0200
+Subject: [PATCH 14/20] s390x/pci: Shrink RPCIT ranges to registered window
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 509: s390x: interface harding fixes
+RH-Jira: RHEL-193033
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [3/9] fcc39abd7d14588d4702c2a673e77144dc3ffc8d (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-193033
+
+commit b8c8ec1d752661e1904d089c77d8617c4b6bfb5a
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Tue Jul 7 09:07:26 2026 +0200
+
+    s390x/pci: Shrink RPCIT ranges to registered window
+
+    Today, if a RPCIT instruction is presented from the guest whose range
+    exceeds the previously-registered IOAT, QEMU will process the range
+    so long as 1) the specified range at least partially overlaps with
+    what was previously registered and 2) the guest has valid IOAT entries
+    in its table.  If the entries are not present (invalid), then the
+    RPCIT will unnecessarily spend time reporting the invalid
+    region/segment entries.
+
+    Optimize this path by exiting immediately if the requested range falls
+    completely outside of the previously-registered range or if the
+    requested range ends before it starts (which would only occur if the
+    guest-specified address + length would overflow a u64).  Otherwise,
+    clamp the request to only the portion of the range that overlaps with
+    what was previously registered, effectively ignoring the portion
+    outside of the registered range.
+
+    Cc: qemu-stable@nongnu.org
+    Fixes: 5d1abf2344 ("s390x/pci: enforce zPCI state checking")
+    Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Farhan Ali <alifm@linux.ibm.com>
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260707070728.147203-4-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/s390-pci-inst.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index a3bb5aa221..5a2aa1c12e 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -753,10 +753,16 @@ int rpcit_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2, uintptr_t ra)
+         goto err;
+     }
+ 
+-    if (end < iommu->pba || start > iommu->pal) {
++    if (end < start || end < iommu->pba || start > iommu->pal) {
+         error = ERR_EVENT_OORANGE;
+         goto err;
+     }
++    /*
++     * If the specified range at least partially overlaps the registered
++     * aperture, clamp the request to the aperture and ignore the rest.
++     */
++    sstart = MAX(start, iommu->pba);
++    end = MIN(end, iommu->pal + 1);
+ 
+  retry:
+     start = sstart;
+-- 
+2.52.0
+

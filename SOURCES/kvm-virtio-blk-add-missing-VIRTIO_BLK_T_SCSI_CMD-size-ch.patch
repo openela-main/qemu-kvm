@@ -1,15 +1,15 @@
-From 085815fbd5c6b291865122639a8247b19c872adb Mon Sep 17 00:00:00 2001
+From 1eef225304201b87066ccff904d7f34cc01f52e8 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 26 May 2026 11:49:57 -0400
 Subject: [PATCH] virtio-blk: add missing VIRTIO_BLK_T_SCSI_CMD size check
  (CVE-2026-48914)
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 561: virtio-blk: add missing VIRTIO_BLK_T_SCSI_CMD size check (CVE-2026-48914)
-RH-Jira: RHEL-184527
+RH-MergeRequest: 502: virtio-blk: add missing VIRTIO_BLK_T_SCSI_CMD size check (CVE-2026-48914)
+RH-Jira: RHEL-184528
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [1/1] 083076b14c0d3b83095d2202e114d8af3052d038
+RH-Commit: [1/1] 44c66b2c1ac46607d2515572d0cdc6f39c93bec2 (stefanha/centos-stream-qemu-kvm)
 
 Check that the iovec containing struct virtio_scsi_inhdr is large enough
 before storing an error value there.

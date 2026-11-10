@@ -1,14 +1,14 @@
-From 8796f8554fc460e3ea0d81938da28471d9ffaee6 Mon Sep 17 00:00:00 2001
+From 0da0a599cf341ece5d4f8e55f6a53724e958e2b9 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Wed, 15 Apr 2026 19:29:06 -0400
-Subject: [PATCH 02/10] scsi: handle reservation changes across migration
+Subject: [PATCH 02/20] scsi: handle reservation changes across migration
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 555: scsi: handle reservation changes across migration
-RH-Jira: RHEL-166032
-RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-MergeRequest: 499: scsi: handle reservation changes across migration
+RH-Jira: RHEL-158244
 RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
-RH-Commit: [2/2] 11a3f7cad238ebf462b95c9e08dc8dcfce5a1a0f
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Commit: [2/2] 6b15f5b773533d77e624f3c960223bf924d4d09f (stefanha/centos-stream-qemu-kvm)
 
 Other nodes in the cluster can preempt or clear SCSI Persistent
 Reservations at any time. When this happens across live migration, the

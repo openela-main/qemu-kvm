@@ -1,14 +1,14 @@
-From 1248c40246ecd0e1f427a5d818ffac27393449c9 Mon Sep 17 00:00:00 2001
+From f75aa9de908bff1ef8f4966c8a5f7794be2749c5 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:28 +0200
-Subject: [PATCH 05/10] block: Add flags parameter to blk_*_pdiscard()
+Subject: [PATCH 05/20] block: Add flags parameter to blk_*_pdiscard()
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [3/8] 067ed4d2e951a6541b18d1d6bd1211fabd6b9f5d (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [3/8] 6e4053e2aed18830b60479e2fb1d763d123b7789 (kmwolf/centos-qemu-kvm)
 
 All existing callers pass 0, but we need a way to pass BDRV_REQ_NO_QUEUE
 for discard requests.
@@ -30,7 +30,7 @@ Signed-off-by: Kevin Wolf <kwolf@redhat.com>
  7 files changed, 15 insertions(+), 14 deletions(-)
 
 diff --git a/block/block-backend.c b/block/block-backend.c
-index b8d877c4e7..850f2ecec2 100644
+index a0f4c841da..d97b26b743 100644
 --- a/block/block-backend.c
 +++ b/block/block-backend.c
 @@ -1803,12 +1803,13 @@ BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,
@@ -110,10 +110,10 @@ index f01be99b55..c87f1e205b 100644
  
      default:
 diff --git a/include/system/block-backend-io.h b/include/system/block-backend-io.h
-index 0248c1c36e..fd84723d9d 100644
+index 59841e04a8..91c48299b7 100644
 --- a/include/system/block-backend-io.h
 +++ b/include/system/block-backend-io.h
-@@ -218,9 +218,9 @@ int co_wrapper_mixed blk_zone_append(BlockBackend *blk, int64_t *offset,
+@@ -217,9 +217,9 @@ int co_wrapper_mixed blk_zone_append(BlockBackend *blk, int64_t *offset,
                                           BdrvRequestFlags flags);
  
  int co_wrapper_mixed blk_pdiscard(BlockBackend *blk, int64_t offset,

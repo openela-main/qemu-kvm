@@ -1,0 +1,90 @@
+From 145dc9481b04083840e57b18d35aa5d89b380179 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 11 May 2026 12:15:36 -0400
+Subject: [PATCH 02/16] target/arm: Move compare_u64 to helper.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [2/16] 80b3948c70e204d74dacc3b4847ce2fea90912b6 (eauger1/centos-qemu-kvm)
+
+We will use this function beyond kvm.c.
+
+Reviewed-by: Manos Pitsidianakis <manos.pitsidianakis@linaro.org>
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Tested-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 5a8af95cb31122d2fcd2e6d3427b8e8427cd8bdc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/helper.c    | 11 +++++++++++
+ target/arm/internals.h |  3 +++
+ target/arm/kvm.c       | 11 -----------
+ 3 files changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/target/arm/helper.c b/target/arm/helper.c
+index 0c1299ff84..d230f9e766 100644
+--- a/target/arm/helper.c
++++ b/target/arm/helper.c
+@@ -40,6 +40,17 @@
+ 
+ static void switch_mode(CPUARMState *env, int mode);
+ 
++int compare_u64(const void *a, const void *b)
++{
++    if (*(uint64_t *)a > *(uint64_t *)b) {
++        return 1;
++    }
++    if (*(uint64_t *)a < *(uint64_t *)b) {
++        return -1;
++    }
++    return 0;
++}
++
+ uint64_t raw_read(CPUARMState *env, const ARMCPRegInfo *ri)
+ {
+     assert(ri->fieldoffset);
+diff --git a/target/arm/internals.h b/target/arm/internals.h
+index 1b3d0244fd..08e2acdb99 100644
+--- a/target/arm/internals.h
++++ b/target/arm/internals.h
+@@ -1981,4 +1981,7 @@ void vfp_clear_float_status_exc_flags(CPUARMState *env);
+ void vfp_set_fpcr_to_host(CPUARMState *env, uint32_t val, uint32_t mask);
+ bool arm_pan_enabled(CPUARMState *env);
+ 
++/* Compare uint64_t for qsort and bsearch. */
++int compare_u64(const void *a, const void *b);
++
+ #endif
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index c1ec6654ca..5a75ff5927 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -718,17 +718,6 @@ void kvm_arm_register_device(MemoryRegion *mr, uint64_t devid, uint64_t group,
+     memory_region_ref(kd->mr);
+ }
+ 
+-static int compare_u64(const void *a, const void *b)
+-{
+-    if (*(uint64_t *)a > *(uint64_t *)b) {
+-        return 1;
+-    }
+-    if (*(uint64_t *)a < *(uint64_t *)b) {
+-        return -1;
+-    }
+-    return 0;
+-}
+-
+ /*
+  * cpreg_values are sorted in ascending order by KVM register ID
+  * (see kvm_arm_init_cpreg_list). This allows us to cheaply find
+-- 
+2.52.0
+

@@ -1,0 +1,49 @@
+From 9c44203e9cd0844e1912f4069840c3df1af07f24 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Mon, 8 Dec 2025 08:53:20 +0100
+Subject: [PATCH 23/45] tests/qemu-iotests: Fix check for existing file in
+ _require_disk_usage()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [23/45] 6afced93c218aea23cb81039170aad47d57822b7 (kmwolf/centos-qemu-kvm)
+
+Looks like the "$" has been forgotten here to get the contents of
+the FILENAME variable.
+
+Fixes: c49dda7254d ("iotests: Filter out ZFS in several tests")
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+Message-ID: <20251208075320.35682-1-thuth@redhat.com>
+Reviewed-by: Laurent Vivier <laurent@vivier.eu>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ab0065e36adf8becd9c1ffceec37ee809ce683af)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/common.rc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/qemu-iotests/common.rc b/tests/qemu-iotests/common.rc
+index e977cb4eb6..d8fe476806 100644
+--- a/tests/qemu-iotests/common.rc
++++ b/tests/qemu-iotests/common.rc
+@@ -1008,7 +1008,7 @@ _require_disk_usage()
+     else
+         FILENAME="$TEST_IMG_FILE"
+     fi
+-    if [ -e "FILENAME" ]; then
++    if [ -e "$FILENAME" ]; then
+         echo "unwilling to overwrite existing file"
+         exit 1
+     fi
+-- 
+2.52.0
+

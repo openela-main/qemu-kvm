@@ -1,0 +1,88 @@
+From b18ab397d460bd55f0a6619faad0aa934a91883e Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Thu, 16 Jul 2026 10:50:22 +0200
+Subject: [PATCH 20/20] s390x/css: firm up handling of chained TIC CCWs
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 509: s390x: interface harding fixes
+RH-Jira: RHEL-193033
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [9/9] b7684f3b74ef0fa3ff9153b4afdd53ca32f338f2 (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-193033
+
+commit 33bece0fa121c0a85df4f0372145ca74b967e78e
+Author: Eric Farman <farman@linux.ibm.com>
+Date:   Mon Jul 13 09:47:08 2026 +0200
+
+    s390x/css: firm up handling of chained TIC CCWs
+
+    The logic in css_interpret_ccw() correctly returns -EINVAL if a
+    Transfer-In-Channel (TIC) CCW is command chained to another TIC CCW.
+    The same routine also correctly returns -EINVAL if 256 CCWs do not
+    perform a data transfer as part of the I/O operation [0].
+
+    What is missing, however, is a combination of these two, where a loop
+    can be generated that will continue processing CCWs but without
+    providing an opportunity to catch a breath. Fix this by capping
+    the number of TIC CCWs in a channel program at the same limit as
+    the CCWs without data transfer.
+
+    [0] See "Invalid Sequence" in z/Architecture Principles of Operation
+        (SA22-7832-14), p16-27
+
+    Cc: qemu-stable@nongnu.org
+    Signed-off-by: Eric Farman <farman@linux.ibm.com>
+    Acked-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Farhan Ali <alifm@linux.ibm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260713074708.884282-1-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/css.c         | 7 +++++++
+ include/hw/s390x/css.h | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/hw/s390x/css.c b/hw/s390x/css.c
+index d89c223339..63947eff5a 100644
+--- a/hw/s390x/css.c
++++ b/hw/s390x/css.c
+@@ -1075,6 +1075,12 @@ static int css_interpret_ccw(SubchDev *sch, hwaddr ccw_addr,
+             ret = -EINVAL;
+             break;
+         }
++        /* Limit the number of TICs in a given channel program */
++        if (sch->ccw_tic_cnt == 255) {
++            ret = -EINVAL;
++            break;
++        }
++        sch->ccw_tic_cnt++;
+         sch->channel_prog = ccw.cda;
+         ret = -EAGAIN;
+         break;
+@@ -1126,6 +1132,7 @@ static void sch_handle_start_func_virtual(SubchDev *sch)
+         sch->ccw_fmt_1 = !!(orb->ctrl0 & ORB_CTRL0_MASK_FMT);
+         schib->scsw.flags |= (sch->ccw_fmt_1) ? SCSW_FLAGS_MASK_FMT : 0;
+         sch->ccw_no_data_cnt = 0;
++        sch->ccw_tic_cnt = 0;
+         suspend_allowed = !!(orb->ctrl0 & ORB_CTRL0_MASK_SPND);
+     } else {
+         /* Start Function resumed via rsch */
+diff --git a/include/hw/s390x/css.h b/include/hw/s390x/css.h
+index 0b0400a9d4..17385140c3 100644
+--- a/include/hw/s390x/css.h
++++ b/include/hw/s390x/css.h
+@@ -132,6 +132,7 @@ struct SubchDev {
+     bool ccw_fmt_1;
+     bool thinint_active;
+     uint8_t ccw_no_data_cnt;
++    uint8_t ccw_tic_cnt;
+     uint16_t migrated_schid; /* used for mismatch detection */
+     CcwDataStream cds;
+     /* transport-provided data: */
+-- 
+2.52.0
+

@@ -1,0 +1,69 @@
+From fa878edb9d9532fc33fc8c4d1e7ea37e111a6658 Mon Sep 17 00:00:00 2001
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Mon, 13 Oct 2025 18:24:54 +0200
+Subject: [PATCH 24/45] async: access bottom half flags with qatomic_read
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [24/45] e8ea4f948d8a5101342f9b689c4974a4a799ccdc (kmwolf/centos-qemu-kvm)
+
+Running test-aio-multithread under TSAN reveals data races on bh->flags.
+Because bottom halves may be scheduled or canceled asynchronously,
+without taking a lock, adjust aio_compute_bh_timeout() and aio_ctx_check()
+to use a relaxed read to access the flags.
+
+Use an acquire load to ensure that anything that was written prior to
+qemu_bh_schedule() is visible.
+
+Closes: https://gitlab.com/qemu-project/qemu/-/issues/2749
+Closes: https://gitlab.com/qemu-project/qemu/-/issues/851
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 5142397c79330aab9bef3230991c8ac0c251110f)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ util/async.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/util/async.c b/util/async.c
+index 2719c629ae..a736d2cd0d 100644
+--- a/util/async.c
++++ b/util/async.c
+@@ -256,8 +256,9 @@ static int64_t aio_compute_bh_timeout(BHList *head, int timeout)
+     QEMUBH *bh;
+ 
+     QSLIST_FOREACH_RCU(bh, head, next) {
+-        if ((bh->flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
+-            if (bh->flags & BH_IDLE) {
++        int flags = qatomic_load_acquire(&bh->flags);
++        if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
++            if (flags & BH_IDLE) {
+                 /* idle bottom halves will be polled at least
+                  * every 10ms */
+                 timeout = 10000000;
+@@ -335,14 +336,16 @@ aio_ctx_check(GSource *source)
+     aio_notify_accept(ctx);
+ 
+     QSLIST_FOREACH_RCU(bh, &ctx->bh_list, next) {
+-        if ((bh->flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
++        int flags = qatomic_load_acquire(&bh->flags);
++        if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
+             return true;
+         }
+     }
+ 
+     QSIMPLEQ_FOREACH(s, &ctx->bh_slice_list, next) {
+         QSLIST_FOREACH_RCU(bh, &s->bh_list, next) {
+-            if ((bh->flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
++            int flags = qatomic_load_acquire(&bh->flags);
++            if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
+                 return true;
+             }
+         }
+-- 
+2.52.0
+

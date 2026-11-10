@@ -1,0 +1,194 @@
+From 13b6e4d5f35a307e4c63381fe9daa67a1d954478 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 04/16] target/arm/machine: Use VMSTATE_VARRAY_INT32_ALLOC for
+ cpreg arrays
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [4/16] 81647f867844bc45e41c9b40f664f0315acb2030 (eauger1/centos-qemu-kvm)
+
+Conflicts:
+- contextual conflict in target/arm/trace-events as we don't have
+  cpu.c, arm-powerctl.c, tcg/psci.c and hvf/hvf.c trace events
+- target/arm/whpx/whpx-all.c does not exist downstream
+
+This removes the need for explicitly allocating cpreg_vmstate arrays.
+On post save we simply point to cpreg arrays and set the length
+accordingly.
+
+Remove VMSTATE_VARRAY_INT32 for cpreg_vmstate_array_len as now
+the array is dynamically allocated.
+
+Also add a trace point on post_load to trace potential mismatch
+between the number of incoming cpregs versus current ones.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-3-eric.auger@redhat.com
+Suggested-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ab2ddc7b662d34c242ddfcfbe35996417b047ce2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/helper.c     |  5 -----
+ target/arm/kvm.c        |  5 -----
+ target/arm/machine.c    | 45 +++++++++++++++++++++++++++++------------
+ target/arm/trace-events |  3 +++
+ 4 files changed, 35 insertions(+), 23 deletions(-)
+
+diff --git a/target/arm/helper.c b/target/arm/helper.c
+index 1cff4c5a68..5e643ed6b2 100644
+--- a/target/arm/helper.c
++++ b/target/arm/helper.c
+@@ -247,15 +247,10 @@ void init_cpreg_list(ARMCPU *cpu)
+     if (arraylen) {
+         cpu->cpreg_indexes = g_new(uint64_t, arraylen);
+         cpu->cpreg_values = g_new(uint64_t, arraylen);
+-        cpu->cpreg_vmstate_indexes = g_new(uint64_t, arraylen);
+-        cpu->cpreg_vmstate_values = g_new(uint64_t, arraylen);
+     } else {
+         cpu->cpreg_indexes = NULL;
+         cpu->cpreg_values = NULL;
+-        cpu->cpreg_vmstate_indexes = NULL;
+-        cpu->cpreg_vmstate_values = NULL;
+     }
+-    cpu->cpreg_vmstate_array_len = arraylen;
+     cpu->cpreg_array_len = 0;
+ 
+     g_hash_table_foreach(cpu->cp_regs, add_cpreg_to_list, cpu);
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index 5a75ff5927..5dacb304bd 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -805,12 +805,7 @@ static int kvm_arm_init_cpreg_list(ARMCPU *cpu)
+ 
+     cpu->cpreg_indexes = g_renew(uint64_t, cpu->cpreg_indexes, arraylen);
+     cpu->cpreg_values = g_renew(uint64_t, cpu->cpreg_values, arraylen);
+-    cpu->cpreg_vmstate_indexes = g_renew(uint64_t, cpu->cpreg_vmstate_indexes,
+-                                         arraylen);
+-    cpu->cpreg_vmstate_values = g_renew(uint64_t, cpu->cpreg_vmstate_values,
+-                                        arraylen);
+     cpu->cpreg_array_len = arraylen;
+-    cpu->cpreg_vmstate_array_len = arraylen;
+ 
+     for (i = 0, arraylen = 0; i < rlp->n; i++) {
+         uint64_t regidx = rlp->reg[i];
+diff --git a/target/arm/machine.c b/target/arm/machine.c
+index 6986915bee..5caf2885c2 100644
+--- a/target/arm/machine.c
++++ b/target/arm/machine.c
+@@ -1,5 +1,6 @@
+ #include "qemu/osdep.h"
+ #include "cpu.h"
++#include "trace.h"
+ #include "qemu/error-report.h"
+ #include "system/kvm.h"
+ #include "system/tcg.h"
+@@ -894,11 +895,14 @@ static int cpu_pre_save(void *opaque)
+         }
+     }
+ 
++    /*
++     * On outbound migration, send the data in our cpreg_{values,indexes}
++     * arrays. The migration code will not allocate anything, but just
++     * reads the data pointed to by the VMSTATE_VARRAY_INT32_ALLOC() fields.
++     */
++    cpu->cpreg_vmstate_indexes = cpu->cpreg_indexes;
++    cpu->cpreg_vmstate_values = cpu->cpreg_values;
+     cpu->cpreg_vmstate_array_len = cpu->cpreg_array_len;
+-    memcpy(cpu->cpreg_vmstate_indexes, cpu->cpreg_indexes,
+-           cpu->cpreg_array_len * sizeof(uint64_t));
+-    memcpy(cpu->cpreg_vmstate_values, cpu->cpreg_values,
+-           cpu->cpreg_array_len * sizeof(uint64_t));
+ 
+     return 0;
+ }
+@@ -911,6 +915,9 @@ static int cpu_post_save(void *opaque)
+         pmu_op_finish(&cpu->env);
+     }
+ 
++    cpu->cpreg_vmstate_indexes = NULL;
++    cpu->cpreg_vmstate_values = NULL;
++
+     return 0;
+ }
+ 
+@@ -944,6 +951,9 @@ static int cpu_pre_load(void *opaque)
+         pmu_op_start(env);
+     }
+ 
++    g_assert(!cpu->cpreg_vmstate_indexes);
++    g_assert(!cpu->cpreg_vmstate_values);
++
+     return 0;
+ }
+ 
+@@ -953,6 +963,9 @@ static int cpu_post_load(void *opaque, int version_id)
+     CPUARMState *env = &cpu->env;
+     int i, v;
+ 
++    trace_cpu_post_load(cpu->cpreg_vmstate_array_len,
++                        cpu->cpreg_array_len);
++
+     /*
+      * Handle migration compatibility from old QEMU which didn't
+      * send the irq-line-state subsection. A QEMU without it did not
+@@ -1004,6 +1017,11 @@ static int cpu_post_load(void *opaque, int version_id)
+         }
+     }
+ 
++    g_free(cpu->cpreg_vmstate_indexes);
++    g_free(cpu->cpreg_vmstate_values);
++    cpu->cpreg_vmstate_indexes = NULL;
++    cpu->cpreg_vmstate_values = NULL;
++
+     /*
+      * Misaligned thumb pc is architecturally impossible. Fail the
+      * incoming migration. For TCG it would trigger the assert in
+@@ -1071,16 +1089,17 @@ const VMStateDescription vmstate_arm_cpu = {
+         VMSTATE_UINT32_ARRAY(env.fiq_regs, ARMCPU, 5),
+         VMSTATE_UINT64_ARRAY(env.elr_el, ARMCPU, 4),
+         VMSTATE_UINT64_ARRAY(env.sp_el, ARMCPU, 4),
+-        /* The length-check must come before the arrays to avoid
+-         * incoming data possibly overflowing the array.
++        /*
++         * The length must come before the arrays so we can
++         * allocate the arrays before their data arrives
+          */
+-        VMSTATE_INT32_POSITIVE_LE(cpreg_vmstate_array_len, ARMCPU),
+-        VMSTATE_VARRAY_INT32(cpreg_vmstate_indexes, ARMCPU,
+-                             cpreg_vmstate_array_len,
+-                             0, vmstate_info_uint64, uint64_t),
+-        VMSTATE_VARRAY_INT32(cpreg_vmstate_values, ARMCPU,
+-                             cpreg_vmstate_array_len,
+-                             0, vmstate_info_uint64, uint64_t),
++        VMSTATE_INT32(cpreg_vmstate_array_len, ARMCPU),
++        VMSTATE_VARRAY_INT32_ALLOC(cpreg_vmstate_indexes, ARMCPU,
++                                   cpreg_vmstate_array_len,
++                                   0, vmstate_info_uint64, uint64_t),
++        VMSTATE_VARRAY_INT32_ALLOC(cpreg_vmstate_values, ARMCPU,
++                                   cpreg_vmstate_array_len,
++                                   0, vmstate_info_uint64, uint64_t),
+         VMSTATE_UINT64(env.exclusive_addr, ARMCPU),
+         VMSTATE_UINT64(env.exclusive_val, ARMCPU),
+         VMSTATE_UINT64(env.exclusive_high, ARMCPU),
+diff --git a/target/arm/trace-events b/target/arm/trace-events
+index 4438dce7be..4e2502af9f 100644
+--- a/target/arm/trace-events
++++ b/target/arm/trace-events
+@@ -13,3 +13,6 @@ arm_gt_update_irq(int timer, int irqstate) "gt_update_irq: timer %d irqstate %d"
+ 
+ # kvm.c
+ kvm_arm_fixup_msi_route(uint64_t iova, uint64_t gpa) "MSI iova = 0x%"PRIx64" is translated into 0x%"PRIx64
++
++# machine.c
++cpu_post_load(uint32_t cpreg_vmstate_array_len, uint32_t cpreg_array_len) "cpreg_vmstate_array_len=%d cpreg_array_len=%d"
+-- 
+2.52.0
+

@@ -1,14 +1,14 @@
-From d858cc17fb6a9cdfb5a9593ae8500a00b0f0766b Mon Sep 17 00:00:00 2001
+From f46de1630eddac4328b462070613235aca5e1149 Mon Sep 17 00:00:00 2001
 From: Magnus Kulke <magnuskulke@linux.microsoft.com>
 Date: Tue, 13 Jan 2026 16:37:08 +0100
-Subject: [PATCH 1/2] accel/mshv: Remove remap overlapping mappings code
+Subject: [PATCH 4/5] accel/mshv: Remove remap overlapping mappings code
 
-RH-Author: Miroslav Rezanina <mrezanin@redhat.com>
-RH-MergeRequest: 559: accel/mshv: backport required patches for mshv guests
-RH-Jira: RHEL-184951
+RH-Author: Magnus Kulke <None>
+RH-MergeRequest: 491: accel/mshv: backport required patches for mshv guests
+RH-Jira: RHEL-177969
 RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [1/2] 925092ddc6e2d91ab0723a2a27febaa8eb096c36 (mrezanin/rhel-src-qemu-kvm)
+RH-Commit: [1/2] 78f5dc7530c84062f799cdc286f6cbb97b50b105 (mkulke/qemu-kvm)
 
 This change removes userland code that worked around a restriction
 in the mshv driver in the 6.18 kernel: regions from userland
@@ -38,7 +38,6 @@ Tested-by: Mohamed Mediouni <mohamed@unpredictable.fr>
 Link: https://lore.kernel.org/r/20260113153708.448968-1-magnuskulke@linux.microsoft.com
 Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
 (cherry picked from commit 626e5dc999353d2c4a89febd46301bfec6daa3a7)
-Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 ---
  accel/mshv/mem.c            | 406 +++---------------------------------
  accel/mshv/mshv-all.c       |   2 -

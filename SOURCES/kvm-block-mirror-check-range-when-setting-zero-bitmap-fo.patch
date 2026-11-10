@@ -1,0 +1,74 @@
+From 5a302960caa98d5d6289aabe7f7588d53eead059 Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Mon, 12 Jan 2026 16:23:51 +0100
+Subject: [PATCH 37/45] block/mirror: check range when setting zero bitmap for
+ sync write
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [37/45] 0d7ce5dddf857d1f963229edd83e72b5e99fb622 (kmwolf/centos-qemu-kvm)
+
+Some Proxmox users reported an occasional assertion failure [0][1] in
+busy VMs when using drive mirror with active mode. In particular, the
+failure may occur for zero writes shorter than the job granularity:
+
+> #0  0x00007b421154b507 in abort ()
+> #1  0x00007b421154b420 in ?? ()
+> #2  0x0000641c582e061f in bitmap_set (map=0x7b4204014e00, start=14, nr=-1)
+> #3  0x0000641c58062824 in do_sync_target_write (job=0x641c7e73d1e0,
+>       method=MIRROR_METHOD_ZERO, offset=852480, bytes=4096, qiov=0x0, flags=0)
+> #4  0x0000641c58062250 in bdrv_mirror_top_do_write (bs=0x641c7e62e1f0,
+        method=MIRROR_METHOD_ZERO, copy_to_target=true, offset=852480,
+        bytes=4096, qiov=0x0, flags=0)
+> #5  0x0000641c58061f31 in bdrv_mirror_top_pwrite_zeroes (bs=0x641c7e62e1f0,
+        offset=852480, bytes=4096, flags=0)
+
+The range for the dirty bitmap described by dirty_bitmap_offset and
+dirty_bitmap_end is narrower than the original range and in fact,
+dirty_bitmap_end might be smaller than dirty_bitmap_offset. There
+already is a check for 'dirty_bitmap_offset < dirty_bitmap_end' before
+resetting the dirty bitmap. Add such a check for setting the zero
+bitmap too, which uses the same narrower range.
+
+[0]: https://forum.proxmox.com/threads/177981/
+[1]: https://bugzilla.proxmox.com/show_bug.cgi?id=7222
+
+Cc: qemu-stable@nongnu.org
+Fixes: 7e277545b9 ("mirror: Skip writing zeroes when target is already zero")
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20260112152544.261923-1-f.ebner@proxmox.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 4a7b1bd18d2e1a6b3796e177ae5df9b198264a0b)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/mirror.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index c87f1e205b..d22f168ff0 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -1515,9 +1515,12 @@ do_sync_target_write(MirrorBlockJob *job, MirrorMethod method,
+         assert(!qiov);
+         ret = blk_co_pwrite_zeroes(job->target, offset, bytes, flags);
+         if (job->zero_bitmap && ret >= 0) {
+-            bitmap_set(job->zero_bitmap, dirty_bitmap_offset / job->granularity,
+-                       (dirty_bitmap_end - dirty_bitmap_offset) /
+-                       job->granularity);
++            if (dirty_bitmap_offset < dirty_bitmap_end) {
++                bitmap_set(job->zero_bitmap,
++                           dirty_bitmap_offset / job->granularity,
++                           (dirty_bitmap_end - dirty_bitmap_offset) /
++                           job->granularity);
++            }
+         }
+         break;
+ 
+-- 
+2.52.0
+

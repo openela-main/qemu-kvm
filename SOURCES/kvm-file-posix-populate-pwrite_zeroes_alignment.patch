@@ -1,7 +1,14 @@
-From b4acb09fee2ce1d4d14d792cbaee1e2a54f8e533 Mon Sep 17 00:00:00 2001
+From a11658f88c31e633767d1cac342ebff7cb7596d8 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 7 Oct 2025 10:16:58 -0400
-Subject: [PATCH] file-posix: populate pwrite_zeroes_alignment
+Subject: [PATCH 27/45] file-posix: populate pwrite_zeroes_alignment
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [27/45] 19faf7156ae4d80e1695f12a96213cbdef0dc82e (kmwolf/centos-qemu-kvm)
 
 Linux block devices require write zeroes alignment whereas files do not.
 
@@ -20,6 +27,7 @@ Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
 Reviewed-by: Kevin Wolf <kwolf@redhat.com>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 (cherry picked from commit 98e788b91ad037193b1fb375561ef7e0fef3c2fd)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 ---
  block/file-posix.c | 16 ++++++++++++++++
@@ -52,3 +60,6 @@ index ace0e23df2..d7f489a40b 100644
      }
  
      raw_refresh_zoned_limits(bs, &st, errp);
+-- 
+2.52.0
+

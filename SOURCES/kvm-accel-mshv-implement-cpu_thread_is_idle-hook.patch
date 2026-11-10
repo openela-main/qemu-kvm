@@ -1,14 +1,14 @@
-From 65a864175fc2ace2862993871fb0da783db2f09e Mon Sep 17 00:00:00 2001
+From 4356c4191e1b7ba491a2dd6d8c6167f7eb9a3de1 Mon Sep 17 00:00:00 2001
 From: Magnus Kulke <magnuskulke@linux.microsoft.com>
 Date: Tue, 21 Apr 2026 05:21:54 +0000
-Subject: [PATCH 2/2] accel/mshv: implement cpu_thread_is_idle() hook
+Subject: [PATCH 5/5] accel/mshv: implement cpu_thread_is_idle() hook
 
-RH-Author: Miroslav Rezanina <mrezanin@redhat.com>
-RH-MergeRequest: 559: accel/mshv: backport required patches for mshv guests
-RH-Jira: RHEL-184951
+RH-Author: Magnus Kulke <None>
+RH-MergeRequest: 491: accel/mshv: backport required patches for mshv guests
+RH-Jira: RHEL-177969
 RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [2/2] ffcc0f3b6d3e7e04d28797d9fb31d88df4827230 (mrezanin/rhel-src-qemu-kvm)
+RH-Commit: [2/2] 4880ec9edc01fda07186687f9d19159f3afd0689 (mkulke/qemu-kvm)
 
 In MSHV the hypervisor APIC is always used, so we to implement this hook
 to make sure the AP's vcpu thread is not blocked waiting for an INIT SIPI
@@ -21,7 +21,6 @@ Link: https://lore.kernel.org/r/20260421-mshv_accel_arm64_supp-v3-9-469f544778ba
 [Make comment not x86 specific. - Paolo]
 Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
 (cherry picked from commit dbfb680772d5184544f7c0a8bba96bec229c96e6)
-Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
 ---
  accel/mshv/mshv-all.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)

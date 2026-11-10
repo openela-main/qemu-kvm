@@ -1,0 +1,71 @@
+From 9c41cbeaf2333f17135c58564f7ffad54392591c Mon Sep 17 00:00:00 2001
+From: Antoine Damhet <adamhet@scaleway.com>
+Date: Thu, 12 Feb 2026 17:27:24 +0100
+Subject: [PATCH 05/45] block/curl: fix concurrent completion handling
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [5/45] 0e585ff9ebf5e07867b0bac5a7de199766aac4fb (kmwolf/centos-qemu-kvm)
+
+curl_multi_check_completion would bail upon the first completed
+transfer even if more completion messages were available thus leaving
+some in flight IOs stuck.
+
+Rework a bit the loop to make the iterations clearer and drop the breaks.
+
+The original hang can be somewhat reproduced with the following command:
+
+$ qemu-img convert -p -m 16 -O qcow2 -c --image-opts \
+  'file.driver=https,file.url=https://scaleway.testdebit.info/10G.iso,file.readahead=1M' \
+  /tmp/test.qcow2
+
+Fixes: 1f2cead32443 ("curl: Ensure all informationals are checked for completion")
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Antoine Damhet <adamhet@scaleway.com>
+Message-ID: <20260212162730.440855-2-adamhet@scaleway.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 6f7b0a23a6ea0cc72ad222ab37936248d99d4256)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/curl.c | 11 ++---------
+ 1 file changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/block/curl.c b/block/curl.c
+index 96498aac1d..dabd2a905e 100644
+--- a/block/curl.c
++++ b/block/curl.c
+@@ -324,17 +324,11 @@ curl_find_buf(BDRVCURLState *s, uint64_t start, uint64_t len, CURLAIOCB *acb)
+ static void curl_multi_check_completion(BDRVCURLState *s)
+ {
+     int msgs_in_queue;
++    CURLMsg *msg;
+ 
+     /* Try to find done transfers, so we can free the easy
+      * handle again. */
+-    for (;;) {
+-        CURLMsg *msg;
+-        msg = curl_multi_info_read(s->multi, &msgs_in_queue);
+-
+-        /* Quit when there are no more completions */
+-        if (!msg)
+-            break;
+-
++    while ((msg = curl_multi_info_read(s->multi, &msgs_in_queue))) {
+         if (msg->msg == CURLMSG_DONE) {
+             int i;
+             CURLState *state = NULL;
+@@ -397,7 +391,6 @@ static void curl_multi_check_completion(BDRVCURLState *s)
+             }
+ 
+             curl_clean_state(state);
+-            break;
+         }
+     }
+ }
+-- 
+2.52.0
+

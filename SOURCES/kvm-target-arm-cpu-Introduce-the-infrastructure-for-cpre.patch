@@ -1,0 +1,244 @@
+From d007266434e1658291f30af95297f1981005bda0 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:51 +0200
+Subject: [PATCH 10/16] target/arm/cpu: Introduce the infrastructure for cpreg
+ migration tolerances
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [10/16] 76c8f5b827994b4a2637cc2f483aedbb9ce473ec (eauger1/centos-qemu-kvm)
+
+Conflicts: contextual conflict in target/arm/internals.h as we don't
+have #define MECID_WIDTH 16 introduced by commit
+700f08d5829f ("target/arm: Implement FEAT_MEC registers")
+
+We introduce a datatype for a tolerance with respect to a given
+cpreg migration issue. The tolerance applies to a given cpreg kvm index,
+and can be of different types:
+a) mismatch in cpreg indexes
+- ToleranceNotOnBothEnds (cpreg index is allowed to be only present
+  on one end)
+- ToleranceOnlySrcTestValue (cpreg index is allowed to be only
+  present in source if its value @mask field matches @value)
+b) mismatch in cpreg values
+- ToleranceDiffInMask (value differences are allowed only within a mask)
+- ToleranceFieldLT (incoming field value must be less than a given value)
+- ToleranceFieldGT (incoming field value must be greater than a given value)
+
+A QLIST of such tolerances can be populated using a new helper:
+arm_register_cpreg_mig_tolerance() and arm_cpu_match_cpreg_mig_tolerance()
+allows to check whether a tolerance exists for a given kvm index and its
+criterion is matched.
+
+callers for those helpers will be introduced in subsequent patches.
+
+Only registration of migration tolerances related to cpreg index
+mismatch is currently allowed.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260420140552.104369-2-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit bb36be6fd799c4fdb2ac893cfab7f307c12527f2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/cpu.c       | 82 ++++++++++++++++++++++++++++++++++++++++++
+ target/arm/cpu.h       |  1 +
+ target/arm/internals.h | 53 +++++++++++++++++++++++++++
+ 3 files changed, 136 insertions(+)
+
+diff --git a/target/arm/cpu.c b/target/arm/cpu.c
+index e2b2337399..9f7938d8fa 100644
+--- a/target/arm/cpu.c
++++ b/target/arm/cpu.c
+@@ -172,6 +172,82 @@ void arm_register_el_change_hook(ARMCPU *cpu, ARMELChangeHookFn *hook,
+     QLIST_INSERT_HEAD(&cpu->el_change_hooks, entry, node);
+ }
+ 
++static ARMCPRegMigTolerance *find_mig_tolerance(ARMCPU *cpu, uint64_t kvmidx)
++{
++    ARMCPRegMigTolerance *t;
++    QLIST_FOREACH(t, &cpu->cpreg_mig_tolerances, node) {
++        if (t->kvmidx == kvmidx)  {
++            return t;
++        }
++    }
++    return NULL;
++}
++
++void arm_register_cpreg_mig_tolerance(ARMCPU *cpu, uint64_t kvmidx,
++                                      uint64_t mask, uint64_t value,
++                                      ARMCPRegMigToleranceType type)
++{
++    ARMCPRegMigTolerance *entry;
++
++    /* make sure the kvmidx has not tolerance already registered */
++    assert(!find_mig_tolerance(cpu, kvmidx));
++
++    assert(type == ToleranceNotOnBothEnds ||
++           type == ToleranceOnlySrcTestValue);
++
++    entry = g_new0(ARMCPRegMigTolerance, 1);
++
++    entry->kvmidx = kvmidx;
++    entry->mask = mask;
++    entry->value = value;
++    entry->type = type;
++
++    QLIST_INSERT_HEAD(&cpu->cpreg_mig_tolerances, entry, node);
++}
++
++bool arm_cpu_match_cpreg_mig_tolerance(ARMCPU *cpu, uint64_t kvmidx,
++                                       uint64_t vmstate_value, uint64_t local_value,
++                                       ARMCPRegMigToleranceType type)
++{
++    ARMCPRegMigTolerance *t = find_mig_tolerance(cpu, kvmidx);
++    uint64_t diff, diff_outside_mask, field;
++
++    if (!t || t->type != type) {
++        return false;
++    }
++
++    if (type == ToleranceNotOnBothEnds) {
++        return true;
++    }
++
++    if (type == ToleranceOnlySrcTestValue &&
++        ((vmstate_value & t->mask) == t->value)) {
++        return true;
++    }
++
++    /* Need to check the mask */
++    diff = vmstate_value ^ local_value;
++    diff_outside_mask = diff & ~t->mask;
++
++    if (diff_outside_mask) {
++        /* there are differences outside of the mask */
++        return false;
++    }
++    if (type == ToleranceDiffInMask) {
++        /* differences only in the field, tolerance matched */
++        return true;
++    }
++    /* need to compare field value against authorized ones */
++    field = vmstate_value & t->mask;
++    if (type == ToleranceFieldLT && (field < t->value)) {
++        return true;
++    }
++    if (type == ToleranceFieldGT && (field > t->value)) {
++        return true;
++    }
++    return false;
++}
++
+ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
+ {
+     /* Reset a single ARMCPRegInfo register */
+@@ -1455,6 +1531,7 @@ static void arm_cpu_initfn(Object *obj)
+ 
+     QLIST_INIT(&cpu->pre_el_change_hooks);
+     QLIST_INIT(&cpu->el_change_hooks);
++    QLIST_INIT(&cpu->cpreg_mig_tolerances);
+ 
+ #ifdef CONFIG_USER_ONLY
+ # ifdef TARGET_AARCH64
+@@ -1895,6 +1972,7 @@ static void arm_cpu_finalizefn(Object *obj)
+ {
+     ARMCPU *cpu = ARM_CPU(obj);
+     ARMELChangeHook *hook, *next;
++    ARMCPRegMigTolerance *t, *n;
+ 
+     g_hash_table_destroy(cpu->cp_regs);
+ 
+@@ -1906,6 +1984,10 @@ static void arm_cpu_finalizefn(Object *obj)
+         QLIST_REMOVE(hook, node);
+         g_free(hook);
+     }
++    QLIST_FOREACH_SAFE(t, &cpu->cpreg_mig_tolerances, node, n) {
++        QLIST_REMOVE(t, node);
++        g_free(t);
++    }
+ #ifndef CONFIG_USER_ONLY
+     if (cpu->pmu_timer) {
+         timer_free(cpu->pmu_timer);
+diff --git a/target/arm/cpu.h b/target/arm/cpu.h
+index dc0da8b0ae..e5dbc5a3f9 100644
+--- a/target/arm/cpu.h
++++ b/target/arm/cpu.h
+@@ -1126,6 +1126,7 @@ struct ArchCPU {
+ 
+     QLIST_HEAD(, ARMELChangeHook) pre_el_change_hooks;
+     QLIST_HEAD(, ARMELChangeHook) el_change_hooks;
++    QLIST_HEAD(, ARMCPRegMigTolerance) cpreg_mig_tolerances;
+ 
+     int32_t node_id; /* NUMA node this CPU belongs to */
+ 
+diff --git a/target/arm/internals.h b/target/arm/internals.h
+index 08e2acdb99..b8444aa8ab 100644
+--- a/target/arm/internals.h
++++ b/target/arm/internals.h
+@@ -1984,4 +1984,57 @@ bool arm_pan_enabled(CPUARMState *env);
+ /* Compare uint64_t for qsort and bsearch. */
+ int compare_u64(const void *a, const void *b);
+ 
++typedef enum {
++    ToleranceNotOnBothEnds,
++    ToleranceOnlySrcTestValue,
++    ToleranceDiffInMask,
++    ToleranceFieldLT,
++    ToleranceFieldGT,
++} ARMCPRegMigToleranceType;
++
++typedef struct ARMCPRegMigTolerance {
++    uint64_t kvmidx;
++    uint64_t mask;
++    uint64_t value;
++    ARMCPRegMigToleranceType type;
++    QLIST_ENTRY(ARMCPRegMigTolerance) node;
++} ARMCPRegMigTolerance;
++
++/**
++ * arm_register_cpreg_mig_tolerance:
++ * Register a migration tolerance wrt one given cpreg identified by its
++ * @kvmidx. Calling this function twice for the same @kvmidx is a
++ * programming error and will cause an assertion failure.
++ *
++ * @cpu: vcpu to apply the migration tolerance on
++ * @kvmidx: kvm index of the cpreg the tolerance applies to
++ * @mask: bitmask where a difference is tolerated
++ *        (relevant with ToleranceDiffInMask)
++ * @value: value the bitmask field is compared with
++ *        (relevant with ToleranceFieldLT and ToleranceFieldGT)
++ * @type: type of the migration tolerance:
++ * - ToleranceNotOnBothEnds (cpreg index is allowed to be only present
++ *   on one end)
++ * - ToleranceOnlySrcTestValue (cpreg index is allowed to be only
++ *   present in source if its value @mask field matches @value)
++ * - ToleranceDiffInMask (mismatch in cpreg values are only tolerated
++ *   if differences are within @mask)
++ * - ToleranceFieldLT (mismatch in cpreg values are only tolerated
++ *   if incoming @bitmask field value is less than @value)
++ * - ToleranceFieldGT (mismatch in cpreg values are only tolerated
++ *   if incoming @bitmask field value is greater than @value)
++ */
++void arm_register_cpreg_mig_tolerance(ARMCPU *cpu, uint64_t kvmidx,
++                                      uint64_t mask, uint64_t value,
++                                      ARMCPRegMigToleranceType type);
++
++/**
++ * arm_cpu_match_cpreg_mig_tolerance:
++ * Check whether a tolerance of type @type exists for a given @kvmidx
++ * and the tolerance criterion is satisfied
++ */
++bool arm_cpu_match_cpreg_mig_tolerance(ARMCPU *cpu, uint64_t kvmidx,
++                                       uint64_t vmstate_value, uint64_t local_value,
++                                       ARMCPRegMigToleranceType type);
++
+ #endif
+-- 
+2.52.0
+

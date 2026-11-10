@@ -1,0 +1,107 @@
+From 7129dbe984955547ba2145bbf4edc9c91f667b25 Mon Sep 17 00:00:00 2001
+From: "Denis V. Lunev" <den@openvz.org>
+Date: Fri, 24 Apr 2026 12:39:16 +0200
+Subject: [PATCH 01/45] block/graph-lock: fix missed wakeup in
+ bdrv_graph_co_rdunlock()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/45] cd5e33cbc02713827597d0f87f1a09b3a14da5f0 (kmwolf/centos-qemu-kvm)
+
+tests/qemu-iotests/tests/iothreads-create reproduces the hang on
+master under `stress-ng --cpu $(nproc) --timeout 0`.  The iotest's
+vm.run_job() times out and qemu stays permanently stuck in
+ppoll(timeout=-1) inside bdrv_graph_wrlock_drained -> blk_remove_bs
+during qemu_cleanup().  The timing window is narrow on modern
+bare-metal hardware and much wider in a VM guest; downstream trees
+that still use plain bdrv_graph_wrlock() in blk_remove_bs() hit it
+on the first iteration under the same stress.
+
+bdrv_graph_wrlock() zeroes has_writer around its AIO_WAIT_WHILE loop
+so that callbacks dispatched by aio_poll() can still take the read
+lock on the fast path.  The rdunlock side, however, only kicks a
+waiting writer when has_writer is observed set; a reader that drops
+its lock inside the polling window silently returns and nothing ever
+wakes the writer:
+
+  main thread                         iothread0 coroutine
+  -----------                         -------------------
+  bdrv_graph_wrlock:                  rdlock held, reader_count=1
+    bdrv_drain_all_begin_nopoll
+    has_writer = 0
+    AIO_WAIT_WHILE_UNLOCKED(
+        NULL, reader_count >= 1):
+      num_waiters++
+      smp_mb
+      aio_poll(main_ctx, true)   -->  bdrv_graph_co_rdunlock:
+        (ppoll, blocked)                reader_count-- -> 0
+                                        smp_mb
+                                        read has_writer = 0
+                                        skip aio_wait_kick()
+                                      return
+
+reader_count is now 0 and num_waiters is still 1, but no BH, fd or
+timer on the main AioContext will fire -- the only entity that could
+kick just decided it did not have to.  Main stays in ppoll() holding
+BQL, so RCU, VCPUs and any iothread path that needs BQL stall behind
+it.  The hang is final; no timeout, no forward progress, no recovery
+as there is no other source of wake up inside qemu_cleanup().
+
+bdrv_drain_all_begin() does not close the race on its own: it
+quiesces in-flight I/O, but graph readers also include non-I/O
+coroutines (block-job cleanup, virtio-scsi polling) that drain does
+not evict.  The bdrv_graph_wrlock_drained() wrapper narrows the
+window but does not eliminate it; every plain bdrv_graph_wrlock()
+site is exposed on the same basis.
+
+Drop the has_writer check in bdrv_graph_co_rdunlock() and call
+aio_wait_kick() unconditionally.  The helper itself loads num_waiters
+atomically and only schedules a dummy BH when a waiter exists, so the
+change is a no-op on the no-writer path and closes the missed-wakeup
+on the writer path.
+
+Signed-off-by: Denis V. Lunev <den@openvz.org>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Cc: Hanna Reitz <hreitz@redhat.com>
+Cc: Stefan Hajnoczi <stefanha@redhat.com>
+Cc: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20260424103917.248668-2-den@openvz.org>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e3082ab3b38538ebdbc5cd62b4c476b673c5e515)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/graph-lock.c | 12 +++++-------
+ 1 file changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/block/graph-lock.c b/block/graph-lock.c
+index b7319473a1..f2501d75fb 100644
+--- a/block/graph-lock.c
++++ b/block/graph-lock.c
+@@ -278,14 +278,12 @@ void coroutine_fn bdrv_graph_co_rdunlock(void)
+     smp_mb();
+ 
+     /*
+-     * has_writer == 0: this means reader will read reader_count decreased
+-     * has_writer == 1: we don't know if writer read reader_count old or
+-     *                  new. Therefore, kick again so on next iteration
+-     *                  writer will for sure read the updated value.
++     * Always kick: bdrv_graph_wrlock() zeroes has_writer while polling (to
++     * let callbacks take the reader lock via the fast path), so we cannot
++     * rely on has_writer to detect a waiting writer. aio_wait_kick() is a
++     * no-op when no one is waiting, so it is cheap in the common case.
+      */
+-    if (qatomic_read(&has_writer)) {
+-        aio_wait_kick();
+-    }
++    aio_wait_kick();
+ }
+ 
+ void bdrv_graph_rdlock_main_loop(void)
+-- 
+2.52.0
+

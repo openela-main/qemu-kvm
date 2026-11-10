@@ -1,0 +1,49 @@
+From fbbbda2026b54f2b6376ddc154baae82f4acc079 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Tue, 15 Jul 2025 15:30:22 +0100
+Subject: [PATCH 21/45] iotests/151: ensure subprocesses are cleaned up
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [21/45] b34e6562dc6db503eb5d0e7c7906de3176507dfa (kmwolf/centos-qemu-kvm)
+
+The iotest 151 creates a bunch of subprocesses, with their stdout
+connected to a pipe but never reads any data from them and does
+not gurantee the processes are killed on cleanup.
+
+This triggers resource leak warnings from python when the
+subprocess.Popen object is garbage collected.
+
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 2b2fb25c2aaf5b2e8172d845db39cc50a951a12e)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/151 | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/tests/qemu-iotests/151 b/tests/qemu-iotests/151
+index f2ff9c5dac..06ee3585db 100755
+--- a/tests/qemu-iotests/151
++++ b/tests/qemu-iotests/151
+@@ -263,6 +263,11 @@ class TestThrottledWithNbdExportBase(iotests.QMPTestCase):
+                         break
+                     except subprocess.TimeoutExpired:
+                         self.vm.qtest(f'clock_step {1 * 1000 * 1000 * 1000}')
++                try:
++                    p.kill()
++                    p.stdout.close()
++                except:
++                    pass
+         except IndexError:
+             pass
+ 
+-- 
+2.52.0
+

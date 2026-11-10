@@ -1,0 +1,82 @@
+From 506a748e9fb138d393910b30e613c0f571dc1400 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 15:30:37 +0200
+Subject: [PATCH 12/20] s390x/css: limit number of CHPIDs in description
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 509: s390x: interface harding fixes
+RH-Jira: RHEL-193033
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [1/9] 7f4d522f31ad1404c14cfd057823835476ec81f8 (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-193033
+
+commit 22f2da06a8b291c975a7caf05dbd3b180c856741
+Author: Eric Farman <farman@linux.ibm.com>
+Date:   Tue Jul 7 09:07:28 2026 +0200
+
+    s390x/css: limit number of CHPIDs in description
+
+    virtio-ccw uses a single virtual CHPID for all devices and
+    device-types, but vfio-ccw (passthrough) shares real CHPID
+    information with the guest. A sufficiently large passthrough
+    configuration would exceed the defined response payload.
+
+    Fix this by limiting the number of CHPID descriptions that
+    are returned based on the given response format.
+
+    Cc: qemu-stable@nongnu.org
+    Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Signed-off-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260707070728.147203-6-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/css.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/hw/s390x/css.c b/hw/s390x/css.c
+index 53444f6828..d89c223339 100644
+--- a/hw/s390x/css.c
++++ b/hw/s390x/css.c
+@@ -1871,6 +1871,7 @@ int css_collect_chp_desc(int m, uint8_t cssid, uint8_t f_chpid, uint8_t l_chpid,
+     int i, desc_size;
+     uint32_t words[8];
+     uint32_t chpid_type_word;
++    uint32_t max_chpids, chpid_count = 0;
+     CssImage *css;
+ 
+     if (!m && !cssid) {
+@@ -1881,9 +1882,25 @@ int css_collect_chp_desc(int m, uint8_t cssid, uint8_t f_chpid, uint8_t l_chpid,
+     if (!css) {
+         return 0;
+     }
++
++    if (rfmt == 0) {
++        max_chpids = 256;
++    } else if (rfmt == 1) {
++        max_chpids = 127;
++    } else {
++        /* Should be rejected by caller */
++        return 0;
++    }
++
+     desc_size = 0;
+     for (i = f_chpid; i <= l_chpid; i++) {
+         if (css->chpids[i].in_use) {
++            /* Limit number of CHPIDs sent back */
++            if (chpid_count == max_chpids) {
++                break;
++            }
++
++            chpid_count++;
+             chpid_type_word = 0x80000000 | (css->chpids[i].type << 8) | i;
+             if (rfmt == 0) {
+                 words[0] = cpu_to_be32(chpid_type_word);
+-- 
+2.52.0
+

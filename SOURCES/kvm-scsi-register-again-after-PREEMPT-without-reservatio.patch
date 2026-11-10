@@ -1,14 +1,14 @@
-From 7d100d112453ec176b7c3f1bf96915a1363cf7f9 Mon Sep 17 00:00:00 2001
+From 520f3f124b79709b8da67f1a8adb77da60fc4753 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Wed, 1 Apr 2026 13:19:27 -0400
-Subject: [PATCH 3/3] scsi: register again after PREEMPT without reservation
+Subject: [PATCH 3/5] scsi: register again after PREEMPT without reservation
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 551: scsi: PR live migration PREEMPT fixes [9.8.z]
-RH-Jira: RHEL-166008
-RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 493: scsi: PR live migration PREEMPT fixes [9.9]
+RH-Jira: RHEL-158243
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
 RH-Acked-by: Jon Maloy <jmaloy@redhat.com>
-RH-Commit: [3/3] 12a384ddf4f67ca584baaea260ff0fc1cfb24aaf
+RH-Commit: [3/3] 4ba66cf81945645015cb5df9f0b7f4d163f84808 (stefanha/centos-stream-qemu-kvm)
 
 The SCSI specification says PREEMPT without a reservation removes all
 registrations with the given key. Try to register again after PREEMPT

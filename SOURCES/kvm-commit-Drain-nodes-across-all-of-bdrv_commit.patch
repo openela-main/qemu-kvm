@@ -1,0 +1,85 @@
+From 9ded1e70a710e59616be9389e264491f9a8a4860 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Mon, 27 Apr 2026 19:05:17 +0200
+Subject: [PATCH 40/45] commit: Drain nodes across all of bdrv_commit()
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [40/45] 0c0f3d26422feff39f9729ca748408b7d24a090a (kmwolf/centos-qemu-kvm)
+
+The whole implementation of bdrv_commit() is only correct if no new
+writes come in while it's running: It has only a single loop checking
+the allocation status for each block and finally calls bdrv_make_empty()
+without checking if that throws away any new changes.
+
+We already have to drain while taking the graph write lock. Just extend
+the drained section to all of bdrv_commit() to make sure that we don't
+get any inconsistencies.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260427170520.101242-2-kwolf@redhat.com>
+Reviewed-by: Denis V. Lunev <den@openvz.org>
+Tested-by: Denis V. Lunev <den@openvz.org>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit f0d9ccd46cf8fc576ab7d514f10f766546cdbc14)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/commit.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/block/commit.c b/block/commit.c
+index 0d9e1a16d7..c5e3ef03a2 100644
+--- a/block/commit.c
++++ b/block/commit.c
+@@ -518,6 +518,7 @@ int bdrv_commit(BlockDriverState *bs)
+     if (!drv)
+         return -ENOMEDIUM;
+ 
++    bdrv_drain_all_begin();
+     bdrv_graph_rdlock_main_loop();
+ 
+     backing_file_bs = bdrv_cow_bs(bs);
+@@ -549,6 +550,10 @@ int bdrv_commit(BlockDriverState *bs)
+                   BLK_PERM_ALL);
+     backing = blk_new(ctx, BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
+ 
++    /* We drained all nodes, but still make requests through BlockBackends */
++    blk_set_disable_request_queuing(src, true);
++    blk_set_disable_request_queuing(backing, true);
++
+     ret = blk_insert_bs(src, bs, &local_err);
+     if (ret < 0) {
+         error_report_err(local_err);
+@@ -565,7 +570,7 @@ int bdrv_commit(BlockDriverState *bs)
+ 
+     bdrv_graph_rdunlock_main_loop();
+ 
+-    bdrv_graph_wrlock_drained();
++    bdrv_graph_wrlock();
+     bdrv_set_backing_hd(commit_top_bs, backing_file_bs, &error_abort);
+     bdrv_set_backing_hd(bs, commit_top_bs, &error_abort);
+     bdrv_graph_wrunlock();
+@@ -647,7 +652,7 @@ ro_cleanup:
+     blk_unref(backing);
+ 
+     bdrv_graph_rdunlock_main_loop();
+-    bdrv_graph_wrlock_drained();
++    bdrv_graph_wrlock();
+     if (bdrv_cow_bs(bs) != backing_file_bs) {
+         bdrv_set_backing_hd(bs, backing_file_bs, &error_abort);
+     }
+@@ -663,6 +668,7 @@ ro_cleanup:
+ 
+ out:
+     bdrv_graph_rdunlock_main_loop();
++    bdrv_drain_all_end();
+ 
+     return ret;
+ }
+-- 
+2.52.0
+

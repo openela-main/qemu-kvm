@@ -1,0 +1,90 @@
+From efd5375dd5e48aa5af0f23134c8706fe0ac01abd Mon Sep 17 00:00:00 2001
+From: "Richard W.M. Jones" <rjones@redhat.com>
+Date: Thu, 9 Oct 2025 15:08:31 +0100
+Subject: [PATCH 03/45] block/curl.c: Use explicit long constants in
+ curl_easy_setopt calls
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/45] 6b3152316a2b064cabd05825473f2f55440c0bdd (kmwolf/centos-qemu-kvm)
+
+curl_easy_setopt takes a variable argument that depends on what
+CURLOPT you are setting.  Some require a long constant.  Passing a
+plain int constant is potentially wrong on some platforms.
+
+With warnings enabled, multiple warnings like this were printed:
+
+../block/curl.c: In function ‘curl_init_state’:
+../block/curl.c:474:13: warning: call to ‘_curl_easy_setopt_err_long’ declared with attribute warning: curl_easy_setopt expects a long argument [-Wattribute-warning]
+  474 |             curl_easy_setopt(state->curl, CURLOPT_AUTOREFERER, 1) ||
+      |             ^
+
+Signed-off-by: Richard W.M. Jones <rjones@redhat.com>
+Signed-off-by: Chenxi Mao <maochenxi@bosc.ac.cn>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+Message-ID: <20251009141026.4042021-2-rjones@redhat.com>
+(cherry picked from commit ed26056d90ddff21351f3efd2cb47fea4f0e1d45)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/curl.c               | 10 +++++-----
+ contrib/elf2dmp/download.c |  4 ++--
+ 2 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/block/curl.c b/block/curl.c
+index 74ec62d9d8..bbe891dafb 100644
+--- a/block/curl.c
++++ b/block/curl.c
+@@ -485,11 +485,11 @@ static int curl_init_state(BDRVCURLState *s, CURLState *state)
+                              (void *)curl_read_cb) ||
+             curl_easy_setopt(state->curl, CURLOPT_WRITEDATA, (void *)state) ||
+             curl_easy_setopt(state->curl, CURLOPT_PRIVATE, (void *)state) ||
+-            curl_easy_setopt(state->curl, CURLOPT_AUTOREFERER, 1) ||
+-            curl_easy_setopt(state->curl, CURLOPT_FOLLOWLOCATION, 1) ||
+-            curl_easy_setopt(state->curl, CURLOPT_NOSIGNAL, 1) ||
++            curl_easy_setopt(state->curl, CURLOPT_AUTOREFERER, 1L) ||
++            curl_easy_setopt(state->curl, CURLOPT_FOLLOWLOCATION, 1L) ||
++            curl_easy_setopt(state->curl, CURLOPT_NOSIGNAL, 1L) ||
+             curl_easy_setopt(state->curl, CURLOPT_ERRORBUFFER, state->errmsg) ||
+-            curl_easy_setopt(state->curl, CURLOPT_FAILONERROR, 1)) {
++            curl_easy_setopt(state->curl, CURLOPT_FAILONERROR, 1L)) {
+             goto err;
+         }
+         if (s->username) {
+@@ -814,7 +814,7 @@ static int curl_open(BlockDriverState *bs, QDict *options, int flags,
+     }
+ 
+     s->accept_range = false;
+-    if (curl_easy_setopt(state->curl, CURLOPT_NOBODY, 1) ||
++    if (curl_easy_setopt(state->curl, CURLOPT_NOBODY, 1L) ||
+         curl_easy_setopt(state->curl, CURLOPT_HEADERFUNCTION, curl_header_cb) ||
+         curl_easy_setopt(state->curl, CURLOPT_HEADERDATA, s)) {
+         pstrcpy(state->errmsg, CURL_ERROR_SIZE,
+diff --git a/contrib/elf2dmp/download.c b/contrib/elf2dmp/download.c
+index 21306b3fd4..fa8da0f9a2 100644
+--- a/contrib/elf2dmp/download.c
++++ b/contrib/elf2dmp/download.c
+@@ -27,8 +27,8 @@ bool download_url(const char *name, const char *url)
+     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK
+             || curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL) != CURLE_OK
+             || curl_easy_setopt(curl, CURLOPT_WRITEDATA, file) != CURLE_OK
+-            || curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1) != CURLE_OK
+-            || curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0) != CURLE_OK
++            || curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK
++            || curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK
+             || curl_easy_perform(curl) != CURLE_OK) {
+         unlink(name);
+         fclose(file);
+-- 
+2.52.0
+

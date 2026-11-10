@@ -1,0 +1,93 @@
+From 8c7a7441db89e87c95ec3b6f801fbfb077156e7f Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 07/16] target/arm/machine: Trace cpreg names which do not
+ match on migration
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [7/16] ce3d9c640315e049cfb994c4a7530a3c797c5577 (eauger1/centos-qemu-kvm)
+
+Whenever there is a mismatch between cpreg indexes in the incoming
+stream and cpregs exposed by the destination output the name of
+the register. We use a print_register_name() wrapper helper. At the
+moment we are only able to do a nice decoding of the index for
+KVM regs.
+
+Without this patch, the error would be:
+qemu-system-aarch64: load of migration failed: Operation not permitted:
+error while loading state for instance 0x0 of device 'cpu': post load
+hook failed for: cpu, version_id: 22, minimum_version: 22, ret: -1
+which is not helpful for the end user to understand the actual
+issue.
+
+This patch adds the actual information about the probme:
+qemu-system-aarch64: cpu_post_load: system register
+op0:3 op1:0 crn:2 crm:0 op2:3 in the incoming stream but
+unknown on the destination, fail migration
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-6-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit eac1e610f48923084cb07b3f1eaa05f5fedccd85)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/machine.c | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/target/arm/machine.c b/target/arm/machine.c
+index 5caf2885c2..36c9d9946e 100644
+--- a/target/arm/machine.c
++++ b/target/arm/machine.c
+@@ -1,5 +1,6 @@
+ #include "qemu/osdep.h"
+ #include "cpu.h"
++#include "cpregs.h"
+ #include "trace.h"
+ #include "qemu/error-report.h"
+ #include "system/kvm.h"
+@@ -957,6 +958,15 @@ static int cpu_pre_load(void *opaque)
+     return 0;
+ }
+ 
++static gchar *print_register_name(uint64_t kvm_regidx)
++{
++    if (kvm_enabled()) {
++        return kvm_print_register_name(kvm_regidx);
++    } else {
++        return g_strdup_printf("system register 0x%x", kvm_to_cpreg_id(kvm_regidx));
++    }
++}
++
+ static int cpu_post_load(void *opaque, int version_id)
+ {
+     ARMCPU *cpu = opaque;
+@@ -995,11 +1005,18 @@ static int cpu_post_load(void *opaque, int version_id)
+     for (i = 0, v = 0; i < cpu->cpreg_array_len
+              && v < cpu->cpreg_vmstate_array_len; i++) {
+         if (cpu->cpreg_vmstate_indexes[v] > cpu->cpreg_indexes[i]) {
+-            /* register in our list but not incoming : skip it */
++            g_autofree gchar *name = print_register_name(cpu->cpreg_indexes[i]);
++
++            warn_report("%s: %s "
++                        "expected by the destination but not in the incoming stream: "
++                        "skip it", __func__, name);
+             continue;
+         }
+         if (cpu->cpreg_vmstate_indexes[v] < cpu->cpreg_indexes[i]) {
+-            /* register in their list but not ours: fail migration */
++            g_autofree gchar *name = print_register_name(cpu->cpreg_vmstate_indexes[v]);
++
++            error_report("%s: %s in the incoming stream but unknown on the destination: "
++                         "fail migration", __func__, name);
+             return -1;
+         }
+         /* matching register, copy the value over */
+-- 
+2.52.0
+

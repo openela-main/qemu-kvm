@@ -1,14 +1,14 @@
-From 5fbf8868d63d8ae10d0fe225228869a501a69d3e Mon Sep 17 00:00:00 2001
+From c693030f7fb450eec077bc4bf4384715aadde0a1 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:32 +0200
-Subject: [PATCH 09/10] ide-test: Test reset during TRIM
+Subject: [PATCH 09/20] ide-test: Test reset during TRIM
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [7/8] d53673f3aa1fdee252fc7f5e7d777fc180af08ff (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [7/8] 9084a26352311ad7b4faeb9842efdfef5e6c9cdc (kmwolf/centos-qemu-kvm)
 
 This is a regression test for the bug fixed in the previous commits, a
 deadlock between the drain issued by an IDE reset and the TRIM state

@@ -1,0 +1,126 @@
+From cceb5cd2762bb2888c144440f79e999556aa93c3 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 09/16] target/arm/machine: Fix detection of unknown incoming
+ cpregs
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 489: [rhel-9] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174859
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [9/16] 474b9cb62c151dc6d8e3ed1bc7316f466dc52566 (eauger1/centos-qemu-kvm)
+
+Currently the check of cpreg index matches fail to detect
+a situation where the length of both arrays is same but
+- destination has an extra register not found in the incoming stream (idx1)
+- source has an extra register not found in the destination (idx2)
+  where idx1 < = idx2
+Normally this should fail but it does not.
+
+Fix the logic to scan all indexes.
+
+Fixes: 721fae12536 ("target-arm: Convert TCG to using (index,value) list for cp migration")
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-8-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dbfed8d80837ff7d36e763163f38549169ee64cc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/machine.c | 61 +++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 49 insertions(+), 12 deletions(-)
+
+diff --git a/target/arm/machine.c b/target/arm/machine.c
+index 70157e000b..e0447083ee 100644
+--- a/target/arm/machine.c
++++ b/target/arm/machine.c
+@@ -967,6 +967,35 @@ static gchar *print_register_name(uint64_t kvm_regidx)
+     }
+ }
+ 
++/*
++ * Handle the situation where @kvmidx is on destination but not
++ * in the incoming stream. This never fails the migration.
++ */
++static void handle_cpreg_missing_in_incoming_stream(ARMCPU *cpu, uint64_t kvmidx)
++{
++    g_autofree gchar *name = print_register_name(kvmidx);
++
++    warn_report("%s: %s "
++                "expected by the destination but not in the incoming stream: "
++                 "skip it", __func__, name);
++}
++
++/*
++ * Handle the situation where @kvmidx is in the incoming stream
++ * but not on destination. This currently fails the migration but
++ * we plan to accomodate some exceptions, hence the boolean returned value.
++ */
++static bool handle_cpreg_only_in_incoming_stream(ARMCPU *cpu, uint64_t kvmidx)
++{
++    g_autofree gchar *name = print_register_name(kvmidx);
++    bool fail = true;
++
++    error_report("%s: %s in the incoming stream but unknown on the "
++                 "destination: fail migration", __func__, name);
++
++    return fail;
++}
++
+ static int cpu_post_load(void *opaque, int version_id)
+ {
+     ARMCPU *cpu = opaque;
+@@ -1006,21 +1035,12 @@ static int cpu_post_load(void *opaque, int version_id)
+     for (i = 0, v = 0; i < cpu->cpreg_array_len
+              && v < cpu->cpreg_vmstate_array_len;) {
+         if (cpu->cpreg_vmstate_indexes[v] > cpu->cpreg_indexes[i]) {
+-            g_autofree gchar *name = print_register_name(cpu->cpreg_indexes[i]);
+-
+-            warn_report("%s: %s "
+-                        "expected by the destination but not in the incoming stream: "
+-                        "skip it", __func__, name);
+-            i++;
++            handle_cpreg_missing_in_incoming_stream(cpu, cpu->cpreg_indexes[i++]);
+             continue;
+         }
+         if (cpu->cpreg_vmstate_indexes[v] < cpu->cpreg_indexes[i]) {
+-            g_autofree gchar *name = print_register_name(cpu->cpreg_vmstate_indexes[v]);
+-
+-            error_report("%s: %s in the incoming stream but unknown on the destination: "
+-                         "fail migration", __func__, name);
+-            v++;
+-            fail = true;
++            fail = handle_cpreg_only_in_incoming_stream(cpu,
++                                                        cpu->cpreg_vmstate_indexes[v++]);
+             continue;
+         }
+         /* matching register, copy the value over */
+@@ -1028,6 +1048,23 @@ static int cpu_post_load(void *opaque, int version_id)
+         i++;
+         v++;
+     }
++
++    /*
++     * if we have reached the end of the incoming array but there are
++     * still regs in cpreg, continue parsing the regs which are missing
++     * in the input stream
++     */
++    for ( ; i < cpu->cpreg_array_len; i++) {
++        handle_cpreg_missing_in_incoming_stream(cpu, cpu->cpreg_indexes[i]);
++    }
++    /*
++     * if we have reached the end of the cpreg array but there are
++     * still regs in the input stream, continue parsing the vmstate array
++     */
++    for ( ; v < cpu->cpreg_vmstate_array_len; v++) {
++        fail = handle_cpreg_only_in_incoming_stream(cpu,
++                                                    cpu->cpreg_vmstate_indexes[v]);
++    }
+     if (fail) {
+         return -1;
+     }
+-- 
+2.52.0
+

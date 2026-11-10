@@ -1,7 +1,15 @@
-From c1a85d75e71f45db57a849f46b7e352b6359ca19 Mon Sep 17 00:00:00 2001
+From a226df466cfae1ccb0ed274ecd80712252118a40 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 7 Oct 2025 10:16:59 -0400
-Subject: [PATCH] block: use pwrite_zeroes_alignment when writing first sector
+Subject: [PATCH 28/45] block: use pwrite_zeroes_alignment when writing first
+ sector
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [28/45] 9a350e10ffd0f44f923bc05dd13d9a385e3d8863 (kmwolf/centos-qemu-kvm)
 
 Since commit 5634622bcb33 ("file-posix: allow BLKZEROOUT with -t
 writeback"), qemu-img create errors out on a Linux loop block device
@@ -29,6 +37,7 @@ Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
 Reviewed-by: Kevin Wolf <kwolf@redhat.com>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 (cherry picked from commit d704a13d2c025779bc91d04e127427347ddcf3b3)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 ---
  block.c                           |  3 ++-
@@ -56,10 +65,10 @@ index 8848e9a7ed..be77e03904 100644
          ret = blk_co_pwrite_zeroes(blk, 0, bytes_to_clear, BDRV_REQ_MAY_UNMAP);
          if (ret < 0) {
 diff --git a/block/block-backend.c b/block/block-backend.c
-index d6df369188..98315d4470 100644
+index d97b26b743..850f2ecec2 100644
 --- a/block/block-backend.c
 +++ b/block/block-backend.c
-@@ -2305,6 +2305,17 @@ uint32_t blk_get_request_alignment(BlockBackend *blk)
+@@ -2326,6 +2326,17 @@ uint32_t blk_get_request_alignment(BlockBackend *blk)
      return bs ? bs->bl.request_alignment : BDRV_SECTOR_SIZE;
  }
  
@@ -78,10 +87,10 @@ index d6df369188..98315d4470 100644
  uint64_t blk_get_max_hw_transfer(BlockBackend *blk)
  {
 diff --git a/include/system/block-backend-io.h b/include/system/block-backend-io.h
-index ba8dfcc7d0..6d5ac476fc 100644
+index 91c48299b7..fd84723d9d 100644
 --- a/include/system/block-backend-io.h
 +++ b/include/system/block-backend-io.h
-@@ -116,6 +116,7 @@ BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,
+@@ -118,6 +118,7 @@ BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,
                                    void *opaque, int ret);
  
  uint32_t blk_get_request_alignment(BlockBackend *blk);
@@ -89,3 +98,6 @@ index ba8dfcc7d0..6d5ac476fc 100644
  uint32_t blk_get_max_transfer(BlockBackend *blk);
  uint64_t blk_get_max_hw_transfer(BlockBackend *blk);
  
+-- 
+2.52.0
+

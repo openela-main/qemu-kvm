@@ -1,0 +1,60 @@
+From 1153cf592799971556a19b098576d41a4e6deedd Mon Sep 17 00:00:00 2001
+From: Alberto Garcia <berto@igalia.com>
+Date: Wed, 12 Nov 2025 18:09:57 +0100
+Subject: [PATCH 22/45] tests/qemu-iotest: fix iotest 024 with qed images
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [22/45] a619829b6c9f4c18fcd7033a6433bd0dd86a1de5 (kmwolf/centos-qemu-kvm)
+
+Use 'qemu-io -c map' instead of 'qemu-img map' to get an output that
+works with both image types.
+
+Cc: qemu-stable <qemu-stable@nongnu.org>
+Fixes: 909852ba6b4a ("qemu-img rebase: don't exceed IO_BUF_SIZE in one operation")
+Fixes: 26b17e34bedb ("qemu-img rebase: don't exceed IO_BUF_SIZE in one operation") in 10.1.x
+Signed-off-by: Alberto Garcia <berto@igalia.com>
+Message-ID: <20251112170959.700840-1-berto@igalia.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Tested-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 4c91719a6a78a1c24d8bb854f7594e767962d0d9)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/024     | 2 +-
+ tests/qemu-iotests/024.out | 3 +--
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/tests/qemu-iotests/024 b/tests/qemu-iotests/024
+index 021169b4a1..10be2bd845 100755
+--- a/tests/qemu-iotests/024
++++ b/tests/qemu-iotests/024
+@@ -359,7 +359,7 @@ $QEMU_IO "$OVERLAY" -c "read -P 0x00  0 1M" | _filter_qemu_io
+ $QEMU_IO "$OVERLAY" -c "read -P 0xff 1M 2M" | _filter_qemu_io
+ $QEMU_IO "$OVERLAY" -c "read -P 0x00 3M 1M" | _filter_qemu_io
+ 
+-$QEMU_IMG map "$OVERLAY" | _filter_qemu_img_map
++$QEMU_IO -c map "$OVERLAY" | _filter_qemu_io
+ 
+ echo
+ 
+diff --git a/tests/qemu-iotests/024.out b/tests/qemu-iotests/024.out
+index 1b7522ba71..da8fedc08b 100644
+--- a/tests/qemu-iotests/024.out
++++ b/tests/qemu-iotests/024.out
+@@ -266,7 +266,6 @@ read 2097152/2097152 bytes at offset 1048576
+ 2 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ read 1048576/1048576 bytes at offset 3145728
+ 1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+-Offset          Length          File
+-0               0x400000        TEST_DIR/subdir/t.IMGFMT
++4 MiB (0x400000) bytes     allocated at offset 0 bytes (0x0)
+ 
+ *** done
+-- 
+2.52.0
+

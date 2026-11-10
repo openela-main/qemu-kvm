@@ -1,14 +1,14 @@
-From 8e7d1aa54f95d897e2f32db74d5db3bf8e7d9da4 Mon Sep 17 00:00:00 2001
+From c128bbc6a46777f8776fd057e6d4afb782173507 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:29 +0200
-Subject: [PATCH 06/10] ide: Minimal fix for deadlock between TRIM and drain
+Subject: [PATCH 06/20] ide: Minimal fix for deadlock between TRIM and drain
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 563: ide: Fix deadlock between TRIM and drain [9.8.z]
-RH-Jira: RHEL-190700
+RH-MergeRequest: 507: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-190701
 RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [4/8] cc842db95be82853a5a663bba6996d73b6fb2846 (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Commit: [4/8] db4ae5e53b75e0cda072cd4060bb1e6394797959 (kmwolf/centos-qemu-kvm)
 
 The implementation of TRIM in IDE can chain multiple discard requests
 and uses blk_inc/dec_in_flight() to make sure that the whole TRIM

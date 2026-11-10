@@ -1,0 +1,65 @@
+From 0196ade06cc13695aebd00f0c3cdb5937aa833fa Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 31 Mar 2026 12:26:08 +0200
+Subject: [PATCH 45/45] block: Fix crash after setting latency historygram with
+ single bin
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 515: virt-storage: Backport stable branch fixes [9.9]
+RH-Jira: RHEL-216952
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [45/45] 5e76d38c43a6241d156003f7d8e812d002383483 (kmwolf/centos-qemu-kvm)
+
+Passing an empty list of boundaries to block-latency-histogram-set sets
+up a state that leads to a NULL pointer dereference when the next
+request should be accounted for. This is not a useful configuration, so
+just error out if the user tries to set it.
+
+The crash can easily be reproduced with the following script:
+
+    qmp() {
+    cat <<EOF
+    {'execute':'qmp_capabilities'}
+    {'execute':'block-latency-histogram-set',
+     'arguments': {'id':'ide0','boundaries':[]}}
+    {'execute':'cont'}
+    EOF
+    }
+
+    qmp | ./qemu-system-x86_64 -S -qmp stdio \
+        -drive if=none,format=raw,file=null-co:// \
+        -device ide-hd,drive=none0,id=ide0
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260331102608.60882-1-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit a55402d5c3a8c63c801de86896f86c9abeda0ca8)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/accounting.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/block/accounting.c b/block/accounting.c
+index 5cf51f029b..f00fe99740 100644
+--- a/block/accounting.c
++++ b/block/accounting.c
+@@ -185,6 +185,15 @@ int block_latency_histogram_set(BlockAcctStats *stats, enum BlockAcctType type,
+         prev = entry->value;
+     }
+ 
++    /*
++     * block_latency_histogram_account() assumes that it can always access
++     * hist->boundaries[0], so require at least one boundary. A histogram with
++     * a single bin is useless anyway.
++     */
++    if (new_nbins <= 1) {
++        return -EINVAL;
++    }
++
+     hist->nbins = new_nbins;
+     g_free(hist->boundaries);
+     hist->boundaries = g_new(uint64_t, hist->nbins - 1);
+-- 
+2.52.0
+
