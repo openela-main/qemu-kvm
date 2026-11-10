@@ -1,0 +1,116 @@
+From afe9e82db92db41cb6d87f55410b388667b8e537 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:35 +0100
+Subject: [PATCH 093/111] hw/arm/tegra241-cmdqv: mmap host VINTF Page0 for
+ CMDQV
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [93/111] 049d226826cbec9ff2d6509d46b73b3d70371230 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+The kernel currently exposes a single VINTF per emulated SMMUv3
+instance. IOMMU_VIOMMU_ALLOC returns an mmap offset for the host
+VINTF Page0 allocated for this SMMU. However, VCMDQs only become
+bound to that VINTF after IOMMU_HW_QUEUE_ALLOC, so until then the
+mapped Page0 does not back any real VCMDQ state.
+
+mmap the host VINTF Page0 right after IOMMU_VIOMMU_ALLOC, as the host
+VINTF is already enabled at that point, and unmap it when the vIOMMU is
+freed. The mapping shares the vIOMMU's lifetime. This prepares the VINTF
+mapping in advance of subsequent patches that add VCMDQ allocation.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-15-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ab15bda3ac1380f63c6e7ae1e80f799cff2a262b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 16 +++++++++++++++-
+ hw/arm/tegra241-cmdqv.h |  3 +++
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index c1351c8519..3eec6073a4 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -41,6 +41,10 @@ static void tegra241_cmdqv_free_viommu(SMMUv3State *s)
+         g_free(veventq);
+         cmdqv->veventq = NULL;
+     }
++    if (cmdqv->vintf_page0) {
++        munmap(cmdqv->vintf_page0, VINTF_PAGE_SIZE);
++        cmdqv->vintf_page0 = NULL;
++    }
+     iommufd_backend_free_id(viommu->iommufd, viommu->viommu_id);
+ }
+ 
+@@ -60,13 +64,20 @@ tegra241_cmdqv_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+         return false;
+     }
+ 
++    if (!iommufd_backend_viommu_mmap(idev->iommufd, viommu_id, VINTF_PAGE_SIZE,
++                                     cmdqv->cmdqv_data->out_vintf_mmap_offset,
++                                     &cmdqv->vintf_page0, errp)) {
++        error_append_hint(errp, "Tegra241 CMDQV: failed to mmap VINTF page0");
++        goto free_viommu;
++    }
++
+     if (!iommufd_backend_alloc_veventq(idev->iommufd, viommu_id,
+                                        IOMMU_VEVENTQ_TYPE_TEGRA241_CMDQV,
+                                        1 << SMMU_EVENTQS, &veventq_id,
+                                        &veventq_fd,
+                                        errp)) {
+         error_append_hint(errp, "Tegra241 CMDQV: failed to alloc veventq");
+-        goto free_viommu;
++        goto munmap_page0;
+     }
+ 
+     veventq = g_new(IOMMUFDVeventq, 1);
+@@ -77,6 +88,9 @@ tegra241_cmdqv_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+     *out_viommu_id = viommu_id;
+     return true;
+ 
++munmap_page0:
++    munmap(cmdqv->vintf_page0, VINTF_PAGE_SIZE);
++    cmdqv->vintf_page0 = NULL;
+ free_viommu:
+     iommufd_backend_free_id(idev->iommufd, viommu_id);
+     return false;
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index 9fc720e96c..00c83b6186 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -25,6 +25,8 @@
+  */
+ #define TEGRA241_CMDQV_IO_LEN 0x50000
+ 
++#define VINTF_PAGE_SIZE 0x10000
++
+ struct iommu_viommu_tegra241_cmdqv;
+ 
+ typedef struct Tegra241CMDQV {
+@@ -33,6 +35,7 @@ typedef struct Tegra241CMDQV {
+     MemoryRegion mmio_cmdqv;
+     qemu_irq irq;
+     IOMMUFDVeventq *veventq;
++    void *vintf_page0;
+ } Tegra241CMDQV;
+ 
+ const SMMUv3AccelCmdqvOps *tegra241_cmdqv_get_ops(void);
+-- 
+2.52.0
+

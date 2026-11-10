@@ -1,0 +1,80 @@
+From 9b51393c6b6e5759755d78f1cf1e97c174af3d1a Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 005/116] target/arm/kvm: Export kvm_print_register_name()
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [5/16] 66bc6985b3162adca02cac4efbbb86f5e973ed7f (eauger1/centos-qemu-kvm)
+
+Conflicts: contextual conflicts in target/arm/kvm-stub.c
+and target/arm/kvm_arm.h since we don't have arm_gic_cap_kvm_probe()
+downstream
+
+We want to use kvm_print_register_name() in machine.c so
+let's export the helper and implement a stub when kvm
+is not enabled.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-4-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 5ae081fb493510f62280afc005aa36f702192539)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/kvm-stub.c | 5 +++++
+ target/arm/kvm.c      | 2 +-
+ target/arm/kvm_arm.h  | 9 +++++++++
+ 3 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/target/arm/kvm-stub.c b/target/arm/kvm-stub.c
+index c93462c5b9..58b37e0dfe 100644
+--- a/target/arm/kvm-stub.c
++++ b/target/arm/kvm-stub.c
+@@ -124,3 +124,8 @@ bool kvm_arm_cpu_post_load(ARMCPU *cpu)
+ {
+     g_assert_not_reached();
+ }
++
++char *kvm_print_register_name(uint64_t regidx)
++{
++    g_assert_not_reached();
++}
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index 5dacb304bd..283d634ca1 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -911,7 +911,7 @@ static gchar *kvm_print_sve_register_name(uint64_t regidx)
+     }
+ }
+ 
+-static gchar *kvm_print_register_name(uint64_t regidx)
++char *kvm_print_register_name(uint64_t regidx)
+ {
+         switch ((regidx & KVM_REG_ARM_COPROC_MASK)) {
+         case KVM_REG_ARM_CORE:
+diff --git a/target/arm/kvm_arm.h b/target/arm/kvm_arm.h
+index 6a9b6374a6..c4e7dc28ef 100644
+--- a/target/arm/kvm_arm.h
++++ b/target/arm/kvm_arm.h
+@@ -263,4 +263,13 @@ void kvm_arm_enable_mte(Object *cpuobj, Error **errp);
+ 
+ void arm_cpu_kvm_set_irq(void *arm_cpu, int irq, int level);
+ 
++/*
++ * kvm_print_register_name:
++ * @regidx: register KVM index
++ *
++ * Returns a human-readable string representing this register
++ * The caller must free the string with g_free().
++ */
++char *kvm_print_register_name(uint64_t regidx);
++
+ #endif
+-- 
+2.52.0
+

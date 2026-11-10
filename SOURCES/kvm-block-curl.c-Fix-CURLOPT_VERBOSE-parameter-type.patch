@@ -1,0 +1,44 @@
+From e3921ea32fdc43a74a639e215a861e464ec3da80 Mon Sep 17 00:00:00 2001
+From: "Richard W.M. Jones" <rjones@redhat.com>
+Date: Mon, 13 Oct 2025 13:41:19 +0100
+Subject: [PATCH 11/52] block/curl.c: Fix CURLOPT_VERBOSE parameter type
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [4/45] 7adffe8d6de2464ed632918f3d8b4200ada1f2a0 (kmwolf/centos-qemu-kvm)
+
+In commit ed26056d90 ("block/curl.c: Use explicit long constants in
+curl_easy_setopt calls") we missed a further call that takes a long
+parameter.
+
+Reported-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Richard W.M. Jones <rjones@redhat.com>
+Message-ID: <20251013124127.604401-1-rjones@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit ad97769e9dcf4dbdaae6d859176e5f37fd6a7c66)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/curl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/block/curl.c b/block/curl.c
+index bbe891dafb..96498aac1d 100644
+--- a/block/curl.c
++++ b/block/curl.c
+@@ -538,7 +538,7 @@ static int curl_init_state(BDRVCURLState *s, CURLState *state)
+ #endif
+ 
+ #ifdef DEBUG_VERBOSE
+-        if (curl_easy_setopt(state->curl, CURLOPT_VERBOSE, 1)) {
++        if (curl_easy_setopt(state->curl, CURLOPT_VERBOSE, 1L)) {
+             goto err;
+         }
+ #endif
+-- 
+2.52.0
+

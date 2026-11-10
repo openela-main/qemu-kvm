@@ -1,0 +1,270 @@
+From 8f3cee2f6c741ba3bf93e097b3fb7207dbf08aaf Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Sat, 22 Aug 2026 11:26:51 +1000
+Subject: [PATCH 2/3] system/memory: Use qemu_ram_move() for directly
+ accessible regions
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 517: memory: Make ram device region directly accessible
+RH-Jira: RHEL-246035
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [2/3] e4245fe1ea4ed269832f153ea4772f7848472ba0 (gwshan/qemu-centos10)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-246035
+
+All ram device regions were turned to be indirectly accessible by commit
+4a2e242bbb ("memory: Don't use memcpy for ram_device regions"). This leads
+to guest hang on attempt to build 'cuda-samples' as reported by Julia. The
+guest is started by the following command lines, with GH100 GPU card passed
+from the host.
+
+   host$ lspci | grep GH100
+   0009:01:00.0 3D controller: NVIDIA Corporation GH100 [GH200 120GB / 480GB] (rev a1)
+   host$ /home/sandbox/gavin/qemu.main/build/qemu-system-aarch64            \
+         -machine virt,gic-version=host,ras=on,highmem-mmio-size=4T         \
+         -accel kvm -cpu host -smp cpus=48 -m size=8G                       \
+         -drive file=/home/gavin/sandbox/images/disk.qcow2,if=none,id=d0    \
+         -device virtio-blk-pci,id=vb0,bus=pcie.0,drive=d0,num-queues=4     \
+         -device vfio-pci-nohotplug,host=0009:01:00.0,bus=pcie.1.0
+           :
+   guest$ cd cuda-samples/build
+   guest$ make -j 20 clean
+   guest$ make -j 20
+           :
+   [ 54%] Linking CUDA executable graphMemoryNodes
+   [ 54%] Built target graphMemoryNodes
+   <no more output afterwards, guest becomes frozen here>
+
+   guest$ qemu-system-aarch64: virtio: bogus descriptor or out of resources
+   [  555.814025] virtio_blk virtio0: [vda] new size: 268435456 512-byte logical blocks (137 GB/128 GiB)
+
+When the GPU's driver (NVidia open driver) is loaded on guest bootup,
+the memory blocks residing in the PCI BAR#4 of the GH100 GPU card can
+be presented to the guest through memory hot-add. The page cache can
+then be allocated from the hot added memory blocks when cuda-samples
+is being built. Afterwards, the page cache is sent to QEMU's virtio-blk
+device as part of the DMA request, the bounce buffer has to be used to
+accomodate the request as the corresponding memory region (MemoryRegion)
+is an indirectly accessible ram device region in qemu. However, the max
+bounce bufer size is only 4096 bytes by default and that is exhausted
+quickly, leading to a reset on the virtio-blk device and frozen guest
+eventually.
+
+  QEMU
+  ====
+  virtio_blk_handle_output
+    virtio_blk_handle_vq
+      virtio_blk_get_request
+        virtqueue_pop
+          virtqueue_split_pop
+            virtqueue_map_desc
+              address_space_map
+                memory_access_is_direct         # Return false
+                  memory_region_supports_direct_access
+
+  (qemu) info mtree
+  memory-region: pci_bridge_pci
+    0000000000000000-ffffffffffffffff (prio 0, container): pci_bridge_pci
+      0000042000000000-0000043fffffffff (prio 1, i/o): 0009:01:00.0 base BAR 4
+        0000042000000000-0000043fffffffff (prio 0, i/o): 0009:01:00.0 BAR 4
+          0000042000000000-000004379fffffff (prio 0, ramd): 0009:01:00.0 BAR 4 mmaps[0]
+
+This adds qemu_ram_move() where the aligned and small-sized accesses are
+handled by qatomics, and fall back to memmove() otherwise. The memove()
+for the directly accessible regions is replaced by qemu_ram_move() so that
+the issue covered by commit 4a2e242bbb (MMIO access instructions were
+optimized to SSE instructions) is fixed. This makes 'ram_device_mem_ops'
+redundant, paving the way to revert that commit to make the ram device
+region directly accessible again in the next patch.
+
+Besides, this also fixes the issue of the unexpected frozen reception on
+e1000 NIC in the scenario of DPDK due to the wrong Rx queue full indication
+caused by the following memcpy(), which is turned to 3 consective 'strb'
+instructions to the same location by glibc-2.24+ for aarch64. With this
+applied, the syntax of one-byte store is strictly ensured by a one-byte
+qatomic set.
+
+  QEMU
+  ====
+  e1000_receive_iov
+    pci_dma_write
+      pci_dma_rw
+        dma_memory_rw
+          dma_memory_rw_relaxed
+            address_space_rw
+              address_space_write
+                flatview_write
+                  flatview_write_continue
+                    flatview_write_continue_step
+                      memcpy    # 3 consective 'strb' instructions
+
+Reported-by: Julia Graham <jugraham@redhat.com>
+Reported-by: Liu Gang <liugang24219@sangfor.com.cn>
+Reported-by: Ding Hui <dinghui@sangfor.com.cn>
+Suggested-by: Michael S. Tsirkin <mst@redhat.com>
+Suggested-by: Peter Xu <peterx@redhat.com>
+Suggested-by: Richard Henderson <richard.henderson@linaro.org>
+Suggested-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Link: https://lore.kernel.org/r/20260728031731.286666-3-gshan@redhat.com
+[peterx: remove src==dst check, fix doc, enhance comments, per PeterM, add R-b]
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit bec5e7c71cc9770a900dac6930d076fe7ee9e57b)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Conflicts:
+	include/system/memory.h
+	Contextual conflict due to missed upstream commit 47b23339a5bb
+	("system/memory: Constify various AddressSpace arguments (access)")
+---
+ hw/remote/vfio-user-obj.c |  4 ++--
+ include/system/memory.h   | 35 +++++++++++++++++++++++++++-
+ system/physmem.c          | 48 +++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 82 insertions(+), 5 deletions(-)
+
+diff --git a/hw/remote/vfio-user-obj.c b/hw/remote/vfio-user-obj.c
+index 494fea565c..c56ee70a0d 100644
+--- a/hw/remote/vfio-user-obj.c
++++ b/hw/remote/vfio-user-obj.c
+@@ -368,9 +368,9 @@ static int vfu_object_mr_rw(MemoryRegion *mr, uint8_t *buf, hwaddr offset,
+         ram_ptr = memory_region_get_ram_ptr(mr);
+ 
+         if (is_write) {
+-            memmove((ram_ptr + offset), buf, size);
++            qemu_ram_move((ram_ptr + offset), buf, size);
+         } else {
+-            memmove(buf, (ram_ptr + offset), size);
++            qemu_ram_move(buf, (ram_ptr + offset), size);
+         }
+ 
+         return 0;
+diff --git a/include/system/memory.h b/include/system/memory.h
+index b39ec9a5d3..351cf1253c 100644
+--- a/include/system/memory.h
++++ b/include/system/memory.h
+@@ -3103,6 +3103,39 @@ void address_space_register_map_client(AddressSpace *as, QEMUBH *bh);
+ void address_space_unregister_map_client(AddressSpace *as, QEMUBH *bh);
+ 
+ /* Internal functions, part of the implementation of address_space_read.  */
++
++/**
++ * qemu_ram_move: move data from or to ramblock
++ *
++ * @dst: destination where the data is moved to
++ * @src: source where the data is moved from
++ * @n: length of data to be moved
++ *
++ * Move @n bytes from @src to @dst, the memory areas may overlap. This
++ * provides the same semantics as memmove(), plus an additional stronger
++ * guarantee: if @n is 1, 2 or 4 or 8 bytes, and @src and @dst are both
++ * naturally aligned for that access size, then both the load and the store
++ * will be done as a single atomic access (with the semantics of
++ * qatomic_read() and qatomic_set()).
++ *
++ * This is the underlying function that we use to implement accesses by
++ * a guest vCPU or a device DMA operation to a ram block. The atomic
++ * guarantee is needed for two major cases: (A) When the ram block is
++ * backed by a PCI BAR passed through from a host device (and so it might
++ * be hardware registers that must be accessed exactly once at the right
++ * width); (B) When an emulated device updates a data structure shared in
++ * guest memory with guest software (e.g. a network device's set of tx and
++ * rx descriptor blocks), if a write to memory is accidentally performed
++ * multiple times then it can break the guest code when it busy polls the
++ * guest memory.
++ *
++ * We don't attempt to perform the exact access when it would be unaligned
++ * because this can't be done on all host architectures. Although this is
++ * strictly speaking not doing what would happen on real hardware, we don't
++ * think there are going to be situations where that matters in practice.
++ */
++void qemu_ram_move(void *dst, const void *src, size_t n);
++
+ MemTxResult address_space_read_full(AddressSpace *as, hwaddr addr,
+                                     MemTxAttrs attrs, void *buf, hwaddr len);
+ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
+@@ -3184,7 +3217,7 @@ MemTxResult address_space_read(AddressSpace *as, hwaddr addr,
+             mr = flatview_translate(fv, addr, &addr1, &l, false, attrs);
+             if (len == l && memory_access_is_direct(mr, false, attrs)) {
+                 ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
+-                memmove(buf, ptr, len);
++                qemu_ram_move(buf, ptr, len);
+             } else {
+                 result = flatview_read_continue(fv, addr, attrs, buf, len,
+                                                 addr1, l, mr);
+diff --git a/system/physmem.c b/system/physmem.c
+index 697e75dad7..d88349616e 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -2869,6 +2869,50 @@ void memory_region_flush_rom_device(MemoryRegion *mr, hwaddr addr, hwaddr size)
+     invalidate_and_set_dirty(mr, addr, size);
+ }
+ 
++void qemu_ram_move(void *dst, const void *src, size_t n)
++{
++    uintptr_t test, len;
++
++    if (n == 0) {
++        return;
++    }
++
++    /*
++     * Calculate "the lowest set bit" over @src, @dst and @n, result put
++     * into @len (which guarantees a power-of-two).  With that and the
++     * later check (len!=n), it makes sure that we will only do the atomic
++     * ops when:
++     *
++     * (1) @n is a power-of-two
++     * (2) @src and @dst addresses are both aligned to @n
++     */
++    test = (uintptr_t)src | (uintptr_t)dst | n;
++    len = test & -test;
++
++    /* Overlapping buffers, unaligned or oversized access */
++    if (n > 8 || len != n) {
++        memmove(dst, src, n);
++        return;
++    }
++
++    switch (len) {
++    case 1:
++        qatomic_set((uint8_t *)dst, qatomic_read((uint8_t *)src));
++        break;
++    case 2:
++        qatomic_set((uint16_t *)dst, qatomic_read((uint16_t *)src));
++        break;
++    case 4:
++        qatomic_set((uint32_t *)dst, qatomic_read((uint32_t *)src));
++        break;
++    case 8:
++        qatomic_set((uint64_t *)dst, qatomic_read((uint64_t *)src));
++        break;
++    default:
++        g_assert_not_reached();
++    }
++}
++
+ int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr)
+ {
+     unsigned access_size_max = mr->ops->valid.max_access_size;
+@@ -2981,7 +3025,7 @@ static MemTxResult flatview_write_continue_step(MemTxAttrs attrs,
+         uint8_t *ram_ptr = qemu_ram_ptr_length(mr->ram_block, mr_addr, l,
+                                                false, true);
+ 
+-        memmove(ram_ptr, buf, *l);
++        qemu_ram_move(ram_ptr, buf, *l);
+         invalidate_and_set_dirty(mr, mr_addr, *l);
+ 
+         return MEMTX_OK;
+@@ -3074,7 +3118,7 @@ static MemTxResult flatview_read_continue_step(MemTxAttrs attrs, uint8_t *buf,
+         uint8_t *ram_ptr = qemu_ram_ptr_length(mr->ram_block, mr_addr, l,
+                                                false, false);
+ 
+-        memmove(buf, ram_ptr, *l);
++        qemu_ram_move(buf, ram_ptr, *l);
+ 
+         return MEMTX_OK;
+     }
+-- 
+2.52.0
+

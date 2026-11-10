@@ -1,0 +1,53 @@
+From e6ebe1bacee5d50b07aed2837eb1844180ad32be Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:32 +0100
+Subject: [PATCH 075/116] vfio-user/pci.c: rename
+ vfio_user_pci_dev_properties[] to vfio_user_pci_properties[]
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [59/100] 20d11845e15a6584e72e871dc56232c1eb942f13 (rovick1/qemu-kvm)
+
+This changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-25-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 78f4b77607b41909c294f15ae4e51d87e36aab4f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index e2c5b5744c..30f485fdbb 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -400,7 +400,7 @@ static void vfio_user_pci_reset(DeviceState *dev)
+     vfio_pci_post_reset(vdev);
+ }
+ 
+-static const Property vfio_user_pci_dev_properties[] = {
++static const Property vfio_user_pci_properties[] = {
+     DEFINE_PROP_UINT32("x-pci-vendor-id", VFIOPCIDevice,
+                        vendor_id, PCI_ANY_ID),
+     DEFINE_PROP_UINT32("x-pci-device-id", VFIOPCIDevice,
+@@ -452,7 +452,7 @@ static void vfio_user_pci_class_init(ObjectClass *klass, const void *data)
+     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
+ 
+     device_class_set_legacy_reset(dc, vfio_user_pci_reset);
+-    device_class_set_props(dc, vfio_user_pci_dev_properties);
++    device_class_set_props(dc, vfio_user_pci_properties);
+ 
+     object_class_property_add(klass, "socket", "SocketAddress", NULL,
+                               vfio_user_pci_set_socket, NULL, NULL);
+-- 
+2.52.0
+

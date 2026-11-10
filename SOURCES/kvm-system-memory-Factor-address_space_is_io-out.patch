@@ -1,0 +1,92 @@
+From 739a771cce232fe56b29291092dd7c10d1f2b364 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Mon, 29 Sep 2025 14:36:19 +0200
+Subject: [PATCH 046/111] system/memory: Factor address_space_is_io() out
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [46/111] 1dcdda9cbb0db9215a654e8e7e6bab6bfb847014 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Factor address_space_is_io() out of cpu_physical_memory_is_io().
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Message-Id: <20251002084203.63899-3-philmd@linaro.org>
+(cherry picked from commit 839976e9da4b577aca284847b7e965332f2ca687)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/system/memory.h |  9 +++++++++
+ system/physmem.c        | 21 ++++++++++++---------
+ 2 files changed, 21 insertions(+), 9 deletions(-)
+
+diff --git a/include/system/memory.h b/include/system/memory.h
+index e2cd6ed126..4913206c8c 100644
+--- a/include/system/memory.h
++++ b/include/system/memory.h
+@@ -3017,6 +3017,15 @@ static inline MemoryRegion *address_space_translate(AddressSpace *as,
+ bool address_space_access_valid(AddressSpace *as, hwaddr addr, hwaddr len,
+                                 bool is_write, MemTxAttrs attrs);
+ 
++/**
++ * address_space_is_io: check whether an guest physical addresses
++ *                      whithin an address space is I/O memory.
++ *
++ * @as: #AddressSpace to be accessed
++ * @addr: address within that address space
++ */
++bool address_space_is_io(AddressSpace *as, hwaddr addr);
++
+ /* address_space_map: map a physical memory region into a host virtual address
+  *
+  * May map a subset of the requested range, given by and returned in @plen.
+diff --git a/system/physmem.c b/system/physmem.c
+index e5dd760e0b..2e34205ad7 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -3376,6 +3376,17 @@ bool address_space_access_valid(AddressSpace *as, hwaddr addr,
+     return flatview_access_valid(fv, addr, len, is_write, attrs);
+ }
+ 
++bool address_space_is_io(AddressSpace *as, hwaddr addr)
++{
++    MemoryRegion *mr;
++
++    RCU_READ_LOCK_GUARD();
++    mr = address_space_translate(as, addr, &addr, NULL, false,
++                                 MEMTXATTRS_UNSPECIFIED);
++
++    return !(memory_region_is_ram(mr) || memory_region_is_romd(mr));
++}
++
+ static hwaddr
+ flatview_extend_translation(FlatView *fv, hwaddr addr,
+                             hwaddr target_len,
+@@ -3772,15 +3783,7 @@ int cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
+ 
+ bool cpu_physical_memory_is_io(hwaddr phys_addr)
+ {
+-    MemoryRegion*mr;
+-    hwaddr l = 1;
+-
+-    RCU_READ_LOCK_GUARD();
+-    mr = address_space_translate(&address_space_memory,
+-                                 phys_addr, &phys_addr, &l, false,
+-                                 MEMTXATTRS_UNSPECIFIED);
+-
+-    return !(memory_region_is_ram(mr) || memory_region_is_romd(mr));
++    return address_space_is_io(&address_space_memory, phys_addr);
+ }
+ 
+ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
+-- 
+2.52.0
+

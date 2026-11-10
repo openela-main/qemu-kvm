@@ -1,0 +1,244 @@
+From 05198739d42d3ad9b57a52075b56dbfa7042de41 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:40 +0100
+Subject: [PATCH 098/111] hw/arm/tegra241-cmdqv: Route allocated VCMDQ Page0
+ accesses to the mmap'd host VINTF page0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [98/111] 06b905fe92b20420565b5730d6ed2d0a843c0eba (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Introduce tegra241_cmdqv_vintf_lvcmdq_ptr() to route VCMDQ Page 0
+register accesses through the mmap'd host VINTF Page 0 backing once a
+hardware queue has been allocated for the VCMDQ.
+
+The two QEMU-trapped Page 0 apertures (direct at 0x10000, VINTF at
+0x30000) are hardware aliases of the same underlying registers. A
+subsequent patch installs the VINTF aperture as a RAM-device into
+guest MMIO; in this patch both remain QEMU-trapped.
+
+The direct VCMDQ aperture stays QEMU-trapped (rather than aliased
+to the VINTF mmap) so that writes to an unallocated VCMDQ remain
+well-defined. The CMDQV architecture allows software to program a
+VCMDQ through the direct aperture without first allocating it to a
+VINTF; aliasing to the VINTF mmap would route those writes into
+unallocated logical slots where the hardware silently drops them.
+
+A VCMDQ Page 0 access is served from one of two sources:
+
+  - Cache-backed: no hw_queue is allocated for the VCMDQ
+    (HW_QUEUE_ALLOC has not yet succeeded). Both apertures use
+    QEMU's register cache.
+
+  - HW-backed: HW_QUEUE_ALLOC has succeeded. Both apertures access
+    the registers directly through the mmap'd host VINTF Page 0.
+
+tegra241_cmdqv_sync_vcmdq() copies any cached writes (CONS_INDX,
+PROD_INDX, CONFIG, GERRORN) into the mmap'd page on the cache-to-HW
+transition so the guest's earlier register state survives. Freeing a
+VCMDQ clears the cached Page0 registers.
+
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Message-id: 20260609112552.378999-20-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 1d0f7753541784cbafb7aee3adc843816bf7c66d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 89 +++++++++++++++++++++++++++++++++++++++++
+ hw/arm/trace-events     |  4 +-
+ 2 files changed, 91 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 8cb39e87c4..63fe0ac681 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -16,6 +16,16 @@
+ #include "tegra241-cmdqv.h"
+ #include "trace.h"
+ 
++static void tegra241_cmdqv_reset_vcmdq_cache(Tegra241CMDQV *cmdqv, int index)
++{
++    cmdqv->vcmdq_cons_indx[index] = 0;
++    cmdqv->vcmdq_prod_indx[index] = 0;
++    cmdqv->vcmdq_config[index] = 0;
++    cmdqv->vcmdq_status[index] = 0;
++    cmdqv->vcmdq_gerror[index] = 0;
++    cmdqv->vcmdq_gerrorn[index] = 0;
++}
++
+ static void tegra241_cmdqv_free_vcmdq(Tegra241CMDQV *cmdqv, int index)
+ {
+     IOMMUFDViommu *viommu = cmdqv->s_accel->viommu;
+@@ -27,6 +37,7 @@ static void tegra241_cmdqv_free_vcmdq(Tegra241CMDQV *cmdqv, int index)
+     iommufd_backend_free_id(viommu->iommufd, vcmdq->hw_queue_id);
+     g_free(vcmdq);
+     cmdqv->vcmdq[index] = NULL;
++    tegra241_cmdqv_reset_vcmdq_cache(cmdqv, index);
+ }
+ 
+ /*
+@@ -45,6 +56,47 @@ static bool tegra241_cmdqv_vcmdq_ready_to_alloc(Tegra241CMDQV *cmdqv, int index)
+            tegra241_cmdqv_enabled(cmdqv) && tegra241_vintf_enabled(cmdqv);
+ }
+ 
++/*
++ * Return a pointer into the mmap'd VINTF page0 for the VCMDQ Page 0
++ * register at @offset0 in VCMDQ slot @index, or NULL when the VCMDQ
++ * has no hw_queue allocated or the host VINTF page0 is not mmap'd.
++ */
++static inline uint32_t *tegra241_cmdqv_vintf_lvcmdq_ptr(Tegra241CMDQV *cmdqv,
++                                                 int index, hwaddr offset0)
++{
++    if (!cmdqv->vcmdq[index] || !cmdqv->vintf_page0) {
++        return NULL;
++    }
++    return (uint32_t *)(cmdqv->vintf_page0 +
++                        (index * CMDQV_VCMDQ_STRIDE) +
++                        (offset0 - CMDQV_VCMDQ_PAGE0_BASE));
++}
++
++/*
++ * Flush cached register writes into the mmap'd host VINTF page0 after a
++ * successful HW_QUEUE_ALLOC, so the guest's earlier writes survive
++ * the cache-to-hardware transition.
++ */
++static void tegra241_cmdqv_sync_vcmdq(Tegra241CMDQV *cmdqv, int index)
++{
++    uint32_t *ptr;
++
++    ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, A_VCMDQ0_CONS_INDX);
++    if (!ptr) {
++        return;
++    }
++    *ptr = cmdqv->vcmdq_cons_indx[index];
++
++    ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, A_VCMDQ0_PROD_INDX);
++    *ptr = cmdqv->vcmdq_prod_indx[index];
++
++    ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, A_VCMDQ0_CONFIG);
++    *ptr = cmdqv->vcmdq_config[index];
++
++    ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, A_VCMDQ0_GERRORN);
++    *ptr = cmdqv->vcmdq_gerrorn[index];
++}
++
+ /*
+  * Allocate a host HW VCMDQ from the current cached BASE / size for @index.
+  * No-op (returns true) until the VCMDQ is ready to be allocated.
+@@ -85,6 +137,9 @@ static bool tegra241_cmdqv_setup_vcmdq(Tegra241CMDQV *cmdqv, int index,
+     cmdqv->vcmdq_gerror[index] &= ~R_VCMDQ0_GERROR_CMDQ_INIT_ERR_MASK;
+     cmdqv->vcmdq_status[index] |= R_VCMDQ0_STATUS_CMDQ_EN_OK_MASK;
+ 
++    /* Push cached writes to HW; freeing resets the cache. */
++    tegra241_cmdqv_sync_vcmdq(cmdqv, index);
++
+     return true;
+ }
+ 
+@@ -111,13 +166,23 @@ static void tegra241_cmdqv_setup_all_vcmdq(Tegra241CMDQV *cmdqv,
+  *
+  * The caller normalizes the MMIO offset such that @offset0 always refers
+  * to a VCMDQ0_* register, while @index selects the VCMDQ instance.
++ *
++ * If the VCMDQ is allocated and the host VINTF page0 is mmap'd, read
++ * directly from the host VINTF page0 backing. Otherwise, fall back to
++ * the cache.
+  */
+ static uint64_t tegra241_cmdqv_read_vcmdq_page0(Tegra241CMDQV *cmdqv,
+                                                 hwaddr offset0, int index,
+                                                 bool direct)
+ {
++    uint32_t *ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, offset0);
+     uint64_t val = 0;
+ 
++    if (ptr) {
++        val = *ptr;
++        goto out;
++    }
++
+     switch (offset0) {
+     case A_VCMDQ0_CONS_INDX:
+         val = cmdqv->vcmdq_cons_indx[index];
+@@ -142,7 +207,9 @@ static uint64_t tegra241_cmdqv_read_vcmdq_page0(Tegra241CMDQV *cmdqv,
+                       "%s unhandled read access at 0x%" PRIx64 "\n",
+                       __func__, offset0);
+     }
++out:
+     trace_tegra241_cmdqv_read_vcmdq_page0(index, direct ? "direct" : "vi",
++                                          ptr ? "hw" : "cache",
+                                           offset0, val);
+     return val;
+ }
+@@ -218,11 +285,31 @@ static uint64_t tegra241_cmdqv_config_vintf_read(Tegra241CMDQV *cmdqv,
+  *
+  * Page 0 registers are all 32-bit; this helper is only called for 4-byte
+  * writes.
++ *
++ * If the VCMDQ is allocated and the host VINTF page0 is mmap'd, write
++ * directly to the VINTF page0 backing. Otherwise, update the cache.
+  */
+ static void tegra241_cmdqv_write_vcmdq_page0(Tegra241CMDQV *cmdqv,
+                                              hwaddr offset0, int index,
+                                              uint32_t value, bool direct)
+ {
++    uint32_t *ptr = tegra241_cmdqv_vintf_lvcmdq_ptr(cmdqv, index, offset0);
++    bool hw = false;
++
++    if (ptr) {
++        switch (offset0) {
++        case A_VCMDQ0_CONS_INDX:
++        case A_VCMDQ0_PROD_INDX:
++        case A_VCMDQ0_CONFIG:
++        case A_VCMDQ0_GERRORN:
++            *ptr = value;
++            hw = true;
++            goto out;
++        default:
++            break;
++        }
++    }
++
+     switch (offset0) {
+     case A_VCMDQ0_CONS_INDX:
+         cmdqv->vcmdq_cons_indx[index] = value;
+@@ -253,7 +340,9 @@ static void tegra241_cmdqv_write_vcmdq_page0(Tegra241CMDQV *cmdqv,
+                       "%s unhandled write access at 0x%" PRIx64 "\n",
+                       __func__, offset0);
+     }
++out:
+     trace_tegra241_cmdqv_write_vcmdq_page0(index, direct ? "direct" : "vi",
++                                           hw ? "hw" : "cache",
+                                            offset0, value);
+ }
+ 
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index 666967dc5e..a8dcbc82db 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -75,9 +75,9 @@ smmuv3_accel_install_ste(uint32_t vsid, const char * type, uint32_t hwpt_id) "vS
+ # tegra241-cmdqv
+ tegra241_cmdqv_read_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+ tegra241_cmdqv_write_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+-tegra241_cmdqv_read_vcmdq_page0(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
++tegra241_cmdqv_read_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_read_vcmdq_page1(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
+-tegra241_cmdqv_write_vcmdq_page0(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
++tegra241_cmdqv_write_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_write_vcmdq_page1(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ 
+ # strongarm.c
+-- 
+2.52.0
+

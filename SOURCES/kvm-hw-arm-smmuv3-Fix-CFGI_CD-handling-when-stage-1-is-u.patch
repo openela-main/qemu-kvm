@@ -1,0 +1,59 @@
+From f5ccf1f80d37ce44ce10d8c12f4f8233deb03066 Mon Sep 17 00:00:00 2001
+From: Tao Tang <tangtao1634@phytium.com.cn>
+Date: Wed, 4 Mar 2026 22:23:44 +0800
+Subject: [PATCH 056/111] hw/arm/smmuv3: Fix CFGI_CD handling when stage-1 is
+ unsupported
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [56/111] ba0c09d31ebe3ea81c3ea2d716c22268ffe9f122 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Add a STAGE1_SUPPORTED check in the CMD_CFGI_CD and CMD_CFGI_CD_ALL path
+and return CERROR_ILL when stage-1 translation is not implemented,
+matching the architecture requirement (IHI 0070G.b, page 176).
+
+Fixes: 32cfd7f39e08 ("hw/arm/smmuv3: Cache/invalidate config data")
+Signed-off-by: Tao Tang <tangtao1634@phytium.com.cn>
+Reviewed-by: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Reviewed-by: Mostafa Saleh <smostafa@google.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260304142344.3341444-4-tangtao1634@phytium.com.cn
+Links: https://lore.kernel.org/qemu-devel/20260221101733.2995020-1-tangtao1634@phytium.com.cn/
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit fb147007d145866775b0cd5a794c9fa8efdb8c3d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 8b51554620..d937f4add5 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1407,6 +1407,15 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+                 break;
+             }
+ 
++            /*
++             * This command raises CERROR_ILL when stage 1 is not implemented
++             * according to (IHI 0070G.b) Page 176.
++             */
++            if (!STAGE1_SUPPORTED(s)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
++
+             trace_smmuv3_cmdq_cfgi_cd(sid);
+             smmuv3_flush_config(sdev);
+             if (!smmuv3_accel_issue_inv_cmd(s, &cmd, sdev, errp)) {
+-- 
+2.52.0
+

@@ -1,0 +1,150 @@
+From 173447f0eb8f5d9486e21e6290c7059cdba4df46 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 037/111] hw/arm/smmuv3-accel: Add a property to specify RIL
+ support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [37/111] ce485009c27e5fc84da112baab386d28c178e4c7 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Currently QEMU SMMUv3 has RIL support by default. But if accelerated mode
+is enabled, RIL has to be compatible with host SMMUv3 support.
+
+Add a property so that the user can specify this.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-30-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit bd715ff5bda973c85caa16f1cabf1e9aef30dc70)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c   | 14 ++++++++++++--
+ hw/arm/smmuv3-accel.h   |  4 ++++
+ hw/arm/smmuv3.c         |  9 +++++++++
+ include/hw/arm/smmuv3.h |  1 +
+ 4 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 33011962e3..df82f1e32a 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -68,8 +68,8 @@ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+         return false;
+     }
+ 
+-    /* QEMU SMMUv3 supports Range Invalidation by default */
+-    if (FIELD_EX32(info->idr[3], IDR3, RIL) !=
++    /* User can disable QEMU SMMUv3 Range Invalidation support */
++    if (FIELD_EX32(info->idr[3], IDR3, RIL) <
+                 FIELD_EX32(s->idr[3], IDR3, RIL)) {
+         error_setg(errp, "Host SMMUv3 doesn't support Range Invalidation");
+         return false;
+@@ -646,6 +646,16 @@ static const PCIIOMMUOps smmuv3_accel_ops = {
+     .get_msi_direct_gpa = smmuv3_accel_get_msi_gpa,
+ };
+ 
++void smmuv3_accel_idr_override(SMMUv3State *s)
++{
++    if (!s->accel) {
++        return;
++    }
++
++    /* By default QEMU SMMUv3 has RIL. Update IDR3 if user has disabled it */
++    s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, s->ril);
++}
++
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+ bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
+ {
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index 41b37e3122..a8a64802ec 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -49,6 +49,7 @@ bool smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+ bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp);
+ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+                                 Error **errp);
++void smmuv3_accel_idr_override(SMMUv3State *s);
+ void smmuv3_accel_reset(SMMUv3State *s);
+ #else
+ static inline void smmuv3_accel_init(SMMUv3State *s)
+@@ -76,6 +77,9 @@ smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+ {
+     return true;
+ }
++static inline void smmuv3_accel_idr_override(SMMUv3State *s)
++{
++}
+ static inline void smmuv3_accel_reset(SMMUv3State *s)
+ {
+ }
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 0d2f5a9b0c..643706b29c 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -305,6 +305,7 @@ static void smmuv3_init_id_regs(SMMUv3State *s)
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN16K, 1);
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN64K, 1);
+     s->aidr = 0x1;
++    smmuv3_accel_idr_override(s);
+ }
+ 
+ static void smmuv3_reset(SMMUv3State *s)
+@@ -1926,6 +1927,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+ #endif
+ 
+     if (!s->accel) {
++        if (!s->ril) {
++            error_setg(errp, "ril can only be disabled if accel=on");
++            return false;
++        }
+         return true;
+     }
+ 
+@@ -2059,6 +2064,8 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_BOOL("accel", SMMUv3State, accel, false),
+     /* GPA of MSI doorbell, for SMMUv3 accel use. */
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
++    /* RIL can be turned off for accel cases */
++    DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2084,6 +2091,8 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+     object_class_property_set_description(klass, "accel",
+         "Enable SMMUv3 accelerator support. Allows host SMMUv3 to be "
+         "configured in nested mode for vfio-pci dev assignment");
++    object_class_property_set_description(klass, "ril",
++        "Disable range invalidation support (for accel=on)");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 9c39acd5ca..533a2182e8 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -69,6 +69,7 @@ struct SMMUv3State {
+     struct SMMUv3AccelState *s_accel;
+     uint64_t msi_gpa;
+     Error *migration_blocker;
++    bool ril;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

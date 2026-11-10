@@ -1,0 +1,120 @@
+From e61bd5408af80f3150d8508954a837582a32f3aa Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 062/111] qdev: Add an OasMode property type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [62/111] c760b42d4840853231ecc1e85f7e0f514a53686d (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Introduce a new enum type property allowing to set an Output Address
+Size. Values are auto, 32, 36, 40, 42, 44, 48, 52, and 56, where a
+value of N specifies an N-bit OAS.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-7-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d3d2de3d227b63db5715fcaa89df388c929c7aba)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/core/qdev-properties-system.c    | 13 +++++++++++++
+ include/hw/qdev-properties-system.h |  3 +++
+ qapi/misc-arm.json                  | 28 ++++++++++++++++++++++++++++
+ 3 files changed, 44 insertions(+)
+
+diff --git a/hw/core/qdev-properties-system.c b/hw/core/qdev-properties-system.c
+index 67b3ce3a16..93b2c58ebe 100644
+--- a/hw/core/qdev-properties-system.c
++++ b/hw/core/qdev-properties-system.c
+@@ -737,6 +737,19 @@ const PropertyInfo qdev_prop_ssidsize_mode = {
+     .set_default_value = qdev_propinfo_set_default_value_enum,
+ };
+ 
++/* --- OasMode --- */
++
++QEMU_BUILD_BUG_ON(sizeof(OasMode) != sizeof(int));
++
++const PropertyInfo qdev_prop_oas_mode = {
++    .type = "OasMode",
++    .description = "oas mode: auto, 32, 36, 40, 42, 44, 48, 52, 56",
++    .enum_table = &OasMode_lookup,
++    .get = qdev_propinfo_get_enum,
++    .set = qdev_propinfo_set_enum,
++    .set_default_value = qdev_propinfo_set_default_value_enum,
++};
++
+ /* --- Reserved Region --- */
+ 
+ /*
+diff --git a/include/hw/qdev-properties-system.h b/include/hw/qdev-properties-system.h
+index 7f9bcf59f2..153803c34a 100644
+--- a/include/hw/qdev-properties-system.h
++++ b/include/hw/qdev-properties-system.h
+@@ -14,6 +14,7 @@ extern const PropertyInfo qdev_prop_mig_mode;
+ extern const PropertyInfo qdev_prop_granule_mode;
+ extern const PropertyInfo qdev_prop_zero_page_detection;
+ extern const PropertyInfo qdev_prop_ssidsize_mode;
++extern const PropertyInfo qdev_prop_oas_mode;
+ extern const PropertyInfo qdev_prop_losttickpolicy;
+ extern const PropertyInfo qdev_prop_blockdev_on_error;
+ extern const PropertyInfo qdev_prop_bios_chs_trans;
+@@ -63,6 +64,8 @@ extern const PropertyInfo qdev_prop_virtio_gpu_output_list;
+                        ZeroPageDetection)
+ #define DEFINE_PROP_SSIDSIZE_MODE(_n, _s, _f, _d) \
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_ssidsize_mode, SsidSizeMode)
++#define DEFINE_PROP_OAS_MODE(_n, _s, _f, _d) \
++    DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_oas_mode, OasMode)
+ #define DEFINE_PROP_LOSTTICKPOLICY(_n, _s, _f, _d) \
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_losttickpolicy, \
+                         LostTickPolicy)
+diff --git a/qapi/misc-arm.json b/qapi/misc-arm.json
+index 416b4240e2..4dc66d00e5 100644
+--- a/qapi/misc-arm.json
++++ b/qapi/misc-arm.json
+@@ -61,3 +61,31 @@
+   'data': [ 'auto', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+             '10', '11', '12', '13', '14', '15', '16', '17', '18',
+             '19', '20' ] } # order matters, see ssidsize_mode_to_value()
++
++##
++# @OasMode:
++#
++# SMMUv3 Output Address Size configuration mode.
++#
++# @auto: derive from host IOMMU capabilities
++#
++# @32: 32-bit output address size
++#
++# @36: 36-bit output address size
++#
++# @40: 40-bit output address size
++#
++# @42: 42-bit output address size
++#
++# @44: 44-bit output address size
++#
++# @48: 48-bit output address size
++#
++# @52: 52-bit output address size
++#
++# @56: 56-bit output address size
++#
++# Since: 11.0
++##
++{ 'enum': 'OasMode',
++  'data': [ 'auto', '32', '36', '40', '42', '44', '48', '52', '56' ] }
+-- 
+2.52.0
+

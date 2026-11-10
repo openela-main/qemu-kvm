@@ -1,0 +1,42 @@
+From a25d168305434f211fded8dc89c3b849dcf759e0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Tue, 15 Jul 2025 15:30:21 +0100
+Subject: [PATCH 27/52] iotests/147: ensure temporary sockets are closed before
+ exiting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [20/45] 80c29c667a333d72e60c403ad8c4e07bf42db189 (kmwolf/centos-qemu-kvm)
+
+This avoids the python resource leak detector from issuing warnings
+in the iotests.
+
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit d4d0ebfcc926c11d16320d0d5accf22e3441c115)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/147 | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/qemu-iotests/147 b/tests/qemu-iotests/147
+index 6d6f077a14..3e14bd389a 100755
+--- a/tests/qemu-iotests/147
++++ b/tests/qemu-iotests/147
+@@ -277,6 +277,7 @@ class BuiltinNBD(NBDBlockdevAddBase):
+                      } }
+         self.client_test(filename, flatten_sock_addr(address), 'nbd-export')
+ 
++        sockfd.close()
+         self._server_down()
+ 
+ 
+-- 
+2.52.0
+

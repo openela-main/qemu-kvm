@@ -1,14 +1,14 @@
-From 99bbae5b0d2b5c729c90287c0a8bf7921479e06b Mon Sep 17 00:00:00 2001
+From 77d65b4a5dc0172a29dd810363d4f702242b929a Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Wed, 1 Apr 2026 13:19:25 -0400
-Subject: [PATCH 1/5] scsi: adjust error_prepend() formatting
+Subject: [PATCH 3/9] scsi: adjust error_prepend() formatting
 
 RH-Author: Stefan Hajnoczi <stefanha@redhat.com>
-RH-MergeRequest: 550: scsi: PR live migration PREEMPT fixes [10.2.z]
-RH-Jira: RHEL-166007
+RH-MergeRequest: 492: scsi: PR live migration PREEMPT fixes
+RH-Jira: RHEL-155807
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
 RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
-RH-Commit: [1/3] 1997589e1c019d11a2c5a5689f73d908847d91d2
+RH-Commit: [1/3] 8d4442c1d4ec94db0cbea00f3cd32e0f50ef13dc (stefanha/centos-stream-qemu-kvm)
 
 The error strings will be concatenated so add a separator to make the
 combined error message easy to read.

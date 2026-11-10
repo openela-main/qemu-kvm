@@ -1,0 +1,181 @@
+From dc132cb5088a9aec3f5f407db606f759d457aee0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 14:07:57 +0000
+Subject: [PATCH 23/30] crypto: deprecate use of external dh-params.pem file
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [22/27] 0acd294952dabab86a9b0525efc6d873c50dc9dd (berrange/centos-src-qemu)
+
+GNUTLS has deprecated use of externally provided diffie-hellman
+parameters. Since 3.6.0 it will automatically negotiate DH params
+in accordance with RFC7919.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit d58f9b20c71caec2a4ce271dadb5d6a6d9444875)
+---
+ crypto/tlscreds.c         | 24 ++++++++----------------
+ crypto/tlscredsanon.c     |  6 ++++--
+ crypto/tlscredspsk.c      |  6 ++++--
+ crypto/tlscredsx509.c     |  4 +++-
+ docs/about/deprecated.rst |  9 +++++++++
+ docs/system/tls.rst       | 12 +++++++-----
+ 6 files changed, 35 insertions(+), 26 deletions(-)
+
+diff --git a/crypto/tlscreds.c b/crypto/tlscreds.c
+index 9912e3ffbf..3d25efe425 100644
+--- a/crypto/tlscreds.c
++++ b/crypto/tlscreds.c
+@@ -22,6 +22,7 @@
+ #include "qapi/error.h"
+ #include "qapi-types-crypto.h"
+ #include "qemu/module.h"
++#include "qemu/error-report.h"
+ #include "tlscredspriv.h"
+ #include "trace.h"
+ 
+@@ -38,22 +39,7 @@ qcrypto_tls_creds_get_dh_params_file(QCryptoTLSCreds *creds,
+ 
+     trace_qcrypto_tls_creds_load_dh(creds, filename ? filename : "<generated>");
+ 
+-    if (filename == NULL) {
+-        ret = gnutls_dh_params_init(dh_params);
+-        if (ret < 0) {
+-            error_setg(errp, "Unable to initialize DH parameters: %s",
+-                       gnutls_strerror(ret));
+-            return -1;
+-        }
+-        ret = gnutls_dh_params_generate2(*dh_params, DH_BITS);
+-        if (ret < 0) {
+-            gnutls_dh_params_deinit(*dh_params);
+-            *dh_params = NULL;
+-            error_setg(errp, "Unable to generate DH parameters: %s",
+-                       gnutls_strerror(ret));
+-            return -1;
+-        }
+-    } else {
++    if (filename != NULL) {
+         GError *gerr = NULL;
+         gchar *contents;
+         gsize len;
+@@ -67,6 +53,10 @@ qcrypto_tls_creds_get_dh_params_file(QCryptoTLSCreds *creds,
+             g_error_free(gerr);
+             return -1;
+         }
++        warn_report_once("Use of an external DH parameters file '%s' is "
++                         "deprecated and will be removed in a future release",
++                         filename);
++
+         data.data = (unsigned char *)contents;
+         data.size = len;
+         ret = gnutls_dh_params_init(dh_params);
+@@ -87,6 +77,8 @@ qcrypto_tls_creds_get_dh_params_file(QCryptoTLSCreds *creds,
+                        filename, gnutls_strerror(ret));
+             return -1;
+         }
++    } else {
++        *dh_params = NULL;
+     }
+ 
+     return 0;
+diff --git a/crypto/tlscredsanon.c b/crypto/tlscredsanon.c
+index 646574d6ae..1551382e1f 100644
+--- a/crypto/tlscredsanon.c
++++ b/crypto/tlscredsanon.c
+@@ -68,8 +68,10 @@ qcrypto_tls_creds_anon_load(QCryptoTLSCredsAnon *creds,
+             return -1;
+         }
+ 
+-        gnutls_anon_set_server_dh_params(box->data.anonserver,
+-                                         box->dh_params);
++        if (box->dh_params) {
++            gnutls_anon_set_server_dh_params(box->data.anonserver,
++                                             box->dh_params);
++        }
+     } else {
+         ret = gnutls_anon_allocate_client_credentials(&box->data.anonclient);
+         if (ret < 0) {
+diff --git a/crypto/tlscredspsk.c b/crypto/tlscredspsk.c
+index 8879c84ea7..e1b1e1a613 100644
+--- a/crypto/tlscredspsk.c
++++ b/crypto/tlscredspsk.c
+@@ -129,8 +129,10 @@ qcrypto_tls_creds_psk_load(QCryptoTLSCredsPSK *creds,
+                        gnutls_strerror(ret));
+             goto cleanup;
+         }
+-        gnutls_psk_set_server_dh_params(box->data.pskserver,
+-                                        box->dh_params);
++        if (box->dh_params) {
++            gnutls_psk_set_server_dh_params(box->data.pskserver,
++                                            box->dh_params);
++        }
+     } else {
+         box = qcrypto_tls_creds_box_new_client(GNUTLS_CRD_PSK);
+ 
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 397ff4caa9..e28fcdc6ff 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -683,7 +683,9 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+                                                  errp) < 0) {
+             return -1;
+         }
+-        gnutls_certificate_set_dh_params(box->data.cert, box->dh_params);
++        if (box->dh_params) {
++            gnutls_certificate_set_dh_params(box->data.cert, box->dh_params);
++        }
+     }
+     creds->parent_obj.box = g_steal_pointer(&box);
+ 
+diff --git a/docs/about/deprecated.rst b/docs/about/deprecated.rst
+index fc422acc3e..1e9fa0272b 100644
+--- a/docs/about/deprecated.rst
++++ b/docs/about/deprecated.rst
+@@ -391,6 +391,15 @@ Options are:
+     - move backing file to NVDIMM storage and keep ``pmem=on``
+       (to have NVDIMM with persistence guaranties).
+ 
++Using an external DH (Diffie-Hellman) parameters file (since 10.2)
++''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
++
++Loading of external Diffie-Hellman parameters from a 'dh-params.pem'
++file is deprecated and will be removed with no replacement in a
++future release. Where no 'dh-params.pem' file is provided, the DH
++parameters will be automatically negotiated in accordance with
++RFC7919.
++
+ Device options
+ --------------
+ 
+diff --git a/docs/system/tls.rst b/docs/system/tls.rst
+index a4f6781d62..44c4bf04e9 100644
+--- a/docs/system/tls.rst
++++ b/docs/system/tls.rst
+@@ -251,11 +251,13 @@ When specifying the object, the ``dir`` parameters specifies which
+ directory contains the credential files. This directory is expected to
+ contain files with the names mentioned previously, ``ca-cert.pem``,
+ ``server-key.pem``, ``server-cert.pem``, ``client-key.pem`` and
+-``client-cert.pem`` as appropriate. It is also possible to include a set
+-of pre-generated Diffie-Hellman (DH) parameters in a file
+-``dh-params.pem``, which can be created using the
+-``certtool --generate-dh-params`` command. If omitted, QEMU will
+-dynamically generate DH parameters when loading the credentials.
++``client-cert.pem`` as appropriate.
++
++While it is possible to include a set of pre-generated Diffie-Hellman
++(DH) parameters in a file ``dh-params.pem``, this facility is now
++deprecated and will be removed in a future release. When omitted the
++DH parameters will be automatically negotiated in accordance with
++RFC7919.
+ 
+ The ``endpoint`` parameter indicates whether the credentials will be
+ used for a network client or server, and determines which PEM files are
+-- 
+2.52.0
+

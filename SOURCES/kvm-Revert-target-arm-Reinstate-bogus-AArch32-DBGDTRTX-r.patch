@@ -1,0 +1,80 @@
+From 9526072fb84b844d3de49d2727ca9650f4fa4d4c Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:57 +0200
+Subject: [PATCH 016/116] Revert "target/arm: Reinstate bogus AArch32 DBGDTRTX
+ register for migration compat"
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [16/16] 60be5ef3f6fe516b480e578cd610618d180a9655 (eauger1/centos-qemu-kvm)
+
+This reverts commit 4f2b82f60431 ("target/arm: Reinstate bogus AArch32
+DBGDTRTX register for migration compat). We don't need that commit
+anymore as the AArch32 DBGDTRTX register is declared to
+be safe to ignore in the incoming migration stream.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Sebastian Ott <sebott@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260420140552.104369-8-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 202126dcb9d6261c38e629799265defeb3260d25)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/debug_helper.c | 29 -----------------------------
+ 1 file changed, 29 deletions(-)
+
+diff --git a/target/arm/debug_helper.c b/target/arm/debug_helper.c
+index 579516e154..aee06d4d42 100644
+--- a/target/arm/debug_helper.c
++++ b/target/arm/debug_helper.c
+@@ -940,13 +940,6 @@ static void dbgclaimclr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+     env->cp15.dbgclaim &= ~(value & 0xFF);
+ }
+ 
+-static CPAccessResult access_bogus(CPUARMState *env, const ARMCPRegInfo *ri,
+-                                   bool isread)
+-{
+-    /* Always UNDEF, as if this cpreg didn't exist */
+-    return CP_ACCESS_UNDEFINED;
+-}
+-
+ static const ARMCPRegInfo debug_cp_reginfo[] = {
+     /*
+      * DBGDRAR, DBGDSAR: always RAZ since we don't implement memory mapped
+@@ -1009,28 +1002,6 @@ static const ARMCPRegInfo debug_cp_reginfo[] = {
+       .opc0 = 2, .opc1 = 3, .crn = 0, .crm = 4, .opc2 = 0,
+       .access = PL0_RW, .accessfn = access_tdcc,
+       .type = ARM_CP_CONST, .resetvalue = 0 },
+-    /*
+-     * This is not a real AArch32 register. We used to incorrectly expose
+-     * this due to a QEMU bug; to avoid breaking migration compatibility we
+-     * need to continue to provide it so that we don't fail the inbound
+-     * migration when it tells us about a sysreg that we don't have.
+-     * We set an always-fails .accessfn, which means that the guest doesn't
+-     * actually see this register (it will always UNDEF, identically to if
+-     * there were no cpreg definition for it other than that we won't print
+-     * a LOG_UNIMP message about it), and we set the ARM_CP_NO_GDB flag so the
+-     * gdbstub won't see it either.
+-     * (We can't just set .access = 0, because add_cpreg_to_hashtable()
+-     * helpfully ignores cpregs which aren't accessible to the highest
+-     * implemented EL.)
+-     *
+-     * TODO: implement a system for being able to describe "this register
+-     * can be ignored if it appears in the inbound stream"; then we can
+-     * remove this temporary hack.
+-     */
+-    { .name = "BOGUS_DBGDTR_EL0", .state = ARM_CP_STATE_AA32,
+-      .cp = 14, .opc1 = 3, .crn = 0, .crm = 5, .opc2 = 0,
+-      .access = PL0_RW, .accessfn = access_bogus,
+-      .type = ARM_CP_CONST | ARM_CP_NO_GDB, .resetvalue = 0 },
+     /*
+      * OSECCR_EL1 provides a mechanism for an operating system
+      * to access the contents of EDECCR. EDECCR is not implemented though,
+-- 
+2.52.0
+

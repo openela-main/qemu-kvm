@@ -1,0 +1,92 @@
+From 2e971be1abd843adc6b2c44319fcbcfd449fbcdc Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:43 +0100
+Subject: [PATCH 031/116] hw/vfio/cpr-legacy.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [15/100] 370450fb93e7f95c8c47bfce6dbe3842e5278f17 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOContainer and VFIOContainerBase instead
+of accessing bcontainer directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-4-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 5255ba39b16539bd4b28a961d196812af1684c02)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr-legacy.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index 553b203e9b..8f437194fa 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -41,8 +41,8 @@ static int vfio_legacy_cpr_dma_map(const VFIOContainerBase *bcontainer,
+                                    hwaddr iova, ram_addr_t size, void *vaddr,
+                                    bool readonly, MemoryRegion *mr)
+ {
+-    const VFIOContainer *container = container_of(bcontainer, VFIOContainer,
+-                                                  bcontainer);
++    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++
+     struct vfio_iommu_type1_dma_map map = {
+         .argsz = sizeof(map),
+         .flags = VFIO_DMA_MAP_FLAG_VADDR,
+@@ -65,7 +65,7 @@ static void vfio_region_remap(MemoryListener *listener,
+ {
+     VFIOContainer *container = container_of(listener, VFIOContainer,
+                                             cpr.remap_listener);
+-    vfio_container_region_add(&container->bcontainer, section, true);
++    vfio_container_region_add(VFIO_IOMMU(container), section, true);
+ }
+ 
+ static bool vfio_cpr_supported(VFIOContainer *container, Error **errp)
+@@ -98,7 +98,7 @@ static int vfio_container_pre_save(void *opaque)
+ static int vfio_container_post_load(void *opaque, int version_id)
+ {
+     VFIOContainer *container = opaque;
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+     dma_map_fn saved_dma_map = vioc->dma_map;
+     Error *local_err = NULL;
+@@ -135,7 +135,7 @@ static int vfio_cpr_fail_notifier(NotifierWithReturn *notifier,
+ {
+     VFIOContainer *container =
+         container_of(notifier, VFIOContainer, cpr.transfer_notifier);
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+ 
+     if (e->type != MIG_EVENT_PRECOPY_FAILED) {
+         return 0;
+@@ -167,7 +167,7 @@ static int vfio_cpr_fail_notifier(NotifierWithReturn *notifier,
+ 
+ bool vfio_legacy_cpr_register_container(VFIOContainer *container, Error **errp)
+ {
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     Error **cpr_blocker = &container->cpr.blocker;
+ 
+     migration_add_notifier_mode(&bcontainer->cpr_reboot_notifier,
+@@ -191,7 +191,7 @@ bool vfio_legacy_cpr_register_container(VFIOContainer *container, Error **errp)
+ 
+ void vfio_legacy_cpr_unregister_container(VFIOContainer *container)
+ {
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+ 
+     migration_remove_notifier(&bcontainer->cpr_reboot_notifier);
+     migrate_del_blocker(&container->cpr.blocker);
+-- 
+2.52.0
+

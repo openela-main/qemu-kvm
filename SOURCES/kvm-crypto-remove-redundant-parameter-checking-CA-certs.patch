@@ -1,0 +1,68 @@
+From 1f13d21759e1e2172473d23653b8b86c886fc3a1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 19:54:08 +0000
+Subject: [PATCH 08/30] crypto: remove redundant parameter checking CA certs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/27] bb2ecd4d9c4db43aa97e7eab7b7eb1e868911fc6 (berrange/centos-src-qemu)
+
+The only caller of qcrypto_tls_creds_check_authority_chain always
+passes 'true' for the 'isCA' parameter. The point of this method
+is to check the CA chani, so no other value would ever make sense.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 3821a538f7ec0a7973fa7b751dcea65d0b9b3213)
+---
+ crypto/tlscredsx509.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index db2b74bafa..847fd4d9fa 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -315,7 +315,6 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+                                         unsigned int ncacerts,
+                                         const char *cacertFile,
+                                         bool isServer,
+-                                        bool isCA,
+                                         Error **errp)
+ {
+     gnutls_x509_crt_t cert_to_check = certs[ncerts - 1];
+@@ -356,7 +355,7 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+              */
+             return qcrypto_tls_creds_check_cert(
+                 creds, cert_to_check, cacertFile,
+-                isServer, isCA, errp);
++                isServer, true, errp);
+         }
+         for (int i = 0; i < ncacerts; i++) {
+             if (gnutls_x509_crt_check_issuer(cert_to_check,
+@@ -370,7 +369,7 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+         }
+ 
+         if (qcrypto_tls_creds_check_cert(creds, cert_issuer, cacertFile,
+-                                         isServer, isCA, errp) < 0) {
++                                         isServer, true, errp) < 0) {
+             return -1;
+         }
+ 
+@@ -534,7 +533,7 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+                                                 certs, ncerts,
+                                                 cacerts, ncacerts,
+                                                 cacertFile, isServer,
+-                                                true, errp) < 0) {
++                                                errp) < 0) {
+         goto cleanup;
+     }
+ 
+-- 
+2.52.0
+

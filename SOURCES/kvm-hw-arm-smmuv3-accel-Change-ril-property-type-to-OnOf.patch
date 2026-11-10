@@ -1,0 +1,117 @@
+From f48e038a50505883038433a91158ae70f4ddaf49 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 059/111] hw/arm/smmuv3-accel: Change "ril" property type to
+ OnOffAuto
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [59/111] 91f6258e9a17ae761f0eb9444ce3caa65e9d2e0f (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Change accel SMMUv3 RIL property from bool to OnOffAuto. The 'auto'
+value is not implemented, as this commit is meant to set the property
+to the correct type and avoid breaking JSON/QMP when the auto mode is
+introduced. A future patch will implement resolution of the 'auto'
+value to match the host SMMUv3 RIL support.
+
+The conversion of the RIL property type to OnOffAuto is an
+incompatible change for JSON/QMP when a bool value is expected for
+"ril", but the "ril" property is new in 11.0 and this patch is
+submitted as a fix to the property type.
+
+Fixes: bd715ff5bda9 ("hw/arm/smmuv3-accel: Add a property to specify RIL support")
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-4-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 1a76cc39333c7870ee34075c2295a28e53d1b1ba)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c   |  6 ++++--
+ hw/arm/smmuv3.c         | 11 ++++++++---
+ include/hw/arm/smmuv3.h |  2 +-
+ 3 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index f21a6a9997..c31b64295e 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -823,8 +823,10 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+         return;
+     }
+ 
+-    /* By default QEMU SMMUv3 has RIL. Update IDR3 if user has disabled it */
+-    s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, s->ril);
++    /* Only override RIL if user explicitly set OFF */
++    if (s->ril == ON_OFF_AUTO_OFF) {
++        s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, 0);
++    }
+ 
+     /* QEMU SMMUv3 has no ATS. Advertise ATS if opt-in by property */
+     if (s->ats == ON_OFF_AUTO_ON) {
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 6f8d093f51..a7e606c966 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1975,9 +1975,13 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         error_setg(errp, "ats auto mode is not supported");
+         return false;
+     }
++    if (s->ril == ON_OFF_AUTO_AUTO) {
++        error_setg(errp, "ril auto mode is not supported");
++        return false;
++    }
+ 
+     if (!s->accel) {
+-        if (!s->ril) {
++        if (s->ril == ON_OFF_AUTO_OFF) {
+             error_setg(errp, "ril can only be disabled if accel=on");
+             return false;
+         }
+@@ -2137,7 +2141,7 @@ static const Property smmuv3_properties[] = {
+     /* GPA of MSI doorbell, for SMMUv3 accel use. */
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
+     /* RIL can be turned off for accel cases */
+-    DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
++    DEFINE_PROP_ON_OFF_AUTO("ril", SMMUv3State, ril, ON_OFF_AUTO_ON),
+     DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_OFF),
+     DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
+     DEFINE_PROP_UINT8("ssidsize", SMMUv3State, ssidsize, 0),
+@@ -2167,7 +2171,8 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "Enable SMMUv3 accelerator support. Allows host SMMUv3 to be "
+         "configured in nested mode for vfio-pci dev assignment");
+     object_class_property_set_description(klass, "ril",
+-        "Disable range invalidation support (for accel=on)");
++        "Disable range invalidation support (for accel=on). ril=auto "
++        "is not supported.");
+     object_class_property_set_description(klass, "ats",
+         "Enable/disable ATS support (for accel=on). Please ensure host "
+         "platform has ATS support before enabling this. ats=auto is not "
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index ce51a5b9b4..c35e599bbc 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -69,7 +69,7 @@ struct SMMUv3State {
+     struct SMMUv3AccelState *s_accel;
+     uint64_t msi_gpa;
+     Error *migration_blocker;
+-    bool ril;
++    OnOffAuto ril;
+     OnOffAuto ats;
+     uint8_t oas;
+     uint8_t ssidsize;
+-- 
+2.52.0
+

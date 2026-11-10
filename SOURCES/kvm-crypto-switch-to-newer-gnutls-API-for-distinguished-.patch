@@ -1,0 +1,57 @@
+From 93221ea271bab2f38135964dd900d008876240d6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Fri, 11 Jul 2025 13:21:34 +0100
+Subject: [PATCH 07/30] crypto: switch to newer gnutls API for distinguished
+ name
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [6/27] 4f10cd401207fb9894821834e0e0bcf6f7765fb2 (berrange/centos-src-qemu)
+
+The new API automatically allocates the right amount of memory
+to hold the distinguished name, avoiding the need to loop and
+realloc.
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 3b3257b00fd256b8704db13373f4fa9c8bc40342)
+---
+ crypto/tlssession.c | 12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/crypto/tlssession.c b/crypto/tlssession.c
+index 86d407a142..0f86d1393f 100644
+--- a/crypto/tlssession.c
++++ b/crypto/tlssession.c
+@@ -409,20 +409,14 @@ qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
+         }
+ 
+         if (i == 0) {
+-            size_t dnameSize = 1024;
+-            session->peername = g_malloc(dnameSize);
+-        requery:
+-            ret = gnutls_x509_crt_get_dn(cert, session->peername, &dnameSize);
++            gnutls_datum_t dname = {};
++            ret = gnutls_x509_crt_get_dn2(cert, &dname);
+             if (ret < 0) {
+-                if (ret == GNUTLS_E_SHORT_MEMORY_BUFFER) {
+-                    session->peername = g_realloc(session->peername,
+-                                                  dnameSize);
+-                    goto requery;
+-                }
+                 error_setg(errp, "Cannot get client distinguished name: %s",
+                            gnutls_strerror(ret));
+                 goto error;
+             }
++            session->peername = (char *)g_steal_pointer(&dname.data);
+             if (session->authzid) {
+                 bool allow;
+ 
+-- 
+2.52.0
+

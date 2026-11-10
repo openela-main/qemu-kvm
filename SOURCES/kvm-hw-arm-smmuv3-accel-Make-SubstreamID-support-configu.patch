@@ -1,0 +1,186 @@
+From 2e3a09c929d35cc1f5d998801811260e1da24105 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 045/111] hw/arm/smmuv3-accel: Make SubstreamID support
+ configurable
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [45/111] 78b8d97d32ebb27be666593bec7ca0cb80007eb7 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+QEMU SMMUv3 currently reports no SubstreamID support, forcing SSID to
+zero. This prevents accelerated use cases such as Shared Virtual
+Addressing (SVA), which require multiple Stage-1 context descriptors
+indexed by SubstreamID.
+
+Add a new "ssidsize" property to explicitly configure the number of bits
+used for SubstreamIDs. A value greater than zero enables SubstreamID
+support and advertises PASID capability to the vIOMMU.
+
+The requested SSIDSIZE is validated against host SMMUv3 capabilities and
+is only supported when accel=on.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-38-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit b8c6f8a69d2734a65a00f11788d6711e5d28a4ec)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c          | 25 ++++++++++++++++++++++++-
+ hw/arm/smmuv3.c                | 22 ++++++++++++++++++++--
+ include/hw/arm/smmuv3-common.h |  1 +
+ include/hw/arm/smmuv3.h        |  1 +
+ 4 files changed, 46 insertions(+), 3 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 342944da23..f5cd4df336 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -76,6 +76,16 @@ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+         return false;
+     }
+ 
++    /* Check SSIDSIZE value opted-in is compatible with Host SMMUv3 SSIDSIZE */
++    if (FIELD_EX32(info->idr[1], IDR1, SSIDSIZE) <
++                FIELD_EX32(s->idr[1], IDR1, SSIDSIZE)) {
++        error_setg(errp, "Host SMMUv3 SSIDSIZE not compatible "
++                   "(host=%u, QEMU=%u)",
++                   FIELD_EX32(info->idr[1], IDR1, SSIDSIZE),
++                   FIELD_EX32(s->idr[1], IDR1, SSIDSIZE));
++        return false;
++    }
++
+     /* User can disable QEMU SMMUv3 Range Invalidation support */
+     if (FIELD_EX32(info->idr[3], IDR3, RIL) <
+                 FIELD_EX32(s->idr[3], IDR3, RIL)) {
+@@ -652,7 +662,14 @@ static uint64_t smmuv3_accel_get_viommu_flags(void *opaque)
+      * The real HW nested support should be reported from host SMMUv3 and if
+      * it doesn't, the nesting parent allocation will fail anyway in VFIO core.
+      */
+-    return VIOMMU_FLAG_WANT_NESTING_PARENT;
++    uint64_t flags = VIOMMU_FLAG_WANT_NESTING_PARENT;
++    SMMUState *bs = opaque;
++    SMMUv3State *s = ARM_SMMUV3(bs);
++
++    if (s->ssidsize) {
++        flags |= VIOMMU_FLAG_PASID_SUPPORTED;
++    }
++    return flags;
+ }
+ 
+ static const PCIIOMMUOps smmuv3_accel_ops = {
+@@ -680,6 +697,12 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+     if (s->oas == SMMU_OAS_48BIT) {
+         s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS_48);
+     }
++
++    /*
++     * By default QEMU SMMUv3 has no SubstreamID support. Update IDR1 if user
++     * has enabled it.
++     */
++    s->idr[1] = FIELD_DP32(s->idr[1], IDR1, SSIDSIZE, s->ssidsize);
+ }
+ 
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index ef75a9bec0..49311f5bbf 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -611,9 +611,11 @@ static int decode_ste(SMMUv3State *s, SMMUTransCfg *cfg,
+         }
+     }
+ 
+-    if (STE_S1CDMAX(ste) != 0) {
++    /* Multiple context descriptors require SubstreamID support */
++    if (!s->ssidsize && STE_S1CDMAX(ste) != 0) {
+         qemu_log_mask(LOG_UNIMP,
+-                      "SMMUv3 does not support multiple context descriptors yet\n");
++                "SMMUv3: multiple S1 context descriptors require SubstreamID support. "
++                "Configure ssidsize > 0 (requires accel=on)\n");
+         goto bad_ste;
+     }
+ 
+@@ -1954,6 +1956,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+             error_setg(errp, "OAS must be 44 bits when accel=off");
+             return false;
+         }
++        if (s->ssidsize) {
++            error_setg(errp, "ssidsize can only be set if accel=on");
++            return false;
++        }
+         return true;
+     }
+ 
+@@ -1968,6 +1974,11 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         error_setg(errp, "OAS can only be set to 44 or 48 bits");
+         return false;
+     }
++    if (s->ssidsize > SMMU_SSID_MAX_BITS) {
++        error_setg(errp, "ssidsize must be in the range 0 to %d",
++                   SMMU_SSID_MAX_BITS);
++        return false;
++    }
+ 
+     return true;
+ }
+@@ -2096,6 +2107,7 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
+     DEFINE_PROP_BOOL("ats", SMMUv3State, ats, false),
+     DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
++    DEFINE_PROP_UINT8("ssidsize", SMMUv3State, ssidsize, 0),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2129,6 +2141,12 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+     object_class_property_set_description(klass, "oas",
+         "Specify Output Address Size (for accel=on). Supported values "
+         "are 44 or 48 bits. Defaults to 44 bits");
++    object_class_property_set_description(klass, "ssidsize",
++        "Number of bits used to represent SubstreamIDs (SSIDs). "
++        "A value of N allows SSIDs in the range [0 .. 2^N - 1]. "
++        "Valid range is 0-20, where 0 disables SubstreamID support. "
++        "Defaults to 0. A value greater than 0 is required to enable "
++        "PASID support.");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index bc2d49ef4e..4b764ed125 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -311,6 +311,7 @@ REG32(IDR1,                0x4)
+     FIELD(IDR1, TABLES_PRESET, 30, 1)
+     FIELD(IDR1, ECMDQ,        31, 1)
+ 
++#define SMMU_SSID_MAX_BITS 20
+ #define SMMU_IDR1_SIDSIZE 16
+ #define SMMU_CMDQS   19
+ #define SMMU_EVENTQS 19
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index d488a39cd0..26b2fc42fd 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -72,6 +72,7 @@ struct SMMUv3State {
+     bool ril;
+     bool ats;
+     uint8_t oas;
++    uint8_t ssidsize;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

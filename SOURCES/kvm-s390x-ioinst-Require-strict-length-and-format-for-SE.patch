@@ -1,0 +1,87 @@
+From c1dcb5bd9b4f2ed7a057f475861a9ebb72f00f67 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 14:58:01 +0200
+Subject: [PATCH 05/12] s390x/ioinst: Require strict length and format for SEI
+ CHSC handler
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [2/9] 6d8c4d614b902223a3e926641aac736cbcb596fc (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit 386268daea86e53d90baf99df5c7b8e2727ea783
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Tue Jul 7 09:07:27 2026 +0200
+
+    s390x/ioinst: Require strict length and format for SEI CHSC handler
+
+    Ensure SEI commands that are received are of the appropriate length and
+    format before handling.
+
+    Cc: qemu-stable@nongnu.org
+    Fixes: 8cba80c3a0 ("s390: Add PCI bus support")
+    Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Farhan Ali <alifm@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260707070728.147203-5-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ target/s390x/ioinst.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/target/s390x/ioinst.c b/target/s390x/ioinst.c
+index 2320dd4c12..94619f9215 100644
+--- a/target/s390x/ioinst.c
++++ b/target/s390x/ioinst.c
+@@ -609,13 +609,27 @@ static int chsc_sei_nt2_have_event(void)
+ 
+ #define CHSC_SEI_NT0    (1ULL << 63)
+ #define CHSC_SEI_NT2    (1ULL << 61)
++#define CHSC_SEI_0_FMT 0x0f000000
+ static void ioinst_handle_chsc_sei(ChscReq *req, ChscResp *res)
+ {
+     uint64_t selection_mask = ldq_be_p(&req->param1);
++    uint32_t param0 = be32_to_cpu(req->param0);
+     uint8_t *res_flags = (uint8_t *)res->data;
++    uint16_t len = be16_to_cpu(req->len);
++    uint16_t resp_code;
+     int have_event = 0;
+     int have_more = 0;
+ 
++    if (len != 0x0010) {
++        resp_code = 0x0003;
++        goto out_err;
++    }
++
++    if (param0 & CHSC_SEI_0_FMT) {
++        resp_code = 0x0007;
++        goto out_err;
++    }
++
+     /* regarding architecture nt0 can not be masked */
+     have_event = !chsc_sei_nt0_get_event(res);
+     have_more = chsc_sei_nt0_have_event();
+@@ -642,6 +656,12 @@ static void ioinst_handle_chsc_sei(ChscReq *req, ChscResp *res)
+         res->code = cpu_to_be16(0x0005);
+         res->len = cpu_to_be16(CHSC_MIN_RESP_LEN);
+     }
++    return;
++
++ out_err:
++    res->code = cpu_to_be16(resp_code);
++    res->len = cpu_to_be16(CHSC_MIN_RESP_LEN);
++    res->param = 0;
+ }
+ 
+ static void ioinst_handle_chsc_unimplemented(ChscResp *res)
+-- 
+2.52.0
+

@@ -1,0 +1,121 @@
+From 0eeecd2bc75468d6a046ae603b21403ca879e779 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 011/111] hw/pci/pci: Add optional supports_address_space()
+ callback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [11/111] 21143011cab792cbd353b19b5ceb25b02f2ec689 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Introduce an optional supports_address_space() callback in PCIIOMMUOps to
+allow a vIOMMU implementation to reject devices that should not be attached
+to it.
+
+Currently, get_address_space() is the first and mandatory callback into the
+vIOMMU layer, which always returns an address space. For certain setups, such
+as hardware accelerated vIOMMUs (e.g. ARM SMMUv3 with accel=on), attaching
+emulated endpoint devices is undesirable as it may impact the behavior or
+performance of VFIO passthrough devices, for example, by triggering
+unnecessary invalidations on the host IOMMU.
+
+The new callback allows a vIOMMU to check and reject unsupported devices
+early during PCI device registration.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-9-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 84ce97290c198a36efc596aefb78f5d3b0e86f6c)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c         | 20 ++++++++++++++++++++
+ include/hw/pci/pci.h | 19 +++++++++++++++++++
+ 2 files changed, 39 insertions(+)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 15dd232cf8..141b7ad1f8 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -135,6 +135,21 @@ static void pci_set_master(PCIDevice *d, bool enable)
+     d->is_master = enable; /* cache the status */
+ }
+ 
++static bool
++pci_device_supports_iommu_address_space(PCIDevice *dev, Error **errp)
++{
++    PCIBus *bus;
++    PCIBus *iommu_bus;
++    int devfn;
++
++    pci_device_get_iommu_bus_devfn(dev, &iommu_bus, &bus, &devfn);
++    if (iommu_bus && iommu_bus->iommu_ops->supports_address_space) {
++        return iommu_bus->iommu_ops->supports_address_space(bus,
++                                iommu_bus->iommu_opaque, devfn, errp);
++    }
++    return true;
++}
++
+ static void pci_init_bus_master(PCIDevice *pci_dev)
+ {
+     AddressSpace *dma_as = pci_device_iommu_address_space(pci_dev);
+@@ -1412,6 +1427,11 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev,
+     pci_dev->config_write = config_write;
+     bus->devices[devfn] = pci_dev;
+     pci_dev->version_id = 2; /* Current pci device vmstate version */
++    if (!pci_device_supports_iommu_address_space(pci_dev, errp)) {
++        do_pci_unregister_device(pci_dev);
++        bus->devices[devfn] = NULL;
++        return NULL;
++    }
+     if (phase_check(PHASE_MACHINE_READY)) {
+         pci_init_bus_master(pci_dev);
+     }
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index bde9dca8e2..a19773d0f9 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -417,6 +417,25 @@ typedef struct IOMMUPRINotifier {
+  * framework for a set of devices on a PCI bus.
+  */
+ typedef struct PCIIOMMUOps {
++    /**
++     * @supports_address_space: Optional pre-check to determine whether a PCI
++     * device can be associated with an IOMMU. If this callback returns true,
++     * the IOMMU accepts the device association and get_address_space() can be
++     * called to obtain the address_space to be used.
++     *
++     * @bus: the #PCIBus being accessed.
++     *
++     * @opaque: the data passed to pci_setup_iommu().
++     *
++     * @devfn: device and function number.
++     *
++     * @errp: pass an Error out only when return false
++     *
++     * Returns: true if the device can be associated with an IOMMU, false
++     * otherwise with errp set.
++     */
++    bool (*supports_address_space)(PCIBus *bus, void *opaque, int devfn,
++                                   Error **errp);
+     /**
+      * @get_address_space: get the address space for a set of devices
+      * on a PCI bus.
+-- 
+2.52.0
+

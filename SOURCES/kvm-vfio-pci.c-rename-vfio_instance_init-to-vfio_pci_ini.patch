@@ -1,0 +1,54 @@
+From 2a903ed34fe1fc93a0e36b7c6dec27267257d1e4 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:20 +0100
+Subject: [PATCH 062/116] vfio/pci.c: rename vfio_instance_init() to
+ vfio_pci_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [46/100] 56772d0a87348b63c29291d72abf90e32f3a1201 (rovick1/qemu-kvm)
+
+This is the more typical naming convention for QOM init() functions, in
+particular it changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-13-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d5db50dd819142748e10e488a2288052ec0235fd)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 38ea58020d..4002af0c54 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3643,7 +3643,7 @@ post_reset:
+     vfio_pci_post_reset(vdev);
+ }
+ 
+-static void vfio_instance_init(Object *obj)
++static void vfio_pci_init(Object *obj)
+ {
+     PCIDevice *pci_dev = PCI_DEVICE(obj);
+     VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
+@@ -3938,7 +3938,7 @@ static const TypeInfo vfio_pci_dev_info = {
+     .name = TYPE_VFIO_PCI,
+     .parent = TYPE_VFIO_PCI_BASE,
+     .class_init = vfio_pci_dev_class_init,
+-    .instance_init = vfio_instance_init,
++    .instance_init = vfio_pci_init,
+     .instance_finalize = vfio_instance_finalize,
+ };
+ 
+-- 
+2.52.0
+

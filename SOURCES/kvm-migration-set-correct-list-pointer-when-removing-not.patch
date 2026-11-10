@@ -1,0 +1,49 @@
+From 780adf4b83ffd4d5280eb7e6602b511195d3d529 Mon Sep 17 00:00:00 2001
+From: Matthew Rosato <mjrosato@linux.ibm.com>
+Date: Thu, 13 Nov 2025 16:35:45 -0500
+Subject: [PATCH 106/116] migration: set correct list pointer when removing
+ notifier
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [90/100] 0ab246e3e8922fa6b6eb66ae15b6a861c8b8055c (rovick1/qemu-kvm)
+
+In migration_remove_notifier(), g_slist_remove() will search for and
+potentially remove an entry from the specified list.  The return value
+should be used to update the potentially-changed head pointer of the
+list that was just searched (migration_state_notifiers[mode]) instead
+of the migration blockers list.
+
+Fixes: dc79c7d5e1 ("migration: multi-mode notifier")
+Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/r/20251113213545.513453-1-mjrosato@linux.ibm.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 911bdd34ca1a3f9e62836e7bc581e7edc57319be)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ migration/migration.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 2515bec48f..0233b25f86 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -1704,7 +1704,7 @@ void migration_remove_notifier(NotifierWithReturn *notify)
+ {
+     if (notify->notify) {
+         for (MigMode mode = 0; mode < MIG_MODE__MAX; mode++) {
+-            migration_blockers[mode] =
++            migration_state_notifiers[mode] =
+                 g_slist_remove(migration_state_notifiers[mode], notify);
+         }
+         notify->notify = NULL;
+-- 
+2.52.0
+

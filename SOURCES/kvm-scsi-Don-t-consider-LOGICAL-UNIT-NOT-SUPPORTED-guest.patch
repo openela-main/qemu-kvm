@@ -1,15 +1,15 @@
-From fdb5967b1f898fdcb894c625681e9adc144b40c8 Mon Sep 17 00:00:00 2001
+From e77566291defe7b992bc17fa04907ec0d9b2b279 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Mon, 30 Mar 2026 14:16:35 +0200
-Subject: [PATCH] scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest
+Subject: [PATCH 1/9] scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest
  recoverable
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 547: scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest recoverable [10.2.z]
-RH-Jira: RHEL-164536
+RH-MergeRequest: 482: scsi: Don't consider LOGICAL UNIT NOT SUPPORTED guest recoverable
+RH-Jira: RHEL-158212
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
 RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
-RH-Commit: [1/1] af2700383121412776eb034ecc846ce9d48e3750 (kmwolf/rhel-qemu-kvm)
+RH-Commit: [1/1] 3ddb962c6255b588e33f8f6d80dd9d785498e342 (kmwolf/centos-qemu-kvm)
 
 When commit bdf9613b introduced scsi_sense_buf_is_guest_recoverable(),
 it included LOGICAL UNIT NOT SUPPORTED in the list of guest recoverable

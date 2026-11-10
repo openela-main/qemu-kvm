@@ -1,0 +1,74 @@
+From ed217dda22c77ad780159755f48faf26a74531a6 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:53 +0200
+Subject: [PATCH 012/116] target/arm/machine: Handle ToleranceOnlySrcTestValue
+ migration tolerance
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [12/16] df44347fd53723ee81c4167e82bb85a15b94ac23 (eauger1/centos-qemu-kvm)
+
+Pass the value of the incoming register to
+handle_cpreg_only_in_incoming_stream and check whether there is
+a matching ToleranceOnlySrcTestValue tolerance.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260420140552.104369-4-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 9d2e717da4f4822ddb89c1ae78a0afd328a1f554)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/machine.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/target/arm/machine.c b/target/arm/machine.c
+index 0d749fc8fb..b75097f371 100644
+--- a/target/arm/machine.c
++++ b/target/arm/machine.c
+@@ -991,12 +991,15 @@ static void handle_cpreg_missing_in_incoming_stream(ARMCPU *cpu, uint64_t kvmidx
+  * no cpreg mig tolerance is matched for this @kvmidx
+  * Return true if the migration should eventually fail
+  */
+-static bool handle_cpreg_only_in_incoming_stream(ARMCPU *cpu, uint64_t kvmidx)
++static bool
++handle_cpreg_only_in_incoming_stream(ARMCPU *cpu, uint64_t kvmidx, uint64_t value)
+ {
+     g_autofree gchar *name = print_register_name(kvmidx);
+ 
+     if (arm_cpu_match_cpreg_mig_tolerance(cpu, kvmidx,
+-                                          0, 0, ToleranceNotOnBothEnds)) {
++                                          0, 0, ToleranceNotOnBothEnds) ||
++        arm_cpu_match_cpreg_mig_tolerance(cpu, kvmidx,
++                                          value, 0, ToleranceOnlySrcTestValue)) {
+         trace_tolerate_cpreg_only_in_incoming_stream(name);
+         return false;
+     }
+@@ -1049,7 +1052,9 @@ static int cpu_post_load(void *opaque, int version_id)
+         }
+         if (cpu->cpreg_vmstate_indexes[v] < cpu->cpreg_indexes[i]) {
+             fail = handle_cpreg_only_in_incoming_stream(cpu,
+-                                                        cpu->cpreg_vmstate_indexes[v++]);
++                                                        cpu->cpreg_vmstate_indexes[v],
++                                                        cpu->cpreg_vmstate_values[v]);
++            v++;
+             continue;
+         }
+         /* matching register, copy the value over */
+@@ -1072,7 +1077,8 @@ static int cpu_post_load(void *opaque, int version_id)
+      */
+     for ( ; v < cpu->cpreg_vmstate_array_len; v++) {
+         fail = handle_cpreg_only_in_incoming_stream(cpu,
+-                                                    cpu->cpreg_vmstate_indexes[v]);
++                                                    cpu->cpreg_vmstate_indexes[v],
++                                                    cpu->cpreg_vmstate_values[v]);
+     }
+     if (fail) {
+         return -1;
+-- 
+2.52.0
+

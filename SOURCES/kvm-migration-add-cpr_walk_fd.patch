@@ -1,0 +1,67 @@
+From df154d5011af1b33e245031b98a56f91969be66c Mon Sep 17 00:00:00 2001
+From: Steve Sistare <steven.sistare@oracle.com>
+Date: Wed, 1 Oct 2025 08:33:54 -0700
+Subject: [PATCH 089/116] migration: add cpr_walk_fd
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [73/100] 29b4bdb4daddc394a05956ba876d4ab6696d1e0b (rovick1/qemu-kvm)
+
+Add a helper to walk all CPR fd's and run a callback for each.
+
+Signed-off-by: Steve Sistare <steven.sistare@oracle.com>
+Reviewed-by: Peter Xu <peterx@redhat.com>
+Link: https://lore.kernel.org/r/1759332851-370353-3-git-send-email-steven.sistare@oracle.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ include/migration/cpr.h |  3 +++
+ migration/cpr.c         | 13 +++++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/include/migration/cpr.h b/include/migration/cpr.h
+index 3fc19a74ef..2b074d7a65 100644
+--- a/include/migration/cpr.h
++++ b/include/migration/cpr.h
+@@ -34,6 +34,9 @@ void cpr_resave_fd(const char *name, int id, int fd);
+ int cpr_open_fd(const char *path, int flags, const char *name, int id,
+                 Error **errp);
+ 
++typedef bool (*cpr_walk_fd_cb)(int fd);
++bool cpr_walk_fd(cpr_walk_fd_cb cb);
++
+ MigMode cpr_get_incoming_mode(void);
+ void cpr_set_incoming_mode(MigMode mode);
+ bool cpr_is_incoming(void);
+diff --git a/migration/cpr.c b/migration/cpr.c
+index 038f48f810..a995b349d9 100644
+--- a/migration/cpr.c
++++ b/migration/cpr.c
+@@ -121,6 +121,19 @@ int cpr_open_fd(const char *path, int flags, const char *name, int id,
+     return fd;
+ }
+ 
++bool cpr_walk_fd(cpr_walk_fd_cb cb)
++{
++    CprFd *elem;
++
++    QLIST_FOREACH(elem, &cpr_state.fds, next) {
++        g_assert(elem->fd >= 0);
++        if (!cb(elem->fd)) {
++            return false;
++        }
++    }
++    return true;
++}
++
+ /*************************************************************************/
+ static const VMStateDescription vmstate_cpr_state = {
+     .name = CPR_STATE,
+-- 
+2.52.0
+

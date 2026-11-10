@@ -1,0 +1,56 @@
+From 376ff3d65cb420c0629ecead6acefa3c17d127b5 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 057/111] hw/arm/smmuv3-accel: Check ATS compatibility between
+ host and guest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [57/111] 63d0ca91b471cb66464226e104162e0fc9d2a19c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Compare the host SMMUv3 ATS support bit with the guest SMMUv3 ATS support
+bit in IDR0 and fail the compatibility check if ATS support is opted as
+enabled on the guest SMMUv3 when it is not supported on host SMMUv3.
+
+Fixes: f7f5013a55a3 ("hw/arm/smmuv3-accel: Add support for ATS")
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-2-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dc86d45232444e75f1b4569fada0a73b5dc209b4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 17306cd04b..2bb142c47f 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -101,6 +101,12 @@ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+                    smmuv3_oas_bits(FIELD_EX32(s->idr[5], IDR5, OAS)));
+         return false;
+     }
++    /* Check ATS value opted is compatible with Host SMMUv3 */
++    if (FIELD_EX32(info->idr[0], IDR0, ATS) <
++                FIELD_EX32(s->idr[0], IDR0, ATS)) {
++        error_setg(errp, "Host SMMUv3 doesn't support Address Translation Services");
++        return false;
++    }
+ 
+     /* QEMU SMMUv3 supports GRAN4K/GRAN16K/GRAN64K translation granules */
+     if (FIELD_EX32(info->idr[5], IDR5, GRAN4K) !=
+-- 
+2.52.0
+

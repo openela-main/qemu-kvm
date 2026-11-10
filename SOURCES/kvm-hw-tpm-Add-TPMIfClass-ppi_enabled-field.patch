@@ -1,0 +1,60 @@
+From 63f69cde15a373b9423f7b57663e6907031e4d4d Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 7 May 2026 15:36:51 +0530
+Subject: [PATCH 3/9] hw/tpm: Add TPMIfClass::ppi_enabled field
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 485: hw/tpm: add PPI support to tpm-tis-device for ARM64 virt
+RH-Jira: RHEL-112608
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [2/8] 04bf1203950bf118ef75cdfd0954b194fc761359 (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-112608
+
+Each TPM derived device has a @ppi_enabled field, itself
+exposed as a QOM property. External layers (like the ACPI
+subsystem) wanting to know whether a device implements PPI
+has to check for the QOM property available. This can be
+simplified by declaring a single field in the TPM interface.
+
+Here we add such field to TPMIfClass, before converting each
+TPM devices to use it in the following commits.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Message-Id: <20260317120241.16320-3-philmd@linaro.org>
+(cherry picked from commit 6f4a9599521a9a2feded3e0eaa000546fc9d9e77)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ include/system/tpm.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/include/system/tpm.h b/include/system/tpm.h
+index b90dd4e8cb..9458ad6668 100644
+--- a/include/system/tpm.h
++++ b/include/system/tpm.h
+@@ -43,6 +43,7 @@ struct TPMIfClass {
+     enum TpmModel model;
+     void (*request_completed)(TPMIf *obj, int ret);
+     enum TPMVersion (*get_version)(TPMIf *obj);
++    bool ppi_enabled;
+ };
+ 
+ #define TYPE_TPM_TIS_ISA            "tpm-tis"
+@@ -84,6 +85,9 @@ static inline bool tpm_ppi_enabled(TPMIf *ti)
+     if (!ti) {
+         return false;
+     }
++    if (TPM_IF_GET_CLASS(ti)->ppi_enabled) {
++        return true;
++    }
+     return object_property_get_bool(OBJECT(ti), "ppi", &error_abort);
+ }
+ 
+-- 
+2.52.0
+

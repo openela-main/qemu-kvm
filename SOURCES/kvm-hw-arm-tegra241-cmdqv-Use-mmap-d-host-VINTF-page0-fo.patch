@@ -1,0 +1,129 @@
+From 9d5701e0445ac377f61fa219ddf59ec7714dc858 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:42 +0100
+Subject: [PATCH 100/111] hw/arm/tegra241-cmdqv: Use mmap'd host VINTF page0
+ for virtual VINTF page0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [100/111] 2417c5223a363995121cd311eb7f714572dc5447 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Install the mmap'd host VINTF page0 as a RAM-device MemoryRegion
+backing the guest's virtual VINTF Page 0 aperture (guest MMIO offset
+0x30000) when VINTF is enabled, and remove it on VINTF disable or
+reset. This eliminates QEMU trapping for hot-path CONS/PROD index
+updates via that aperture.
+
+After this patch, the two VCMDQ Page 0 apertures use different
+access paths: the direct aperture (0x10000) remains QEMU-trapped,
+while the VINTF aperture (0x30000) is a guest-direct RAM mapping.
+
+The direct aperture is intentionally kept trapped (not aliased to
+the host VINTF mmap) so that writes to an unallocated VCMDQ remain
+well-defined. The CMDQV architecture allows software to program a
+VCMDQ through the direct aperture without first allocating it to a
+VINTF; aliasing would route those writes to unallocated logical
+slots in the VINTF page, where the hardware silently drops them.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-22-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 5965b81ce2835de49ba4eb36c386e72be5ff1ba8)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 37 +++++++++++++++++++++++++++++++++++++
+ hw/arm/tegra241-cmdqv.h |  1 +
+ 2 files changed, 38 insertions(+)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 63fe0ac681..7264b4bfa9 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -26,6 +26,40 @@ static void tegra241_cmdqv_reset_vcmdq_cache(Tegra241CMDQV *cmdqv, int index)
+     cmdqv->vcmdq_gerrorn[index] = 0;
+ }
+ 
++static void tegra241_cmdqv_guest_unmap_vintf_page0(Tegra241CMDQV *cmdqv)
++{
++    if (!cmdqv->mr_vintf_page0) {
++        return;
++    }
++
++    memory_region_del_subregion(&cmdqv->mmio_cmdqv, cmdqv->mr_vintf_page0);
++    object_unparent(OBJECT(cmdqv->mr_vintf_page0));
++    g_free(cmdqv->mr_vintf_page0);
++    cmdqv->mr_vintf_page0 = NULL;
++}
++
++static void tegra241_cmdqv_guest_map_vintf_page0(Tegra241CMDQV *cmdqv)
++{
++    char *name;
++
++    if (cmdqv->mr_vintf_page0) {
++        return;
++    }
++
++    name = g_strdup_printf("%s vintf-page0",
++                           memory_region_name(&cmdqv->mmio_cmdqv));
++    cmdqv->mr_vintf_page0 = g_malloc0(sizeof(*cmdqv->mr_vintf_page0));
++    memory_region_init_ram_device_ptr(cmdqv->mr_vintf_page0,
++                                      memory_region_owner(&cmdqv->mmio_cmdqv),
++                                      name, VINTF_PAGE_SIZE,
++                                      cmdqv->vintf_page0);
++    memory_region_set_skip_iommu_map(cmdqv->mr_vintf_page0, true);
++    memory_region_add_subregion_overlap(&cmdqv->mmio_cmdqv,
++                                        CMDQV_VINTF_PAGE0_BASE,
++                                        cmdqv->mr_vintf_page0, 1);
++    g_free(name);
++}
++
+ static void tegra241_cmdqv_free_vcmdq(Tegra241CMDQV *cmdqv, int index)
+ {
+     IOMMUFDViommu *viommu = cmdqv->s_accel->viommu;
+@@ -430,7 +464,9 @@ static void tegra241_cmdqv_config_vintf_write(Tegra241CMDQV *cmdqv,
+              * enabled need their hw_queue allocated now.
+              */
+             tegra241_cmdqv_setup_all_vcmdq(cmdqv, errp);
++            tegra241_cmdqv_guest_map_vintf_page0(cmdqv);
+         } else {
++            tegra241_cmdqv_guest_unmap_vintf_page0(cmdqv);
+             tegra241_cmdqv_free_all_vcmdq(cmdqv);
+             cmdqv->vintf_status &= ~R_VINTF0_STATUS_ENABLE_OK_MASK;
+         }
+@@ -772,6 +808,7 @@ static void tegra241_cmdqv_reset(SMMUv3State *s)
+         return;
+     }
+ 
++    tegra241_cmdqv_guest_unmap_vintf_page0(cmdqv);
+     tegra241_cmdqv_free_all_vcmdq(cmdqv);
+ }
+ 
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index c795da0444..0964f68a20 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -49,6 +49,7 @@ typedef struct Tegra241CMDQV {
+     IOMMUFDVeventq *veventq;
+     IOMMUFDHWqueue *vcmdq[TEGRA241_CMDQV_MAX_CMDQ];
+     void *vintf_page0;
++    MemoryRegion *mr_vintf_page0;
+ 
+     /* CMDQ-V Config page register cache */
+     uint32_t config;
+-- 
+2.52.0
+

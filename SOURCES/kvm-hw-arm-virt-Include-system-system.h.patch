@@ -1,0 +1,47 @@
+From 03d37e65c55a45d57410e3494681c79a43762adc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 1 Sep 2025 08:46:24 +0200
+Subject: [PATCH 022/116] hw/arm/virt: Include 'system/system.h'
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [6/100] 17d12a26fb83432d261f644ff9583bdd4224fee3 (rovick1/qemu-kvm)
+
+hw/arm/virt.c should include 'system/system.h' for :
+
+  serial_hd()
+  qemu_add_machine_init_done_notifier()
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250731144019.1403591-1-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Message-ID: <20250901064631.530723-2-clg@redhat.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit 319ca84949fc3134774342d50790592680c3b9b0)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 2a399e468c..990d2c73c7 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -49,6 +49,7 @@
+ #include "system/kvm.h"
+ #include "system/hvf.h"
+ #include "system/qtest.h"
++#include "system/system.h"
+ #include "hw/loader.h"
+ #include "qapi/error.h"
+ #include "qemu/bitops.h"
+-- 
+2.52.0
+

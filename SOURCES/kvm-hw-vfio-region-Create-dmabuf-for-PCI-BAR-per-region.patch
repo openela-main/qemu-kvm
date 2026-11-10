@@ -1,0 +1,152 @@
+From b414b8f5cae43b89c7915ba10f0a3c970aacd1fd Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Wed, 21 Jan 2026 11:41:11 +0000
+Subject: [PATCH 116/116] hw/vfio/region: Create dmabuf for PCI BAR per region
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [100/100] 6be849602d64e38f7ccb3f3f89f33dae804ae494 (rovick1/qemu-kvm)
+
+Linux now provides a VFIO dmabuf exporter to expose PCI BAR memory for P2P
+use cases. Create a dmabuf for each mapped BAR region after the mmap is set
+up, and store the returned fd in the region’s RAMBlock. This allows QEMU to
+pass the fd to dma_map_file(), enabling iommufd to import the dmabuf and map
+the BAR correctly in the host IOMMU page table.
+
+If the kernel lacks support or dmabuf setup fails, QEMU skips the setup
+and continues with normal mmap handling.
+
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260121114111.34045-4-skolothumtho@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 8cfaf22668c7a9ed79f8b8f0910a2f69b4cfaae6)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/region.c     | 65 +++++++++++++++++++++++++++++++++++++++++++-
+ hw/vfio/trace-events |  1 +
+ 2 files changed, 65 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index b165ab0b93..1deaef12fd 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -29,6 +29,7 @@
+ #include "qemu/error-report.h"
+ #include "qemu/units.h"
+ #include "monitor/monitor.h"
++#include "system/ramblock.h"
+ #include "vfio-helpers.h"
+ 
+ /*
+@@ -238,13 +239,71 @@ static void vfio_subregion_unmap(VFIORegion *region, int index)
+     region->mmaps[index].mmap = NULL;
+ }
+ 
++static bool vfio_region_create_dma_buf(VFIORegion *region, Error **errp)
++{
++    g_autofree struct vfio_device_feature *feature = NULL;
++    VFIODevice *vbasedev = region->vbasedev;
++    struct vfio_device_feature_dma_buf *dma_buf;
++    size_t total_size;
++    int i, ret;
++
++    total_size = sizeof(*feature) + sizeof(*dma_buf) +
++                 sizeof(struct vfio_region_dma_range) * region->nr_mmaps;
++    feature = g_malloc0(total_size);
++    *feature = (struct vfio_device_feature) {
++        .argsz = total_size,
++        .flags = VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_DMA_BUF,
++    };
++
++    dma_buf = (void *)feature->data;
++    *dma_buf = (struct vfio_device_feature_dma_buf) {
++        .region_index = region->nr,
++        .open_flags = O_RDWR,
++        .nr_ranges = region->nr_mmaps,
++    };
++
++    for (i = 0; i < region->nr_mmaps; i++) {
++        dma_buf->dma_ranges[i].offset = region->mmaps[i].offset;
++        dma_buf->dma_ranges[i].length = region->mmaps[i].size;
++    }
++
++    ret = vfio_device_get_feature(vbasedev, feature);
++    if (ret < 0) {
++        if (ret == -ENOTTY) {
++            warn_report_once("VFIO dma-buf not supported in kernel: "
++                             "PCI BAR IOMMU mappings may fail");
++            return true;
++        }
++        /* P2P DMA or exposing device memory use cases are not supported. */
++        error_setg_errno(errp, -ret, "%s: failed to create dma-buf: "
++                         "PCI BAR IOMMU mappings may fail",
++                         memory_region_name(region->mem));
++        return false;
++    }
++
++    /* Assign the dmabuf fd to associated RAMBlock */
++    for (i = 0; i < region->nr_mmaps; i++) {
++        MemoryRegion *mr = &region->mmaps[i].mem;
++        RAMBlock *ram_block = mr->ram_block;
++
++        ram_block->fd = ret;
++        ram_block->fd_offset = region->mmaps[i].offset;
++        trace_vfio_region_dmabuf(region->vbasedev->name, ret, region->nr,
++                                 memory_region_name(region->mem),
++                                 region->mmaps[i].offset,
++                                 region->mmaps[i].size);
++    }
++    return true;
++}
++
+ int vfio_region_mmap(VFIORegion *region)
+ {
+     int i, ret, prot = 0;
++    Error *local_err = NULL;
+     char *name;
+     int fd;
+ 
+-    if (!region->mem) {
++    if (!region->mem || !region->nr_mmaps) {
+         return 0;
+     }
+ 
+@@ -305,6 +364,10 @@ int vfio_region_mmap(VFIORegion *region)
+                                region->mmaps[i].size - 1);
+     }
+ 
++    if (!vfio_region_create_dma_buf(region, &local_err)) {
++        error_report_err(local_err);
++    }
++
+     return 0;
+ 
+ no_mmap:
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index 1e895448cd..592a0349d4 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -117,6 +117,7 @@ vfio_device_put(int fd) "close vdev->fd=%d"
+ vfio_region_write(const char *name, int index, uint64_t addr, uint64_t data, unsigned size) " (%s:region%d+0x%"PRIx64", 0x%"PRIx64 ", %d)"
+ vfio_region_read(char *name, int index, uint64_t addr, unsigned size, uint64_t data) " (%s:region%d+0x%"PRIx64", %d) = 0x%"PRIx64
+ vfio_region_setup(const char *dev, int index, const char *name, unsigned long flags, unsigned long offset, unsigned long size) "Device %s, region %d \"%s\", flags: 0x%lx, offset: 0x%lx, size: 0x%lx"
++vfio_region_dmabuf(const char *dev, int fd, int index,  const char *name, unsigned long offset, unsigned long size) "Device %s, dmabuf fd %d region %d \"%s\", offset: 0x%lx, size: 0x%lx"
+ vfio_region_mmap_fault(const char *name, int index, unsigned long offset, unsigned long size, int fault) "Region %s mmaps[%d], [0x%lx - 0x%lx], fault: %d"
+ vfio_region_mmap(const char *name, unsigned long offset, unsigned long end) "Region %s [0x%lx - 0x%lx]"
+ vfio_region_exit(const char *name, int index) "Device %s, region %d"
+-- 
+2.52.0
+

@@ -1,0 +1,104 @@
+From 624da84e824b854a9cbd64be087627d6991f8358 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 14:58:15 +0200
+Subject: [PATCH 07/12] s390x/pci: Tighten region detection for BAR read/write
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [4/9] 187be7e6318f69afd409a43a36ebc9ecfb295dec (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit 2d709a70c75724e972126671b2e2c0fca0b6e239
+Author: Matthew Rosato <mjrosato@linux.ibm.com>
+Date:   Tue Jul 7 09:07:25 2026 +0200
+
+    s390x/pci: Tighten region detection for BAR read/write
+
+    For PCISTG/PCISTB/PCILG instruction emulation, ensure that the offset
+    and length provided by the guest does not overflow, and only return
+    a memory region when the specified offset+length combination matches
+    an existing subregion or the parent region.
+
+    Cc: qemu-stable@nongnu.org
+    Fixes: 4f6482bfe3 ("s390x/pci: search for subregion inside the BARs")
+    Signed-off-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Reviewed-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Farhan Ali <alifm@linux.ibm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260707070728.147203-3-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/s390-pci-inst.c | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index 5a2aa1c12e..17d74d8542 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -392,13 +392,22 @@ static int zpci_endian_swap(uint64_t *ptr, uint8_t len)
+ static MemoryRegion *s390_get_subregion(MemoryRegion *mr, uint64_t offset,
+                                         uint8_t len)
+ {
++    uint64_t last = offset + len;
+     MemoryRegion *subregion;
+     uint64_t subregion_size;
+ 
++    /*
++     * Ensure the region is valid, the calculated address cannot wrap and that
++     * it falls within this region.
++     */
++    if (!mr || offset > last || last > memory_region_size(mr)) {
++        return NULL;
++    }
++
+     QTAILQ_FOREACH(subregion, &mr->subregions, subregions_link) {
+         subregion_size = int128_get64(subregion->size);
+         if ((offset >= subregion->addr) &&
+-            (offset + len) <= (subregion->addr + subregion_size)) {
++            (last) <= (subregion->addr + subregion_size)) {
+             mr = subregion;
+             break;
+         }
+@@ -413,6 +422,10 @@ static MemTxResult zpci_read_bar(S390PCIBusDevice *pbdev, uint8_t pcias,
+ 
+     mr = pbdev->pdev->io_regions[pcias].memory;
+     mr = s390_get_subregion(mr, offset, len);
++    if (!mr) {
++        return MEMTX_ERROR;
++    }
++
+     offset -= mr->addr;
+     return memory_region_dispatch_read(mr, offset, data,
+                                        size_memop(len) | MO_BE,
+@@ -513,6 +526,10 @@ static MemTxResult zpci_write_bar(S390PCIBusDevice *pbdev, uint8_t pcias,
+ 
+     mr = pbdev->pdev->io_regions[pcias].memory;
+     mr = s390_get_subregion(mr, offset, len);
++    if (!mr) {
++        return MEMTX_ERROR;
++    }
++
+     offset -= mr->addr;
+     return memory_region_dispatch_write(mr, offset, data,
+                                         size_memop(len) | MO_BE,
+@@ -906,6 +923,11 @@ int pcistb_service_call(S390CPU *cpu, uint8_t r1, uint8_t r3, uint64_t gaddr,
+ 
+     mr = pbdev->pdev->io_regions[pcias].memory;
+     mr = s390_get_subregion(mr, offset, len);
++    if (!mr) {
++        s390_program_interrupt(env, PGM_OPERAND, ra);
++        return 0;
++    }
++
+     offset -= mr->addr;
+ 
+     for (i = 0; i < len; i += 8) {
+-- 
+2.52.0
+

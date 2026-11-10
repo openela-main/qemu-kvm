@@ -1,0 +1,97 @@
+From e87230889999d19b5bb045670cca5721e4e92533 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:46 +0100
+Subject: [PATCH 104/111] hw/arm/tegra241-cmdqv: Limit queue size based on
+ backend page size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [104/111] a3c4ec875272161cf41791a9806a4a085a659ffa (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+CMDQV HW performs DMA accesses to guest queue memory by its host
+physical address set up via IOMMUFD. This requires the guest queue
+to be contiguous in both guest PA and host PA space. With Tegra241
+CMDQV enabled, we must only advertise a command queue size (CMDQS)
+that the host can safely back with physically contiguous memory.
+Allowing a queue size larger than the host page size could cause
+the hardware to DMA across page boundaries, leading to faults.
+
+Use qemu_minrampagesize() to find the smallest memory-backend page
+size in use, then cap IDR1.CMDQS so the guest cannot configure a
+command queue that exceeds that contiguous backing.
+
+Note this is done at SMMUv3 init, before any guest queue GPA is
+known, so the cap is conservative. Maximum queue size is 8MiB;
+it is recommended to back the VM with hugepage sizes large enough
+so CMDQS stays at the HW maximum. Smaller backing pages reduce
+CMDQS accordingly.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-26-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 0552f94fbdb6d2a3cee292911353241b1ba534cd)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 6804f0bb7e..a4c140e34c 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -14,6 +14,8 @@
+ #include "hw/arm/smmuv3-common.h"
+ #include "hw/irq.h"
+ #include "smmuv3-accel.h"
++#include "smmuv3-internal.h"
++#include "system/hostmem.h"
+ #include "tegra241-cmdqv.h"
+ #include "trace.h"
+ 
+@@ -866,6 +868,8 @@ free_viommu:
+ static void tegra241_cmdqv_init_regs(SMMUv3State *s, Tegra241CMDQV *cmdqv)
+ {
+     int i;
++    long pgsize;
++    uint32_t val;
+ 
+     cmdqv->config = V_CONFIG_RESET;
+     cmdqv->param = FIELD_DP32(0, PARAM, CMDQV_VER, CMDQV_VER);
+@@ -897,6 +901,22 @@ static void tegra241_cmdqv_init_regs(SMMUv3State *s, Tegra241CMDQV *cmdqv)
+         cmdqv->vcmdq_base[i] = 0;
+         cmdqv->vcmdq_cons_indx_base[i] = 0;
+     }
++
++    /*
++     * CMDQ must not cross a physical RAM backend page. Adjust CMDQS so the
++     * queue fits entirely within the smallest backend page size, ensuring
++     * the command queue is physically contiguous in host memory.
++     *
++     *   IDR1.CMDQS = log2(max_qsz) - entry_shift
++     *
++     * where entry_shift = 4 (each CMDQ entry is 16 bytes = 2^4).
++     */
++    pgsize = qemu_minrampagesize();
++    if (pgsize == LONG_MAX) {
++        pgsize = qemu_real_host_page_size();
++    }
++    val = FIELD_EX32(s->idr[1], IDR1, CMDQS);
++    s->idr[1] = FIELD_DP32(s->idr[1], IDR1, CMDQS, MIN(ctz64(pgsize) - 4, val));
+ }
+ 
+ static void tegra241_cmdqv_reset(SMMUv3State *s)
+-- 
+2.52.0
+

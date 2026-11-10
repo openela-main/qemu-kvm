@@ -1,0 +1,210 @@
+From 938b9e6cc71799999c3d2911c3281de87a32ae5a Mon Sep 17 00:00:00 2001
+From: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Date: Thu, 15 Jan 2026 15:26:30 +0000
+Subject: [PATCH 004/111] hw/arm/smmu: add memory regions as property for an
+ SMMU instance
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [4/111] de140c2d7250de6154e18e036a7a114502a43867 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+This will be used to access non-secure and secure memory. Secure support
+and Granule Protection Check (for RME) for SMMU need to access secure
+memory.
+
+As well, it allows to remove usage of global address_space_memory,
+allowing different SMMU instances to have a specific view of memory.
+
+User creatable SMMU are handled as well for virt machine,
+by setting the memory properties when device is plugged in.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260108210453.2280733-1-pierrick.bouvier@linaro.org
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 53b54a82520f23da2be49cc0d69210a086fc7072)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/sbsa-ref.c            | 16 ++++++++++++----
+ hw/arm/smmu-common.c         | 11 +++++++++++
+ hw/arm/virt.c                | 13 +++++++++++--
+ include/hw/arm/smmu-common.h |  4 ++++
+ include/hw/arm/virt.h        |  2 ++
+ 5 files changed, 40 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/sbsa-ref.c b/hw/arm/sbsa-ref.c
+index 15c1ff4b14..48c2054be0 100644
+--- a/hw/arm/sbsa-ref.c
++++ b/hw/arm/sbsa-ref.c
+@@ -611,7 +611,9 @@ static void create_xhci(const SBSAMachineState *sms)
+     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, qdev_get_gpio_in(sms->gic, irq));
+ }
+ 
+-static void create_smmu(const SBSAMachineState *sms, PCIBus *bus)
++static void create_smmu(const SBSAMachineState *sms, PCIBus *bus,
++                        MemoryRegion *sysmem,
++                        MemoryRegion *secure_sysmem)
+ {
+     hwaddr base = sbsa_ref_memmap[SBSA_SMMU].base;
+     int irq =  sbsa_ref_irqmap[SBSA_SMMU];
+@@ -623,6 +625,10 @@ static void create_smmu(const SBSAMachineState *sms, PCIBus *bus)
+     object_property_set_str(OBJECT(dev), "stage", "nested", &error_abort);
+     object_property_set_link(OBJECT(dev), "primary-bus", OBJECT(bus),
+                              &error_abort);
++    object_property_set_link(OBJECT(dev), "memory", OBJECT(sysmem),
++                             &error_abort);
++    object_property_set_link(OBJECT(dev), "secure-memory", OBJECT(secure_sysmem),
++                             &error_abort);
+     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
+     for (i = 0; i < NUM_SMMU_IRQS; i++) {
+@@ -631,7 +637,9 @@ static void create_smmu(const SBSAMachineState *sms, PCIBus *bus)
+     }
+ }
+ 
+-static void create_pcie(SBSAMachineState *sms)
++static void create_pcie(SBSAMachineState *sms,
++                        MemoryRegion *sysmem,
++                        MemoryRegion *secure_sysmem)
+ {
+     hwaddr base_ecam = sbsa_ref_memmap[SBSA_PCIE_ECAM].base;
+     hwaddr size_ecam = sbsa_ref_memmap[SBSA_PCIE_ECAM].size;
+@@ -687,7 +695,7 @@ static void create_pcie(SBSAMachineState *sms)
+ 
+     pci_create_simple(pci->bus, -1, "bochs-display");
+ 
+-    create_smmu(sms, pci->bus);
++    create_smmu(sms, pci->bus, sysmem, secure_sysmem);
+ }
+ 
+ static void *sbsa_ref_dtb(const struct arm_boot_info *binfo, int *fdt_size)
+@@ -823,7 +831,7 @@ static void sbsa_ref_init(MachineState *machine)
+ 
+     create_xhci(sms);
+ 
+-    create_pcie(sms);
++    create_pcie(sms, sysmem, secure_sysmem);
+ 
+     create_secure_ec(secure_sysmem);
+ 
+diff --git a/hw/arm/smmu-common.c b/hw/arm/smmu-common.c
+index 59d6147ec9..75d840e389 100644
+--- a/hw/arm/smmu-common.c
++++ b/hw/arm/smmu-common.c
+@@ -952,6 +952,13 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+         return;
+     }
+ 
++    g_assert(s->memory);
++    address_space_init(&s->memory_as, s->memory, "smmu-memory-view");
++    if (s->secure_memory) {
++        address_space_init(&s->secure_memory_as, s->secure_memory,
++                           "smmu-secure-memory-view");
++    }
++
+     /*
+      * We only allow default PCIe Root Complex(pcie.0) or pxb-pcie based extra
+      * root complexes to be associated with SMMU.
+@@ -1002,6 +1009,10 @@ static const Property smmu_dev_properties[] = {
+     DEFINE_PROP_BOOL("smmu_per_bus", SMMUState, smmu_per_bus, false),
+     DEFINE_PROP_LINK("primary-bus", SMMUState, primary_bus,
+                      TYPE_PCI_BUS, PCIBus *),
++    DEFINE_PROP_LINK("memory", SMMUState, memory,
++                     TYPE_MEMORY_REGION, MemoryRegion *),
++    DEFINE_PROP_LINK("secure-memory", SMMUState, secure_memory,
++                     TYPE_MEMORY_REGION, MemoryRegion *),
+ };
+ 
+ static void smmu_base_class_init(ObjectClass *klass, const void *data)
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 5bb6ba7de7..e3e0233474 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1526,8 +1526,7 @@ static void create_smmuv3_dev_dtb(VirtMachineState *vms,
+                            0x0, vms->iommu_phandle, 0x0, 0x10000);
+ }
+ 
+-static void create_smmu(const VirtMachineState *vms,
+-                        PCIBus *bus)
++static void create_smmu(const VirtMachineState *vms, PCIBus *bus)
+ {
+     VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
+     int irq =  vms->irqmap[VIRT_SMMU];
+@@ -1547,6 +1546,10 @@ static void create_smmu(const VirtMachineState *vms,
+     }
+     object_property_set_link(OBJECT(dev), "primary-bus", OBJECT(bus),
+                              &error_abort);
++    object_property_set_link(OBJECT(dev), "memory", OBJECT(vms->sysmem),
++                             &error_abort);
++    object_property_set_link(OBJECT(dev), "secure-memory", OBJECT(vms->secure_sysmem),
++                             &error_abort);
+     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
+     for (i = 0; i < NUM_SMMU_IRQS; i++) {
+@@ -1621,6 +1624,7 @@ static void create_pcie(VirtMachineState *vms)
+     memory_region_init_alias(ecam_alias, OBJECT(dev), "pcie-ecam",
+                              ecam_reg, 0, size_ecam);
+     memory_region_add_subregion(get_system_memory(), base_ecam, ecam_alias);
++    vms->sysmem = get_system_memory();
+ 
+     /* Map the MMIO window into system address space so as to expose
+      * the section of PCI MMIO space which starts at the same base address
+@@ -2279,6 +2283,7 @@ static void machvirt_init(MachineState *machine)
+          * devices go in at higher priority and take precedence.
+          */
+         secure_sysmem = g_new(MemoryRegion, 1);
++        vms->secure_sysmem = secure_sysmem;
+         memory_region_init(secure_sysmem, OBJECT(machine), "secure-memory",
+                            UINT64_MAX);
+         memory_region_add_subregion_overlap(secure_sysmem, 0, sysmem, -1);
+@@ -3082,6 +3087,10 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
+         } else if (vms->iommu == VIRT_IOMMU_NONE) {
+             /* The new SMMUv3 device is specific to the PCI bus */
+             object_property_set_bool(OBJECT(dev), "smmu_per_bus", true, NULL);
++            object_property_set_link(OBJECT(dev), "memory",
++                                     OBJECT(vms->sysmem), NULL);
++            object_property_set_link(OBJECT(dev), "secure-memory",
++                                     OBJECT(vms->secure_sysmem), NULL);
+         }
+     }
+ }
+diff --git a/include/hw/arm/smmu-common.h b/include/hw/arm/smmu-common.h
+index d307ddd952..e626c6c567 100644
+--- a/include/hw/arm/smmu-common.h
++++ b/include/hw/arm/smmu-common.h
+@@ -162,6 +162,10 @@ struct SMMUState {
+     uint8_t bus_num;
+     PCIBus *primary_bus;
+     bool smmu_per_bus; /* SMMU is specific to the primary_bus */
++    MemoryRegion *memory;
++    AddressSpace memory_as;
++    MemoryRegion *secure_memory;
++    AddressSpace secure_memory_as;
+ };
+ 
+ struct SMMUBaseClass {
+diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
+index 98b877c8b9..8d90b66b87 100644
+--- a/include/hw/arm/virt.h
++++ b/include/hw/arm/virt.h
+@@ -181,6 +181,8 @@ struct VirtMachineState {
+     bool ns_el2_virt_timer_irq;
+     CXLState cxl_devices_state;
+     bool legacy_smmuv3_present;
++    MemoryRegion *sysmem;
++    MemoryRegion *secure_sysmem;
+ };
+ 
+ #define VIRT_ECAM_ID(high) (high ? VIRT_HIGH_PCIE_ECAM : VIRT_PCIE_ECAM)
+-- 
+2.52.0
+

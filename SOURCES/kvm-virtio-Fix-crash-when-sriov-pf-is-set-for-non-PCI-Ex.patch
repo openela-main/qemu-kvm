@@ -1,0 +1,79 @@
+From e9d0e7db0e7e90fb8a71e3725cdceba7a83b665e Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 4 Dec 2025 18:26:57 +0100
+Subject: [PATCH 37/52] virtio: Fix crash when sriov-pf is set for
+ non-PCI-Express device
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [30/45] 3987bd2c53e0f4cb44d10ad4724a42ccacc4a705 (kmwolf/centos-qemu-kvm)
+
+Setting the sriov-pf property on devices that aren't PCI Express causes
+an assertion failure:
+
+    $ qemu-system-x86_64 \
+        -blockdev null-co,node-name=null \
+        -blockdev null-co,node-name=null2 \
+        -device virtio-blk,drive=null,id=pf \
+        -device virtio-blk,sriov-pf=pf,drive=null2
+    qemu-system-x86_64: ../hw/pci/pcie.c:1062: void pcie_add_capability(PCIDevice *, uint16_t, uint8_t, uint16_t, uint16_t): Assertion `offset >= PCI_CONFIG_SPACE_SIZE' failed.
+
+This is because proxy->last_pcie_cap_offset is only initialised to a
+non-zero value in virtio_pci_realize() if it's a PCI Express device, and
+then virtio_pci_device_plugged() still tries to use it.
+
+To fix this, just skip the SR-IOV code for !pci_is_express(). Then the
+next thing pci_qdev_realize() does is call pcie_sriov_register_device(),
+which returns the appropriate error.
+
+Cc: qemu-stable@nongnu.org
+Fixes: d0c280d3fac6 ('pcie_sriov: Make a PCI device with user-created VF ARI-capable')
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Message-Id: <20251204172657.174391-1-kwolf@redhat.com>
+(cherry picked from commit 623db856476806124e9ae45fbc39e75012261570)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 20 +++++++++++---------
+ 1 file changed, 11 insertions(+), 9 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 937e22f08a..044ecb4f41 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -2172,15 +2172,17 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+                          PCI_BASE_ADDRESS_SPACE_IO, &proxy->bar);
+     }
+ 
+-    if (pci_is_vf(&proxy->pci_dev)) {
+-        pcie_ari_init(&proxy->pci_dev, proxy->last_pcie_cap_offset);
+-        proxy->last_pcie_cap_offset += PCI_ARI_SIZEOF;
+-    } else {
+-        res = pcie_sriov_pf_init_from_user_created_vfs(
+-            &proxy->pci_dev, proxy->last_pcie_cap_offset, errp);
+-        if (res > 0) {
+-            proxy->last_pcie_cap_offset += res;
+-            virtio_add_feature(&vdev->host_features, VIRTIO_F_SR_IOV);
++    if (pci_is_express(&proxy->pci_dev)) {
++        if (pci_is_vf(&proxy->pci_dev)) {
++            pcie_ari_init(&proxy->pci_dev, proxy->last_pcie_cap_offset);
++            proxy->last_pcie_cap_offset += PCI_ARI_SIZEOF;
++        } else {
++            res = pcie_sriov_pf_init_from_user_created_vfs(
++                &proxy->pci_dev, proxy->last_pcie_cap_offset, errp);
++            if (res > 0) {
++                proxy->last_pcie_cap_offset += res;
++                virtio_add_feature(&vdev->host_features, VIRTIO_F_SR_IOV);
++            }
+         }
+     }
+ }
+-- 
+2.52.0
+

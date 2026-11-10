@@ -1,0 +1,211 @@
+From 81498d839f0f05e914e0c77a2264072b262069a5 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 23 Jun 2026 13:49:42 -0700
+Subject: [PATCH 30/30] vfio/pci: Add ats property
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 508: ATS support backport
+RH-Jira: RHEL-184675
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/2] 18a34a15b8c4b5eed56cc3f255d64169a75d0668 (rovick1/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-184675
+
+Add an "ats" OnOffAuto property to vfio-pci. When the device has an ATS
+extended capability in config space but we should not expose it (ats=off,
+or ats=auto and kernel reports IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED), mask
+the capability so the guest does not see it.
+
+If ATS is explicitly requested but not supported by the kernel, fail
+device realize.
+
+This aligns with the kernel's per-device effective ATS reporting and allows
+vfio-pci to mask ATS when the host kernel reports ATS as unsupported.
+
+Emit a warning when ats=on is requested but the physical device does not
+advertise ATS, since ATS cannot be exposed to the guest in this case.
+
+Emit a warning when ats=auto, ats cap is present on the physical device,
+but kernel reports ATS as unsupported.
+
+Suggested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260623204943.989903-3-nathanc@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit bc034e8a959c07471d1214b3525bb68fccce1031)
+---
+ hw/vfio/pci.c | 88 ++++++++++++++++++++++++++++++++++++++++++++++++---
+ hw/vfio/pci.h |  1 +
+ 2 files changed, 85 insertions(+), 4 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 6e0714a630..0160ebcfe5 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2553,10 +2553,53 @@ static bool vfio_pci_synthesize_pasid_cap(VFIOPCIDevice *vdev, Error **errp)
+     return true;
+ }
+ 
+-static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
++/*
++ * Determine whether ATS capability should be advertised for @vdev, based on
++ * whether it was enabled on the command line and whether it is supported
++ * according to the kernel.
++ *
++ * Store whether ATS capability should be advertised in @ats_needed.
++ *
++ * Returns false only when ats=on is explicitly requested but the kernel
++ * reports it is not supported. Returns true in all other cases.
++ */
++static bool vfio_pci_ats_requested_and_supported(VFIOPCIDevice *vdev,
++                                                 bool *ats_needed, Error **errp)
++{
++    HostIOMMUDevice *hiod = vdev->vbasedev.hiod;
++    HostIOMMUDeviceClass *hiodc;
++    bool ats_supported;
++    *ats_needed = false;
++
++    if (vdev->ats == ON_OFF_AUTO_OFF) {
++        return true;
++    }
++
++    *ats_needed = true;
++    if (!hiod) {
++        return true;
++    }
++    hiodc = HOST_IOMMU_DEVICE_GET_CLASS(hiod);
++    if (!hiodc || !hiodc->support_ats) {
++        return true;
++    }
++
++    ats_supported = hiodc->support_ats(hiod);
++    if (vdev->ats == ON_OFF_AUTO_ON && !ats_supported) {
++        error_setg(errp, "vfio-pci: ATS requested but not supported by kernel");
++        *ats_needed = false;
++        return false;
++    }
++
++    *ats_needed = ats_supported;
++    return true;
++}
++
++static void vfio_add_ext_cap(VFIOPCIDevice *vdev, bool ats_needed)
+ {
+     PCIDevice *pdev = PCI_DEVICE(vdev);
+     bool pasid_cap_added = false;
++    bool ats_cap_present = false;
+     Error *err = NULL;
+     uint32_t header;
+     uint16_t cap_id, next, size;
+@@ -2642,7 +2685,19 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
+          */
+         case PCI_EXT_CAP_ID_PASID:
+             pasid_cap_added = true;
+-            /* fallthrough */
++            pcie_add_capability(pdev, cap_id, cap_ver, next, size);
++            break;
++        case PCI_EXT_CAP_ID_ATS:
++            ats_cap_present = true;
++            /*
++             * If ATS is requested and supported according to the kernel, add
++             * the ATS capability. If not supported according to the kernel or
++             * disabled on the qemu command line, omit the ATS cap.
++             */
++            if (ats_needed) {
++                pcie_add_capability(pdev, cap_id, cap_ver, next, size);
++            }
++            break;
+         default:
+             pcie_add_capability(pdev, cap_id, cap_ver, next, size);
+         }
+@@ -2653,6 +2708,16 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
+         error_report_err(err);
+     }
+ 
++    if (vdev->ats == ON_OFF_AUTO_ON && !ats_cap_present) {
++        warn_report("vfio-pci: ats=on requested, but host device has no "
++                    "ATS extended capability");
++    }
++
++    if (vdev->ats == ON_OFF_AUTO_AUTO && ats_cap_present && !ats_needed) {
++        warn_report("vfio-pci: host kernel reports ATS unsupported; "
++                    "ATS capability will be masked");
++    }
++
+     /* Cleanup chain head ID if necessary */
+     if (pci_get_word(pdev->config + PCI_CONFIG_SPACE_SIZE) == 0xFFFF) {
+         pci_set_word(pdev->config + PCI_CONFIG_SPACE_SIZE, 0);
+@@ -2664,6 +2729,7 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
+ bool vfio_pci_add_capabilities(VFIOPCIDevice *vdev, Error **errp)
+ {
+     PCIDevice *pdev = PCI_DEVICE(vdev);
++    bool ats_needed = false;
+ 
+     if (!(pdev->config[PCI_STATUS] & PCI_STATUS_CAP_LIST) ||
+         !pdev->config[PCI_CAPABILITY_LIST]) {
+@@ -2674,7 +2740,11 @@ bool vfio_pci_add_capabilities(VFIOPCIDevice *vdev, Error **errp)
+         return false;
+     }
+ 
+-    vfio_add_ext_cap(vdev);
++    if (!vfio_pci_ats_requested_and_supported(vdev, &ats_needed, errp)) {
++        return false;
++    }
++
++    vfio_add_ext_cap(vdev, ats_needed);
+     return true;
+ }
+ 
+@@ -3845,6 +3915,7 @@ static const Property vfio_pci_properties[] = {
+     DEFINE_PROP_BOOL("skip-vsc-check", VFIOPCIDevice, skip_vsc_check, true),
+     DEFINE_PROP_UINT16("x-vpasid-cap-offset", VFIOPCIDevice,
+                        vpasid_cap_offset, 0),
++    DEFINE_PROP_ON_OFF_AUTO("ats", VFIOPCIDevice, ats, ON_OFF_AUTO_AUTO),
+ };
+ 
+ #ifdef CONFIG_IOMMUFD
+@@ -4002,13 +4073,22 @@ static void vfio_pci_class_init(ObjectClass *klass, const void *data)
+                                           "destination when doing live "
+                                           "migration of device state via "
+                                           "multifd channels");
+-   object_class_property_set_description(klass, /* 11.0 */
++    object_class_property_set_description(klass, /* 11.0 */
+                                           "x-vpasid-cap-offset",
+                                           "PCIe extended configuration space offset at which to place a "
+                                           "synthetic PASID extended capability when PASID is enabled via "
+                                           "a vIOMMU. A value of 0 (default) places the capability at the "
+                                           "end of the extended configuration space. The offset must be "
+                                           "4-byte aligned and within the PCIe extended configuration space");
++    object_class_property_set_description(klass, /* 11.1 */
++                                          "ats",
++                                          "Control guest visibility of the ATS PCIe extended capability. "
++                                          "Valid values are on, off, and auto (default). "
++                                          "'off' always masks ATS. "
++                                          "'on' requires ATS support for the device and fails realize if the "
++                                          "host kernel reports ATS as unavailable for this device. "
++                                          "'auto' masks ATS only when the host kernel reports "
++                                          "ATS as unavailable");
+ }
+ 
+ static const TypeInfo vfio_pci_info = {
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index c1c59e4092..b651d4a3fe 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -189,6 +189,7 @@ struct VFIOPCIDevice {
+     bool clear_parent_atomics_on_exit;
+     bool skip_vsc_check;
+     uint16_t vpasid_cap_offset;
++    OnOffAuto ats;
+     VFIODisplay *dpy;
+     Notifier irqchip_change_notifier;
+     VFIOPCICPR cpr;
+-- 
+2.52.0
+

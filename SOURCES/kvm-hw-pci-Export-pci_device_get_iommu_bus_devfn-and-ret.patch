@@ -1,0 +1,99 @@
+From 557603fab8b9a836d4a00e5c0a169b581b21c526 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 6 Jan 2026 01:12:46 -0500
+Subject: [PATCH 010/111] hw/pci: Export pci_device_get_iommu_bus_devfn() and
+ return bool
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [10/111] eaed17d04b1a47b5101c99ca8066769b1fcc0ba7 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Returns true if PCI device is aliased or false otherwise. This will be
+used in following patch to determine if a PCI device is under a PCI
+bridge.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260106061304.314546-5-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d58230d8754fedf6fc7313e0faa25bb5edc5ba2e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c         | 12 ++++++++----
+ include/hw/pci/pci.h |  2 ++
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index a8eeafd3b2..15dd232cf8 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -2855,20 +2855,21 @@ static void pci_device_class_base_init(ObjectClass *klass, const void *data)
+  * For call sites which don't need aliased BDF, passing NULL to
+  * aliased_[bus|devfn] is allowed.
+  *
++ * Returns true if PCI device RID is aliased or false otherwise.
++ *
+  * @piommu_bus: return root #PCIBus backed by an IOMMU for the PCI device.
+  *
+  * @aliased_bus: return aliased #PCIBus of the PCI device, optional.
+  *
+  * @aliased_devfn: return aliased devfn of the PCI device, optional.
+  */
+-static void pci_device_get_iommu_bus_devfn(PCIDevice *dev,
+-                                           PCIBus **piommu_bus,
+-                                           PCIBus **aliased_bus,
+-                                           int *aliased_devfn)
++bool pci_device_get_iommu_bus_devfn(PCIDevice *dev, PCIBus **piommu_bus,
++                                    PCIBus **aliased_bus, int *aliased_devfn)
+ {
+     PCIBus *bus = pci_get_bus(dev);
+     PCIBus *iommu_bus = bus;
+     int devfn = dev->devfn;
++    bool aliased = false;
+ 
+     while (iommu_bus && !iommu_bus->iommu_ops && iommu_bus->parent_dev) {
+         PCIBus *parent_bus = pci_get_bus(iommu_bus->parent_dev);
+@@ -2905,6 +2906,7 @@ static void pci_device_get_iommu_bus_devfn(PCIDevice *dev,
+                 devfn = parent->devfn;
+                 bus = parent_bus;
+             }
++            aliased = true;
+         }
+ 
+         /*
+@@ -2939,6 +2941,8 @@ static void pci_device_get_iommu_bus_devfn(PCIDevice *dev,
+     if (aliased_devfn) {
+         *aliased_devfn = devfn;
+     }
++
++    return aliased;
+ }
+ 
+ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index 6bccb25ac2..bde9dca8e2 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -637,6 +637,8 @@ typedef struct PCIIOMMUOps {
+                             bool is_write);
+ } PCIIOMMUOps;
+ 
++bool pci_device_get_iommu_bus_devfn(PCIDevice *dev, PCIBus **piommu_bus,
++                                    PCIBus **aliased_bus, int *aliased_devfn);
+ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
+ bool pci_device_set_iommu_device(PCIDevice *dev, HostIOMMUDevice *hiod,
+                                  Error **errp);
+-- 
+2.52.0
+

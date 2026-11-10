@@ -1,14 +1,14 @@
-From f834c37186b266b515c3f7e6b15a5e87e153f699 Mon Sep 17 00:00:00 2001
+From 9a2d6f97d94f24ad7bfc83aea06d3324cbd46424 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:28 +0200
-Subject: [PATCH 3/8] block: Add flags parameter to blk_*_pdiscard()
+Subject: [PATCH 03/52] block: Add flags parameter to blk_*_pdiscard()
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
-RH-Jira: RHEL-190702
-RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [3/8] 6ce7ccfc577d41eda1283271dd5ee7913a1266c5 (kmwolf/rhel-qemu-kvm)
+RH-MergeRequest: 503: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-121686
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [3/7] 40ce25b1169cccc9c655eeb59827f8bf7daf75f4 (kmwolf/centos-qemu-kvm)
 
 All existing callers pass 0, but we need a way to pass BDRV_REQ_NO_QUEUE
 for discard requests.
@@ -126,10 +126,10 @@ index 59841e04a8..91c48299b7 100644
  int co_wrapper_mixed blk_flush(BlockBackend *blk);
  int coroutine_fn blk_co_flush(BlockBackend *blk);
 diff --git a/nbd/server.c b/nbd/server.c
-index d242be9811..c72dee7a3b 100644
+index acec0487a8..bd103a8840 100644
 --- a/nbd/server.c
 +++ b/nbd/server.c
-@@ -2982,7 +2982,7 @@ static coroutine_fn int nbd_handle_request(NBDClient *client,
+@@ -2984,7 +2984,7 @@ static coroutine_fn int nbd_handle_request(NBDClient *client,
                                        "flush failed", errp);
  
      case NBD_CMD_TRIM:

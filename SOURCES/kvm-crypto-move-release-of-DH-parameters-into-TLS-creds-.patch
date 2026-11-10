@@ -1,0 +1,105 @@
+From 2dfd673dc59e20a6f4732295a9fc541168f87548 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 10:38:51 +0000
+Subject: [PATCH 15/30] crypto: move release of DH parameters into TLS creds
+ parent
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [14/27] d0a354e1d3dfcf1f0af4a576b3d233ea1c537a50 (berrange/centos-src-qemu)
+
+The code for releasing DH parameters is common to all credential
+subclasses, and the unload function is only called from the
+finalizers, except for x509 reload, so can be moved into the
+parent with a little update of the reload method.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 11ea2bffda50b44610efeb355e8a261760c5e360)
+---
+ crypto/tlscreds.c     | 6 ++++++
+ crypto/tlscredsanon.c | 4 ----
+ crypto/tlscredspsk.c  | 4 ----
+ crypto/tlscredsx509.c | 7 +++----
+ 4 files changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/crypto/tlscreds.c b/crypto/tlscreds.c
+index 65e97ddd11..a9e0caf864 100644
+--- a/crypto/tlscreds.c
++++ b/crypto/tlscreds.c
+@@ -246,6 +246,12 @@ qcrypto_tls_creds_finalize(Object *obj)
+ {
+     QCryptoTLSCreds *creds = QCRYPTO_TLS_CREDS(obj);
+ 
++#ifdef CONFIG_GNUTLS
++    if (creds->dh_params) {
++        gnutls_dh_params_deinit(creds->dh_params);
++    }
++#endif
++
+     g_free(creds->dir);
+     g_free(creds->priority);
+ }
+diff --git a/crypto/tlscredsanon.c b/crypto/tlscredsanon.c
+index bc3351b5d6..1ddfe4eb31 100644
+--- a/crypto/tlscredsanon.c
++++ b/crypto/tlscredsanon.c
+@@ -92,10 +92,6 @@ qcrypto_tls_creds_anon_unload(QCryptoTLSCredsAnon *creds)
+             creds->data.server = NULL;
+         }
+     }
+-    if (creds->parent_obj.dh_params) {
+-        gnutls_dh_params_deinit(creds->parent_obj.dh_params);
+-        creds->parent_obj.dh_params = NULL;
+-    }
+ }
+ 
+ #else /* ! CONFIG_GNUTLS */
+diff --git a/crypto/tlscredspsk.c b/crypto/tlscredspsk.c
+index 545d3e45db..bf4efe2114 100644
+--- a/crypto/tlscredspsk.c
++++ b/crypto/tlscredspsk.c
+@@ -175,10 +175,6 @@ qcrypto_tls_creds_psk_unload(QCryptoTLSCredsPSK *creds)
+             creds->data.server = NULL;
+         }
+     }
+-    if (creds->parent_obj.dh_params) {
+-        gnutls_dh_params_deinit(creds->parent_obj.dh_params);
+-        creds->parent_obj.dh_params = NULL;
+-    }
+ }
+ 
+ #else /* ! CONFIG_GNUTLS */
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 2519f7690b..d93905ec77 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -684,10 +684,6 @@ qcrypto_tls_creds_x509_unload(QCryptoTLSCredsX509 *creds)
+         gnutls_certificate_free_credentials(creds->data);
+         creds->data = NULL;
+     }
+-    if (creds->parent_obj.dh_params) {
+-        gnutls_dh_params_deinit(creds->parent_obj.dh_params);
+-        creds->parent_obj.dh_params = NULL;
+-    }
+ }
+ 
+ 
+@@ -779,6 +775,9 @@ qcrypto_tls_creds_x509_reload(QCryptoTLSCreds *creds, Error **errp)
+     qcrypto_tls_creds_x509_load(x509_creds, &local_err);
+     if (local_err) {
+         qcrypto_tls_creds_x509_unload(x509_creds);
++        if (creds->dh_params) {
++            gnutls_dh_params_deinit(creds->dh_params);
++        }
+         x509_creds->data = creds_data;
+         creds->dh_params = creds_dh_params;
+         error_propagate(errp, local_err);
+-- 
+2.52.0
+

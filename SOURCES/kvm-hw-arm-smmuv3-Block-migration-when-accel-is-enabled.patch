@@ -1,0 +1,80 @@
+From 81b2907455241359747060e7ccd97f7cdfeaefe0 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 035/111] hw/arm/smmuv3: Block migration when accel is enabled
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [35/111] 8765c2972ab5482b548e8799ed48e3a15505f74c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Live migration is not supported when the SMMUv3 accelerator mode is
+enabled. Add a migration blocker to prevent migration in this
+configuration.
+
+Conflicts: use hw/irq.h and hw/sysbus.h instead of hw/core/*
+because we don't have
+32222dc3bbd1  include: move hw/irq.h to hw/core/ nor
+c755f3b95964  include: move hw/sysbus.h to hw/core
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-28-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit be0cf3c8f121f5c0ec398429666d2ef0e88aa37a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c         | 6 ++++++
+ include/hw/arm/smmuv3.h | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index dba5abc8d3..6faa660bab 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -20,6 +20,7 @@
+ #include "qemu/bitops.h"
+ #include "hw/irq.h"
+ #include "hw/sysbus.h"
++#include "migration/blocker.h"
+ #include "migration/vmstate.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/qdev-core.h"
+@@ -1925,6 +1926,11 @@ static void smmu_realize(DeviceState *d, Error **errp)
+ 
+     if (s->accel) {
+         smmuv3_accel_init(s);
++        error_setg(&s->migration_blocker, "Migration not supported with SMMUv3 "
++                   "accelerator mode enabled");
++        if (migrate_add_blocker(&s->migration_blocker, errp) < 0) {
++            return;
++        }
+     }
+ 
+     c->parent_realize(d, &local_err);
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 5616a8a2be..9c39acd5ca 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -68,6 +68,7 @@ struct SMMUv3State {
+     bool accel;
+     struct SMMUv3AccelState *s_accel;
+     uint64_t msi_gpa;
++    Error *migration_blocker;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

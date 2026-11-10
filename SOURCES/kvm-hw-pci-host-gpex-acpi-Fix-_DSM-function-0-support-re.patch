@@ -1,0 +1,67 @@
+From 5cbfc281e40af4411dbdac94fe704385c473b485 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Wed, 22 Oct 2025 09:06:38 +0100
+Subject: [PATCH 017/116] hw/pci-host/gpex-acpi: Fix _DSM function 0 support
+ return value
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/100] 08174a592249c33057c131aa6ff2d49f346e3fe6 (rovick1/qemu-kvm)
+
+Currently, only function 0 is supported. According to the ACPI
+Specification, Revision 6.6, Section 9.1.1 “_DSM (Device Specific
+Method)”, bit 0 should be 0 to indicate that no other functions
+are supported beyond function 0.
+
+The resulting AML change looks like this:
+
+Method (_DSM, 4, NotSerialized)  // _DSM: Device-Specific Method
+{
+    If ((Arg0 == ToUUID ("e5c937d0-3553-4d7a-9117-ea4d19c3434d")
+    {
+        If ((Arg2 == Zero))
+        {
+            Return (Buffer (One)
+            {
+-               0x01                                             // .
++               0x00                                             // .
+            })
+        }
+    }
+}
+
+Fixes: 5b85eabe68f9 ("acpi: add acpi_dsdt_add_gpex")
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Message-Id: <20251022080639.243965-3-skolothumtho@nvidia.com>
+(cherry picked from commit 325aa2d86a20786c308b0874d15a60d1b924bd0e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci-host/gpex-acpi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/pci-host/gpex-acpi.c b/hw/pci-host/gpex-acpi.c
+index 952a0ace19..4587baeb78 100644
+--- a/hw/pci-host/gpex-acpi.c
++++ b/hw/pci-host/gpex-acpi.c
+@@ -64,7 +64,7 @@ static Aml *build_pci_host_bridge_dsm_method(void)
+     UUID = aml_touuid("E5C937D0-3553-4D7A-9117-EA4D19C3434D");
+     ifctx = aml_if(aml_equal(aml_arg(0), UUID));
+     ifctx1 = aml_if(aml_equal(aml_arg(2), aml_int(0)));
+-    uint8_t byte_list[1] = {1};
++    uint8_t byte_list[1] = {0};
+     buf = aml_buffer(1, byte_list);
+     aml_append(ifctx1, aml_return(buf));
+     aml_append(ifctx, ifctx1);
+-- 
+2.52.0
+

@@ -1,0 +1,103 @@
+From 24472cbc79057934597e994d0a96b04b31b7a7f2 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:18 +0100
+Subject: [PATCH 060/116] vfio/spapr.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [44/100] 86a61536de3668baab89ee1f4d89f3c23973f5e9 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOSpaprContainer and VFIOLegacyContainer
+instead of accessing bcontainer directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-11-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 6c671235636cfb5e825040b4621ff06c77925731)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/spapr.c | 19 +++++++------------
+ 1 file changed, 7 insertions(+), 12 deletions(-)
+
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index acaa9c1419..c883ba6da9 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -61,7 +61,7 @@ static void vfio_prereg_listener_region_add(MemoryListener *listener,
+ {
+     VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
+                                                   prereg_listener);
+-    VFIOLegacyContainer *container = &scontainer->container;
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(scontainer);
+     VFIOContainer *bcontainer = VFIO_IOMMU(container);
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+@@ -121,7 +121,7 @@ static void vfio_prereg_listener_region_del(MemoryListener *listener,
+ {
+     VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
+                                                   prereg_listener);
+-    VFIOLegacyContainer *container = &scontainer->container;
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(scontainer);
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+     int ret;
+@@ -245,8 +245,7 @@ static bool vfio_spapr_create_window(VFIOLegacyContainer *container,
+ {
+     int ret = 0;
+     VFIOContainer *bcontainer = VFIO_IOMMU(container);
+-    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+-                                                  container);
++    VFIOSpaprContainer *scontainer = VFIO_IOMMU_SPAPR(bcontainer);
+     IOMMUMemoryRegion *iommu_mr = IOMMU_MEMORY_REGION(section->mr);
+     uint64_t pagesize = memory_region_iommu_get_min_page_size(iommu_mr), pgmask;
+     unsigned entries, bits_total, bits_per_level, max_levels, ddw_levels;
+@@ -353,8 +352,7 @@ vfio_spapr_container_add_section_window(VFIOContainer *bcontainer,
+                                         Error **errp)
+ {
+     VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+-    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+-                                                  container);
++    VFIOSpaprContainer *scontainer = VFIO_IOMMU_SPAPR(container);
+     VFIOHostDMAWindow *hostwin;
+     hwaddr pgsize = 0;
+     int ret;
+@@ -443,8 +441,7 @@ vfio_spapr_container_del_section_window(VFIOContainer *bcontainer,
+                                         MemoryRegionSection *section)
+ {
+     VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+-    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+-                                                  container);
++    VFIOSpaprContainer *scontainer = VFIO_IOMMU_SPAPR(container);
+ 
+     if (container->iommu_type != VFIO_SPAPR_TCE_v2_IOMMU) {
+         return;
+@@ -464,8 +461,7 @@ vfio_spapr_container_del_section_window(VFIOContainer *bcontainer,
+ static void vfio_spapr_container_release(VFIOContainer *bcontainer)
+ {
+     VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+-    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+-                                                  container);
++    VFIOSpaprContainer *scontainer = VFIO_IOMMU_SPAPR(container);
+     VFIOHostDMAWindow *hostwin, *next;
+ 
+     if (container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU) {
+@@ -482,8 +478,7 @@ static bool vfio_spapr_container_setup(VFIOContainer *bcontainer,
+                                        Error **errp)
+ {
+     VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+-    VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+-                                                  container);
++    VFIOSpaprContainer *scontainer = VFIO_IOMMU_SPAPR(container);
+     struct vfio_iommu_spapr_tce_info info;
+     bool v2 = container->iommu_type == VFIO_SPAPR_TCE_v2_IOMMU;
+     int ret, fd = container->fd;
+-- 
+2.52.0
+

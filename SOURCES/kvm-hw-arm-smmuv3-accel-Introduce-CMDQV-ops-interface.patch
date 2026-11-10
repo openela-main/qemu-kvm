@@ -1,0 +1,112 @@
+From b51c2abea81d87ed70013f9004b716d4264ff839 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:27 +0100
+Subject: [PATCH 084/111] hw/arm/smmuv3-accel: Introduce CMDQV ops interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [84/111] d0ebe2694524a5e53e830a9636b25371c09c820a (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Command Queue Virtualization (CMDQV) is a hardware extension available
+on certain platforms that allows the SMMUv3 command queue to be
+virtualized and passed through to a VM, improving performance.
+
+For example, NVIDIA Tegra241 implements CMDQV to support virtualization
+of multiple command queues (VCMDQs).
+
+The term CMDQV is used here generically to refer to any platform that
+provides hardware support to virtualize the SMMUv3 command queue.
+
+CMDQV support is a specialization of the IOMMUFD-backed accelerated
+SMMUv3 path. Introduce an ops interface to factor out CMDQV-specific
+probe, initialization, and vIOMMU allocation logic from the base
+implementation. The ops pointer and associated state are stored in
+the accelerated SMMUv3 state.
+
+This provides an extensible design to support future vendor-specific
+CMDQV implementations.
+
+No functional change.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-7-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 4912111c682f9649176026c5ce0137c25dc91b4a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.h | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index d89c117fd1..849015f98e 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -10,12 +10,45 @@
+ #define HW_ARM_SMMUV3_ACCEL_H
+ 
+ #include "hw/arm/smmu-common.h"
++#include "hw/arm/smmuv3.h"
+ #include "system/iommufd.h"
+ #ifdef CONFIG_LINUX
+ #include <linux/iommufd.h>
+ #endif
+ #include CONFIG_DEVICES
+ 
++/*
++ * CMDQ-Virtualization (CMDQV) hardware support, extends the SMMUv3 to
++ * support multiple VCMDQs with virtualization capabilities.
++ * CMDQV specific behavior is factored behind this ops interface.
++ */
++typedef struct SMMUv3AccelCmdqvOps {
++    /**
++     * @probe: Mandatory. Vendor-specific device probing.
++     */
++    bool (*probe)(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev, Error **errp);
++    /**
++     * @init: Optional callback. Initialize CMDQV hardware.
++     */
++    bool (*init)(SMMUv3State *s, Error **errp);
++    /**
++     * @alloc_viommu: Mandatory. Allocate CMDQV viommu resources.
++     */
++    bool (*alloc_viommu)(SMMUv3State *s,
++                         HostIOMMUDeviceIOMMUFD *idev,
++                         uint32_t *out_viommu_id,
++                         Error **errp);
++    /**
++     * @free_viommu: Optional callback. Free CMDQV viommu resources.
++     * If NULL, the viommu_id is freed directly via iommufd_backend_free_id().
++     */
++    void (*free_viommu)(SMMUv3State *s);
++    /**
++     * @reset: Optional callback. Reset CMDQV state.
++     */
++    void (*reset)(SMMUv3State *s);
++} SMMUv3AccelCmdqvOps;
++
+ /*
+  * Represents an accelerated SMMU instance backed by an iommufd vIOMMU object.
+  * Holds bypass and abort proxy HWPT IDs used for device attachment.
+@@ -28,6 +61,7 @@ typedef struct SMMUv3AccelState {
+     QLIST_HEAD(, SMMUv3AccelDevice) device_list;
+     bool auto_mode;
+     bool auto_finalised;
++    const SMMUv3AccelCmdqvOps *cmdqv_ops;
+ } SMMUv3AccelState;
+ 
+ typedef struct SMMUS1Hwpt {
+-- 
+2.52.0
+

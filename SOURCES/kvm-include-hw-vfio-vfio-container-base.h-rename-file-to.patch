@@ -1,0 +1,129 @@
+From b2f885bec7e4dc0b1618063a7c1220bc235c55eb Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:12 +0100
+Subject: [PATCH 054/116] include/hw/vfio/vfio-container-base.h: rename file to
+ vfio-container.h
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [38/100] 8f997c2726be98dd8083f32305a20aa992bbc46d (rovick1/qemu-kvm)
+
+With the rename of VFIOContainerBase to VFIOContainer, the vfio-container-base.h
+header file containing the struct definition is misleading. Rename it from
+vfio-container-base.h to vfio-container.h accordingly, fixing up the name
+of the include guard at the same time.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-5-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit ef70eb32b8a15abea6af8180ba03e771ae041169)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/container.h                                    | 2 +-
+ hw/vfio/container-base.c                                    | 2 +-
+ hw/vfio/vfio-iommufd.h                                      | 2 +-
+ include/hw/vfio/vfio-container-legacy.h                     | 2 +-
+ include/hw/vfio/{vfio-container-base.h => vfio-container.h} | 6 +++---
+ include/hw/vfio/vfio-device.h                               | 2 +-
+ 6 files changed, 8 insertions(+), 8 deletions(-)
+ rename include/hw/vfio/{vfio-container-base.h => vfio-container.h} (98%)
+
+diff --git a/hw/vfio-user/container.h b/hw/vfio-user/container.h
+index 241863ef97..a2b42e3169 100644
+--- a/hw/vfio-user/container.h
++++ b/hw/vfio-user/container.h
+@@ -9,7 +9,7 @@
+ 
+ #include "qemu/osdep.h"
+ 
+-#include "hw/vfio/vfio-container-base.h"
++#include "hw/vfio/vfio-container.h"
+ #include "hw/vfio-user/proxy.h"
+ 
+ /* MMU container sub-class for vfio-user. */
+diff --git a/hw/vfio/container-base.c b/hw/vfio/container-base.c
+index 98c5198e50..250b20f424 100644
+--- a/hw/vfio/container-base.c
++++ b/hw/vfio/container-base.c
+@@ -18,7 +18,7 @@
+ #include "system/ram_addr.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+-#include "hw/vfio/vfio-container-base.h"
++#include "hw/vfio/vfio-container.h"
+ #include "hw/vfio/vfio-device.h" /* vfio_device_reset_handler */
+ #include "system/reset.h"
+ #include "vfio-helpers.h"
+diff --git a/hw/vfio/vfio-iommufd.h b/hw/vfio/vfio-iommufd.h
+index 6c049d9257..13f412aad7 100644
+--- a/hw/vfio/vfio-iommufd.h
++++ b/hw/vfio/vfio-iommufd.h
+@@ -9,7 +9,7 @@
+ #ifndef HW_VFIO_VFIO_IOMMUFD_H
+ #define HW_VFIO_VFIO_IOMMUFD_H
+ 
+-#include "hw/vfio/vfio-container-base.h"
++#include "hw/vfio/vfio-container.h"
+ 
+ typedef struct VFIODevice VFIODevice;
+ 
+diff --git a/include/hw/vfio/vfio-container-legacy.h b/include/hw/vfio/vfio-container-legacy.h
+index ab5130d26e..74a72df018 100644
+--- a/include/hw/vfio/vfio-container-legacy.h
++++ b/include/hw/vfio/vfio-container-legacy.h
+@@ -9,7 +9,7 @@
+ #ifndef HW_VFIO_CONTAINER_LEGACY_H
+ #define HW_VFIO_CONTAINER_LEGACY_H
+ 
+-#include "hw/vfio/vfio-container-base.h"
++#include "hw/vfio/vfio-container.h"
+ #include "hw/vfio/vfio-cpr.h"
+ 
+ typedef struct VFIOLegacyContainer VFIOLegacyContainer;
+diff --git a/include/hw/vfio/vfio-container-base.h b/include/hw/vfio/vfio-container.h
+similarity index 98%
+rename from include/hw/vfio/vfio-container-base.h
+rename to include/hw/vfio/vfio-container.h
+index b580f4a02d..b8fb2b8b5d 100644
+--- a/include/hw/vfio/vfio-container-base.h
++++ b/include/hw/vfio/vfio-container.h
+@@ -10,8 +10,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
+-#ifndef HW_VFIO_VFIO_CONTAINER_BASE_H
+-#define HW_VFIO_VFIO_CONTAINER_BASE_H
++#ifndef HW_VFIO_VFIO_CONTAINER_H
++#define HW_VFIO_VFIO_CONTAINER_H
+ 
+ #include "system/memory.h"
+ 
+@@ -276,4 +276,4 @@ VFIORamDiscardListener *vfio_find_ram_discard_listener(
+ void vfio_container_region_add(VFIOContainer *bcontainer,
+                                MemoryRegionSection *section, bool cpr_remap);
+ 
+-#endif /* HW_VFIO_VFIO_CONTAINER_BASE_H */
++#endif /* HW_VFIO_VFIO_CONTAINER_H */
+diff --git a/include/hw/vfio/vfio-device.h b/include/hw/vfio/vfio-device.h
+index d20186327f..28047a6339 100644
+--- a/include/hw/vfio/vfio-device.h
++++ b/include/hw/vfio/vfio-device.h
+@@ -27,7 +27,7 @@
+ #include <linux/vfio.h>
+ #endif
+ #include "system/system.h"
+-#include "hw/vfio/vfio-container-base.h"
++#include "hw/vfio/vfio-container.h"
+ #include "hw/vfio/vfio-cpr.h"
+ #include "system/host_iommu_device.h"
+ #include "system/iommufd.h"
+-- 
+2.52.0
+

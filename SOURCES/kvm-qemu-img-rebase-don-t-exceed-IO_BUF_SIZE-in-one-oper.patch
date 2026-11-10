@@ -1,0 +1,161 @@
+From 21f29bc69a9ce910c6869453a48665087fddfa29 Mon Sep 17 00:00:00 2001
+From: Alberto Garcia <berto@igalia.com>
+Date: Fri, 7 Nov 2025 10:18:30 +0100
+Subject: [PATCH 23/52] qemu-img rebase: don't exceed IO_BUF_SIZE in one
+ operation
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [16/45] c0b0720c3a75eeb7a1519e1df29ffb9a59adc531 (kmwolf/centos-qemu-kvm)
+
+During a rebase operation data is copied from the backing chain into
+the target image using a loop, and each iteration looks for a
+contiguous region of allocated data of at most IO_BUF_SIZE (2 MB).
+
+Once that region is found, and in order to avoid partial writes, its
+boundaries are extended so they are aligned to the (sub)clusters of
+the target image (see commit 12df580b).
+
+This operation can however result in a region that exceeds the maximum
+allowed IO_BUF_SIZE, crashing qemu-img.
+
+This can be easily reproduced when the source image has a smaller
+cluster size than the target image:
+
+base <- int <- active
+
+$ qemu-img create -f qcow2 base.qcow2 4M
+$ qemu-img create -f qcow2 -F qcow2 -b base.qcow2 -o cluster_size=1M int.qcow2
+$ qemu-img create -f qcow2 -F qcow2 -b int.qcow2  -o cluster_size=2M active.qcow2
+$ qemu-io -c "write -P 0xff 1M 2M" int.qcow2
+$ qemu-img rebase -F qcow2 -b base.qcow2 active.qcow2
+qemu-img: qemu-img.c:4102: img_rebase: Assertion `written + pnum <= IO_BUF_SIZE' failed.
+Aborted
+
+Cc: qemu-stable <qemu-stable@nongnu.org>
+Resolves: https://gitlab.com/qemu-project/qemu/-/issues/3174
+Fixes: 12df580b3b7f ("qemu-img: rebase: avoid unnecessary COW operations")
+Signed-off-by: Alberto Garcia <berto@igalia.com>
+Message-ID: <20251107091834.383781-1-berto@igalia.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 909852ba6b4a22fd2b6f9d8b88adb5fc47dfa781)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ qemu-img.c                 |  2 +-
+ tests/qemu-iotests/024     | 46 ++++++++++++++++++++++++++++++++++++++
+ tests/qemu-iotests/024.out | 26 +++++++++++++++++++++
+ 3 files changed, 73 insertions(+), 1 deletion(-)
+
+diff --git a/qemu-img.c b/qemu-img.c
+index 7a32d2d16c..c42dd4e995 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -4081,7 +4081,7 @@ static int img_rebase(const img_cmd_t *ccmd, int argc, char **argv)
+             n += offset - QEMU_ALIGN_DOWN(offset, write_align);
+             offset = QEMU_ALIGN_DOWN(offset, write_align);
+             n += QEMU_ALIGN_UP(offset + n, write_align) - (offset + n);
+-            n = MIN(n, size - offset);
++            n = MIN(n, MIN(size - offset, IO_BUF_SIZE));
+             assert(!bdrv_is_allocated(unfiltered_bs, offset, n, &n_alloc) &&
+                    n_alloc == n);
+ 
+diff --git a/tests/qemu-iotests/024 b/tests/qemu-iotests/024
+index b29c76e161..021169b4a1 100755
+--- a/tests/qemu-iotests/024
++++ b/tests/qemu-iotests/024
+@@ -315,6 +315,52 @@ echo
+ 
+ $QEMU_IMG map "$OVERLAY" | _filter_qemu_img_map
+ 
++# Check that the region to copy to the overlay during a rebase
++# operation does not exceed the I/O buffer size.
++#
++# backing_new <-- backing_old <-- overlay
++#
++# Backing (new): -- -- -- --    <-- Empty image, size 4MB
++# Backing (old):|--|ff|ff|--|   <-- 4 clusters, 1MB each
++# Overlay:      |-- --|-- --|   <-- 2 clusters, 2MB each
++#
++# The data at [1MB, 3MB) must be copied from the old backing image to
++# the overlay. However the rebase code will extend that region to the
++# overlay's (sub)cluster boundaries to avoid CoW (see commit 12df580b).
++# This test checks that IO_BUF_SIZE (2 MB) is taken into account.
++
++echo
++echo "=== Test that the region to copy does not exceed 2MB (IO_BUF_SIZE) ==="
++echo
++
++echo "Creating backing chain"
++echo
++
++TEST_IMG=$BASE_NEW _make_test_img 4M
++TEST_IMG=$BASE_OLD CLUSTER_SIZE=1M _make_test_img -b "$BASE_NEW" -F $IMGFMT
++TEST_IMG=$OVERLAY  CLUSTER_SIZE=2M _make_test_img -b "$BASE_OLD" -F $IMGFMT
++
++echo
++echo "Writing data to region [1MB, 3MB)"
++echo
++
++$QEMU_IO "$BASE_OLD" -c "write -P 0xff 1M 2M" | _filter_qemu_io
++
++echo
++echo "Rebasing"
++echo
++
++$QEMU_IMG rebase -b "$BASE_NEW" -F $IMGFMT "$OVERLAY"
++
++echo "Verifying the data"
++echo
++
++$QEMU_IO "$OVERLAY" -c "read -P 0x00  0 1M" | _filter_qemu_io
++$QEMU_IO "$OVERLAY" -c "read -P 0xff 1M 2M" | _filter_qemu_io
++$QEMU_IO "$OVERLAY" -c "read -P 0x00 3M 1M" | _filter_qemu_io
++
++$QEMU_IMG map "$OVERLAY" | _filter_qemu_img_map
++
+ echo
+ 
+ # success, all done
+diff --git a/tests/qemu-iotests/024.out b/tests/qemu-iotests/024.out
+index 3d1e31927a..1b7522ba71 100644
+--- a/tests/qemu-iotests/024.out
++++ b/tests/qemu-iotests/024.out
+@@ -243,4 +243,30 @@ Offset          Length          File
+ 0               0x20000         TEST_DIR/subdir/t.IMGFMT
+ 0x40000         0x20000         TEST_DIR/subdir/t.IMGFMT
+ 
++=== Test that the region to copy does not exceed 2MB (IO_BUF_SIZE) ===
++
++Creating backing chain
++
++Formatting 'TEST_DIR/subdir/t.IMGFMT.base_new', fmt=IMGFMT size=4194304
++Formatting 'TEST_DIR/subdir/t.IMGFMT.base_old', fmt=IMGFMT size=4194304 backing_file=TEST_DIR/subdir/t.IMGFMT.base_new backing_fmt=IMGFMT
++Formatting 'TEST_DIR/subdir/t.IMGFMT', fmt=IMGFMT size=4194304 backing_file=TEST_DIR/subdir/t.IMGFMT.base_old backing_fmt=IMGFMT
++
++Writing data to region [1MB, 3MB)
++
++wrote 2097152/2097152 bytes at offset 1048576
++2 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++
++Rebasing
++
++Verifying the data
++
++read 1048576/1048576 bytes at offset 0
++1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++read 2097152/2097152 bytes at offset 1048576
++2 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++read 1048576/1048576 bytes at offset 3145728
++1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++Offset          Length          File
++0               0x400000        TEST_DIR/subdir/t.IMGFMT
++
+ *** done
+-- 
+2.52.0
+

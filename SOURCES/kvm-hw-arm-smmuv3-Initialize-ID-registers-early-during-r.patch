@@ -1,0 +1,96 @@
+From 27993494929455703de48a0fdd98c78af882dada Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 028/111] hw/arm/smmuv3: Initialize ID registers early during
+ realize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [28/111] c31ff8cc5b1eda787830e66138080dbf11f6906e (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Factor out ID register init into smmuv3_init_id_regs() and call it from
+realize(). This ensures ID registers are initialized early for use in the
+accelerated SMMUv3 path and will be utilized in subsequent patch.
+
+Other registers remain initialized in smmuv3_reset().
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-21-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit f577dcdb5c1ca7d458d2cb365e884813c1505f9b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 513da966a4..dba5abc8d3 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -258,7 +258,12 @@ void smmuv3_record_event(SMMUv3State *s, SMMUEventInfo *info)
+     info->recorded = true;
+ }
+ 
+-static void smmuv3_init_regs(SMMUv3State *s)
++/*
++ * Called during realize(), as the ID registers will be accessed early in the
++ * SMMUv3 accel path for feature compatibility checks. The remaining registers
++ * are initialized later in smmuv3_reset().
++ */
++static void smmuv3_init_id_regs(SMMUv3State *s)
+ {
+     /* Based on sys property, the stages supported in smmu will be advertised.*/
+     if (s->stage && !strcmp("2", s->stage)) {
+@@ -298,7 +303,11 @@ static void smmuv3_init_regs(SMMUv3State *s)
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN4K, 1);
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN16K, 1);
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN64K, 1);
++    s->aidr = 0x1;
++}
+ 
++static void smmuv3_reset(SMMUv3State *s)
++{
+     s->cmdq.base = deposit64(s->cmdq.base, 0, 5, SMMU_CMDQS);
+     s->cmdq.prod = 0;
+     s->cmdq.cons = 0;
+@@ -310,7 +319,6 @@ static void smmuv3_init_regs(SMMUv3State *s)
+ 
+     s->features = 0;
+     s->sid_split = 0;
+-    s->aidr = 0x1;
+     s->cr[0] = 0;
+     s->cr0ack = 0;
+     s->irq_ctrl = 0;
+@@ -1903,7 +1911,7 @@ static void smmu_reset_exit(Object *obj, ResetType type)
+         c->parent_phases.exit(obj, type);
+     }
+ 
+-    smmuv3_init_regs(s);
++    smmuv3_reset(s);
+     smmuv3_accel_reset(s);
+ }
+ 
+@@ -1935,6 +1943,7 @@ static void smmu_realize(DeviceState *d, Error **errp)
+     sysbus_init_mmio(dev, &sys->iomem);
+ 
+     smmu_init_irq(s, dev);
++    smmuv3_init_id_regs(s);
+ }
+ 
+ static const VMStateDescription vmstate_smmuv3_queue = {
+-- 
+2.52.0
+

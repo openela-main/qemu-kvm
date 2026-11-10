@@ -1,0 +1,110 @@
+From 7916e88667364d8845de78f481c2f611e5cc0eb0 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:23 +0100
+Subject: [PATCH 080/111] backends/iommufd: Update iommufd_backend_alloc_viommu
+ to allow user ptr
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [80/111] 6068eed2afc6aa74d12fec8e2bf154f86dfd8671 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+The updated IOMMUFD VIOMMU_ALLOC uAPI allows userspace to provide a data
+buffer when creating a vIOMMU (e.g. for Tegra241 CMDQV). Extend
+iommufd_backend_alloc_viommu() to pass a user pointer and size to the
+kernel.
+
+Update the caller accordingly.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-3-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d2f3b3156dbdcdf3b2136e3450014317bdd9f864)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c       | 4 ++++
+ backends/trace-events    | 2 +-
+ hw/arm/smmuv3-accel.c    | 4 ++--
+ include/system/iommufd.h | 1 +
+ 4 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index b328f89699..621b6115cb 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -459,6 +459,7 @@ bool iommufd_backend_invalidate_cache(IOMMUFDBackend *be, uint32_t id,
+ 
+ bool iommufd_backend_alloc_viommu(IOMMUFDBackend *be, uint32_t dev_id,
+                                   uint32_t viommu_type, uint32_t hwpt_id,
++                                  void *data_ptr, uint32_t data_len,
+                                   uint32_t *out_viommu_id, Error **errp)
+ {
+     int ret;
+@@ -467,11 +468,14 @@ bool iommufd_backend_alloc_viommu(IOMMUFDBackend *be, uint32_t dev_id,
+         .type = viommu_type,
+         .dev_id = dev_id,
+         .hwpt_id = hwpt_id,
++        .data_len = data_len,
++        .data_uptr = (uintptr_t)data_ptr,
+     };
+ 
+     ret = ioctl(be->fd, IOMMU_VIOMMU_ALLOC, &alloc_viommu);
+ 
+     trace_iommufd_backend_alloc_viommu(be->fd, dev_id, viommu_type, hwpt_id,
++                                       (uintptr_t)data_ptr, data_len,
+                                        alloc_viommu.out_viommu_id, ret);
+     if (ret) {
+         error_setg_errno(errp, errno, "IOMMU_VIOMMU_ALLOC failed");
+diff --git a/backends/trace-events b/backends/trace-events
+index 5afa7a40be..934cdd8107 100644
+--- a/backends/trace-events
++++ b/backends/trace-events
+@@ -21,6 +21,6 @@ iommufd_backend_free_id(int iommufd, uint32_t id, int ret) " iommufd=%d id=%d (%
+ iommufd_backend_set_dirty(int iommufd, uint32_t hwpt_id, bool start, int ret) " iommufd=%d hwpt=%u enable=%d (%d)"
+ iommufd_backend_get_dirty_bitmap(int iommufd, uint32_t hwpt_id, uint64_t iova, uint64_t size, uint64_t page_size, int ret) " iommufd=%d hwpt=%u iova=0x%"PRIx64" size=0x%"PRIx64" page_size=0x%"PRIx64" (%d)"
+ iommufd_backend_invalidate_cache(int iommufd, uint32_t id, uint32_t data_type, uint32_t entry_len, uint32_t entry_num, uint32_t done_num, uint64_t data_ptr, int ret) " iommufd=%d id=%u data_type=%u entry_len=%u entry_num=%u done_num=%u data_ptr=0x%"PRIx64" (%d)"
+-iommufd_backend_alloc_viommu(int iommufd, uint32_t dev_id, uint32_t type, uint32_t hwpt_id, uint32_t viommu_id, int ret) " iommufd=%d type=%u dev_id=%u hwpt_id=%u viommu_id=%u (%d)"
++iommufd_backend_alloc_viommu(int iommufd, uint32_t dev_id, uint32_t type, uint32_t hwpt_id, uint64_t data_ptr, uint32_t data_len, uint32_t viommu_id, int ret) " iommufd=%d type=%u dev_id=%u hwpt_id=%u data_ptr=0x%"PRIx64" data_len=0x%x viommu_id=%u (%d)"
+ iommufd_backend_alloc_vdev(int iommufd, uint32_t dev_id, uint32_t viommu_id, uint64_t virt_id, uint32_t vdev_id, int ret) " iommufd=%d dev_id=%u viommu_id=%u virt_id=0x%"PRIx64" vdev_id=%u (%d)"
+ iommufd_viommu_alloc_eventq(int iommufd, uint32_t viommu_id, uint32_t type, uint32_t veventq_id, uint32_t veventq_fd, int ret) " iommufd=%d viommu_id=%u type=%u veventq_id=%u veventq_fd=%u (%d)"
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 163d3e7279..4cef487679 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -582,8 +582,8 @@ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *hiodi,
+     IOMMUFDViommu *viommu;
+ 
+     if (!iommufd_backend_alloc_viommu(hiodi->iommufd, hiodi->devid,
+-                                      IOMMU_VIOMMU_TYPE_ARM_SMMUV3,
+-                                      s2_hwpt_id, &viommu_id, errp)) {
++                                      IOMMU_VIOMMU_TYPE_ARM_SMMUV3, s2_hwpt_id,
++                                      NULL, 0, &viommu_id, errp)) {
+         return false;
+     }
+ 
+diff --git a/include/system/iommufd.h b/include/system/iommufd.h
+index e45f4a5e87..783d125ee4 100644
+--- a/include/system/iommufd.h
++++ b/include/system/iommufd.h
+@@ -89,6 +89,7 @@ bool iommufd_backend_alloc_hwpt(IOMMUFDBackend *be, uint32_t dev_id,
+                                 Error **errp);
+ bool iommufd_backend_alloc_viommu(IOMMUFDBackend *be, uint32_t dev_id,
+                                   uint32_t viommu_type, uint32_t hwpt_id,
++                                  void *data_ptr, uint32_t data_len,
+                                   uint32_t *out_hwpt, Error **errp);
+ 
+ bool iommufd_backend_alloc_vdev(IOMMUFDBackend *be, uint32_t dev_id,
+-- 
+2.52.0
+

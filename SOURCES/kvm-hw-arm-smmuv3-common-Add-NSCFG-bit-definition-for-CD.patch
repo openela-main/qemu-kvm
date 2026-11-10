@@ -1,0 +1,62 @@
+From 65ad5f09c955ddda26e37eab3178be5740f9aa27 Mon Sep 17 00:00:00 2001
+From: Tao Tang <tangtao1634@phytium.com.cn>
+Date: Sun, 21 Dec 2025 16:25:11 +0800
+Subject: [PATCH 018/111] hw/arm/smmuv3-common: Add NSCFG bit definition for CD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [18/111] 881eb3ccb1c31e2207e8aa8b98d80fde6436cce3 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Add NSCFG bit definition for CD structure. This allows proper
+configuration of non-secure access settings in CD.
+
+Signed-off-by: Tao Tang <tangtao1634@phytium.com.cn>
+Reviewed-by: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Message-ID: <20260119161112.3841386-5-tangtao1634@phytium.com.cn>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit ee1c84ded10cf82674e494df4f6b92aef099e4fb)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/hw/arm/smmuv3-common.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index 90300ad61c..06ef6e7720 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -123,11 +123,13 @@ REG32(CD_1, 4)
+     FIELD(CD_1, A, 14, 1)
+     FIELD(CD_1, ASID, 16, 16)
+ REG32(CD_2, 8)
++    FIELD(CD_2, NSCFG0, 0, 1)
+     FIELD(CD_2, HAD0, 1, 1)
+     FIELD(CD_2, TTB0_LO, 4, 28)
+ REG32(CD_3, 12)
+     FIELD(CD_3, TTB0_HI, 0, 20)
+ REG32(CD_4, 16)
++    FIELD(CD_4, NSCFG1, 0, 1)
+     FIELD(CD_4, HAD1, 1, 1)
+     FIELD(CD_4, TTB1_LO, 4, 28)
+ REG32(CD_5, 20)
+@@ -155,6 +157,9 @@ REG32(CD_5, 20)
+ #define CD_R(x)          FIELD_EX32((x)->word[1], CD_1, R)
+ #define CD_A(x)          FIELD_EX32((x)->word[1], CD_1, A)
+ #define CD_ASID(x)       FIELD_EX32((x)->word[1], CD_1, ASID)
++#define CD_NSCFG(x, sel) ((sel) ?                                         \
++    FIELD_EX32((x)->word[4], CD_4, NSCFG1) :                              \
++    FIELD_EX32((x)->word[2], CD_2, NSCFG0))
+ #define CD_HAD(x, sel)   ((sel) ?                                         \
+     FIELD_EX32((x)->word[4], CD_4, HAD1) :                                \
+     FIELD_EX32((x)->word[2], CD_2, HAD0))
+-- 
+2.52.0
+

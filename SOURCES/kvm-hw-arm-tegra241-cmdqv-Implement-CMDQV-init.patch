@@ -1,0 +1,163 @@
+From 45e38151ba9dbaed137e4a8df39e4ab795ac39ab Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:32 +0100
+Subject: [PATCH 090/111] hw/arm/tegra241-cmdqv: Implement CMDQV init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [90/111] 88aae2a631de96c673ac5615e40b98040a2a4961 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Tegra241 CMDQV extends SMMUv3 with support for virtual command queues
+(VCMDQs) exposed via a CMDQV MMIO region. The CMDQV MMIO space is split
+into 64KB pages:
+
+0x00000  (CMDQ-V Config page)
+0x10000  (CMDQ-V CMDQ Page0)
+0x20000  (CMDQ-V CMDQ Page1)
+0x30000  (Virtual Interface Page0)
+0x40000  (Virtual Interface Page1)
+
+This patch wires up the Tegra241 CMDQV init callback and allocates
+vendor-specific CMDQV state. The state pointer is stored in
+SMMUv3AccelState for use by subsequent CMDQV operations.
+
+The CMDQV MMIO region and a dedicated IRQ line are registered with the
+SMMUv3 device. The MMIO read/write handlers are currently stubs and will
+be implemented in later patches.
+
+The CMDQV interrupt is edge-triggered and indicates VCMDQ or VINTF
+error conditions. This patch only registers the IRQ line. Interrupt
+generation and propagation to the guest will be added in a subsequent
+patch.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260609112552.378999-12-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit b110918bce7c65bd514c5dfd36e6abc8c21534f5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.h   |  1 +
+ hw/arm/tegra241-cmdqv.c | 40 ++++++++++++++++++++++++++++++++++++++--
+ hw/arm/tegra241-cmdqv.h | 20 ++++++++++++++++++++
+ 3 files changed, 59 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index b45f25ad03..e0bbec8581 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -61,6 +61,7 @@ typedef struct SMMUv3AccelState {
+     bool auto_mode;
+     bool auto_finalised;
+     const SMMUv3AccelCmdqvOps *cmdqv_ops;
++    void *cmdqv;  /* vendor specific CMDQV state */
+ } SMMUv3AccelState;
+ 
+ typedef struct SMMUS1Hwpt {
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 3a19a1af56..2875affc8d 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -13,6 +13,17 @@
+ #include "smmuv3-accel.h"
+ #include "tegra241-cmdqv.h"
+ 
++static uint64_t tegra241_cmdqv_read_mmio(void *opaque, hwaddr offset,
++                                         unsigned size)
++{
++    return 0;
++}
++
++static void tegra241_cmdqv_write_mmio(void *opaque, hwaddr offset,
++                                      uint64_t value, unsigned size)
++{
++}
++
+ static void tegra241_cmdqv_free_viommu(SMMUv3State *s)
+ {
+ }
+@@ -29,10 +40,35 @@ static void tegra241_cmdqv_reset(SMMUv3State *s)
+ {
+ }
+ 
++static const MemoryRegionOps mmio_cmdqv_ops = {
++    .read = tegra241_cmdqv_read_mmio,
++    .write = tegra241_cmdqv_write_mmio,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 4,
++        .max_access_size = 8,
++    },
++    .impl = {
++        .min_access_size = 4,
++        .max_access_size = 8,
++    },
++};
++
+ static bool tegra241_cmdqv_init(SMMUv3State *s, Error **errp)
+ {
+-    error_setg(errp, "NVIDIA Tegra241 CMDQV is unsupported");
+-    return false;
++    SysBusDevice *sbd = SYS_BUS_DEVICE(OBJECT(s));
++    SMMUv3AccelState *accel = s->s_accel;
++    Tegra241CMDQV *cmdqv;
++
++    cmdqv = g_new0(Tegra241CMDQV, 1);
++    cmdqv->cmdqv_data = g_new0(struct iommu_viommu_tegra241_cmdqv, 1);
++    memory_region_init_io(&cmdqv->mmio_cmdqv, OBJECT(s), &mmio_cmdqv_ops, cmdqv,
++                          "tegra241-cmdqv", TEGRA241_CMDQV_IO_LEN);
++    sysbus_init_mmio(sbd, &cmdqv->mmio_cmdqv);
++    sysbus_init_irq(sbd, &cmdqv->irq);
++    cmdqv->s_accel = accel;
++    accel->cmdqv = cmdqv;
++    return true;
+ }
+ 
+ static bool tegra241_cmdqv_probe(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index 38c8b27b4d..a5f65a8991 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -14,6 +14,26 @@
+ #define CMDQV_NUM_CMDQ_LOG2       1
+ #define CMDQV_NUM_SID_PER_VI_LOG2 4
+ 
++/*
++ * Tegra241 CMDQV MMIO layout (64KB pages)
++ *
++ * 0x00000  (CMDQ-V Config page)
++ * 0x10000  (CMDQ-V CMDQ Page0)
++ * 0x20000  (CMDQ-V CMDQ Page1)
++ * 0x30000  (Virtual Interface Page0)
++ * 0x40000  (Virtual Interface Page1)
++ */
++#define TEGRA241_CMDQV_IO_LEN 0x50000
++
++struct iommu_viommu_tegra241_cmdqv;
++
++typedef struct Tegra241CMDQV {
++    struct iommu_viommu_tegra241_cmdqv *cmdqv_data;
++    SMMUv3AccelState *s_accel;
++    MemoryRegion mmio_cmdqv;
++    qemu_irq irq;
++} Tegra241CMDQV;
++
+ const SMMUv3AccelCmdqvOps *tegra241_cmdqv_get_ops(void);
+ 
+ #endif /* HW_ARM_TEGRA241_CMDQV_H */
+-- 
+2.52.0
+

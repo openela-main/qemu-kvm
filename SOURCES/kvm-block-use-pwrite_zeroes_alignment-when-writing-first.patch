@@ -1,16 +1,15 @@
-From c92790705ea64e29191ad00bd61e1ad13011c6b4 Mon Sep 17 00:00:00 2001
+From ca326a462336a694d317d03793b5f741125633b7 Mon Sep 17 00:00:00 2001
 From: Stefan Hajnoczi <stefanha@redhat.com>
 Date: Tue, 7 Oct 2025 10:16:59 -0400
-Subject: [PATCH 2/3] block: use pwrite_zeroes_alignment when writing first
+Subject: [PATCH 35/52] block: use pwrite_zeroes_alignment when writing first
  sector
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 565: block: Fix image creation on storage with 4k sector size
-RH-Jira: RHEL-207389
-RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
-RH-Acked-by: German Maglione <None>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
 RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
-RH-Commit: [2/3] 1854afab367accbe5a4ffdcbb7cea180595b6bdc (kmwolf/rhel-qemu-kvm)
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [28/45] aff37a9c095009b900cbf2d02ca378e21ec365aa (kmwolf/centos-qemu-kvm)
 
 Since commit 5634622bcb33 ("file-posix: allow BLKZEROOUT with -t
 writeback"), qemu-img create errors out on a Linux loop block device
@@ -38,6 +37,7 @@ Reviewed-by: Fiona Ebner <f.ebner@proxmox.com>
 Reviewed-by: Kevin Wolf <kwolf@redhat.com>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 (cherry picked from commit d704a13d2c025779bc91d04e127427347ddcf3b3)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
 Signed-off-by: Kevin Wolf <kwolf@redhat.com>
 ---
  block.c                           |  3 ++-

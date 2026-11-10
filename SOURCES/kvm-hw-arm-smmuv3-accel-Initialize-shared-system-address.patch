@@ -1,0 +1,93 @@
+From e9fa710039a71015b0dfcff975e5ee16fb1f310f Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 008/111] hw/arm/smmuv3-accel: Initialize shared system address
+ space
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [8/111] 696fdb31b39d27f329d68bc0d8acd4686ef7f596 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+To support accelerated SMMUv3 instances, introduce a shared system-wide
+AddressSpace (shared_as_sysmem) that aliases the global system memory.
+This shared AddressSpace will be used in a subsequent patch for all
+vfio-pci devices behind all accelerated SMMUv3 instances within a VM.
+
+Sharing a single system AddressSpace ensures that all devices behind
+accelerated SMMUv3s use the same system address space pointer. This
+allows VFIO/iommufd to reuse a single IOAS ID in iommufd_cdev_attach(),
+enabling the Stage-2 page tables to be shared within the VM rather than
+duplicated for each SMMUv3 instance.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-7-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 7d7931257d6f748d8f0cd595952425c19670f0b5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 99ef0db8c4..b2eded743e 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -11,6 +11,14 @@
+ #include "hw/arm/smmuv3.h"
+ #include "smmuv3-accel.h"
+ 
++/*
++ * The root region aliases the global system memory, and shared_as_sysmem
++ * provides a shared Address Space referencing it. This Address Space is used
++ * by all vfio-pci devices behind all accelerated SMMUv3 instances within a VM.
++ */
++static MemoryRegion root, sysmem;
++static AddressSpace *shared_as_sysmem;
++
+ static SMMUv3AccelDevice *smmuv3_accel_get_dev(SMMUState *bs, SMMUPciBus *sbus,
+                                                PCIBus *bus, int devfn)
+ {
+@@ -51,9 +59,27 @@ static const PCIIOMMUOps smmuv3_accel_ops = {
+     .get_address_space = smmuv3_accel_find_add_as,
+ };
+ 
++static void smmuv3_accel_as_init(SMMUv3State *s)
++{
++
++    if (shared_as_sysmem) {
++        return;
++    }
++
++    memory_region_init(&root, OBJECT(s), "root", UINT64_MAX);
++    memory_region_init_alias(&sysmem, OBJECT(s), "smmuv3-accel-sysmem",
++                             get_system_memory(), 0,
++                             memory_region_size(get_system_memory()));
++    memory_region_add_subregion(&root, 0, &sysmem);
++
++    shared_as_sysmem = g_new0(AddressSpace, 1);
++    address_space_init(shared_as_sysmem, &root, "smmuv3-accel-as-sysmem");
++}
++
+ void smmuv3_accel_init(SMMUv3State *s)
+ {
+     SMMUState *bs = ARM_SMMU(s);
+ 
+     bs->iommu_ops = &smmuv3_accel_ops;
++    smmuv3_accel_as_init(s);
+ }
+-- 
+2.52.0
+

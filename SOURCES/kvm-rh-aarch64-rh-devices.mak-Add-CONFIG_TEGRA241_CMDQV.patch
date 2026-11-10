@@ -1,0 +1,38 @@
+From 88c650be0128e88319d63ceed6d9f099a4a25f2e Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Thu, 7 May 2026 08:59:56 +0200
+Subject: [PATCH 111/111] rh: aarch64-rh-devices.mak: Add CONFIG_TEGRA241_CMDQV
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [111/111] 4c8d5826d2e77ed8437273d91928bd6166236807 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+UPSTREAM: RH Only
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ configs/devices/aarch64-softmmu/aarch64-rh-devices.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+index 92d0b322d0..b0bfc18af3 100644
+--- a/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
++++ b/configs/devices/aarch64-softmmu/aarch64-rh-devices.mak
+@@ -4,6 +4,7 @@ CONFIG_ARM_GIC_KVM=y
+ CONFIG_ARM_GICV3=y
+ CONFIG_ARM_GIC=y
+ CONFIG_ARM_SMMUV3=y
++CONFIG_TEGRA241_CMDQV=y
+ CONFIG_ARM_VIRT=y
+ CONFIG_CXL=y
+ CONFIG_CXL_MEM_DEVICE=y
+-- 
+2.52.0
+

@@ -1,0 +1,91 @@
+From 18c38804ca688494c3969f125dff09013608e673 Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:54 +0200
+Subject: [PATCH 013/116] target/arm/cpu64: Mitigate migration failures due to
+ spurious TCR_EL1, PIRE0_EL1 and PIR_EL1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [13/16] 90857210d7a915351c637756650071ff44f8d378 (eauger1/centos-qemu-kvm)
+
+Conflicts: contextual conflict in target/arm/cpu64.c as cpu local
+variable is declared in the #if defined(CONFIG_KVM) and not at the top
+
+Before linux v6.13 those registers were erroneously unconditionally
+exposed and this was fixed by commits:
+- 0fcb4eea5345 ("KVM: arm64: Hide TCR2_EL1 from userspace when
+                 disabled for guests")
+- a68cddbe47ef ("KVM: arm64: Hide S1PIE registers from userspace
+                 when disabled for guests")
+in v6.13.
+
+This means if we migrate from an old kernel host to a >= 6.13 kernel
+host, migration currently fails.
+
+Declare cpreg migration tolerance for those registers.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Sebastian Ott <sebott@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260420140552.104369-5-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 113ed8e53c08a46af2d3307ece846caf5a719f99)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/cpu64.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/target/arm/cpu64.c b/target/arm/cpu64.c
+index 051d5d653b..820d2542fa 100644
+--- a/target/arm/cpu64.c
++++ b/target/arm/cpu64.c
+@@ -762,10 +762,39 @@ static void aarch64_a53_initfn(Object *obj)
+ }
+ #endif
+ 
++#if defined(CONFIG_KVM)
++static void kvm_arm_set_cpreg_mig_tolerances(ARMCPU *cpu)
++{
++    /*
++     * Registers that may be in the incoming stream and not exposed
++     * on the destination
++     */
++
++    /*
++     * TCR_EL1 was erroneously unconditionnally exposed before linux v6.13.
++     * See commit 0fcb4eea5345 ("KVM: arm64: Hide TCR2_EL1 from userspace
++     * when disabled for guests")
++     */
++    arm_register_cpreg_mig_tolerance(cpu, ARM64_SYS_REG(3, 0, 2, 0, 3),
++                                     0, 0, ToleranceNotOnBothEnds);
++    /*
++     * PIRE0_EL1 and PIR_EL1 were erroneously unconditionnally exposed
++     * before linux v6.13. See commit a68cddbe47ef ("KVM: arm64: Hide
++     * S1PIE registers from userspace when disabled for guests")
++     */
++    arm_register_cpreg_mig_tolerance(cpu, ARM64_SYS_REG(3, 0, 10, 2, 2),
++                                     0, 0, ToleranceNotOnBothEnds);
++    arm_register_cpreg_mig_tolerance(cpu, ARM64_SYS_REG(3, 0, 10, 2, 3),
++                                     0, 0, ToleranceNotOnBothEnds);
++}
++#endif
++
+ static void aarch64_host_initfn(Object *obj)
+ {
+ #if defined(CONFIG_KVM)
+     ARMCPU *cpu = ARM_CPU(obj);
++
++    kvm_arm_set_cpreg_mig_tolerances(cpu);
+     kvm_arm_set_cpu_features_from_host(cpu);
+     if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+         aarch64_add_sve_properties(obj);
+-- 
+2.52.0
+

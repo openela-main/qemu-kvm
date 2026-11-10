@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 16%{?rcrel}%{?dist}%{?cc_suffix}.5
+Release: 28%{?rcrel}%{?dist}%{?cc_suffix}
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -166,6 +166,11 @@ Source28: 95-kvm-memlock.conf
 Source30: kvm-s390x.conf
 Source31: kvm-x86.conf
 Source36: README.tests
+# Handling binary changes for MR 505
+Source40: IORT
+Source41: IORT.its_off
+Source42: IORT.smmuv3-dev
+Source43: IORT.smmuv3-legacy
 
 
 Patch0004: 0004-Initial-redhat-build.patch
@@ -422,40 +427,1261 @@ Patch132: kvm-linux-aio-Resubmit-tails-of-short-reads-writes.patch
 Patch133: kvm-block-io_uring-avoid-potentially-getting-stuck-after.patch
 # For RHEL-158224 - qemu-kvm: disk writes of fewer bytes than requested is a retry condition, not necessarily an indication of ENOSPC [rhel-10.2]
 Patch134: kvm-io-uring-Resubmit-tails-of-short-writes.patch
-# For RHEL-164536 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.2.z]
-Patch135: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
-# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
-Patch136: kvm-scsi-adjust-error_prepend-formatting.patch
-# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
-Patch137: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
-# For RHEL-166007 - live migration failed the VM just register key only [rhel-10.2.z]
-Patch138: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
-# For RHEL-166033 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z]
-Patch139: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
-# For RHEL-166033 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z]
-Patch140: kvm-scsi-handle-reservation-changes-across-migration.patch
-# For RHEL-184529 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.2.z]
-Patch141: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch142: kvm-blkdebug-Add-delay-ns-option.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch143: kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch144: kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch145: kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch146: kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch147: kvm-ide-test-Factor-out-wait_dma_completion.patch
-# For RHEL-190702 - qemu-kvm hung during drain after double pause [rhel-10.2.z]
-Patch148: kvm-ide-test-Test-reset-during-TRIM.patch
-# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
-Patch149: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
-# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
-Patch150: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
-# For RHEL-207389 - qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z]
-Patch151: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
+# For RHEL-114231 - Add stats-intervals support to --blockdev
+Patch135: kvm-block-enable-stats-intervals-for-storage-devices.patch
+# For RHEL-114231 - Add stats-intervals support to --blockdev
+Patch136: kvm-qdev-Free-property-array-on-release.patch
+# For RHEL-158212 - qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.3]
+Patch137: kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch138: kvm-hw-tpm-Factor-tpm_ppi_enabled-out.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch139: kvm-hw-tpm-Add-TPMIfClass-ppi_enabled-field.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch140: kvm-hw-tpm-Remove-CRBState-ppi_enabled-field.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch141: kvm-hw-tpm-Propagate-ppi_enabled-to-tpm_tis_reset-and-re.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch142: kvm-hw-tpm-Simplify-tpm_ppi_enabled.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch143: kvm-docs-specs-tpm-document-PPI-support-on-ARM64-virt.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch144: kvm-hw-acpi-tpm-parameterize-PPI-base-address-in-tpm_bui.patch
+# For RHEL-112608 - [ARM64] Windows 11 VM should install without TPM Bypass
+Patch145: kvm-hw-tpm-add-PPI-support-to-tpm-tis-device-for-ARM64-v.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch146: kvm-vmstate-Introduce-VMSTATE_VARRAY_INT32_ALLOC.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch147: kvm-target-arm-Move-compare_u64-to-helper.c.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch148: kvm-target-arm-Convert-init_cpreg_list-to-g_hash_table_f.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch149: kvm-target-arm-machine-Use-VMSTATE_VARRAY_INT32_ALLOC-fo.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch150: kvm-target-arm-kvm-Export-kvm_print_register_name.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch151: kvm-target-arm-kvm-Tweak-print_register_name-for-arm64-s.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch152: kvm-target-arm-machine-Trace-cpreg-names-which-do-not-ma.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch153: kvm-target-arm-machine-Trace-all-register-mismatches.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch154: kvm-target-arm-machine-Fix-detection-of-unknown-incoming.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch155: kvm-target-arm-cpu-Introduce-the-infrastructure-for-cpre.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch156: kvm-target-arm-machine-Handle-ToleranceNotOnBothEnds-mig.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch157: kvm-target-arm-machine-Handle-ToleranceOnlySrcTestValue-.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch158: kvm-target-arm-cpu64-Mitigate-migration-failures-due-to-.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch159: kvm-target-arm-cpu64-Define-cpreg-migration-tolerance-fo.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch160: kvm-target-arm-helper-Define-cpreg-migration-tolerance-f.patch
+# For RHEL-174858 - [rhel10] Backport qemu cross-kernel migration mitigation series
+Patch161: kvm-Revert-target-arm-Reinstate-bogus-AArch32-DBGDTRTX-r.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch162: kvm-hw-pci-host-gpex-acpi-Fix-_DSM-function-0-support-re.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch163: kvm-vfio-scsi-ui-Error-check-qio_channel_socket_connect_.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch164: kvm-vfio-igd-Enable-quirks-when-IGD-is-not-the-primary-d.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch165: kvm-vfio-Remove-vfio-amd-xgbe-device.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch166: kvm-vfio-Remove-vfio-calxeda-xgmac-device.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch167: kvm-hw-arm-virt-Include-system-system.h.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch168: kvm-vfio-Remove-vfio-platform.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch169: kvm-vfio-Move-vfio-region.h-under-hw-vfio.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch170: kvm-vfio-container-set-error-on-cpr-failure.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch171: kvm-vfio-Report-an-error-when-the-dma_max_mappings-limit.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch172: kvm-hw-vfio-user-add-x-pci-class-code.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch173: kvm-vfio-Introduce-helper-vfio_pci_from_vfio_device.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch174: kvm-vfio-vfio-container-base.h-update-VFIOContainerBase-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch175: kvm-vfio-vfio-container.h-update-VFIOContainer-declarati.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch176: kvm-hw-vfio-cpr-legacy.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch177: kvm-hw-vfio-container.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch178: kvm-vfio-spapr.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch179: kvm-vfio-vfio-container.h-rename-VFIOContainer-bcontaine.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch180: kvm-vfio-user-container.h-update-VFIOUserContainer-decla.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch181: kvm-vfio-container.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch182: kvm-vfio-user-container.h-rename-VFIOUserContainer-bcont.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch183: kvm-vfio-user-pci.c-update-VFIOUserPCIDevice-declaration.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch184: kvm-vfio-user-pci.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch185: kvm-vfio-user-pci.c-rename-VFIOUserPCIDevice-device-fiel.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch186: kvm-vfio-pci.h-update-VFIOPCIDevice-declaration.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch187: kvm-vfio-pci.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch188: kvm-vfio-pci-quirks.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch189: kvm-vfio-cpr.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch190: kvm-vfio-igd.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch191: kvm-vfio-user-pci.c-use-QOM-casts-where-appropriate2.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch192: kvm-vfio-pci.h-rename-VFIOPCIDevice-pdev-field-to-parent.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch193: kvm-treewide-handle-result-of-qio_channel_set_blocking.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch194: kvm-vfio-pci-Do-not-unparent-in-instance_finalize.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch195: kvm-vfio-Do-not-unparent-in-instance_finalize.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch196: kvm-include-hw-vfio-vfio-container.h-rename-VFIOContaine.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch197: kvm-include-hw-vfio-vfio-container-base.h-rename-VFIOCon.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch198: kvm-include-hw-vfio-vfio-container.h-rename-file-to-vfio.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch199: kvm-include-hw-vfio-vfio-container-base.h-rename-file-to.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch200: kvm-hw-vfio-container.c-rename-file-to-container-legacy..patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch201: kvm-hw-vfio-container-base.c-rename-file-to-container.c.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch202: kvm-vfio-iommufd.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch203: kvm-vfio-cpr-iommufd.c-use-QOM-casts-where-appropriate.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch204: kvm-vfio-vfio-iommufd.h-rename-VFIOContainer-bcontainer-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch205: kvm-vfio-spapr.c-use-QOM-casts-where-appropriate2.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch206: kvm-vfio-spapr.c-rename-VFIOContainer-bcontainer-field-t.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch207: kvm-vfio-pci.c-rename-vfio_instance_init-to-vfio_pci_ini.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch208: kvm-vfio-pci.c-rename-vfio_instance_finalize-to-vfio_pci.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch209: kvm-vfio-pci.c-rename-vfio_pci_dev_class_init-to-vfio_pc.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch210: kvm-vfio-pci.c-rename-vfio_pci_dev_info-to-vfio_pci_info.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch211: kvm-s390x-s390-pci-vfio.c-use-QOM-casts-where-appropriat.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch212: kvm-hw-vfio-types.h-rename-TYPE_VFIO_PCI_BASE-to-TYPE_VF.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch213: kvm-vfio-pci.c-rename-vfio_pci_base_dev_class_init-to-vf.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch214: kvm-vfio-pci.c-rename-vfio_pci_base_dev_info-to-vfio_pci.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch215: kvm-vfio-pci.c-rename-vfio_pci_dev_properties-to-vfio_pc.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch216: kvm-vfio-pci.c-rename-vfio_pci_dev_nohotplug_properties-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch217: kvm-vfio-pci.c-rename-vfio_pci_nohotplug_dev_class_init-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch218: kvm-vfio-pci.c-rename-vfio_pci_nohotplug_dev_info-to-vfi.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch219: kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_class_init-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch220: kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_properties-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch221: kvm-vfio-user-pci.c-rename-vfio_user_instance_init-to-vf.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch222: kvm-vfio-user-pci.c-rename-vfio_user_instance_finalize-t.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch223: kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_info-to-vfi.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch224: kvm-include-hw-vfio-vfio-device.h-fix-include-header-gua.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch225: kvm-vfio-Remove-workaround-for-kernel-DMA-unmap-overflow.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch226: kvm-system-iommufd-Use-uint64_t-type-for-IOVA-mapping-si.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch227: kvm-hw-vfio-Reorder-vfio_container_query_dirty_bitmap-tr.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch228: kvm-hw-vfio-Avoid-ram_addr_t-in-vfio_container_query_dir.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch229: kvm-hw-vfio-Use-uint64_t-for-IOVA-mapping-size-in-vfio_c.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch230: kvm-migration-push-Error-errp-into-vmstate_subsection_lo.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch231: kvm-migration-push-Error-errp-into-vmstate_load_state.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch232: kvm-migration-Remove-error-variant-of-vmstate_save_state.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch233: kvm-migration-multi-mode-notifier.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch234: kvm-migration-add-cpr_walk_fd.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch235: kvm-oslib-qemu_clear_cloexec.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch236: kvm-migration-cpr-exec-command-parameter.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch237: kvm-migration-cpr-exec-save-and-load.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch238: kvm-migration-cpr-exec-mode.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch239: kvm-migration-cpr-exec-docs.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch240: kvm-vfio-cpr-exec-mode.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch241: kvm-hw-vfio-listener-Include-missing-exec-target_page.h-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch242: kvm-hw-Remove-unnecessary-system-ram_addr.h-header.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch243: kvm-vfio-container-Remap-only-populated-parts-in-a-secti.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch244: kvm-vfio-cpr-legacy-drop-an-erroneous-assert.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch245: kvm-vfio-iommufd-Set-cpr.ioas_id-on-source-side-for-CPR-.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch246: kvm-vfio-iommufd-Restore-vbasedev-s-reference-to-hwpt-af.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch247: kvm-vfio-container-Support-unmap-all-in-one-ioctl.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch248: kvm-vfio-iommufd-Support-unmap-all-in-one-ioctl.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch249: kvm-vfio-listener-Add-an-assertion-for-unmap_all.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch250: kvm-vfio-Clean-up-includes.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch251: kvm-migration-set-correct-list-pointer-when-removing-not.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch252: kvm-vfio-user-simplify-vfio_user_process.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch253: kvm-vfio-user-clarify-partial-message-handling.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch254: kvm-vfio-user-refactor-out-header-handling.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch255: kvm-vfio-user-simplify-vfio_user_recv_one.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch256: kvm-vfio-user-recycle-msg-on-failure.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch257: kvm-include-hw-hyperv-Remove-unused-struct-mshv_vp_regis.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch258: kvm-linux-headers-Update-to-Linux-v6.18-rc3.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch259: kvm-linux-headers-Update-to-Linux-v6.19-rc1.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch260: kvm-hw-vfio-Add-helper-to-retrieve-device-feature.patch
+# For RHEL-138494 - NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3
+Patch261: kvm-hw-vfio-region-Create-dmabuf-for-PCI-BAR-per-region.patch
+# For RHEL-178767 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests
+Patch262: kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch
+# For RHEL-178767 - MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests
+Patch263: kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch
+# For RHEL-155807 - live migration failed the VM just register key only [rhel-10.3]
+Patch264: kvm-scsi-adjust-error_prepend-formatting.patch
+# For RHEL-155807 - live migration failed the VM just register key only [rhel-10.3]
+Patch265: kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch
+# For RHEL-155807 - live migration failed the VM just register key only [rhel-10.3]
+Patch266: kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch
+# For RHEL-178846 - [aarch64] qemu-kvm crashes on --device tpm-tis-device,?
+Patch267: kvm-hw-tpm-tpm_tis_sysbus-defer-resource-allocation-to-r.patch
+# For RHEL-180750 - Backport in QEMU : vfio/container: Restrict dma_map_file() to shared RAM or RAM devices
+Patch268: kvm-vfio-container-Restrict-dma_map_file-to-shared-RAM-o.patch
+# For RHEL-153123 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.3]
+Patch269: kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch
+# For RHEL-153123 - live migration failed or get failed WSFC test result during WSFC testing [rhel-10.3]
+Patch270: kvm-scsi-handle-reservation-changes-across-migration.patch
+# For RHEL-150900 - NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - RHEL 10.3
+Patch271: kvm-hw-vfio-sort-and-validate-sparse-mmap-regions-by-off.patch
+# For RHEL-150900 - NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - RHEL 10.3
+Patch272: kvm-vfio-Add-Error-parameter-to-vfio_region_setup.patch
+# For RHEL-150900 - NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - RHEL 10.3
+Patch273: kvm-hw-vfio-align-mmap-to-power-of-2-of-region-size-for-.patch
+# For RHEL-184530 - CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.3]
+Patch274: kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch275: kvm-blkdebug-Add-delay-ns-option.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch276: kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch277: kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch278: kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch279: kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch280: kvm-ide-test-Factor-out-wait_dma_completion.patch
+# For RHEL-121686 - qemu-kvm hung during drain after double pause
+Patch281: kvm-ide-test-Test-reset-during-TRIM.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch282: kvm-block-graph-lock-fix-missed-wakeup-in-bdrv_graph_co_.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch283: kvm-block-curl-fix-curl-internal-handles-handling.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch284: kvm-block-curl.c-Use-explicit-long-constants-in-curl_eas.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch285: kvm-block-curl.c-Fix-CURLOPT_VERBOSE-parameter-type.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch286: kvm-block-curl-fix-concurrent-completion-handling.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch287: kvm-block-curl-free-s-password-in-cleanup-paths.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch288: kvm-nvme-Kick-and-check-completions-in-BDS-context.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch289: kvm-nvme-Note-in-which-AioContext-some-functions-run.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch290: kvm-block-remove-detached-header-option-from-opts-after-.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch291: kvm-block-fix-luks-amend-when-run-in-coroutine.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch292: kvm-qed-Don-t-try-to-flush-during-incoming-migration.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch293: kvm-block-vmdk-fix-OOB-read-in-vmdk_read_extent.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch294: kvm-block-throttle-groups-fix-deadlock-with-iolimits-and.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch295: kvm-throttle-group-Fix-race-condition-in-throttle_group_.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch296: kvm-qemu-img-Fix-amend-option-parse-error-handling.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch297: kvm-qemu-img-rebase-don-t-exceed-IO_BUF_SIZE-in-one-oper.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch298: kvm-python-backport-drop-Python3.6-workarounds.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch299: kvm-python-backport-Remove-deprecated-get_event_loop-cal.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch300: kvm-python-backport-avoid-creating-additional-event-loop.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch301: kvm-iotests-147-ensure-temporary-sockets-are-closed-befo.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch302: kvm-iotests-151-ensure-subprocesses-are-cleaned-up.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch303: kvm-tests-qemu-iotest-fix-iotest-024-with-qed-images.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch304: kvm-tests-qemu-iotests-Fix-check-for-existing-file-in-_r.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch305: kvm-async-access-bottom-half-flags-with-qatomic_read.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch306: kvm-block-linux-aio-bound-ioq_submit-recursion-depth.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch307: kvm-block-io-fallback-to-bounce-buffer-if-BLKZEROOUT-is-.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch308: kvm-file-posix-populate-pwrite_zeroes_alignment.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch309: kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch310: kvm-iotests-add-Linux-loop-device-image-creation-test.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch311: kvm-virtio-Fix-crash-when-sriov-pf-is-set-for-non-PCI-Ex.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch312: kvm-virtio-scsi-pass-the-same-cdb_size-to-virtio_scsi_po.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch313: kvm-hw-scsi-avoid-deadlock-upon-TMF-request-cancelling-w.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch314: kvm-virtio-blk-fix-zone-report-buffer-out-of-memory-CVE-.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch315: kvm-ide-Fix-potential-assertion-failure-on-VM-stop-for-P.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch316: kvm-block-Create-DEFAULT_BLOCK_CONF-macro.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch317: kvm-block-Add-more-defaults-to-DEFAULT_BLOCK_CONF.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch318: kvm-block-mirror-check-range-when-setting-zero-bitmap-fo.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch319: kvm-iotests-test-active-mirror-with-unaligned-small-writ.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch320: kvm-block-mirror-fix-assertion-failure-upon-duplicate-co.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch321: kvm-commit-Drain-nodes-across-all-of-bdrv_commit.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch322: kvm-qemu-io-Add-aio_discard-command.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch323: kvm-qcow2-Fix-corruption-on-discard-during-write-with-CO.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch324: kvm-iotests-046-Test-that-discard-write_zeroes-wait-for-.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch325: kvm-qcow2-Fix-data-loss-on-zero-write-with-detect-zeroes.patch
+# For RHEL-186384 - virt-storage: Backport stable branch fixes
+Patch326: kvm-block-Fix-crash-after-setting-latency-historygram-wi.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch327: kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vio.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch328: kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vde.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch329: kvm-hw-arm-smmu-common-Factor-out-common-helper-function.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch330: kvm-hw-arm-smmu-add-memory-regions-as-property-for-an-SM.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch331: kvm-hw-arm-smmuv3-Extract-common-definitions-to-smmuv3-c.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch332: kvm-hw-arm-smmu-common-Make-iommu-ops-part-of-SMMUState.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch333: kvm-hw-arm-smmuv3-accel-Introduce-smmuv3-accel-device.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch334: kvm-hw-arm-smmuv3-accel-Initialize-shared-system-address.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch335: kvm-hw-pci-pci-Move-pci_init_bus_master-after-adding-dev.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch336: kvm-hw-pci-Export-pci_device_get_iommu_bus_devfn-and-ret.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch337: kvm-hw-pci-pci-Add-optional-supports_address_space-callb.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch338: kvm-hw-pci-bridge-pci_expander_bridge-Move-TYPE_PXB_PCIE.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch339: kvm-hw-arm-smmuv3-accel-Restrict-accelerated-SMMUv3-to-v.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch340: kvm-hw-arm-smmuv3-Implement-get_viommu_cap-callback.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch341: kvm-hw-pci-Introduce-pci_device_get_viommu_flags.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch342: kvm-hw-pci-Introduce-pci_device_get_host_iommu_quirks.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch343: kvm-hw-arm-smmuv3-common-Define-STE-CD-fields-via-regist.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch344: kvm-hw-arm-smmuv3-common-Add-NSCFG-bit-definition-for-CD.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch345: kvm-hw-arm-smmuv3-common-Add-STE-CD-set-helpers-for-repe.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch346: kvm-hw-arm-smmuv3-accel-Add-set-unset_iommu_device-callb.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch347: kvm-hw-arm-smmuv3-propagate-smmuv3_cmdq_consume-errors-t.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch348: kvm-hw-arm-smmuv3-accel-Add-nested-vSTE-install-uninstal.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch349: kvm-hw-arm-smmuv3-accel-Install-SMMUv3-GBPA-based-hwpt.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch350: kvm-hw-pci-pci-Introduce-a-callback-to-retrieve-the-MSI-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch351: kvm-hw-arm-smmuv3-accel-Implement-get_msi_direct_gpa-cal.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch352: kvm-hw-arm-virt-Set-msi-gpa-property.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch353: kvm-hw-arm-smmuv3-accel-Add-support-to-issue-invalidatio.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch354: kvm-hw-arm-smmuv3-Initialize-ID-registers-early-during-r.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch355: kvm-hw-arm-smmuv3-accel-Get-host-SMMUv3-hw-info-and-vali.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch356: kvm-hw-pci-host-gpex-Allow-to-generate-preserve-boot-con.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch357: kvm-hw-arm-virt-Set-PCI-preserve_config-for-accel-SMMUv3.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch358: kvm-tests-qtest-bios-tables-test-Prepare-for-IORT-reviso.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch359: kvm-hw-arm-virt-acpi-build-Add-IORT-RMR-regions-to-handl.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch360: kvm-tests-qtest-bios-tables-test-Update-IORT-blobs-after.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch361: kvm-hw-arm-smmuv3-Block-migration-when-accel-is-enabled.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch362: kvm-hw-arm-smmuv3-Add-accel-property-for-SMMUv3-device.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch363: kvm-hw-arm-smmuv3-accel-Add-a-property-to-specify-RIL-su.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch364: kvm-hw-arm-smmuv3-accel-Add-support-for-ATS.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch365: kvm-hw-arm-smmuv3-accel-Add-property-to-specify-OAS-bits.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch366: kvm-backends-iommufd-Retrieve-PASID-width-from-iommufd_b.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch367: kvm-backends-iommufd-Add-get_pasid_info-callback.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch368: kvm-hw-pci-Add-helper-to-insert-PCIe-extended-capability.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch369: kvm-hw-pci-Factor-out-common-PASID-capability-initializa.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch370: kvm-hw-vfio-pci-Synthesize-PASID-capability-for-vfio-pci.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch371: kvm-hw-arm-smmuv3-accel-Make-SubstreamID-support-configu.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch372: kvm-system-memory-Factor-address_space_is_io-out.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch373: kvm-target-i386-arch_memory_mapping-Use-address_space_me.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch374: kvm-hw-s390x-sclp-Use-address_space_memory_is_io-in-sclp.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch375: kvm-system-physmem-Remove-cpu_physical_memory_is_io.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch376: kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vev.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch377: kvm-hw-arm-smmuv3-accel-Add-viommu-free-helper.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch378: kvm-hw-arm-smmuv3-accel-Allocate-vEVENTQ-for-accelerated.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch379: kvm-hw-arm-smmuv3-Introduce-a-helper-function-for-event-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch380: kvm-hw-arm-smmuv3-accel-Read-and-propagate-host-vIOMMU-e.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch381: kvm-hw-arm-smmuv3-Correct-SMMUEN-field-name-in-CR0.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch382: kvm-hw-arm-smmuv3-Fix-CFGI_CD-handling-when-stage-1-is-u.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch383: kvm-hw-arm-smmuv3-accel-Check-ATS-compatibility-between-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch384: kvm-hw-arm-smmuv3-accel-Change-ats-property-type-to-OnOf.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch385: kvm-hw-arm-smmuv3-accel-Change-ril-property-type-to-OnOf.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch386: kvm-qdev-Add-a-SsidSizeMode-property-type.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch387: kvm-hw-arm-smmuv3-accel-Change-ssidsize-property-type-to.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch388: kvm-qdev-Add-an-OasMode-property-type.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch389: kvm-hw-arm-smmuv3-accel-Change-oas-property-type-to-OasM.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch390: kvm-qemu-options.hx-Document-arm-smmuv3-device-s-accel-p.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch391: kvm-hw-arm-smmuv3-Have-smmuv3_accel_init-take-an-Error-p.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch392: kvm-hw-arm-smmuv3-Update-ATC-invalidation-check.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch393: kvm-hw-arm-smmuv3-Improve-accel-SMMUv3-usage-documentati.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch394: kvm-hw-arm-smmuv3-accel-Add-helper-for-resolving-auto-pa.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch395: kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ats.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch396: kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ril.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch397: kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ssidsiz.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch398: kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-oas.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch399: kvm-hw-arm-smmuv3-Set-default-ats-ril-ssidsize-oas-to-au.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch400: kvm-qemu-options.hx-Support-auto-for-accel-SMMUv3-proper.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch401: kvm-hw-pci-pci-Enforce-pci_setup_iommu_per_bus-is-called.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch402: kvm-vfio-iommufd-Force-creating-nesting-parent-HWPT.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch403: kvm-hw-vfio-iommufd-Control-dirty-tracking-for-nesting-p.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch404: kvm-backends-iommufd-Update-iommufd_backend_get_device_i.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch405: kvm-iommufd-Rename-all-the-idev-and-idevc-variables-to-h.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch406: kvm-backends-iommufd-Update-iommufd_backend_alloc_viommu.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch407: kvm-backends-iommufd-Introduce-iommufd_backend_alloc_hw_.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch408: kvm-backends-iommufd-Introduce-iommufd_backend_viommu_mm.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch409: kvm-system-iommufd-Remove-unused-viommu-pointer-from-IOM.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch410: kvm-hw-arm-smmuv3-accel-Introduce-CMDQV-ops-interface.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch411: kvm-hw-arm-smmuv3-Avoid-including-CONFIG_DEVICES-in-hw-h.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch412: kvm-hw-arm-tegra241-cmdqv-Add-Tegra241-CMDQV-ops-backend.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch413: kvm-hw-arm-smmuv3-accel-Wire-CMDQV-ops-into-accel-lifecy.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch414: kvm-hw-arm-virt-Use-stored-SMMUv3-device-list-for-IORT-b.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch415: kvm-hw-arm-tegra241-cmdqv-Probe-host-Tegra241-CMDQV-supp.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch416: kvm-hw-arm-tegra241-cmdqv-Implement-CMDQV-init.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch417: kvm-hw-arm-virt-Link-SMMUv3-CMDQV-resources-to-platform-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch418: kvm-hw-arm-tegra241-cmdqv-Implement-CMDQV-vIOMMU-alloc-f.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch419: kvm-hw-arm-tegra241-cmdqv-mmap-host-VINTF-Page0-for-CMDQ.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch420: kvm-hw-arm-tegra241-cmdqv-Emulate-CMDQ-V-Config-region.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch421: kvm-hw-arm-tegra241-cmdqv-Emulate-VCMDQ-register-reads.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch422: kvm-hw-arm-tegra241-cmdqv-Emulate-VCMDQ-register-writes.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch423: kvm-hw-arm-tegra241-cmdqv-Allocate-HW-VCMDQs-once-config.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch424: kvm-hw-arm-tegra241-cmdqv-Route-allocated-VCMDQ-Page0-ac.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch425: kvm-memory-Allow-RAM-device-regions-to-skip-IOMMU-mappin.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch426: kvm-hw-arm-tegra241-cmdqv-Use-mmap-d-host-VINTF-page0-fo.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch427: kvm-hw-arm-smmuv3-accel-Introduce-common-helper-for-veve.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch428: kvm-hw-arm-tegra241-cmdqv-Read-and-propagate-Tegra241-CM.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch429: kvm-hw-arm-tegra241-cmdqv-Initialize-register-state-on-r.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch430: kvm-hw-arm-tegra241-cmdqv-Limit-queue-size-based-on-back.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch431: kvm-hw-arm-smmuv3-Add-per-device-identifier-property.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch432: kvm-hw-arm-smmuv3-accel-Introduce-helper-to-query-CMDQV-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch433: kvm-hw-arm-virt-acpi-Advertise-Tegra241-CMDQV-nodes-in-D.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch434: kvm-hw-arm-smmuv3-accel-Enforce-viommu-association-when-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch435: kvm-hw-arm-tegra241-cmdqv-Document-the-CMDQV-design-and-.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch436: kvm-hw-arm-smmuv3-Add-cmdqv-property-for-SMMUv3-device.patch
+# For RHEL-142465 - [RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus
+# For RHEL-160190 - NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3
+# For RHEL-163596 - NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3
+# For RHEL-73794 - NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1
+# For RHEL-73796 - NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1
+# For RHEL-73798 - NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1
+Patch437: kvm-rh-aarch64-rh-devices.mak-Add-CONFIG_TEGRA241_CMDQV.patch
+# For RHEL-113894 - [RHEL.10.2][virual network] Hit qemu coredump when removed an interface that the guest is using from the host
+Patch438: kvm-net-tap-linux.c-avoid-abort-when-setting-invalid-fd.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch439: kvm-crypto-only-verify-CA-certs-in-chain-of-trust.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch440: kvm-crypto-remove-extraneous-pointer-usage-in-gnutls-cer.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch441: kvm-crypto-fix-error-reporting-in-cert-chain-checks.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch442: kvm-crypto-allow-client-server-cert-chains.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch443: kvm-crypto-stop-requiring-key-encipherment-usage-in-x509.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch444: kvm-crypto-switch-to-newer-gnutls-API-for-distinguished-.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch445: kvm-crypto-remove-redundant-parameter-checking-CA-certs.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch446: kvm-crypto-add-missing-free-of-certs-array.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch447: kvm-crypto-replace-stat-with-access-for-credential-check.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch448: kvm-crypto-remove-redundant-access-checks-before-loading.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch449: kvm-crypto-move-check-for-TLS-creds-dir-property.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch450: kvm-crypto-use-g_autofree-when-loading-x509-credentials.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch451: kvm-crypto-remove-needless-indirection-via-parent_obj-fi.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch452: kvm-crypto-move-release-of-DH-parameters-into-TLS-creds-.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch453: kvm-crypto-shorten-the-endpoint-server-check-in-TLS-cred.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch454: kvm-crypto-remove-duplication-loading-x509-CA-cert.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch455: kvm-crypto-reduce-duplication-in-handling-TLS-priority-s.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch456: kvm-crypto-introduce-method-for-reloading-TLS-creds.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch457: kvm-crypto-introduce-a-wrapper-around-gnutls-credentials.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch458: kvm-crypto-fix-lifecycle-handling-of-gnutls-credentials-.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch459: kvm-crypto-make-TLS-credentials-structs-private.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch460: kvm-crypto-deprecate-use-of-external-dh-params.pem-file.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch461: kvm-crypto-avoid-loading-the-CA-certs-twice.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch462: kvm-crypto-avoid-loading-the-identity-certs-twice.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch463: kvm-crypto-expand-logic-to-cope-with-multiple-certificat.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch464: kvm-crypto-support-upto-5-parallel-certificate-identitie.patch
+# For RHEL-111934 - QEMU support for loading multiple sets of x509 certs for PQC hybrid mode
+Patch465: kvm-docs-creation-of-x509-certs-compliant-with-post-quan.patch
+# For RHEL-184675 - NVIDIA:Backport vfio/pci: add vfio-pci ATS control property - RHEL 10.3
+Patch466: kvm-iommufd-Introduce-handler-for-device-ATS-support.patch
+# For RHEL-184675 - NVIDIA:Backport vfio/pci: add vfio-pci ATS control property - RHEL 10.3
+Patch467: kvm-vfio-pci-Add-ats-property.patch
+# For RHEL-180837 - [aarch64] Live migration of TPM-equipped guests fails: Unknown ramblock "tpm-ppi" (qemu-kvm-10.1.0-19.el10 → older builds)
+Patch468: kvm-hw-core-platform-bus-guard-platform_bus_get_mmio_add.patch
+# For RHEL-180837 - [aarch64] Live migration of TPM-equipped guests fails: Unknown ramblock "tpm-ppi" (qemu-kvm-10.1.0-19.el10 → older builds)
+Patch469: kvm-hw-tpm-gate-PPI-support-on-tpm-tis-device-behind-a-d.patch
+# For RHEL-180837 - [aarch64] Live migration of TPM-equipped guests fails: Unknown ramblock "tpm-ppi" (qemu-kvm-10.1.0-19.el10 → older builds)
+Patch470: kvm-hw-tpm-default-tpm-tis-device-PPI-to-disabled.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch471: kvm-s390x-css-limit-number-of-CHPIDs-in-description.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch472: kvm-s390x-ioinst-Require-strict-length-and-format-for-SE.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch473: kvm-s390x-pci-Shrink-RPCIT-ranges-to-registered-window.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch474: kvm-s390x-pci-Tighten-region-detection-for-BAR-read-writ.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch475: kvm-s390x-sclp-reject-invalid-write-event-data-headers.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch476: kvm-s390x-kvm-clamp-stsi-3.2.2-size.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch477: kvm-s390x-sclp-prevent-re-reading-the-sclp-header.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch478: kvm-s390x-sclpcpi-check-event-length-field-before-readin.patch
+# For RHEL-192791 - RHEL10.0 - qemu s390x: interface harding fixes
+Patch479: kvm-s390x-css-firm-up-handling-of-chained-TIC-CCWs.patch
+# For RHEL-224652 - Backport  vfio/region: Clarify dma-buf failure messages 
+Patch480: kvm-vfio-region-Clarify-dma-buf-failure-messages.patch
+# For RHEL-151317 - RHEL10 - KVM full Boot order support -- Guest is crashing for the invalid boot device(<boot order='1'/> -- add-on qcow2 file)
+Patch481: kvm-pc-bios-s390-ccw-Always-reset-virtio-device-on-faile.patch
+# For RHEL-246035 - [RHEL10.3] Exhausted DMA bounce buffer on building cuda-samples in VM
+Patch482: kvm-system-memory-Use-memmove-for-directly-accessible-re.patch
+# For RHEL-246035 - [RHEL10.3] Exhausted DMA bounce buffer on building cuda-samples in VM
+Patch483: kvm-system-memory-Use-qemu_ram_move-for-directly-accessi.patch
+# For RHEL-246035 - [RHEL10.3] Exhausted DMA bounce buffer on building cuda-samples in VM
+Patch484: kvm-system-memory-Make-ram-device-region-directly-access.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -794,6 +2020,9 @@ This package provides the additional D-Bus audio driver for QEMU.
 %prep
 %setup -q -n qemu-%{version}%{?rcstr}
 %autopatch -p1
+
+# Handling binary changes for MR 505
+cp %{SOURCE40} %{SOURCE41} %{SOURCE42} %{SOURCE43} tests/data/acpi/aarch64/virt/
 
 %global qemu_kvm_build qemu_kvm_build
 mkdir -p %{qemu_kvm_build}
@@ -1153,7 +2382,6 @@ install -D -p -m 0644 %{modprobe_kvm_conf} $RPM_BUILD_ROOT%{_sysconfdir}/modprob
 mkdir -p %{buildroot}%{testsdir}/python
 mkdir -p %{buildroot}%{testsdir}/tests
 mkdir -p %{buildroot}%{testsdir}/tests/qemu-iotests
-mkdir -p %{buildroot}%{testsdir}/tests/qtest
 mkdir -p %{buildroot}%{testsdir}/scripts/qmp
 
 
@@ -1171,9 +2399,6 @@ cp -R tests/qemu-iotests/* %{buildroot}%{testsdir}/tests/qemu-iotests/
 cp -ur %{qemu_kvm_build}/tests/qemu-iotests/* %{buildroot}%{testsdir}/tests/qemu-iotests/
 
 install -p -m 0644 %{_sourcedir}/README.tests %{buildroot}%{testsdir}/README
-
-# Install qtests
-find %{qemu_kvm_build}/tests/qtest/ -type f -executable -exec install -p -m 0755 {} %{buildroot}%{testsdir}/tests/qtest/ \;
 
 # Do the actual qemu tree install
 pushd %{qemu_kvm_build}
@@ -1539,45 +2764,435 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
-* Tue Aug 04 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.5
-- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-207389]
-- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-207389]
-- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-207389]
-- Resolves: RHEL-207389
-  (qemu-img create/convert fails on target block device with 4k sector size [rhel-10.2.z])
+* Mon Aug 24 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-28
+- kvm-system-memory-Use-memmove-for-directly-accessible-re.patch [RHEL-246035]
+- kvm-system-memory-Use-qemu_ram_move-for-directly-accessi.patch [RHEL-246035]
+- kvm-system-memory-Make-ram-device-region-directly-access.patch [RHEL-246035]
+- Resolves: RHEL-246035
+  ([RHEL10.3] Exhausted DMA bounce buffer on building cuda-samples in VM)
 
-* Thu Jul 09 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.4
-- kvm-blkdebug-Add-delay-ns-option.patch [RHEL-190702]
-- kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch [RHEL-190702]
-- kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch [RHEL-190702]
-- kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch [RHEL-190702]
-- kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch [RHEL-190702]
-- kvm-ide-test-Factor-out-wait_dma_completion.patch [RHEL-190702]
-- kvm-ide-test-Test-reset-during-TRIM.patch [RHEL-190702]
-- kvm-spec-Install-qtests-into-qemu-kvm-tests-package.patch [RHEL-190702]
-- Resolves: RHEL-190702
-  (qemu-kvm hung during drain after double pause [rhel-10.2.z])
+* Thu Aug 20 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-27
+- kvm-pc-bios-s390-ccw-Always-reset-virtio-device-on-faile.patch [RHEL-151317]
+- Resolves: RHEL-151317
+  (RHEL10 - KVM full Boot order support -- Guest is crashing for the invalid boot device(<boot order='1'/> -- add-on qcow2 file))
 
-* Fri Jun 19 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.3
-- kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184529]
-- Resolves: RHEL-184529
-  (CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.2.z])
+* Tue Aug 11 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-26
+- kvm-vfio-region-Clarify-dma-buf-failure-messages.patch [RHEL-224652]
+- Resolves: RHEL-224652
+  (Backport  vfio/region: Clarify dma-buf failure messages )
 
-* Mon Jun 15 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.2
-- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-166007]
-- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-166007]
-- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-166007]
-- kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch [RHEL-166033]
-- kvm-scsi-handle-reservation-changes-across-migration.patch [RHEL-166033]
-- Resolves: RHEL-166007
-  (live migration failed the VM just register key only [rhel-10.2.z])
-- Resolves: RHEL-166033
-  (live migration failed or get failed WSFC test result during WSFC testing [rhel-10.2.z])
+* Mon Aug 03 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-25
+- kvm-hw-core-platform-bus-guard-platform_bus_get_mmio_add.patch [RHEL-180837]
+- kvm-hw-tpm-gate-PPI-support-on-tpm-tis-device-behind-a-d.patch [RHEL-180837]
+- kvm-hw-tpm-default-tpm-tis-device-PPI-to-disabled.patch [RHEL-180837]
+- kvm-s390x-css-limit-number-of-CHPIDs-in-description.patch [RHEL-192791]
+- kvm-s390x-ioinst-Require-strict-length-and-format-for-SE.patch [RHEL-192791]
+- kvm-s390x-pci-Shrink-RPCIT-ranges-to-registered-window.patch [RHEL-192791]
+- kvm-s390x-pci-Tighten-region-detection-for-BAR-read-writ.patch [RHEL-192791]
+- kvm-s390x-sclp-reject-invalid-write-event-data-headers.patch [RHEL-192791]
+- kvm-s390x-kvm-clamp-stsi-3.2.2-size.patch [RHEL-192791]
+- kvm-s390x-sclp-prevent-re-reading-the-sclp-header.patch [RHEL-192791]
+- kvm-s390x-sclpcpi-check-event-length-field-before-readin.patch [RHEL-192791]
+- kvm-s390x-css-firm-up-handling-of-chained-TIC-CCWs.patch [RHEL-192791]
+- Resolves: RHEL-180837
+  ([aarch64] Live migration of TPM-equipped guests fails: Unknown ramblock "tpm-ppi" (qemu-kvm-10.1.0-19.el10 → older builds))
+- Resolves: RHEL-192791
+  (RHEL10.0 - qemu s390x: interface harding fixes)
 
-* Tue May 12 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16.el10_2.1
-- kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-164536]
-- Resolves: RHEL-164536
-  (qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.2.z])
+* Fri Jul 10 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-24
+- kvm-net-tap-linux.c-avoid-abort-when-setting-invalid-fd.patch [RHEL-113894]
+- kvm-crypto-only-verify-CA-certs-in-chain-of-trust.patch [RHEL-111934]
+- kvm-crypto-remove-extraneous-pointer-usage-in-gnutls-cer.patch [RHEL-111934]
+- kvm-crypto-fix-error-reporting-in-cert-chain-checks.patch [RHEL-111934]
+- kvm-crypto-allow-client-server-cert-chains.patch [RHEL-111934]
+- kvm-crypto-stop-requiring-key-encipherment-usage-in-x509.patch [RHEL-111934]
+- kvm-crypto-switch-to-newer-gnutls-API-for-distinguished-.patch [RHEL-111934]
+- kvm-crypto-remove-redundant-parameter-checking-CA-certs.patch [RHEL-111934]
+- kvm-crypto-add-missing-free-of-certs-array.patch [RHEL-111934]
+- kvm-crypto-replace-stat-with-access-for-credential-check.patch [RHEL-111934]
+- kvm-crypto-remove-redundant-access-checks-before-loading.patch [RHEL-111934]
+- kvm-crypto-move-check-for-TLS-creds-dir-property.patch [RHEL-111934]
+- kvm-crypto-use-g_autofree-when-loading-x509-credentials.patch [RHEL-111934]
+- kvm-crypto-remove-needless-indirection-via-parent_obj-fi.patch [RHEL-111934]
+- kvm-crypto-move-release-of-DH-parameters-into-TLS-creds-.patch [RHEL-111934]
+- kvm-crypto-shorten-the-endpoint-server-check-in-TLS-cred.patch [RHEL-111934]
+- kvm-crypto-remove-duplication-loading-x509-CA-cert.patch [RHEL-111934]
+- kvm-crypto-reduce-duplication-in-handling-TLS-priority-s.patch [RHEL-111934]
+- kvm-crypto-introduce-method-for-reloading-TLS-creds.patch [RHEL-111934]
+- kvm-crypto-introduce-a-wrapper-around-gnutls-credentials.patch [RHEL-111934]
+- kvm-crypto-fix-lifecycle-handling-of-gnutls-credentials-.patch [RHEL-111934]
+- kvm-crypto-make-TLS-credentials-structs-private.patch [RHEL-111934]
+- kvm-crypto-deprecate-use-of-external-dh-params.pem-file.patch [RHEL-111934]
+- kvm-crypto-avoid-loading-the-CA-certs-twice.patch [RHEL-111934]
+- kvm-crypto-avoid-loading-the-identity-certs-twice.patch [RHEL-111934]
+- kvm-crypto-expand-logic-to-cope-with-multiple-certificat.patch [RHEL-111934]
+- kvm-crypto-support-upto-5-parallel-certificate-identitie.patch [RHEL-111934]
+- kvm-docs-creation-of-x509-certs-compliant-with-post-quan.patch [RHEL-111934]
+- kvm-iommufd-Introduce-handler-for-device-ATS-support.patch [RHEL-184675]
+- kvm-vfio-pci-Add-ats-property.patch [RHEL-184675]
+- Resolves: RHEL-113894
+  ([RHEL.10.2][virual network] Hit qemu coredump when removed an interface that the guest is using from the host)
+- Resolves: RHEL-111934
+  (QEMU support for loading multiple sets of x509 certs for PQC hybrid mode)
+- Resolves: RHEL-184675
+  (NVIDIA:Backport vfio/pci: add vfio-pci ATS control property - RHEL 10.3)
+
+* Mon Jun 29 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-23
+- kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vio.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vde.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmu-common-Factor-out-common-helper-function.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmu-add-memory-regions-as-property-for-an-SM.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Extract-common-definitions-to-smmuv3-c.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmu-common-Make-iommu-ops-part-of-SMMUState.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Introduce-smmuv3-accel-device.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Initialize-shared-system-address.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-pci-Move-pci_init_bus_master-after-adding-dev.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-Export-pci_device_get_iommu_bus_devfn-and-ret.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-pci-Add-optional-supports_address_space-callb.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-bridge-pci_expander_bridge-Move-TYPE_PXB_PCIE.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Restrict-accelerated-SMMUv3-to-v.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Implement-get_viommu_cap-callback.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-Introduce-pci_device_get_viommu_flags.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-Introduce-pci_device_get_host_iommu_quirks.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-common-Define-STE-CD-fields-via-regist.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-common-Add-NSCFG-bit-definition-for-CD.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-common-Add-STE-CD-set-helpers-for-repe.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-set-unset_iommu_device-callb.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-propagate-smmuv3_cmdq_consume-errors-t.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-nested-vSTE-install-uninstal.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Install-SMMUv3-GBPA-based-hwpt.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-pci-Introduce-a-callback-to-retrieve-the-MSI-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Implement-get_msi_direct_gpa-cal.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-Set-msi-gpa-property.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-support-to-issue-invalidatio.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Initialize-ID-registers-early-during-r.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Get-host-SMMUv3-hw-info-and-vali.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-host-gpex-Allow-to-generate-preserve-boot-con.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-Set-PCI-preserve_config-for-accel-SMMUv3.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-tests-qtest-bios-tables-test-Prepare-for-IORT-reviso.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-acpi-build-Add-IORT-RMR-regions-to-handl.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-tests-qtest-bios-tables-test-Update-IORT-blobs-after.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Block-migration-when-accel-is-enabled.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Add-accel-property-for-SMMUv3-device.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-a-property-to-specify-RIL-su.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-support-for-ATS.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-property-to-specify-OAS-bits.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Retrieve-PASID-width-from-iommufd_b.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Add-get_pasid_info-callback.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-Add-helper-to-insert-PCIe-extended-capability.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-Factor-out-common-PASID-capability-initializa.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-vfio-pci-Synthesize-PASID-capability-for-vfio-pci.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Make-SubstreamID-support-configu.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-system-memory-Factor-address_space_is_io-out.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-target-i386-arch_memory_mapping-Use-address_space_me.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-s390x-sclp-Use-address_space_memory_is_io-in-sclp.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-system-physmem-Remove-cpu_physical_memory_is_io.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Introduce-iommufd_backend_alloc_vev.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-viommu-free-helper.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Allocate-vEVENTQ-for-accelerated.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Introduce-a-helper-function-for-event-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Read-and-propagate-host-vIOMMU-e.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Correct-SMMUEN-field-name-in-CR0.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Fix-CFGI_CD-handling-when-stage-1-is-u.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Check-ATS-compatibility-between-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Change-ats-property-type-to-OnOf.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Change-ril-property-type-to-OnOf.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-qdev-Add-a-SsidSizeMode-property-type.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Change-ssidsize-property-type-to.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-qdev-Add-an-OasMode-property-type.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Change-oas-property-type-to-OasM.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-qemu-options.hx-Document-arm-smmuv3-device-s-accel-p.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Have-smmuv3_accel_init-take-an-Error-p.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Update-ATC-invalidation-check.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Improve-accel-SMMUv3-usage-documentati.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Add-helper-for-resolving-auto-pa.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ats.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ril.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-ssidsiz.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Implement-auto-value-for-oas.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Set-default-ats-ril-ssidsize-oas-to-au.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-qemu-options.hx-Support-auto-for-accel-SMMUv3-proper.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-pci-pci-Enforce-pci_setup_iommu_per_bus-is-called.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-vfio-iommufd-Force-creating-nesting-parent-HWPT.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-vfio-iommufd-Control-dirty-tracking-for-nesting-p.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Update-iommufd_backend_get_device_i.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-iommufd-Rename-all-the-idev-and-idevc-variables-to-h.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Update-iommufd_backend_alloc_viommu.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Introduce-iommufd_backend_alloc_hw_.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-backends-iommufd-Introduce-iommufd_backend_viommu_mm.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-system-iommufd-Remove-unused-viommu-pointer-from-IOM.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Introduce-CMDQV-ops-interface.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Avoid-including-CONFIG_DEVICES-in-hw-h.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Add-Tegra241-CMDQV-ops-backend.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Wire-CMDQV-ops-into-accel-lifecy.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-Use-stored-SMMUv3-device-list-for-IORT-b.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Probe-host-Tegra241-CMDQV-supp.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Implement-CMDQV-init.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-Link-SMMUv3-CMDQV-resources-to-platform-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Implement-CMDQV-vIOMMU-alloc-f.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-mmap-host-VINTF-Page0-for-CMDQ.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Emulate-CMDQ-V-Config-region.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Emulate-VCMDQ-register-reads.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Emulate-VCMDQ-register-writes.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Allocate-HW-VCMDQs-once-config.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Route-allocated-VCMDQ-Page0-ac.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-memory-Allow-RAM-device-regions-to-skip-IOMMU-mappin.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Use-mmap-d-host-VINTF-page0-fo.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Introduce-common-helper-for-veve.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Read-and-propagate-Tegra241-CM.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Initialize-register-state-on-r.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Limit-queue-size-based-on-back.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Add-per-device-identifier-property.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Introduce-helper-to-query-CMDQV-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-virt-acpi-Advertise-Tegra241-CMDQV-nodes-in-D.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-accel-Enforce-viommu-association-when-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-tegra241-cmdqv-Document-the-CMDQV-design-and-.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-hw-arm-smmuv3-Add-cmdqv-property-for-SMMUv3-device.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- kvm-rh-aarch64-rh-devices.mak-Add-CONFIG_TEGRA241_CMDQV.patch [RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798]
+- Resolves: RHEL-142465
+  ([RHEL-10.1][ARM]: Two smmuv3 devices can be attached to the same bus)
+- Resolves: RHEL-160190
+  (NVIDIA:Backport hw/arm/smmuv3-accel: Support AUTO properties - RHEL 10.3)
+- Resolves: RHEL-163596
+  (NVIDIA:Backport hw/arm/smmuv3-accel: Resolve AUTO properties - RHEL 10.3)
+- Resolves: RHEL-73794
+  (NVIDIA:Grace-Hopper:Backport HW accelerated nesting support for arm SMMUv3 - RHEL 10.1)
+- Resolves: RHEL-73796
+  (NVIDIA:Grace-Hopper:Backport vEVENTQ support for smmuv3 - RHEL 10.1)
+- Resolves: RHEL-73798
+  (NVIDIA:Grace-Hopper:Backport CMDQV support - RHEL 10.1)
+
+* Tue Jun 23 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-22
+- kvm-blkdebug-Add-delay-ns-option.patch [RHEL-121686]
+- kvm-block-Add-blk_co_start-end_request-and-BDRV_REQ_NO_Q.patch [RHEL-121686]
+- kvm-block-Add-flags-parameter-to-blk_-_pdiscard.patch [RHEL-121686]
+- kvm-ide-Minimal-fix-for-deadlock-between-TRIM-and-drain.patch [RHEL-121686]
+- kvm-ide-Clean-up-ide_trim_co_entry-to-be-idiomatic-corou.patch [RHEL-121686]
+- kvm-ide-test-Factor-out-wait_dma_completion.patch [RHEL-121686]
+- kvm-ide-test-Test-reset-during-TRIM.patch [RHEL-121686]
+- kvm-block-graph-lock-fix-missed-wakeup-in-bdrv_graph_co_.patch [RHEL-186384]
+- kvm-block-curl-fix-curl-internal-handles-handling.patch [RHEL-186384]
+- kvm-block-curl.c-Use-explicit-long-constants-in-curl_eas.patch [RHEL-186384]
+- kvm-block-curl.c-Fix-CURLOPT_VERBOSE-parameter-type.patch [RHEL-186384]
+- kvm-block-curl-fix-concurrent-completion-handling.patch [RHEL-186384]
+- kvm-block-curl-free-s-password-in-cleanup-paths.patch [RHEL-186384]
+- kvm-nvme-Kick-and-check-completions-in-BDS-context.patch [RHEL-186384]
+- kvm-nvme-Note-in-which-AioContext-some-functions-run.patch [RHEL-186384]
+- kvm-block-remove-detached-header-option-from-opts-after-.patch [RHEL-186384]
+- kvm-block-fix-luks-amend-when-run-in-coroutine.patch [RHEL-186384]
+- kvm-qed-Don-t-try-to-flush-during-incoming-migration.patch [RHEL-186384]
+- kvm-block-vmdk-fix-OOB-read-in-vmdk_read_extent.patch [RHEL-186384]
+- kvm-block-throttle-groups-fix-deadlock-with-iolimits-and.patch [RHEL-186384]
+- kvm-throttle-group-Fix-race-condition-in-throttle_group_.patch [RHEL-186384]
+- kvm-qemu-img-Fix-amend-option-parse-error-handling.patch [RHEL-186384]
+- kvm-qemu-img-rebase-don-t-exceed-IO_BUF_SIZE-in-one-oper.patch [RHEL-186384]
+- kvm-python-backport-drop-Python3.6-workarounds.patch [RHEL-186384]
+- kvm-python-backport-Remove-deprecated-get_event_loop-cal.patch [RHEL-186384]
+- kvm-python-backport-avoid-creating-additional-event-loop.patch [RHEL-186384]
+- kvm-iotests-147-ensure-temporary-sockets-are-closed-befo.patch [RHEL-186384]
+- kvm-iotests-151-ensure-subprocesses-are-cleaned-up.patch [RHEL-186384]
+- kvm-tests-qemu-iotest-fix-iotest-024-with-qed-images.patch [RHEL-186384]
+- kvm-tests-qemu-iotests-Fix-check-for-existing-file-in-_r.patch [RHEL-186384]
+- kvm-async-access-bottom-half-flags-with-qatomic_read.patch [RHEL-186384]
+- kvm-block-linux-aio-bound-ioq_submit-recursion-depth.patch [RHEL-186384]
+- kvm-block-io-fallback-to-bounce-buffer-if-BLKZEROOUT-is-.patch [RHEL-186384]
+- kvm-file-posix-populate-pwrite_zeroes_alignment.patch [RHEL-186384]
+- kvm-block-use-pwrite_zeroes_alignment-when-writing-first.patch [RHEL-186384]
+- kvm-iotests-add-Linux-loop-device-image-creation-test.patch [RHEL-186384]
+- kvm-virtio-Fix-crash-when-sriov-pf-is-set-for-non-PCI-Ex.patch [RHEL-186384]
+- kvm-virtio-scsi-pass-the-same-cdb_size-to-virtio_scsi_po.patch [RHEL-186384]
+- kvm-hw-scsi-avoid-deadlock-upon-TMF-request-cancelling-w.patch [RHEL-186384]
+- kvm-virtio-blk-fix-zone-report-buffer-out-of-memory-CVE-.patch [RHEL-186384]
+- kvm-ide-Fix-potential-assertion-failure-on-VM-stop-for-P.patch [RHEL-186384]
+- kvm-block-Create-DEFAULT_BLOCK_CONF-macro.patch [RHEL-186384]
+- kvm-block-Add-more-defaults-to-DEFAULT_BLOCK_CONF.patch [RHEL-186384]
+- kvm-block-mirror-check-range-when-setting-zero-bitmap-fo.patch [RHEL-186384]
+- kvm-iotests-test-active-mirror-with-unaligned-small-writ.patch [RHEL-186384]
+- kvm-block-mirror-fix-assertion-failure-upon-duplicate-co.patch [RHEL-186384]
+- kvm-commit-Drain-nodes-across-all-of-bdrv_commit.patch [RHEL-186384]
+- kvm-qemu-io-Add-aio_discard-command.patch [RHEL-186384]
+- kvm-qcow2-Fix-corruption-on-discard-during-write-with-CO.patch [RHEL-186384]
+- kvm-iotests-046-Test-that-discard-write_zeroes-wait-for-.patch [RHEL-186384]
+- kvm-qcow2-Fix-data-loss-on-zero-write-with-detect-zeroes.patch [RHEL-186384]
+- kvm-block-Fix-crash-after-setting-latency-historygram-wi.patch [RHEL-186384]
+- Resolves: RHEL-121686
+  (qemu-kvm hung during drain after double pause)
+- Resolves: RHEL-186384
+  (virt-storage: Backport stable branch fixes)
+
+* Fri Jun 19 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-21
+- kvm-hw-vfio-sort-and-validate-sparse-mmap-regions-by-off.patch [RHEL-150900]
+- kvm-vfio-Add-Error-parameter-to-vfio_region_setup.patch [RHEL-150900]
+- kvm-hw-vfio-align-mmap-to-power-of-2-of-region-size-for-.patch [RHEL-150900]
+- kvm-virtio-blk-add-missing-VIRTIO_BLK_T_SCSI_CMD-size-ch.patch [RHEL-184530]
+- Resolves: RHEL-150900
+  (NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - RHEL 10.3)
+- Resolves: RHEL-184530
+  (CVE-2026-48914 qemu-kvm: Heap buffer overflow in virtio-blk SCSI request handling [rhel-10.3])
+
+* Mon Jun 08 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-20
+- kvm-accel-mshv-Remove-remap-overlapping-mappings-code.patch [RHEL-178767]
+- kvm-accel-mshv-implement-cpu_thread_is_idle-hook.patch [RHEL-178767]
+- kvm-scsi-adjust-error_prepend-formatting.patch [RHEL-155807]
+- kvm-scsi-always-send-valid-PREEMPT-TYPE-field.patch [RHEL-155807]
+- kvm-scsi-register-again-after-PREEMPT-without-reservatio.patch [RHEL-155807]
+- kvm-hw-tpm-tpm_tis_sysbus-defer-resource-allocation-to-r.patch [RHEL-178846]
+- kvm-vfio-container-Restrict-dma_map_file-to-shared-RAM-o.patch [RHEL-180750]
+- kvm-scsi-change-buf_size-to-unsigned-int-in-scsi_SG_IO.patch [RHEL-153123]
+- kvm-scsi-handle-reservation-changes-across-migration.patch [RHEL-153123]
+- Resolves: RHEL-178767
+  (MSHV backport onto QEMU 10.1.0 is not able to launch MSHV guests)
+- Resolves: RHEL-155807
+  (live migration failed the VM just register key only [rhel-10.3])
+- Resolves: RHEL-178846
+  ([aarch64] qemu-kvm crashes on --device tpm-tis-device,?)
+- Resolves: RHEL-180750
+  (Backport in QEMU : vfio/container: Restrict dma_map_file() to shared RAM or RAM devices)
+- Resolves: RHEL-153123
+  (live migration failed or get failed WSFC test result during WSFC testing [rhel-10.3])
+
+* Tue May 26 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-19
+- kvm-vmstate-Introduce-VMSTATE_VARRAY_INT32_ALLOC.patch [RHEL-174858]
+- kvm-target-arm-Move-compare_u64-to-helper.c.patch [RHEL-174858]
+- kvm-target-arm-Convert-init_cpreg_list-to-g_hash_table_f.patch [RHEL-174858]
+- kvm-target-arm-machine-Use-VMSTATE_VARRAY_INT32_ALLOC-fo.patch [RHEL-174858]
+- kvm-target-arm-kvm-Export-kvm_print_register_name.patch [RHEL-174858]
+- kvm-target-arm-kvm-Tweak-print_register_name-for-arm64-s.patch [RHEL-174858]
+- kvm-target-arm-machine-Trace-cpreg-names-which-do-not-ma.patch [RHEL-174858]
+- kvm-target-arm-machine-Trace-all-register-mismatches.patch [RHEL-174858]
+- kvm-target-arm-machine-Fix-detection-of-unknown-incoming.patch [RHEL-174858]
+- kvm-target-arm-cpu-Introduce-the-infrastructure-for-cpre.patch [RHEL-174858]
+- kvm-target-arm-machine-Handle-ToleranceNotOnBothEnds-mig.patch [RHEL-174858]
+- kvm-target-arm-machine-Handle-ToleranceOnlySrcTestValue-.patch [RHEL-174858]
+- kvm-target-arm-cpu64-Mitigate-migration-failures-due-to-.patch [RHEL-174858]
+- kvm-target-arm-cpu64-Define-cpreg-migration-tolerance-fo.patch [RHEL-174858]
+- kvm-target-arm-helper-Define-cpreg-migration-tolerance-f.patch [RHEL-174858]
+- kvm-Revert-target-arm-Reinstate-bogus-AArch32-DBGDTRTX-r.patch [RHEL-174858]
+- kvm-hw-pci-host-gpex-acpi-Fix-_DSM-function-0-support-re.patch [RHEL-138494]
+- kvm-vfio-scsi-ui-Error-check-qio_channel_socket_connect_.patch [RHEL-138494]
+- kvm-vfio-igd-Enable-quirks-when-IGD-is-not-the-primary-d.patch [RHEL-138494]
+- kvm-vfio-Remove-vfio-amd-xgbe-device.patch [RHEL-138494]
+- kvm-vfio-Remove-vfio-calxeda-xgmac-device.patch [RHEL-138494]
+- kvm-hw-arm-virt-Include-system-system.h.patch [RHEL-138494]
+- kvm-vfio-Remove-vfio-platform.patch [RHEL-138494]
+- kvm-vfio-Move-vfio-region.h-under-hw-vfio.patch [RHEL-138494]
+- kvm-vfio-container-set-error-on-cpr-failure.patch [RHEL-138494]
+- kvm-vfio-Report-an-error-when-the-dma_max_mappings-limit.patch [RHEL-138494]
+- kvm-hw-vfio-user-add-x-pci-class-code.patch [RHEL-138494]
+- kvm-vfio-Introduce-helper-vfio_pci_from_vfio_device.patch [RHEL-138494]
+- kvm-vfio-vfio-container-base.h-update-VFIOContainerBase-.patch [RHEL-138494]
+- kvm-vfio-vfio-container.h-update-VFIOContainer-declarati.patch [RHEL-138494]
+- kvm-hw-vfio-cpr-legacy.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-hw-vfio-container.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-spapr.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-vfio-container.h-rename-VFIOContainer-bcontaine.patch [RHEL-138494]
+- kvm-vfio-user-container.h-update-VFIOUserContainer-decla.patch [RHEL-138494]
+- kvm-vfio-container.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-user-container.h-rename-VFIOUserContainer-bcont.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-update-VFIOUserPCIDevice-declaration.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-VFIOUserPCIDevice-device-fiel.patch [RHEL-138494]
+- kvm-vfio-pci.h-update-VFIOPCIDevice-declaration.patch [RHEL-138494]
+- kvm-vfio-pci.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-pci-quirks.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-cpr.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-igd.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-use-QOM-casts-where-appropriate2.patch [RHEL-138494]
+- kvm-vfio-pci.h-rename-VFIOPCIDevice-pdev-field-to-parent.patch [RHEL-138494]
+- kvm-treewide-handle-result-of-qio_channel_set_blocking.patch [RHEL-138494]
+- kvm-vfio-pci-Do-not-unparent-in-instance_finalize.patch [RHEL-138494]
+- kvm-vfio-Do-not-unparent-in-instance_finalize.patch [RHEL-138494]
+- kvm-include-hw-vfio-vfio-container.h-rename-VFIOContaine.patch [RHEL-138494]
+- kvm-include-hw-vfio-vfio-container-base.h-rename-VFIOCon.patch [RHEL-138494]
+- kvm-include-hw-vfio-vfio-container.h-rename-file-to-vfio.patch [RHEL-138494]
+- kvm-include-hw-vfio-vfio-container-base.h-rename-file-to.patch [RHEL-138494]
+- kvm-hw-vfio-container.c-rename-file-to-container-legacy..patch [RHEL-138494]
+- kvm-hw-vfio-container-base.c-rename-file-to-container.c.patch [RHEL-138494]
+- kvm-vfio-iommufd.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-cpr-iommufd.c-use-QOM-casts-where-appropriate.patch [RHEL-138494]
+- kvm-vfio-vfio-iommufd.h-rename-VFIOContainer-bcontainer-.patch [RHEL-138494]
+- kvm-vfio-spapr.c-use-QOM-casts-where-appropriate2.patch [RHEL-138494]
+- kvm-vfio-spapr.c-rename-VFIOContainer-bcontainer-field-t.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_instance_init-to-vfio_pci_ini.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_instance_finalize-to-vfio_pci.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_dev_class_init-to-vfio_pc.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_dev_info-to-vfio_pci_info.patch [RHEL-138494]
+- kvm-s390x-s390-pci-vfio.c-use-QOM-casts-where-appropriat.patch [RHEL-138494]
+- kvm-hw-vfio-types.h-rename-TYPE_VFIO_PCI_BASE-to-TYPE_VF.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_base_dev_class_init-to-vf.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_base_dev_info-to-vfio_pci.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_dev_properties-to-vfio_pc.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_dev_nohotplug_properties-.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_nohotplug_dev_class_init-.patch [RHEL-138494]
+- kvm-vfio-pci.c-rename-vfio_pci_nohotplug_dev_info-to-vfi.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_class_init-.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_properties-.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-vfio_user_instance_init-to-vf.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-vfio_user_instance_finalize-t.patch [RHEL-138494]
+- kvm-vfio-user-pci.c-rename-vfio_user_pci_dev_info-to-vfi.patch [RHEL-138494]
+- kvm-include-hw-vfio-vfio-device.h-fix-include-header-gua.patch [RHEL-138494]
+- kvm-vfio-Remove-workaround-for-kernel-DMA-unmap-overflow.patch [RHEL-138494]
+- kvm-system-iommufd-Use-uint64_t-type-for-IOVA-mapping-si.patch [RHEL-138494]
+- kvm-hw-vfio-Reorder-vfio_container_query_dirty_bitmap-tr.patch [RHEL-138494]
+- kvm-hw-vfio-Avoid-ram_addr_t-in-vfio_container_query_dir.patch [RHEL-138494]
+- kvm-hw-vfio-Use-uint64_t-for-IOVA-mapping-size-in-vfio_c.patch [RHEL-138494]
+- kvm-migration-push-Error-errp-into-vmstate_subsection_lo.patch [RHEL-138494]
+- kvm-migration-push-Error-errp-into-vmstate_load_state.patch [RHEL-138494]
+- kvm-migration-Remove-error-variant-of-vmstate_save_state.patch [RHEL-138494]
+- kvm-migration-multi-mode-notifier.patch [RHEL-138494]
+- kvm-migration-add-cpr_walk_fd.patch [RHEL-138494]
+- kvm-oslib-qemu_clear_cloexec.patch [RHEL-138494]
+- kvm-migration-cpr-exec-command-parameter.patch [RHEL-138494]
+- kvm-migration-cpr-exec-save-and-load.patch [RHEL-138494]
+- kvm-migration-cpr-exec-mode.patch [RHEL-138494]
+- kvm-migration-cpr-exec-docs.patch [RHEL-138494]
+- kvm-vfio-cpr-exec-mode.patch [RHEL-138494]
+- kvm-hw-vfio-listener-Include-missing-exec-target_page.h-.patch [RHEL-138494]
+- kvm-hw-Remove-unnecessary-system-ram_addr.h-header.patch [RHEL-138494]
+- kvm-vfio-container-Remap-only-populated-parts-in-a-secti.patch [RHEL-138494]
+- kvm-vfio-cpr-legacy-drop-an-erroneous-assert.patch [RHEL-138494]
+- kvm-vfio-iommufd-Set-cpr.ioas_id-on-source-side-for-CPR-.patch [RHEL-138494]
+- kvm-vfio-iommufd-Restore-vbasedev-s-reference-to-hwpt-af.patch [RHEL-138494]
+- kvm-vfio-container-Support-unmap-all-in-one-ioctl.patch [RHEL-138494]
+- kvm-vfio-iommufd-Support-unmap-all-in-one-ioctl.patch [RHEL-138494]
+- kvm-vfio-listener-Add-an-assertion-for-unmap_all.patch [RHEL-138494]
+- kvm-vfio-Clean-up-includes.patch [RHEL-138494]
+- kvm-migration-set-correct-list-pointer-when-removing-not.patch [RHEL-138494]
+- kvm-vfio-user-simplify-vfio_user_process.patch [RHEL-138494]
+- kvm-vfio-user-clarify-partial-message-handling.patch [RHEL-138494]
+- kvm-vfio-user-refactor-out-header-handling.patch [RHEL-138494]
+- kvm-vfio-user-simplify-vfio_user_recv_one.patch [RHEL-138494]
+- kvm-vfio-user-recycle-msg-on-failure.patch [RHEL-138494]
+- kvm-include-hw-hyperv-Remove-unused-struct-mshv_vp_regis.patch [RHEL-138494]
+- kvm-linux-headers-Update-to-Linux-v6.18-rc3.patch [RHEL-138494]
+- kvm-linux-headers-Update-to-Linux-v6.19-rc1.patch [RHEL-138494]
+- kvm-hw-vfio-Add-helper-to-retrieve-device-feature.patch [RHEL-138494]
+- kvm-hw-vfio-region-Create-dmabuf-for-PCI-BAR-per-region.patch [RHEL-138494]
+- Resolves: RHEL-174858
+  ([rhel10] Backport qemu cross-kernel migration mitigation series)
+- Resolves: RHEL-138494
+  (NVIDIA:Grace-Hopper:Backport vfio: Add DMABUF support for PCI BAR regions - RHEL 10.3)
+
+* Mon May 11 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-18
+- kvm-scsi-Don-t-consider-LOGICAL-UNIT-NOT-SUPPORTED-guest.patch [RHEL-158212]
+- kvm-hw-tpm-Factor-tpm_ppi_enabled-out.patch [RHEL-112608]
+- kvm-hw-tpm-Add-TPMIfClass-ppi_enabled-field.patch [RHEL-112608]
+- kvm-hw-tpm-Remove-CRBState-ppi_enabled-field.patch [RHEL-112608]
+- kvm-hw-tpm-Propagate-ppi_enabled-to-tpm_tis_reset-and-re.patch [RHEL-112608]
+- kvm-hw-tpm-Simplify-tpm_ppi_enabled.patch [RHEL-112608]
+- kvm-docs-specs-tpm-document-PPI-support-on-ARM64-virt.patch [RHEL-112608]
+- kvm-hw-acpi-tpm-parameterize-PPI-base-address-in-tpm_bui.patch [RHEL-112608]
+- kvm-hw-tpm-add-PPI-support-to-tpm-tis-device-for-ARM64-v.patch [RHEL-112608]
+- Resolves: RHEL-158212
+  (qemu-kvm doesn't retry SG-IO on 05/25/00 (ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED) [rhel-10.3])
+- Resolves: RHEL-112608
+  ([ARM64] Windows 11 VM should install without TPM Bypass)
+
+* Tue Apr 21 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-17
+- kvm-block-enable-stats-intervals-for-storage-devices.patch [RHEL-114231]
+- kvm-qdev-Free-property-array-on-release.patch [RHEL-114231]
+- Resolves: RHEL-114231
+  (Add stats-intervals support to --blockdev)
 
 * Mon Mar 30 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-16
 - kvm-linux-aio-Put-all-parameters-into-qemu_laiocb.patch [RHEL-158224]

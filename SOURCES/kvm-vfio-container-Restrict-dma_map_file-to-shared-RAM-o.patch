@@ -1,0 +1,97 @@
+From 773e27e2cfefb0958df726b726a6de91bda8771d Mon Sep 17 00:00:00 2001
+From: Chenyi Qiang <chenyi.qiang@intel.com>
+Date: Wed, 27 May 2026 18:11:08 +0800
+Subject: [PATCH 7/9] vfio/container: Restrict dma_map_file() to shared RAM or
+ RAM devices
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 497: vfio/container: Restrict dma_map_file() to shared RAM or RAM devices
+RH-Jira: RHEL-180750
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Commit: [1/1] 423a647a11151907ab26eb341e73298a2880908e (rovick1/qemu-kvm)
+
+vfio_container_dma_map() uses dma_map_file() whenever a RAMBlock has an
+fd and the VFIO IOMMU backend supports file-based DMA mapping. That is
+not correct for private file-backed guest RAM.
+
+dma_map_file() resolves PFNs from the backing file, but private guest
+RAM mappings (MAP_PRIVATE) can run on different PFNs than the file
+because they are subject to copy-on-write (COW) anomalies. As a result,
+using dma_map_file() on a privately mapped RAMBlock can program DMA
+against pages that do not back QEMU's actual guest memory.
+
+Fix this by using dma_map_file() only for shared mapped RAMBlocks
+MAP_SHARED) or RAM device regions.
+
+Fixes: fb32965b6dd8 ("vfio/iommufd: use IOMMU_IOAS_MAP_FILE")
+Reported-by: Farrah Chen <farrah.chen@intel.com>
+Closes: https://bugzilla.kernel.org/show_bug.cgi?id=220776
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Chenyi Qiang <chenyi.qiang@intel.com>
+Link: https://lore.kernel.org/qemu-devel/20260527101109.71781-1-chenyi.qiang@intel.com
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/container.c | 34 +++++++++++++++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 1b8569d36a..f534797a98 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -73,15 +73,43 @@ void vfio_address_space_insert(VFIOAddressSpace *space,
+     bcontainer->space = space;
+ }
+ 
++static bool vfio_container_can_dma_map_file(VFIOContainer *bcontainer,
++                                            MemoryRegion *mr, int *fd)
++{
++    VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
++    RAMBlock *rb = mr->ram_block;
++
++    if (!vioc->dma_map_file || !rb) {
++        return false;
++    }
++
++    *fd = qemu_ram_get_fd(rb);
++    if (*fd < 0) {
++        return false;
++    }
++
++    /*
++     * We can use IOMMU DMA mapping (IOMMU_IOAS_MAP_FILE) for :
++     *
++     * 1) Guest RAM blocks explicitly configured as shared (MAP_SHARED)
++     * 2) RAM device sub-regions (MMIO BARs)
++     *
++     * Private RAM mappings (MAP_PRIVATE) are strictly excluded. Because
++     * they are subject to copy-on-write (COW) anomalies, their underlying
++     * PFNs can permanently diverge from the backing file
++     */
++    return qemu_ram_is_shared(rb) || memory_region_is_ram_device(mr);
++}
++
+ int vfio_container_dma_map(VFIOContainer *bcontainer,
+                            hwaddr iova, uint64_t size,
+                            void *vaddr, bool readonly, MemoryRegion *mr)
+ {
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+-    RAMBlock *rb = mr->ram_block;
+-    int mfd = rb ? qemu_ram_get_fd(rb) : -1;
++    int mfd;
+ 
+-    if (mfd >= 0 && vioc->dma_map_file) {
++    if (vfio_container_can_dma_map_file(bcontainer, mr, &mfd)) {
++        RAMBlock *rb = mr->ram_block;
+         unsigned long start = vaddr - qemu_ram_get_host_addr(rb);
+         unsigned long offset = qemu_ram_get_fd_offset(rb);
+ 
+-- 
+2.52.0
+

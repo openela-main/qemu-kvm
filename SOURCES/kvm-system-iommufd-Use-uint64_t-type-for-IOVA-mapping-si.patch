@@ -1,0 +1,90 @@
+From 3f329c9354514ec0363a55f232deef28459f5ec4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Tue, 30 Sep 2025 14:35:25 +0200
+Subject: [PATCH 081/116] system/iommufd: Use uint64_t type for IOVA mapping
+ size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [65/100] c875244fb3df398bd2c47f3597f5ca7c1ae9a0a5 (rovick1/qemu-kvm)
+
+The 'ram_addr_t' type is described as:
+
+  a QEMU internal address space that maps guest RAM physical
+  addresses into an intermediate address space that can map
+  to host virtual address spaces.
+
+This doesn't represent well an IOVA mapping size. Simply use
+the uint64_t type.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250930123528.42878-2-philmd@linaro.org
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 70a7e33ddb7f2ca7caacf286222bd80fd330c454)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c       | 6 +++---
+ include/system/iommufd.h | 6 +++---
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index 2a33c7ab0b..fdfb7c9d67 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -197,7 +197,7 @@ void iommufd_backend_free_id(IOMMUFDBackend *be, uint32_t id)
+ }
+ 
+ int iommufd_backend_map_dma(IOMMUFDBackend *be, uint32_t ioas_id, hwaddr iova,
+-                            ram_addr_t size, void *vaddr, bool readonly)
++                            uint64_t size, void *vaddr, bool readonly)
+ {
+     int ret, fd = be->fd;
+     struct iommu_ioas_map map = {
+@@ -230,7 +230,7 @@ int iommufd_backend_map_dma(IOMMUFDBackend *be, uint32_t ioas_id, hwaddr iova,
+ }
+ 
+ int iommufd_backend_map_file_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+-                                 hwaddr iova, ram_addr_t size,
++                                 hwaddr iova, uint64_t size,
+                                  int mfd, unsigned long start, bool readonly)
+ {
+     int ret, fd = be->fd;
+@@ -268,7 +268,7 @@ int iommufd_backend_map_file_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+ }
+ 
+ int iommufd_backend_unmap_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+-                              hwaddr iova, ram_addr_t size)
++                              hwaddr iova, uint64_t size)
+ {
+     int ret, fd = be->fd;
+     struct iommu_ioas_unmap unmap = {
+diff --git a/include/system/iommufd.h b/include/system/iommufd.h
+index c9c72ffc45..a659f36a20 100644
+--- a/include/system/iommufd.h
++++ b/include/system/iommufd.h
+@@ -45,12 +45,12 @@ bool iommufd_backend_alloc_ioas(IOMMUFDBackend *be, uint32_t *ioas_id,
+                                 Error **errp);
+ void iommufd_backend_free_id(IOMMUFDBackend *be, uint32_t id);
+ int iommufd_backend_map_file_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+-                                 hwaddr iova, ram_addr_t size, int fd,
++                                 hwaddr iova, uint64_t size, int fd,
+                                  unsigned long start, bool readonly);
+ int iommufd_backend_map_dma(IOMMUFDBackend *be, uint32_t ioas_id, hwaddr iova,
+-                            ram_addr_t size, void *vaddr, bool readonly);
++                            uint64_t size, void *vaddr, bool readonly);
+ int iommufd_backend_unmap_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+-                              hwaddr iova, ram_addr_t size);
++                              hwaddr iova, uint64_t size);
+ bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
+                                      uint32_t *type, void *data, uint32_t len,
+                                      uint64_t *caps, Error **errp);
+-- 
+2.52.0
+

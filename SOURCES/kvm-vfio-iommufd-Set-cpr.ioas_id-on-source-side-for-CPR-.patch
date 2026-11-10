@@ -1,0 +1,56 @@
+From 663f00467aa4f1a081005dc0460b3d170aaa9693 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Sun, 28 Sep 2025 04:54:29 -0400
+Subject: [PATCH 100/116] vfio/iommufd: Set cpr.ioas_id on source side for CPR
+ transfer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [84/100] c3e02d9b858065fe04b730f23b4f95363148371f (rovick1/qemu-kvm)
+
+On source side, if there are more than one VFIO devices and they
+attach to same container, only the first device sets cpr.ioas_id,
+the others are bypassed. We should set it for each device, or
+else only first device works.
+
+Fixes: 4296ee07455e ("vfio/iommufd: reconstruct device")
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/qemu-devel/20250928085432.40107-4-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d59db04aed750ba4fc56f79cae99814334ec8285)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 10fc065d20..3b0288f416 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -602,7 +602,6 @@ skip_ioas_alloc:
+     container->be = vbasedev->iommufd;
+     container->ioas_id = ioas_id;
+     QLIST_INIT(&container->hwpt_list);
+-    vbasedev->cpr.ioas_id = ioas_id;
+ 
+     bcontainer = VFIO_IOMMU(container);
+     vfio_address_space_insert(space, bcontainer);
+@@ -636,6 +635,8 @@ skip_ioas_alloc:
+     bcontainer->initialized = true;
+ 
+ found_container:
++    vbasedev->cpr.ioas_id = container->ioas_id;
++
+     ret = ioctl(devfd, VFIO_DEVICE_GET_INFO, &dev_info);
+     if (ret) {
+         error_setg_errno(errp, errno, "error getting device info");
+-- 
+2.52.0
+

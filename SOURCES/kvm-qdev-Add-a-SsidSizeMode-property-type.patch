@@ -1,0 +1,131 @@
+From 5f0546d421450aede89b929920c3963a83573e13 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 060/111] qdev: Add a SsidSizeMode property type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [60/111] 907950d10709af8ef5016c7325cdc232b1a39996 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Introduce a new enum type property allowing to set a Substream ID size
+for HW-accelerated smmuv3. Values are auto and 0..20. The auto value
+allows SSID size property to be derived from host IOMMU capabilities.
+A value of 0 disables SubstreamID, while non-zero values specify the
+SSID size in bits.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-5-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 3a3dd64e63dc772f6067d8215b7add7474e6a3e5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/core/qdev-properties-system.c    | 14 ++++++++++++++
+ include/hw/qdev-properties-system.h |  3 +++
+ qapi/misc-arm.json                  | 16 ++++++++++++++++
+ qapi/pragma.json                    |  1 +
+ 4 files changed, 34 insertions(+)
+
+diff --git a/hw/core/qdev-properties-system.c b/hw/core/qdev-properties-system.c
+index 1f810b7ddf..67b3ce3a16 100644
+--- a/hw/core/qdev-properties-system.c
++++ b/hw/core/qdev-properties-system.c
+@@ -18,6 +18,7 @@
+ #include "qapi/qapi-types-block.h"
+ #include "qapi/qapi-types-machine.h"
+ #include "qapi/qapi-types-migration.h"
++#include "qapi/qapi-types-misc-arm.h"
+ #include "qapi/qapi-visit-virtio.h"
+ #include "qapi/qmp/qerror.h"
+ #include "qemu/ctype.h"
+@@ -723,6 +724,19 @@ const PropertyInfo qdev_prop_zero_page_detection = {
+     .set_default_value = qdev_propinfo_set_default_value_enum,
+ };
+ 
++/* --- SsidSizeMode --- */
++
++QEMU_BUILD_BUG_ON(sizeof(SsidSizeMode) != sizeof(int));
++
++const PropertyInfo qdev_prop_ssidsize_mode = {
++    .type = "SsidSizeMode",
++    .description = "ssidsize mode: auto, 0-20",
++    .enum_table = &SsidSizeMode_lookup,
++    .get = qdev_propinfo_get_enum,
++    .set = qdev_propinfo_set_enum,
++    .set_default_value = qdev_propinfo_set_default_value_enum,
++};
++
+ /* --- Reserved Region --- */
+ 
+ /*
+diff --git a/include/hw/qdev-properties-system.h b/include/hw/qdev-properties-system.h
+index 9601a11a09..7f9bcf59f2 100644
+--- a/include/hw/qdev-properties-system.h
++++ b/include/hw/qdev-properties-system.h
+@@ -13,6 +13,7 @@ extern const PropertyInfo qdev_prop_multifd_compression;
+ extern const PropertyInfo qdev_prop_mig_mode;
+ extern const PropertyInfo qdev_prop_granule_mode;
+ extern const PropertyInfo qdev_prop_zero_page_detection;
++extern const PropertyInfo qdev_prop_ssidsize_mode;
+ extern const PropertyInfo qdev_prop_losttickpolicy;
+ extern const PropertyInfo qdev_prop_blockdev_on_error;
+ extern const PropertyInfo qdev_prop_bios_chs_trans;
+@@ -60,6 +61,8 @@ extern const PropertyInfo qdev_prop_virtio_gpu_output_list;
+ #define DEFINE_PROP_ZERO_PAGE_DETECTION(_n, _s, _f, _d) \
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_zero_page_detection, \
+                        ZeroPageDetection)
++#define DEFINE_PROP_SSIDSIZE_MODE(_n, _s, _f, _d) \
++    DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_ssidsize_mode, SsidSizeMode)
+ #define DEFINE_PROP_LOSTTICKPOLICY(_n, _s, _f, _d) \
+     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_losttickpolicy, \
+                         LostTickPolicy)
+diff --git a/qapi/misc-arm.json b/qapi/misc-arm.json
+index f921d740f1..416b4240e2 100644
+--- a/qapi/misc-arm.json
++++ b/qapi/misc-arm.json
+@@ -45,3 +45,19 @@
+ #                     { "version": 3, "emulated": false, "kernel": true } ] }
+ ##
+ { 'command': 'query-gic-capabilities', 'returns': ['GICCapability'] }
++
++##
++# @SsidSizeMode:
++#
++# SMMUv3 SubstreamID size configuration mode.
++#
++# @auto: derive from host IOMMU capabilities
++#
++# Values 0-20: SSIDSIZE value in bits.  0 disables SubstreamID.
++#
++# Since: 11.0
++##
++{ 'enum': 'SsidSizeMode',
++  'data': [ 'auto', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
++            '10', '11', '12', '13', '14', '15', '16', '17', '18',
++            '19', '20' ] } # order matters, see ssidsize_mode_to_value()
+diff --git a/qapi/pragma.json b/qapi/pragma.json
+index 023a2ef7bc..5ad4487147 100644
+--- a/qapi/pragma.json
++++ b/qapi/pragma.json
+@@ -67,6 +67,7 @@
+         'S390CpuEntitlement',
+         'S390CpuPolarization',
+         'S390CpuState',
++        'SsidSizeMode',
+         'String',
+         'StringWrapper',
+         'SysEmuTarget',
+-- 
+2.52.0
+

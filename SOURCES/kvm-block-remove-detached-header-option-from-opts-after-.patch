@@ -1,0 +1,72 @@
+From 3984b109d0b4e1a86c46d3b79641b08043e5d64a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Fri, 19 Sep 2025 11:38:10 +0100
+Subject: [PATCH 16/52] block: remove 'detached-header' option from opts after
+ use
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [9/45] 383bd840869b184dfe4588f930e2d924f6faec39 (kmwolf/centos-qemu-kvm)
+
+The code for creating LUKS devices references a 'detached-header'
+option in the QemuOpts  data, but does not consume (remove) the
+option.
+
+Thus when the code later tries to convert the remaining unused
+QemuOpts into a QCryptoBlockCreateOptions struct, an error is
+reported by the QAPI code that 'detached-header' is not a valid
+field.
+
+This fixes a regression caused by
+
+  commit e818c01ae6e7c54c7019baaf307be59d99ce80b9
+  Author: Daniel P. Berrangé <berrange@redhat.com>
+  Date:   Mon Feb 19 15:12:59 2024 +0000
+
+    qapi: drop unused QCryptoBlockCreateOptionsLUKS.detached-header
+
+which identified that the QAPI field was unused, but failed to
+realize the QemuOpts -> QCryptoBlockCreateOptions conversion
+was seeing the left-over 'detached-header' option which had not
+been removed from QemuOpts.
+
+This problem was identified by the 'luks-detached-header' I/O
+test, but unfortunately I/O tests are not run regularly for the
+LUKS format.
+
+Fixes: e818c01ae6e7c54c7019baaf307be59d99ce80b9
+Reported-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+Message-ID: <20250919103810.1513109-1-berrange@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 6eda39a87f4fda78befa4085e3644e4440afc1dd)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/crypto.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/block/crypto.c b/block/crypto.c
+index d4226cc68a..17b4749a1e 100644
+--- a/block/crypto.c
++++ b/block/crypto.c
+@@ -792,7 +792,7 @@ block_crypto_co_create_opts_luks(BlockDriver *drv, const char *filename,
+     char *buf = NULL;
+     int64_t size;
+     bool detached_hdr =
+-        qemu_opt_get_bool(opts, "detached-header", false);
++        qemu_opt_get_bool_del(opts, "detached-header", false);
+     unsigned int cflags = 0;
+     int ret;
+     Error *local_err = NULL;
+-- 
+2.52.0
+

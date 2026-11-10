@@ -1,0 +1,58 @@
+From 6d01750d568320adda3e79e30f881bd02890890a Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:55 +0200
+Subject: [PATCH 014/116] target/arm/cpu64: Define cpreg migration tolerance
+ for KVM_REG_ARM_VENDOR_HYP_BMAP_2
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [14/16] 2289633dd2eadbde2e57a19da4259fa7c7c00013 (eauger1/centos-qemu-kvm)
+
+KVM_REG_ARM_VENDOR_HYP_BMAP_2 pseudo FW register is exposed
+from v6.15 onwards. Backward migration from a >= v6.15 to an older
+kernel would fail without cpreg migration tolerance definition
+for this register. If the register is present on source but not
+on destination, its value must be checked to make sure it matches
+the reset value, ie. 0, meaning no service is exposed to the guest,
+hence the choice of a ToleranceOnlySrcTestValue migration
+tolerance.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260420140552.104369-6-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 6dd8be31f8fbbeba65a80b1e96c7331886c6f6d5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/cpu64.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/target/arm/cpu64.c b/target/arm/cpu64.c
+index 820d2542fa..98d9f34550 100644
+--- a/target/arm/cpu64.c
++++ b/target/arm/cpu64.c
+@@ -786,6 +786,17 @@ static void kvm_arm_set_cpreg_mig_tolerances(ARMCPU *cpu)
+                                      0, 0, ToleranceNotOnBothEnds);
+     arm_register_cpreg_mig_tolerance(cpu, ARM64_SYS_REG(3, 0, 10, 2, 3),
+                                      0, 0, ToleranceNotOnBothEnds);
++
++    /*
++     * KVM_REG_ARM_VENDOR_HYP_BMAP_2 pseudo FW register is exposed
++     * from v6.15 onwards. Backward migration from a >= v6.15 to an older
++     * kernel would fail without cpreg migration tolerance definition.
++     * If the register is present on source but not on destination, make
++     * sure it has its reset value, ie. 0, meaning no service is exposed
++     * to the guest.
++     */
++    arm_register_cpreg_mig_tolerance(cpu, KVM_REG_ARM_FW_FEAT_BMAP_REG(3),
++                                     UINT64_MAX, 0, ToleranceOnlySrcTestValue);
+ }
+ #endif
+ 
+-- 
+2.52.0
+

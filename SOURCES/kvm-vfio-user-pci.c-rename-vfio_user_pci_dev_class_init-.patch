@@ -1,0 +1,53 @@
+From e50e324443d038ef125185ec9b306891e274eec4 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:31 +0100
+Subject: [PATCH 074/116] vfio-user/pci.c: rename
+ vfio_user_pci_dev_class_init() to vfio_user_pci_class_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [58/100] 2921e31af8529dc03b463ac3e2b34959b5794b65 (rovick1/qemu-kvm)
+
+This changes the function prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-24-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c833f7a5c66e1264bfaaa389467c5af8d9c49082)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index efceae69de..e2c5b5744c 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -446,7 +446,7 @@ static void vfio_user_pci_set_socket(Object *obj, Visitor *v, const char *name,
+     }
+ }
+ 
+-static void vfio_user_pci_dev_class_init(ObjectClass *klass, const void *data)
++static void vfio_user_pci_class_init(ObjectClass *klass, const void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
+@@ -467,7 +467,7 @@ static const TypeInfo vfio_user_pci_dev_info = {
+     .name = TYPE_VFIO_USER_PCI,
+     .parent = TYPE_VFIO_PCI_DEVICE,
+     .instance_size = sizeof(VFIOUserPCIDevice),
+-    .class_init = vfio_user_pci_dev_class_init,
++    .class_init = vfio_user_pci_class_init,
+     .instance_init = vfio_user_instance_init,
+     .instance_finalize = vfio_user_instance_finalize,
+ };
+-- 
+2.52.0
+

@@ -1,0 +1,92 @@
+From 5aa93e83bde673ad1140870300a365a9f23a2006 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Thu, 14 Aug 2025 17:34:19 +0200
+Subject: [PATCH 026/116] vfio: Report an error when the 'dma_max_mappings'
+ limit is reached
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [10/100] 980ecbe9d119e3de2914fb7c19274bc527fa11d5 (rovick1/qemu-kvm)
+
+The VFIO IOMMU Type1 kernel driver enforces a default IOMMU mapping
+limit of 65535, which is configurable via the 'dma_max_mappings'
+module parameter. When this limit is reached, QEMU issues a warning
+and fails the mapping operation, but allows the VM to continue
+running, potentially causing issues later. This scenario occurs with
+SEV-SNP guests, which must update all IOMMU mappings during
+initialization.
+
+To address this, update vfio_ram_discard_register_listener() to accept
+an 'Error **' parameter and propagate the error to the caller. This
+change will halt the VM immediately, at init time, with the same error
+message.
+
+Additionally, the same behavior will be enforced at runtime. While
+this might be considered too brutal, the rarity of this case and the
+planned removal of the dma_max_mappings module parameter make it a
+reasonable approach.
+
+Cc: Alex Williamson <alex.williamson@redhat.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250814153419.1643897-1-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit ceb59c1cc61dee57c8806571e7c723e555914547)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/listener.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index 5ebafaa07e..c244be5e21 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -250,8 +250,9 @@ static int vfio_ram_discard_notify_populate(RamDiscardListener *rdl,
+     return 0;
+ }
+ 
+-static void vfio_ram_discard_register_listener(VFIOContainerBase *bcontainer,
+-                                               MemoryRegionSection *section)
++static bool vfio_ram_discard_register_listener(VFIOContainerBase *bcontainer,
++                                               MemoryRegionSection *section,
++                                               Error **errp)
+ {
+     RamDiscardManager *rdm = memory_region_get_ram_discard_manager(section->mr);
+     int target_page_size = qemu_target_page_size();
+@@ -316,13 +317,15 @@ static void vfio_ram_discard_register_listener(VFIOContainerBase *bcontainer,
+ 
+         if (vrdl_mappings + max_memslots - vrdl_count >
+             bcontainer->dma_max_mappings) {
+-            warn_report("%s: possibly running out of DMA mappings. E.g., try"
++            error_setg(errp, "%s: possibly running out of DMA mappings. E.g., try"
+                         " increasing the 'block-size' of virtio-mem devies."
+                         " Maximum possible DMA mappings: %d, Maximum possible"
+                         " memslots: %d", __func__, bcontainer->dma_max_mappings,
+                         max_memslots);
++            return false;
+         }
+     }
++    return true;
+ }
+ 
+ static void vfio_ram_discard_unregister_listener(VFIOContainerBase *bcontainer,
+@@ -571,7 +574,9 @@ void vfio_container_region_add(VFIOContainerBase *bcontainer,
+      */
+     if (memory_region_has_ram_discard_manager(section->mr)) {
+         if (!cpr_remap) {
+-            vfio_ram_discard_register_listener(bcontainer, section);
++            if (!vfio_ram_discard_register_listener(bcontainer, section, &err)) {
++                goto fail;
++            }
+         } else if (!vfio_cpr_ram_discard_register_listener(bcontainer,
+                                                            section)) {
+             error_setg(&err,
+-- 
+2.52.0
+

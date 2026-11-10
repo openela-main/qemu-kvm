@@ -1,0 +1,153 @@
+From 7bb99b469a3438c358c0027703e4b01935e7dfab Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Fri, 22 Aug 2025 02:40:42 -0400
+Subject: [PATCH 028/116] vfio: Introduce helper vfio_pci_from_vfio_device()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [12/100] 16eb1e58aa0767917fd2a31368388495f721b2b9 (rovick1/qemu-kvm)
+
+Introduce helper vfio_pci_from_vfio_device() to transform from VFIODevice
+to VFIOPCIDevice, also to hide low level VFIO_DEVICE_TYPE_PCI type check.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250822064101.123526-5-zhenzhong.duan@intel.com
+[ clg: Added documentation ]
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit bb1a6f1f43374a1850c314c4d0e945667d013d07)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container.c |  4 ++--
+ hw/vfio/device.c    |  2 +-
+ hw/vfio/iommufd.c   |  4 ++--
+ hw/vfio/listener.c  |  4 ++--
+ hw/vfio/pci.c       |  9 +++++++++
+ hw/vfio/pci.h       | 12 ++++++++++++
+ 6 files changed, 28 insertions(+), 7 deletions(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index b912b9396b..c1554c1fd1 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -1101,7 +1101,7 @@ static int vfio_legacy_pci_hot_reset(VFIODevice *vbasedev, bool single)
+         /* Prep dependent devices for reset and clear our marker. */
+         QLIST_FOREACH(vbasedev_iter, &group->device_list, next) {
+             if (!vbasedev_iter->dev->realized ||
+-                vbasedev_iter->type != VFIO_DEVICE_TYPE_PCI) {
++                !vfio_pci_from_vfio_device(vbasedev_iter)) {
+                 continue;
+             }
+             tmp = container_of(vbasedev_iter, VFIOPCIDevice, vbasedev);
+@@ -1186,7 +1186,7 @@ out:
+ 
+         QLIST_FOREACH(vbasedev_iter, &group->device_list, next) {
+             if (!vbasedev_iter->dev->realized ||
+-                vbasedev_iter->type != VFIO_DEVICE_TYPE_PCI) {
++                !vfio_pci_from_vfio_device(vbasedev_iter)) {
+                 continue;
+             }
+             tmp = container_of(vbasedev_iter, VFIOPCIDevice, vbasedev);
+diff --git a/hw/vfio/device.c b/hw/vfio/device.c
+index 7ebf41c95e..412678a1f6 100644
+--- a/hw/vfio/device.c
++++ b/hw/vfio/device.c
+@@ -129,7 +129,7 @@ static inline const char *action_to_str(int action)
+ 
+ static const char *index_to_str(VFIODevice *vbasedev, int index)
+ {
+-    if (vbasedev->type != VFIO_DEVICE_TYPE_PCI) {
++    if (!vfio_pci_from_vfio_device(vbasedev)) {
+         return NULL;
+     }
+ 
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index dbcd861b27..65b94aaa00 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -738,8 +738,8 @@ iommufd_cdev_dep_get_realized_vpdev(struct vfio_pci_dependent_device *dep_dev,
+     }
+ 
+     vbasedev_tmp = iommufd_cdev_pci_find_by_devid(dep_dev->devid);
+-    if (!vbasedev_tmp || !vbasedev_tmp->dev->realized ||
+-        vbasedev_tmp->type != VFIO_DEVICE_TYPE_PCI) {
++    if (!vfio_pci_from_vfio_device(vbasedev_tmp) ||
++        !vbasedev_tmp->dev->realized) {
+         return NULL;
+     }
+ 
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index c244be5e21..e093833165 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -453,7 +453,7 @@ static void vfio_device_error_append(VFIODevice *vbasedev, Error **errp)
+      * MMIO region mapping failures are not fatal but in this case PCI
+      * peer-to-peer transactions are broken.
+      */
+-    if (vbasedev && vbasedev->type == VFIO_DEVICE_TYPE_PCI) {
++    if (vfio_pci_from_vfio_device(vbasedev)) {
+         error_append_hint(errp, "%s: PCI peer-to-peer transactions "
+                           "on BARs are not supported.\n", vbasedev->name);
+     }
+@@ -759,7 +759,7 @@ static bool vfio_section_is_vfio_pci(MemoryRegionSection *section,
+     owner = memory_region_owner(section->mr);
+ 
+     QLIST_FOREACH(vbasedev, &bcontainer->device_list, container_next) {
+-        if (vbasedev->type != VFIO_DEVICE_TYPE_PCI) {
++        if (!vfio_pci_from_vfio_device(vbasedev)) {
+             continue;
+         }
+         pcidev = container_of(vbasedev, VFIOPCIDevice, vbasedev);
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 7c057ee2f9..58ab1116d8 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2836,6 +2836,15 @@ static int vfio_pci_load_config(VFIODevice *vbasedev, QEMUFile *f)
+     return ret;
+ }
+ 
++/* Transform from VFIODevice to VFIOPCIDevice. Return NULL if fails. */
++VFIOPCIDevice *vfio_pci_from_vfio_device(VFIODevice *vbasedev)
++{
++    if (vbasedev && vbasedev->type == VFIO_DEVICE_TYPE_PCI) {
++        return container_of(vbasedev, VFIOPCIDevice, vbasedev);
++    }
++    return NULL;
++}
++
+ void vfio_sub_page_bar_update_mappings(VFIOPCIDevice *vdev)
+ {
+     PCIDevice *pdev = &vdev->pdev;
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index 056f5e12cf..e3ab3fe1f7 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -227,6 +227,18 @@ void vfio_pci_write_config(PCIDevice *pdev,
+ uint64_t vfio_vga_read(void *opaque, hwaddr addr, unsigned size);
+ void vfio_vga_write(void *opaque, hwaddr addr, uint64_t data, unsigned size);
+ 
++/**
++ * vfio_pci_from_vfio_device: Transform from VFIODevice to
++ * VFIOPCIDevice
++ *
++ * This function checks if the given @vbasedev is a VFIO PCI device.
++ * If it is, it returns the containing VFIOPCIDevice.
++ *
++ * @vbasedev: The VFIODevice to transform
++ *
++ * Return: The VFIOPCIDevice on success, NULL on failure.
++ */
++VFIOPCIDevice *vfio_pci_from_vfio_device(VFIODevice *vbasedev);
+ void vfio_sub_page_bar_update_mappings(VFIOPCIDevice *vdev);
+ bool vfio_opt_rom_in_denylist(VFIOPCIDevice *vdev);
+ bool vfio_config_quirk_setup(VFIOPCIDevice *vdev, Error **errp);
+-- 
+2.52.0
+

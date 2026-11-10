@@ -1,0 +1,64 @@
+From 16975cee959e7e130f3caae2e49cfadbded02456 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 012/111] hw/pci-bridge/pci_expander_bridge: Move
+ TYPE_PXB_PCIE_DEV to header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [12/111] 22baeb4ca100fdc45bfc11e947d95e0737ba152c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Move the TYPE_PXB_PCIE_DEV definition to header so that it can be
+referenced by other code in subsequent patch.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-10-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d1c585db8bb0a65107f1e5903133bc56b29c46f2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci-bridge/pci_expander_bridge.c | 1 -
+ include/hw/pci/pci_bridge.h         | 1 +
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index 1bcceddbc4..a8eb2d2426 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -48,7 +48,6 @@ struct PXBBus {
+     char bus_path[8];
+ };
+ 
+-#define TYPE_PXB_PCIE_DEV "pxb-pcie"
+ OBJECT_DECLARE_SIMPLE_TYPE(PXBPCIEDev, PXB_PCIE_DEV)
+ 
+ static GList *pxb_dev_list;
+diff --git a/include/hw/pci/pci_bridge.h b/include/hw/pci/pci_bridge.h
+index a055fd8d32..b61360b900 100644
+--- a/include/hw/pci/pci_bridge.h
++++ b/include/hw/pci/pci_bridge.h
+@@ -106,6 +106,7 @@ typedef struct PXBPCIEDev {
+ 
+ #define TYPE_PXB_PCIE_BUS "pxb-pcie-bus"
+ #define TYPE_PXB_CXL_BUS "pxb-cxl-bus"
++#define TYPE_PXB_PCIE_DEV "pxb-pcie"
+ #define TYPE_PXB_DEV "pxb"
+ OBJECT_DECLARE_SIMPLE_TYPE(PXBDev, PXB_DEV)
+ 
+-- 
+2.52.0
+

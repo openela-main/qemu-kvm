@@ -1,0 +1,53 @@
+From 9d1e28cdfaa95f391cd378c9a1a93f8dddb95a5d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 10:26:23 +0000
+Subject: [PATCH 14/30] crypto: remove needless indirection via parent_obj
+ field
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [13/27] e71a002d43dc2fe08a6ac565e21bb49719a3c1e6 (berrange/centos-src-qemu)
+
+The reload method already has a pointer to the parent object in
+the 'creds' parameter that is passed in, so indirect access via
+the subclass 'parent_obj' field is redundant.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 20ee3064186d3a1eedcac0a76cc8af0993e36714)
+---
+ crypto/tlscredsx509.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 6640159a5b..2519f7690b 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -772,15 +772,15 @@ qcrypto_tls_creds_x509_reload(QCryptoTLSCreds *creds, Error **errp)
+     QCryptoTLSCredsX509 *x509_creds = QCRYPTO_TLS_CREDS_X509(creds);
+     Error *local_err = NULL;
+     gnutls_certificate_credentials_t creds_data = x509_creds->data;
+-    gnutls_dh_params_t creds_dh_params = x509_creds->parent_obj.dh_params;
++    gnutls_dh_params_t creds_dh_params = creds->dh_params;
+ 
+     x509_creds->data = NULL;
+-    x509_creds->parent_obj.dh_params = NULL;
++    creds->dh_params = NULL;
+     qcrypto_tls_creds_x509_load(x509_creds, &local_err);
+     if (local_err) {
+         qcrypto_tls_creds_x509_unload(x509_creds);
+         x509_creds->data = creds_data;
+-        x509_creds->parent_obj.dh_params = creds_dh_params;
++        creds->dh_params = creds_dh_params;
+         error_propagate(errp, local_err);
+         return false;
+     }
+-- 
+2.52.0
+

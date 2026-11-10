@@ -1,0 +1,66 @@
+From dfe7857ca3612b7c52b052735c8d1a96ecf1102d Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Sat, 13 Jun 2026 23:03:34 +0300
+Subject: [PATCH 33/52] block/io: fallback to bounce buffer if BLKZEROOUT is
+ not supported because of alignment
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [26/45] 7a8351c003c1383c23e94f06617911b691cb7ec5 (kmwolf/centos-qemu-kvm)
+
+Commit 5634622bcb ("file-posix: allow BLKZEROOUT with -t writeback")
+enables the BLKZEROOUT ioctl when using 'writeback' cache, regressing
+certain 'qemu-img convert' invocations, because of a pre-existing
+issue. Namely, the BLKZEROOUT ioctl might fail with errno EINVAL when
+the request is shorter than the block size of the block device.
+Fallback to the bounce buffer, similar to when the ioctl is not
+supported at all, rather than treating such an error as fatal.
+
+Resolves: https://gitlab.com/qemu-project/qemu/-/issues/3257
+Resolves: https://bugzilla.proxmox.com/show_bug.cgi?id=7197
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20260105143416.737482-1-f.ebner@proxmox.com>
+[Added TODO comment describing a larger fix that could be implemented in
+the future.
+--Stefan]
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit b4e28c304bc58325f8f712cb25e5d700826caa25)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+
+Message-ID: <20260613200411.1808021-51-mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/io.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/block/io.c b/block/io.c
+index 37df1e0253..84de5ab420 100644
+--- a/block/io.c
++++ b/block/io.c
+@@ -1920,7 +1920,18 @@ bdrv_co_do_pwrite_zeroes(BlockDriverState *bs, int64_t offset, int64_t bytes,
+             assert(!bs->supported_zero_flags);
+         }
+ 
+-        if (ret == -ENOTSUP && !(flags & BDRV_REQ_NO_FALLBACK)) {
++        /*
++         * TODO The ret == -EINVAL && num < alignment case is a workaround for
++         * when request_alignment is 1 on files with cache=writeback. The Linux
++         * ioctl(BLKZEROOUT) requires block alignment and will fail with
++         * EINVAL. The block layer should align the request to
++         * write_zeroes_alignment instead of trying the syscall, failing, and
++         * falling back to a bounce buffer. Doing that is not easy so for now
++         * we use a bounce buffer:
++         * https://lore.kernel.org/qemu-devel/20260109120837.2772961-1-f.ebner@proxmox.com/
++         */
++        if ((ret == -ENOTSUP || (ret == -EINVAL && num < alignment)) &&
++            !(flags & BDRV_REQ_NO_FALLBACK)) {
+             /* Fall back to bounce buffer if write zeroes is unsupported */
+             BdrvRequestFlags write_flags = flags & ~BDRV_REQ_ZERO_WRITE;
+ 
+-- 
+2.52.0
+

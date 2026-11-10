@@ -1,0 +1,138 @@
+From e75168be94bda921feca7955b173de4700dd6b0c Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:48 +0100
+Subject: [PATCH 106/111] hw/arm/smmuv3-accel: Introduce helper to query CMDQV
+ type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [106/111] 363c0461547a4df58e52522d40ca1cb1b7575f60 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Introduce a SMMUv3AccelCmdqvType enum and a helper to query the
+CMDQV implementation type associated with an accelerated SMMUv3
+instance.
+
+A subsequent patch will use this helper when generating the
+Tegra241 CMDQV DSDT.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-28-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d3e56703bfc58969ac02009bcdbac7f5b25998db)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel-stubs.c |  5 +++++
+ hw/arm/smmuv3-accel.c       | 12 ++++++++++++
+ hw/arm/smmuv3-accel.h       | 10 ++++++++++
+ hw/arm/tegra241-cmdqv.c     |  6 ++++++
+ 4 files changed, 33 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel-stubs.c b/hw/arm/smmuv3-accel-stubs.c
+index 9e6c44a282..147ae06163 100644
+--- a/hw/arm/smmuv3-accel-stubs.c
++++ b/hw/arm/smmuv3-accel-stubs.c
+@@ -57,3 +57,8 @@ bool smmuv3_accel_event_read_validate(IOMMUFDVeventq *veventq, uint32_t type,
+ void smmuv3_accel_reset(SMMUv3State *s)
+ {
+ }
++
++SMMUv3AccelCmdqvType smmuv3_accel_cmdqv_type(Object *obj)
++{
++    return SMMUV3_CMDQV_NONE;
++}
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index c1c2a67c97..9c3bd4413d 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -1060,6 +1060,18 @@ static void smmuv3_accel_as_init(SMMUv3State *s)
+     address_space_init(shared_as_sysmem, &root, "smmuv3-accel-as-sysmem");
+ }
+ 
++SMMUv3AccelCmdqvType smmuv3_accel_cmdqv_type(Object *obj)
++{
++    SMMUv3State *s = ARM_SMMUV3(obj);
++    SMMUv3AccelState *accel = s->s_accel;
++
++    if (!accel || !accel->cmdqv_ops || !accel->cmdqv_ops->get_type) {
++        return SMMUV3_CMDQV_NONE;
++    }
++
++    return accel->cmdqv_ops->get_type();
++}
++
+ static void smmuv3_accel_machine_done(Notifier *notifier, void *data)
+ {
+     SMMUv3State *s = container_of(notifier, SMMUv3State, machine_done);
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index 8d0f636338..5fc85fb89d 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -16,6 +16,11 @@
+ #include <linux/iommufd.h>
+ #endif
+ 
++typedef enum SMMUv3AccelCmdqvType {
++    SMMUV3_CMDQV_NONE = 0,
++    SMMUV3_CMDQV_TEGRA241,
++} SMMUv3AccelCmdqvType;
++
+ /*
+  * CMDQ-Virtualization (CMDQV) hardware support, extends the SMMUv3 to
+  * support multiple VCMDQs with virtualization capabilities.
+@@ -42,6 +47,10 @@ typedef struct SMMUv3AccelCmdqvOps {
+      * If NULL, the viommu_id is freed directly via iommufd_backend_free_id().
+      */
+     void (*free_viommu)(SMMUv3State *s);
++    /**
++     * @get_type: Optional callback. Return the CMDQV implementation type.
++     */
++    SMMUv3AccelCmdqvType (*get_type)(void);
+     /**
+      * @reset: Optional callback. Reset CMDQV state.
+      */
+@@ -90,5 +99,6 @@ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp);
+ bool smmuv3_accel_event_read_validate(IOMMUFDVeventq *veventq, uint32_t type,
+                                       void *buf, size_t size, Error **errp);
+ void smmuv3_accel_reset(SMMUv3State *s);
++SMMUv3AccelCmdqvType smmuv3_accel_cmdqv_type(Object *obj);
+ 
+ #endif /* HW_ARM_SMMUV3_ACCEL_H */
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index a4c140e34c..1bed1374ba 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -964,6 +964,11 @@ static bool tegra241_cmdqv_init(SMMUv3State *s, Error **errp)
+     return true;
+ }
+ 
++static SMMUv3AccelCmdqvType tegra241_cmdqv_get_type(void)
++{
++    return SMMUV3_CMDQV_TEGRA241;
++}
++
+ static bool tegra241_cmdqv_probe(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                                  Error **errp)
+ {
+@@ -1004,6 +1009,7 @@ static const SMMUv3AccelCmdqvOps tegra241_cmdqv_ops = {
+     .init = tegra241_cmdqv_init,
+     .alloc_viommu = tegra241_cmdqv_alloc_viommu,
+     .free_viommu = tegra241_cmdqv_free_viommu,
++    .get_type = tegra241_cmdqv_get_type,
+     .reset = tegra241_cmdqv_reset,
+ };
+ 
+-- 
+2.52.0
+

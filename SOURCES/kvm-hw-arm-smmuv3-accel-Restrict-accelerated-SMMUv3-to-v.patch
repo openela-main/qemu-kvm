@@ -1,0 +1,198 @@
+From 85d81ec5715c42de0019cbe8260ddbc6662f850b Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 013/111] hw/arm/smmuv3-accel: Restrict accelerated SMMUv3 to
+ vfio-pci endpoints with iommufd
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [13/111] c7a4d250dd7429e1c136ad544552dd499e87af35 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Accelerated SMMUv3 is only meaningful when a device can leverage the host
+SMMUv3 in nested mode (S1+S2 translation). To keep the model consistent
+and correct, this mode is restricted to vfio-pci endpoint devices using
+the iommufd backend.
+
+Non-endpoint emulated devices such as PCIe root ports and bridges are also
+permitted so that vfio-pci devices can be attached downstream. All other
+device types are unsupported in accelerated mode.
+
+Implement supports_address_space() callback to reject all such unsupported
+devices.
+
+This restriction also avoids complications with IOTLB invalidations. Some
+TLBI commands (e.g. CMD_TLBI_NH_ASID) lack an associated SID, making it
+difficult to trace the originating device. Allowing emulated endpoints
+would require invalidating both QEMU’s software IOTLB and the host’s
+hardware IOTLB, which can significantly degrade performance.
+
+A key design choice is the address space returned for accelerated vfio-pci
+endpoints. VFIO core has a container that manages an HWPT. By default, it
+allocates a stage-1 normal HWPT, unless vIOMMU requests for a nesting
+parent HWPT for accelerated cases.
+
+VFIO core adds a listener for that HWPT and sets up a handler
+vfio_container_region_add() where it checks the memory region.
+
+ -If the region is a non-IOMMU translated one (system address space), VFIO
+  treats it as RAM and handles all stage-2 mappings for the core allocated
+  nesting parent HWPT.
+
+ -If the region is an IOMMU address space, VFIO instead enables IOTLB
+  notifier handling and translation replay, skipping the RAM listener and
+  therefore not installing stage-2 mappings.
+
+For accelerated SMMUv3, correct operation requires the S1+S2 nesting
+model, and therefore VFIO must take the "system address space" path so
+that stage-2 mappings are properly built. Returning an alias of the
+system address space ensures this happens. Returning the IOMMU address
+space would omit stage-2 mapping and break nested translation.
+
+Another option considered was forcing a pre-registration path using
+vfio_prereg_listener() to set up stage-2 mappings, but this requires
+changes in VFIO core and was not adopted. Returning an alias of the
+system address space keeps the design aligned with existing VFIO/iommufd
+nesting flows and avoids the need for cross-subsystem changes.
+
+In summary:
+ - vfio-pci devices(with iommufd as backend) return an address space
+   aliased to system address space.
+ - bridges and root ports return the IOMMU address space.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-11-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit c7ecb4cf2e9458678d649ffd3b8aa61a7976552e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 77 ++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 76 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index b2eded743e..2fcd301322 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -7,8 +7,13 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "qemu/error-report.h"
+ 
+ #include "hw/arm/smmuv3.h"
++#include "hw/pci/pci_bridge.h"
++#include "hw/pci-host/gpex.h"
++#include "hw/vfio/pci.h"
++
+ #include "smmuv3-accel.h"
+ 
+ /*
+@@ -37,6 +42,48 @@ static SMMUv3AccelDevice *smmuv3_accel_get_dev(SMMUState *bs, SMMUPciBus *sbus,
+     return accel_dev;
+ }
+ 
++/*
++ * Only allow PCIe bridges, pxb-pcie roots, and GPEX roots so vfio-pci
++ * endpoints can sit downstream. Accelerated SMMUv3 requires a vfio-pci
++ * endpoint using the iommufd backend; all other device types are rejected.
++ * This avoids supporting emulated endpoints, which would complicate IOTLB
++ * invalidation and hurt performance.
++ */
++static bool smmuv3_accel_pdev_allowed(PCIDevice *pdev, bool *vfio_pci)
++{
++
++    if (object_dynamic_cast(OBJECT(pdev), TYPE_PCI_BRIDGE) ||
++        object_dynamic_cast(OBJECT(pdev), TYPE_PXB_PCIE_DEV) ||
++        object_dynamic_cast(OBJECT(pdev), TYPE_GPEX_ROOT_DEVICE)) {
++        return true;
++    } else if ((object_dynamic_cast(OBJECT(pdev), TYPE_VFIO_PCI))) {
++        *vfio_pci = true;
++        if (object_property_get_link(OBJECT(pdev), "iommufd", NULL)) {
++            return true;
++        }
++    }
++    return false;
++}
++
++static bool smmuv3_accel_supports_as(PCIBus *bus, void *opaque, int devfn,
++                                     Error **errp)
++{
++    PCIDevice *pdev = pci_find_device(bus, pci_bus_num(bus), devfn);
++    bool vfio_pci = false;
++
++    if (pdev && !smmuv3_accel_pdev_allowed(pdev, &vfio_pci)) {
++        if (vfio_pci) {
++            error_setg(errp, "vfio-pci endpoint devices without an iommufd "
++                       "backend not allowed when using arm-smmuv3,accel=on");
++
++        } else {
++            error_setg(errp, "Emulated endpoint devices are not allowed when "
++                       "using arm-smmuv3,accel=on");
++        }
++        return false;
++    }
++    return true;
++}
+ /*
+  * Find or add an address space for the given PCI device.
+  *
+@@ -47,15 +94,43 @@ static SMMUv3AccelDevice *smmuv3_accel_get_dev(SMMUState *bs, SMMUPciBus *sbus,
+ static AddressSpace *smmuv3_accel_find_add_as(PCIBus *bus, void *opaque,
+                                               int devfn)
+ {
++    PCIDevice *pdev = pci_find_device(bus, pci_bus_num(bus), devfn);
+     SMMUState *bs = opaque;
+     SMMUPciBus *sbus = smmu_get_sbus(bs, bus);
+     SMMUv3AccelDevice *accel_dev = smmuv3_accel_get_dev(bs, sbus, bus, devfn);
+     SMMUDevice *sdev = &accel_dev->sdev;
++    bool vfio_pci = false;
+ 
+-    return &sdev->as;
++    if (pdev && !smmuv3_accel_pdev_allowed(pdev, &vfio_pci)) {
++        /* Should never be here: supports_address_space() filters these out */
++        g_assert_not_reached();
++    }
++
++    /*
++     * In the accelerated mode, a vfio-pci device attached via the iommufd
++     * backend must remain in the system address space. Such a device is
++     * always translated by its physical SMMU (using either a stage-2-only
++     * STE or a nested STE), where the parent stage-2 page table is allocated
++     * by the VFIO core to back the system address space.
++     *
++     * Return the shared_as_sysmem aliased to the global system memory in this
++     * case. Sharing address_space_memory also allows devices under different
++     * vSMMU instances in the same VM to reuse a single nesting parent HWPT in
++     * the VFIO core.
++     *
++     * For non-endpoint emulated devices such as PCIe root ports and bridges,
++     * which may use the normal emulated translation path and software IOTLBs,
++     * return the SMMU's IOMMU address space.
++     */
++    if (vfio_pci) {
++        return shared_as_sysmem;
++    } else {
++        return &sdev->as;
++    }
+ }
+ 
+ static const PCIIOMMUOps smmuv3_accel_ops = {
++    .supports_address_space = smmuv3_accel_supports_as,
+     .get_address_space = smmuv3_accel_find_add_as,
+ };
+ 
+-- 
+2.52.0
+

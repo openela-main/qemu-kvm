@@ -1,0 +1,291 @@
+From 97363c23acaa88f3a96e97fe7617496a3c48bc09 Mon Sep 17 00:00:00 2001
+From: Chandan Somani <csomani@redhat.com>
+Date: Thu, 8 Jan 2026 15:03:07 -0800
+Subject: [PATCH 2/2] qdev: Free property array on release
+
+RH-Author: Chandan Somani <None>
+RH-MergeRequest: 467: block: enable stats-intervals for storage devices
+RH-Jira: RHEL-114231
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Commit: [2/2] f8b9e42543653e5a724175b73f25fa02593ff79d (csomani1/qemu-kvm)
+
+Before this patch, users of the property array would free the
+array themselves in their cleanup functions. This causes
+inconsistencies where some users leak the array and some free them.
+
+This patch makes it so that the property array's release function
+frees the property array (instead of just its elements). It fixes any
+leaks and requires less code.
+
+DEFINE_PROP_ARRAY leakers that are fixed in this patch:
+ebpf-rss_fds in hw/net/virtio-net.c
+rnmi_irqvec, rnmi_excpvec in hw/riscv/riscv_hart.c
+common.display_modes in hw/display/apple-gfx-mmio.m
+common.display_modes in hw/display/apple-gfx-pci.m
+
+Signed-off-by: Chandan Somani <csomani@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Link: https://lore.kernel.org/r/20260108230311.584141-2-csomani@redhat.com
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+---
+ block/accounting.c                |  1 -
+ hw/core/qdev-properties.c         | 21 ++++++++++-----------
+ hw/input/stellaris_gamepad.c      |  8 --------
+ hw/intc/arm_gicv3_common.c        |  8 --------
+ hw/intc/rx_icu.c                  |  8 --------
+ hw/misc/arm_sysctl.c              |  2 --
+ hw/misc/mps2-scc.c                |  8 --------
+ hw/net/rocker/rocker.c            |  1 -
+ hw/nvram/xlnx-efuse.c             |  8 --------
+ hw/nvram/xlnx-versal-efuse-ctrl.c |  1 -
+ hw/virtio/virtio-iommu-pci.c      |  8 --------
+ 11 files changed, 10 insertions(+), 64 deletions(-)
+
+diff --git a/block/accounting.c b/block/accounting.c
+index 0933c61f3a..5cf51f029b 100644
+--- a/block/accounting.c
++++ b/block/accounting.c
+@@ -73,7 +73,6 @@ bool block_acct_setup(BlockAcctStats *stats, enum OnOffAuto account_invalid,
+             }
+             block_acct_add_interval(stats, stats_intervals[i]);
+         }
+-        g_free(stats_intervals);
+     }
+     return true;
+ }
+diff --git a/hw/core/qdev-properties.c b/hw/core/qdev-properties.c
+index b7e8a89ba5..0449226e00 100644
+--- a/hw/core/qdev-properties.c
++++ b/hw/core/qdev-properties.c
+@@ -671,10 +671,8 @@ static Property array_elem_prop(Object *obj, const Property *parent_prop,
+ 
+ /*
+  * Object property release callback for array properties: We call the
+- * underlying element's property release hook for each element.
+- *
+- * Note that it is the responsibility of the individual device's deinit
+- * to free the array proper.
++ * underlying element's property release hook for each element and free the
++ * property array.
+  */
+ static void release_prop_array(Object *obj, const char *name, void *opaque)
+ {
+@@ -684,15 +682,16 @@ static void release_prop_array(Object *obj, const char *name, void *opaque)
+     char *elem = *arrayptr;
+     int i;
+ 
+-    if (!prop->arrayinfo->release) {
+-        return;
++    if (prop->arrayinfo->release) {
++        for (i = 0; i < *alenptr; i++) {
++            Property elem_prop = array_elem_prop(obj, prop, name, elem);
++            prop->arrayinfo->release(obj, NULL, &elem_prop);
++            elem += prop->arrayfieldsize;
++        }
+     }
+ 
+-    for (i = 0; i < *alenptr; i++) {
+-        Property elem_prop = array_elem_prop(obj, prop, name, elem);
+-        prop->arrayinfo->release(obj, NULL, &elem_prop);
+-        elem += prop->arrayfieldsize;
+-    }
++    g_clear_pointer(arrayptr, g_free);
++    *alenptr = 0;
+ }
+ 
+ /*
+diff --git a/hw/input/stellaris_gamepad.c b/hw/input/stellaris_gamepad.c
+index fec1161c9c..207064dacb 100644
+--- a/hw/input/stellaris_gamepad.c
++++ b/hw/input/stellaris_gamepad.c
+@@ -63,13 +63,6 @@ static void stellaris_gamepad_realize(DeviceState *dev, Error **errp)
+     qemu_input_handler_register(dev, &stellaris_gamepad_handler);
+ }
+ 
+-static void stellaris_gamepad_finalize(Object *obj)
+-{
+-    StellarisGamepad *s = STELLARIS_GAMEPAD(obj);
+-
+-    g_free(s->keycodes);
+-}
+-
+ static void stellaris_gamepad_reset_enter(Object *obj, ResetType type)
+ {
+     StellarisGamepad *s = STELLARIS_GAMEPAD(obj);
+@@ -98,7 +91,6 @@ static const TypeInfo stellaris_gamepad_info[] = {
+         .name = TYPE_STELLARIS_GAMEPAD,
+         .parent = TYPE_SYS_BUS_DEVICE,
+         .instance_size = sizeof(StellarisGamepad),
+-        .instance_finalize = stellaris_gamepad_finalize,
+         .class_init = stellaris_gamepad_class_init,
+     },
+ };
+diff --git a/hw/intc/arm_gicv3_common.c b/hw/intc/arm_gicv3_common.c
+index e438d8c042..4fc84741a8 100644
+--- a/hw/intc/arm_gicv3_common.c
++++ b/hw/intc/arm_gicv3_common.c
+@@ -488,13 +488,6 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
+     s->itslist = g_ptr_array_new();
+ }
+ 
+-static void arm_gicv3_finalize(Object *obj)
+-{
+-    GICv3State *s = ARM_GICV3_COMMON(obj);
+-
+-    g_free(s->redist_region_count);
+-}
+-
+ static void arm_gicv3_common_reset_hold(Object *obj, ResetType type)
+ {
+     GICv3State *s = ARM_GICV3_COMMON(obj);
+@@ -643,7 +636,6 @@ static const TypeInfo arm_gicv3_common_type = {
+     .instance_size = sizeof(GICv3State),
+     .class_size = sizeof(ARMGICv3CommonClass),
+     .class_init = arm_gicv3_common_class_init,
+-    .instance_finalize = arm_gicv3_finalize,
+     .abstract = true,
+     .interfaces = (const InterfaceInfo[]) {
+         { TYPE_ARM_LINUX_BOOT_IF },
+diff --git a/hw/intc/rx_icu.c b/hw/intc/rx_icu.c
+index f8615527b7..85da0624f6 100644
+--- a/hw/intc/rx_icu.c
++++ b/hw/intc/rx_icu.c
+@@ -334,13 +334,6 @@ static void rxicu_init(Object *obj)
+     sysbus_init_irq(d, &icu->_swi);
+ }
+ 
+-static void rxicu_fini(Object *obj)
+-{
+-    RXICUState *icu = RX_ICU(obj);
+-    g_free(icu->map);
+-    g_free(icu->init_sense);
+-}
+-
+ static const VMStateDescription vmstate_rxicu = {
+     .name = "rx-icu",
+     .version_id = 1,
+@@ -382,7 +375,6 @@ static const TypeInfo rxicu_info = {
+     .parent = TYPE_SYS_BUS_DEVICE,
+     .instance_size = sizeof(RXICUState),
+     .instance_init = rxicu_init,
+-    .instance_finalize = rxicu_fini,
+     .class_init = rxicu_class_init,
+ };
+ 
+diff --git a/hw/misc/arm_sysctl.c b/hw/misc/arm_sysctl.c
+index 0f4e37cd47..e715ff9475 100644
+--- a/hw/misc/arm_sysctl.c
++++ b/hw/misc/arm_sysctl.c
+@@ -618,9 +618,7 @@ static void arm_sysctl_finalize(Object *obj)
+ {
+     arm_sysctl_state *s = ARM_SYSCTL(obj);
+ 
+-    g_free(s->db_voltage);
+     g_free(s->db_clock);
+-    g_free(s->db_clock_reset);
+ }
+ 
+ static const Property arm_sysctl_properties[] = {
+diff --git a/hw/misc/mps2-scc.c b/hw/misc/mps2-scc.c
+index a9a5d4a535..acb0f5773b 100644
+--- a/hw/misc/mps2-scc.c
++++ b/hw/misc/mps2-scc.c
+@@ -405,13 +405,6 @@ static void mps2_scc_realize(DeviceState *dev, Error **errp)
+     s->oscclk = g_new0(uint32_t, s->num_oscclk);
+ }
+ 
+-static void mps2_scc_finalize(Object *obj)
+-{
+-    MPS2SCC *s = MPS2_SCC(obj);
+-
+-    g_free(s->oscclk_reset);
+-}
+-
+ static bool cfg7_needed(void *opaque)
+ {
+     MPS2SCC *s = opaque;
+@@ -489,7 +482,6 @@ static const TypeInfo mps2_scc_info = {
+     .parent = TYPE_SYS_BUS_DEVICE,
+     .instance_size = sizeof(MPS2SCC),
+     .instance_init = mps2_scc_init,
+-    .instance_finalize = mps2_scc_finalize,
+     .class_init = mps2_scc_class_init,
+ };
+ 
+diff --git a/hw/net/rocker/rocker.c b/hw/net/rocker/rocker.c
+index cc49701dd3..cbc7bd3ed9 100644
+--- a/hw/net/rocker/rocker.c
++++ b/hw/net/rocker/rocker.c
+@@ -1429,7 +1429,6 @@ static void pci_rocker_uninit(PCIDevice *dev)
+             world_free(r->worlds[i]);
+         }
+     }
+-    g_free(r->fp_ports_peers);
+ }
+ 
+ static void rocker_reset(DeviceState *dev)
+diff --git a/hw/nvram/xlnx-efuse.c b/hw/nvram/xlnx-efuse.c
+index 4c23f8b931..1875fdb953 100644
+--- a/hw/nvram/xlnx-efuse.c
++++ b/hw/nvram/xlnx-efuse.c
+@@ -224,13 +224,6 @@ static void efuse_realize(DeviceState *dev, Error **errp)
+     }
+ }
+ 
+-static void efuse_finalize(Object *obj)
+-{
+-    XlnxEFuse *s = XLNX_EFUSE(obj);
+-
+-    g_free(s->ro_bits);
+-}
+-
+ static void efuse_prop_set_drive(Object *obj, Visitor *v, const char *name,
+                                  void *opaque, Error **errp)
+ {
+@@ -288,7 +281,6 @@ static const TypeInfo efuse_info = {
+     .name          = TYPE_XLNX_EFUSE,
+     .parent        = TYPE_DEVICE,
+     .instance_size = sizeof(XlnxEFuse),
+-    .instance_finalize = efuse_finalize,
+     .class_init    = efuse_class_init,
+ };
+ 
+diff --git a/hw/nvram/xlnx-versal-efuse-ctrl.c b/hw/nvram/xlnx-versal-efuse-ctrl.c
+index 9096219800..ec86a7d6e5 100644
+--- a/hw/nvram/xlnx-versal-efuse-ctrl.c
++++ b/hw/nvram/xlnx-versal-efuse-ctrl.c
+@@ -729,7 +729,6 @@ static void efuse_ctrl_finalize(Object *obj)
+     XlnxVersalEFuseCtrl *s = XLNX_VERSAL_EFUSE_CTRL(obj);
+ 
+     register_finalize_block(s->reg_array);
+-    g_free(s->extra_pg0_lock_spec);
+ }
+ 
+ static const VMStateDescription vmstate_efuse_ctrl = {
+diff --git a/hw/virtio/virtio-iommu-pci.c b/hw/virtio/virtio-iommu-pci.c
+index 8123c6f83a..9396b3c07e 100644
+--- a/hw/virtio/virtio-iommu-pci.c
++++ b/hw/virtio/virtio-iommu-pci.c
+@@ -94,18 +94,10 @@ static void virtio_iommu_pci_instance_init(Object *obj)
+                                 TYPE_VIRTIO_IOMMU);
+ }
+ 
+-static void virtio_iommu_pci_instance_finalize(Object *obj)
+-{
+-    VirtIOIOMMUPCI *dev = VIRTIO_IOMMU_PCI(obj);
+-
+-    g_free(dev->vdev.prop_resv_regions);
+-}
+-
+ static const VirtioPCIDeviceTypeInfo virtio_iommu_pci_info = {
+     .generic_name  = TYPE_VIRTIO_IOMMU_PCI,
+     .instance_size = sizeof(VirtIOIOMMUPCI),
+     .instance_init = virtio_iommu_pci_instance_init,
+-    .instance_finalize = virtio_iommu_pci_instance_finalize,
+     .class_init    = virtio_iommu_pci_class_init,
+ };
+ 
+-- 
+2.47.3
+

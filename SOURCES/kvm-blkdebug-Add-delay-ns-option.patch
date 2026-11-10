@@ -1,14 +1,14 @@
-From b37120279fbb5615558dce392365527aae8169ea Mon Sep 17 00:00:00 2001
+From 6386e658adc798b2af7400a53941523d21dd581d Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:26 +0200
-Subject: [PATCH 1/8] blkdebug: Add 'delay-ns' option
+Subject: [PATCH 01/52] blkdebug: Add 'delay-ns' option
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
-RH-Jira: RHEL-190702
-RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [1/8] c07ed8a9897c2f8cd8efa5049ed100a1e42b9123 (kmwolf/rhel-qemu-kvm)
+RH-MergeRequest: 503: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-121686
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [1/7] b6ade079279909f3b38a03fc710c1f0ebd475915 (kmwolf/centos-qemu-kvm)
 
 Sometimes reproducing a problem for debugging involves slow I/O, so
 let's add something to blkdebug to make I/O slow when we need it. This

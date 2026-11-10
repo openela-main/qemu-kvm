@@ -1,0 +1,50 @@
+From dee147a00ef424ebb5882f45b2dcd88eef30e0d1 Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Tue, 14 Jul 2026 22:01:45 +0530
+Subject: [PATCH 01/12] hw/core/platform-bus: guard
+ platform_bus_get_mmio_addr() against NULL
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 511: hw/tpm: fix tpm-ppi migration failure for older machine types
+RH-Jira: RHEL-180837
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [1/3] 622f42e2d1c609def22b2796cf83080248897548 (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-180837
+
+sysbus_mmio_get_region() returns NULL when a device has fewer MMIO
+regions than the requested slot index.  platform_bus_get_mmio_addr()
+passes the result directly to memory_region_is_mapped() without a
+NULL check, causing a SIGSEGV.
+
+Return -1 early when the region pointer is NULL, consistent with the
+existing "not mapped" path.
+
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260619093140.832136-2-mbawa@redhat.com
+Signed-off-by: Stefan Berger <stefanb@linux.ibm.com>
+(cherry picked from commit fb7609c4bf74e31ea06c0d8e400dd01badcfa4c3)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ hw/core/platform-bus.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/hw/core/platform-bus.c b/hw/core/platform-bus.c
+index 6950063de4..95add361cc 100644
+--- a/hw/core/platform-bus.c
++++ b/hw/core/platform-bus.c
+@@ -59,8 +59,7 @@ hwaddr platform_bus_get_mmio_addr(PlatformBusDevice *pbus, SysBusDevice *sbdev,
+     Object *pbus_mr_obj = OBJECT(pbus_mr);
+     Object *parent_mr;
+ 
+-    if (!memory_region_is_mapped(sbdev_mr)) {
+-        /* Region is not mapped? */
++    if (!sbdev_mr || !memory_region_is_mapped(sbdev_mr)) {
+         return -1;
+     }
+ 
+-- 
+2.52.0
+

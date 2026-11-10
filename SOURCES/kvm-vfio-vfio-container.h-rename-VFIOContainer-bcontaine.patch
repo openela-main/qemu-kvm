@@ -1,0 +1,46 @@
+From 849dde57c6e53aea022ee543a862ed4508556dbd Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:47 +0100
+Subject: [PATCH 034/116] vfio/vfio-container.h: rename VFIOContainer
+ bcontainer field to parent_obj
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [18/100] 855ee391410e84df410bf0d60b908b57732e98a9 (rovick1/qemu-kvm)
+
+Now that nothing accesses the bcontainer field directly, rename bcontainer to
+parent_obj as per our current coding guidelines.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-8-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 507a118e9f8cc328c55adc531336e075fa8ee2d7)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/hw/vfio/vfio-container.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/hw/vfio/vfio-container.h b/include/hw/vfio/vfio-container.h
+index 50c91788d5..240f566993 100644
+--- a/include/hw/vfio/vfio-container.h
++++ b/include/hw/vfio/vfio-container.h
+@@ -26,7 +26,7 @@ typedef struct VFIOGroup {
+ } VFIOGroup;
+ 
+ struct VFIOContainer {
+-    VFIOContainerBase bcontainer;
++    VFIOContainerBase parent_obj;
+ 
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+     unsigned iommu_type;
+-- 
+2.52.0
+

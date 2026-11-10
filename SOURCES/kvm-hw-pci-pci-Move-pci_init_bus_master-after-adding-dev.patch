@@ -1,0 +1,78 @@
+From 0213083c1d84149b5447d6153aa064cdda39952e Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 009/111] hw/pci/pci: Move pci_init_bus_master() after adding
+ device to bus
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [9/111] 0b322e9469e1c9b526028631ba972cdea6c71028 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+During PCI hotplug, in do_pci_register_device(), pci_init_bus_master()
+is called before storing the pci_dev pointer in bus->devices[devfn].
+
+This causes a problem if pci_init_bus_master() (via its
+get_address_space() callback) attempts to retrieve the device using
+pci_find_device(), since the PCI device is not yet visible on the bus.
+
+Fix this by moving the pci_init_bus_master() call to after the device
+has been added to bus->devices[devfn].
+
+This prepares for a subsequent patch where the accel SMMUv3
+get_address_space() callback retrieves the pci_dev to identify the
+attached device type.
+
+No functional change intended.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-8-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit e4eab7d4a1480016876e74081ffef10ab495210b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index d1c22999b9..a8eeafd3b2 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -1369,9 +1369,6 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev,
+     pci_dev->bus_master_as.max_bounce_buffer_size =
+         pci_dev->max_bounce_buffer_size;
+ 
+-    if (phase_check(PHASE_MACHINE_READY)) {
+-        pci_init_bus_master(pci_dev);
+-    }
+     pci_dev->irq_state = 0;
+     pci_config_alloc(pci_dev);
+ 
+@@ -1415,6 +1412,9 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev,
+     pci_dev->config_write = config_write;
+     bus->devices[devfn] = pci_dev;
+     pci_dev->version_id = 2; /* Current pci device vmstate version */
++    if (phase_check(PHASE_MACHINE_READY)) {
++        pci_init_bus_master(pci_dev);
++    }
+     return pci_dev;
+ }
+ 
+-- 
+2.52.0
+

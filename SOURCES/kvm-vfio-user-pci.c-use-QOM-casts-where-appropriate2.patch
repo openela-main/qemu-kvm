@@ -1,0 +1,62 @@
+From 2e7700817255deeae14c49b448ff5289f59b269c Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:26:00 +0100
+Subject: [PATCH 046/116] vfio-user/pci.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [30/100] 3fe414403346f5e653673bac6b19a0375b2283c3 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOPCIDevice and PCIDevice instead of
+accessing pdev directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: John Levon <john.levon@nutanix.com>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-21-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit a49ef7a467c3ced0be048b02189092031e325d01)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index c3947a8f2e..e2c309784f 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -65,7 +65,7 @@ static void vfio_user_msix_setup(VFIOPCIDevice *vdev)
+     vdev->msix->pba_region = pba_reg;
+ 
+     vfio_reg = vdev->bars[vdev->msix->pba_bar].mr;
+-    msix_reg = &vdev->pdev.msix_pba_mmio;
++    msix_reg = &PCI_DEVICE(vdev)->msix_pba_mmio;
+     memory_region_init_io(pba_reg, OBJECT(vdev), &vfio_user_pba_ops, vdev,
+                           "VFIO MSIX PBA", int128_get64(msix_reg->size));
+     memory_region_add_subregion_overlap(vfio_reg, vdev->msix->pba_offset,
+@@ -86,7 +86,7 @@ static void vfio_user_msix_teardown(VFIOPCIDevice *vdev)
+ 
+ static void vfio_user_dma_read(VFIOPCIDevice *vdev, VFIOUserDMARW *msg)
+ {
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+     VFIOUserProxy *proxy = vdev->vbasedev.proxy;
+     VFIOUserDMARW *res;
+     MemTxResult r;
+@@ -134,7 +134,7 @@ static void vfio_user_dma_read(VFIOPCIDevice *vdev, VFIOUserDMARW *msg)
+ 
+ static void vfio_user_dma_write(VFIOPCIDevice *vdev, VFIOUserDMARW *msg)
+ {
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+     VFIOUserProxy *proxy = vdev->vbasedev.proxy;
+     MemTxResult r;
+ 
+-- 
+2.52.0
+

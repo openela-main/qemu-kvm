@@ -1,0 +1,59 @@
+From 11005598084892e065466adc25a0cf125c03d826 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 14:58:15 +0200
+Subject: [PATCH 09/12] s390x/kvm: clamp stsi 3.2.2 size
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [6/9] b2551d15e058714d1ca135308a6f9d5e537cd6fe (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit a57e4612b61da20ddab196502c76b4dc05da1de8
+Author: Christian Borntraeger <borntraeger@linux.ibm.com>
+Date:   Mon Jun 22 11:20:35 2026 +0200
+
+    s390x/kvm: clamp stsi 3.2.2 size
+
+    The stsi 3.2.2 page is being prepared by the kvm module and the size is
+    clamped by the kernel. As the memory is mapped in the guest, another
+    guest VCPU could race and overwrite the count and messing up the move
+    operation. For any out of bound count, fall back to the kernel buffer.
+
+    Cc: qemu-stable@nongnu.org
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Message-ID: <20260622092035.400959-1-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ target/s390x/kvm/kvm.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/target/s390x/kvm/kvm.c b/target/s390x/kvm/kvm.c
+index 491cc5f975..0cbd254655 100644
+--- a/target/s390x/kvm/kvm.c
++++ b/target/s390x/kvm/kvm.c
+@@ -1791,6 +1791,15 @@ static void insert_stsi_3_2_2(S390CPU *cpu, __u64 addr, uint8_t ar)
+     } else if (s390_cpu_virt_mem_read(cpu, addr, ar, &sysib, sizeof(sysib))) {
+         return;
+     }
++
++    /*
++     * The memory was filled by the kernel but mapped into the guest.
++     * If something is fishy, do not touch the buffer.
++     */
++    if (sysib.count == 0 || sysib.count > ARRAY_SIZE(sysib.ext_names)) {
++        return;
++    }
++
+     /* Shift the stack of Extended Names to prepare for our own data */
+     memmove(&sysib.ext_names[1], &sysib.ext_names[0],
+             sizeof(sysib.ext_names[0]) * (sysib.count - 1));
+-- 
+2.52.0
+

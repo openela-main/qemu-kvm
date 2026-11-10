@@ -1,0 +1,116 @@
+From fa80def8f8d7ce4a1d60bcd16937dbf3a2e1c9d3 Mon Sep 17 00:00:00 2001
+From: Steve Sistare <steven.sistare@oracle.com>
+Date: Mon, 30 Sep 2024 09:31:52 -0700
+Subject: [PATCH 095/116] vfio: cpr-exec mode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [79/100] bee9f7a3984192ca2bd2111f21fb94e9d2b97e59 (rovick1/qemu-kvm)
+
+All blockers and notifiers for cpr-transfer mode also apply to cpr-exec.
+
+Signed-off-by: Steve Sistare <steven.sistare@oracle.com>
+Acked-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/r/30750362-d4a1-4392-8dd6-016624d01be1@oracle.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ hw/vfio/container-legacy.c |  3 ++-
+ hw/vfio/cpr-iommufd.c      |  3 ++-
+ hw/vfio/cpr-legacy.c       |  9 +++++----
+ hw/vfio/cpr.c              | 13 +++++++------
+ 4 files changed, 16 insertions(+), 12 deletions(-)
+
+diff --git a/hw/vfio/container-legacy.c b/hw/vfio/container-legacy.c
+index 1394dd6fe8..fad0226f7d 100644
+--- a/hw/vfio/container-legacy.c
++++ b/hw/vfio/container-legacy.c
+@@ -986,7 +986,8 @@ static bool vfio_legacy_attach_device(const char *name, VFIODevice *vbasedev,
+         error_setg(&vbasedev->cpr.mdev_blocker,
+                    "CPR does not support vfio mdev %s", vbasedev->name);
+         if (migrate_add_blocker_modes(&vbasedev->cpr.mdev_blocker, errp,
+-                                      MIG_MODE_CPR_TRANSFER, -1) < 0) {
++                                      MIG_MODE_CPR_TRANSFER, MIG_MODE_CPR_EXEC,
++                                      -1) < 0) {
+             goto hiod_unref_exit;
+         }
+     }
+diff --git a/hw/vfio/cpr-iommufd.c b/hw/vfio/cpr-iommufd.c
+index 1d70c87996..8a4d65de5e 100644
+--- a/hw/vfio/cpr-iommufd.c
++++ b/hw/vfio/cpr-iommufd.c
+@@ -159,7 +159,8 @@ bool vfio_iommufd_cpr_register_iommufd(IOMMUFDBackend *be, Error **errp)
+ 
+     if (!vfio_cpr_supported(be, cpr_blocker)) {
+         return migrate_add_blocker_modes(cpr_blocker, errp,
+-                                         MIG_MODE_CPR_TRANSFER, -1) == 0;
++                                         MIG_MODE_CPR_TRANSFER,
++                                         MIG_MODE_CPR_EXEC, -1) == 0;
+     }
+ 
+     vmstate_register(NULL, -1, &iommufd_cpr_vmstate, be);
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index 3a1d126556..80af7469d0 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -179,16 +179,17 @@ bool vfio_legacy_cpr_register_container(VFIOLegacyContainer *container,
+ 
+     if (!vfio_cpr_supported(container, cpr_blocker)) {
+         return migrate_add_blocker_modes(cpr_blocker, errp,
+-                                         MIG_MODE_CPR_TRANSFER, -1) == 0;
++                                         MIG_MODE_CPR_TRANSFER,
++                                         MIG_MODE_CPR_EXEC, -1) == 0;
+     }
+ 
+     vfio_cpr_add_kvm_notifier();
+ 
+     vmstate_register(NULL, -1, &vfio_container_vmstate, container);
+ 
+-    migration_add_notifier_mode(&container->cpr.transfer_notifier,
+-                                vfio_cpr_fail_notifier,
+-                                MIG_MODE_CPR_TRANSFER);
++    migration_add_notifier_modes(&container->cpr.transfer_notifier,
++                                 vfio_cpr_fail_notifier,
++                                 MIG_MODE_CPR_TRANSFER, MIG_MODE_CPR_EXEC, -1);
+     return true;
+ }
+ 
+diff --git a/hw/vfio/cpr.c b/hw/vfio/cpr.c
+index 2c71fc1e8e..db462aabcb 100644
+--- a/hw/vfio/cpr.c
++++ b/hw/vfio/cpr.c
+@@ -195,9 +195,10 @@ static int vfio_cpr_kvm_close_notifier(NotifierWithReturn *notifier,
+ void vfio_cpr_add_kvm_notifier(void)
+ {
+     if (!kvm_close_notifier.notify) {
+-        migration_add_notifier_mode(&kvm_close_notifier,
+-                                    vfio_cpr_kvm_close_notifier,
+-                                    MIG_MODE_CPR_TRANSFER);
++        migration_add_notifier_modes(&kvm_close_notifier,
++                                     vfio_cpr_kvm_close_notifier,
++                                     MIG_MODE_CPR_TRANSFER, MIG_MODE_CPR_EXEC,
++                                     -1);
+     }
+ }
+ 
+@@ -282,9 +283,9 @@ static int vfio_cpr_pci_notifier(NotifierWithReturn *notifier,
+ 
+ void vfio_cpr_pci_register_device(VFIOPCIDevice *vdev)
+ {
+-    migration_add_notifier_mode(&vdev->cpr.transfer_notifier,
+-                                vfio_cpr_pci_notifier,
+-                                MIG_MODE_CPR_TRANSFER);
++    migration_add_notifier_modes(&vdev->cpr.transfer_notifier,
++                                 vfio_cpr_pci_notifier,
++                                 MIG_MODE_CPR_TRANSFER, MIG_MODE_CPR_EXEC, -1);
+ }
+ 
+ void vfio_cpr_pci_unregister_device(VFIOPCIDevice *vdev)
+-- 
+2.52.0
+

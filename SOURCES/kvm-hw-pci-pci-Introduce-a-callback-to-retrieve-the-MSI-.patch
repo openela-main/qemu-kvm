@@ -1,0 +1,182 @@
+From 4408abc5514a43de2448a7e649e283d2407a50eb Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 024/111] hw/pci/pci: Introduce a callback to retrieve the MSI
+ doorbell GPA directly
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [24/111] 48db9de84081aaab07118f3b4ba23caa735e5ebd (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+For certain vIOMMU implementations, such as SMMUv3 in accelerated mode,
+the translation tables are programmed directly into the physical SMMUv3
+in a nested configuration. While QEMU knows where the guest tables live,
+safely walking them in software would require trapping and ordering all
+guest invalidations on every command queue. Without this, QEMU could race
+with guest updates and walk stale or freed page tables.
+
+This constraint is fundamental to the design of HW-accelerated vSMMU when
+used with downstream vfio-pci endpoint devices, where QEMU must never walk
+guest translation tables and must rely on the physical SMMU for
+translation. Future accelerated vSMMU features, such as virtual CMDQ, will
+also prevent trapping invalidations, reinforcing this restriction.
+
+For vfio-pci endpoints behind such a vSMMU, the only translation QEMU
+needs is for the MSI doorbell used when setting up KVM MSI route tables.
+Instead of attempting a software walk, introduce an optional vIOMMU
+callback that returns the MSI doorbell GPA directly.
+
+kvm_arch_fixup_msi_route() uses this callback when available and ignores
+the guest provided IOVA in that case.
+
+If the vIOMMU does not implement the callback, we fall back to the
+existing IOMMU based address space translation path.
+
+This ensures correct MSI routing for accelerated SMMUv3 + VFIO passthrough
+while avoiding unsafe software walks of guest translation tables.
+
+As a related change, replace RCU_READ_LOCK_GUARD() with explicit
+rcu_read_lock()/rcu_read_unlock(). The introduction of an early goto
+(set_doorbell) path means the RCU read side critical section can no longer
+be safely scoped using RCU_READ_LOCK_GUARD().
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-17-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 5c921b29c9898bc44b86b88127b9e9bef76dc2ef)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pci.c         | 17 +++++++++++++++++
+ include/hw/pci/pci.h | 17 +++++++++++++++++
+ target/arm/kvm.c     | 18 +++++++++++++++++-
+ 3 files changed, 51 insertions(+), 1 deletion(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 1f2d4d76f9..344914424c 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -2965,6 +2965,23 @@ bool pci_device_get_iommu_bus_devfn(PCIDevice *dev, PCIBus **piommu_bus,
+     return aliased;
+ }
+ 
++bool pci_device_iommu_msi_direct_gpa(PCIDevice *dev, hwaddr *out_doorbell)
++{
++    PCIBus *bus;
++    PCIBus *iommu_bus;
++    int devfn;
++
++    pci_device_get_iommu_bus_devfn(dev, &iommu_bus, &bus, &devfn);
++    if (iommu_bus) {
++        if (iommu_bus->iommu_ops->get_msi_direct_gpa) {
++            *out_doorbell = iommu_bus->iommu_ops->get_msi_direct_gpa(bus,
++                                iommu_bus->iommu_opaque, devfn);
++            return true;
++        }
++    }
++    return false;
++}
++
+ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
+ {
+     PCIBus *bus;
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index 528faafad2..e672c92348 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -683,6 +683,22 @@ typedef struct PCIIOMMUOps {
+                             uint32_t pasid, bool priv_req, bool exec_req,
+                             hwaddr addr, bool lpig, uint16_t prgi, bool is_read,
+                             bool is_write);
++    /**
++     * @get_msi_direct_gpa: get the guest physical address of MSI doorbell
++     * for the device on a PCI bus.
++     *
++     * Optional callback. If implemented, it must return a valid guest
++     * physical address for the MSI doorbell
++     *
++     * @bus: the #PCIBus being accessed.
++     *
++     * @opaque: the data passed to pci_setup_iommu().
++     *
++     * @devfn: device and function number
++     *
++     * Returns: the guest physical address of the MSI doorbell.
++     */
++    uint64_t (*get_msi_direct_gpa)(PCIBus *bus, void *opaque, int devfn);
+ } PCIIOMMUOps;
+ 
+ bool pci_device_get_iommu_bus_devfn(PCIDevice *dev, PCIBus **piommu_bus,
+@@ -691,6 +707,7 @@ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
+ bool pci_device_set_iommu_device(PCIDevice *dev, HostIOMMUDevice *hiod,
+                                  Error **errp);
+ void pci_device_unset_iommu_device(PCIDevice *dev);
++bool pci_device_iommu_msi_direct_gpa(PCIDevice *dev, hwaddr *out_doorbell);
+ 
+ /**
+  * pci_device_get_viommu_flags: get vIOMMU flags.
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index ccf0fc501a..fe731cc49f 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -1614,26 +1614,42 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+         return 0;
+     }
+ 
++    /*
++     * We do have an IOMMU address space, but for some vIOMMU implementations
++     * (e.g. accelerated SMMUv3) the translation tables are programmed into
++     * the physical SMMUv3 in the host (nested S1=guest, S2=host). QEMU cannot
++     * walk these tables in a safe way, so in that case we obtain the MSI
++     * doorbell GPA directly from the vIOMMU backend and ignore the gIOVA
++     * @address.
++     */
++    if (pci_device_iommu_msi_direct_gpa(dev, &doorbell_gpa)) {
++        goto set_doorbell;
++    }
++
+     /* MSI doorbell address is translated by an IOMMU */
+ 
+-    RCU_READ_LOCK_GUARD();
++    rcu_read_lock();
+ 
+     mr = address_space_translate(as, address, &xlat, &len, true,
+                                  MEMTXATTRS_UNSPECIFIED);
+ 
+     if (!mr) {
++        rcu_read_unlock();
+         return 1;
+     }
+ 
+     mrs = memory_region_find(mr, xlat, 1);
+ 
+     if (!mrs.mr) {
++        rcu_read_unlock();
+         return 1;
+     }
+ 
+     doorbell_gpa = mrs.offset_within_address_space;
+     memory_region_unref(mrs.mr);
++    rcu_read_unlock();
+ 
++set_doorbell:
+     route->u.msi.address_lo = doorbell_gpa;
+     route->u.msi.address_hi = doorbell_gpa >> 32;
+ 
+-- 
+2.52.0
+

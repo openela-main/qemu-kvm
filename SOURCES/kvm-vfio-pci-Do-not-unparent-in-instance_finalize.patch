@@ -1,0 +1,58 @@
+From ae6cdc32fc4262e3b0aed7d41ec26238888c4b63 Mon Sep 17 00:00:00 2001
+From: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Date: Wed, 24 Sep 2025 13:37:21 +0900
+Subject: [PATCH 049/116] vfio/pci: Do not unparent in instance_finalize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [33/100] a481bd02b386af864a7f3005b05198bb76812a8f (rovick1/qemu-kvm)
+
+Children are automatically unparented so manually unparenting is
+unnecessary.
+
+Worse, automatic unparenting happens before the insntance_finalize()
+callback of the parent gets called, so object_unparent() calls in
+the callback will refer to objects that are already unparented, which
+is semantically incorrect.
+
+Signed-off-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Link: https://lore.kernel.org/r/20250924-use-v4-2-07c6c598f53d@rsg.ci.i.u-tokyo.ac.jp
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit e3ed862cabce6d8a12300b941243cb44e9cd40d1)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index d9cdd90ea5..38ea58020d 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2028,7 +2028,6 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
+         vfio_region_finalize(&bar->region);
+         if (bar->mr) {
+             assert(bar->size);
+-            object_unparent(OBJECT(bar->mr));
+             g_free(bar->mr);
+             bar->mr = NULL;
+         }
+@@ -2036,9 +2035,6 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
+ 
+     if (vdev->vga) {
+         vfio_vga_quirk_finalize(vdev);
+-        for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
+-            object_unparent(OBJECT(&vdev->vga->region[i].mem));
+-        }
+         g_free(vdev->vga);
+     }
+ }
+-- 
+2.52.0
+

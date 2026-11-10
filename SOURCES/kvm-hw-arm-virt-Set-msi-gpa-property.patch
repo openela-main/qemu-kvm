@@ -1,0 +1,69 @@
+From 6eaf5c560a39669ec7f43a3714549b14a164c72b Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 026/111] hw/arm/virt: Set msi-gpa property
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [26/111] 8089fb878db15fbb5929e15fb2210b1ec2ccb9c0 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Set the MSI doorbell GPA property for accelerated SMMUv3 devices for use
+by KVM MSI setup. Also, since any meaningful use of vfio-pci devices with
+an accelerated SMMUv3 requires both KVM and a kernel irqchip, ensure
+those are specified when accel=on is selected.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-19-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 5ec2700dcbf72c6bbeb00322e5258f999071d9d5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index e3e0233474..b9765d4248 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -3092,6 +3092,26 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
+             object_property_set_link(OBJECT(dev), "secure-memory",
+                                      OBJECT(vms->secure_sysmem), NULL);
+         }
++        if (object_property_find(OBJECT(dev), "accel") &&
++            object_property_get_bool(OBJECT(dev), "accel", &error_abort)) {
++            hwaddr db_start = 0;
++
++            if (!kvm_enabled() || !kvm_irqchip_in_kernel()) {
++                error_setg(errp, "SMMUv3 accel=on requires KVM with "
++                           "kernel-irqchip=on support");
++                return;
++            }
++
++            if (vms->msi_controller == VIRT_MSI_CTRL_ITS) {
++                /* GITS_TRANSLATER page + offset */
++                db_start = base_memmap[VIRT_GIC_ITS].base + 0x10000 + 0x40;
++            } else if (vms->msi_controller == VIRT_MSI_CTRL_GICV2M) {
++                /* MSI_SETSPI_NS page + offset */
++                db_start = base_memmap[VIRT_GIC_V2M].base + 0x40;
++            }
++            object_property_set_uint(OBJECT(dev), "msi-gpa", db_start,
++                                     &error_abort);
++        }
+     }
+ }
+ 
+-- 
+2.52.0
+

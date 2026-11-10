@@ -1,0 +1,79 @@
+From 140c54e956b284cbb96874e7f003f71d0e727984 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:26:02 +0100
+Subject: [PATCH 047/116] vfio/pci.h: rename VFIOPCIDevice pdev field to
+ parent_obj
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [31/100] d8dc488ce4e8c2cdec8db0f0e90715513194b2b2 (rovick1/qemu-kvm)
+
+Now that nothing accesses the pdev field directly, rename pdev to
+parent_obj as per our current coding guidelines.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-23-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit bb986792a968ee51cda72cd4cc05822198495375)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr.c | 4 ++--
+ hw/vfio/pci.c | 4 ++--
+ hw/vfio/pci.h | 2 +-
+ 3 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/hw/vfio/cpr.c b/hw/vfio/cpr.c
+index f911988add..2c71fc1e8e 100644
+--- a/hw/vfio/cpr.c
++++ b/hw/vfio/cpr.c
+@@ -173,8 +173,8 @@ const VMStateDescription vfio_cpr_pci_vmstate = {
+     .post_load = vfio_cpr_pci_post_load,
+     .needed = cpr_incoming_needed,
+     .fields = (VMStateField[]) {
+-        VMSTATE_PCI_DEVICE(pdev, VFIOPCIDevice),
+-        VMSTATE_MSIX_TEST(pdev, VFIOPCIDevice, pci_msix_present),
++        VMSTATE_PCI_DEVICE(parent_obj, VFIOPCIDevice),
++        VMSTATE_MSIX_TEST(parent_obj, VFIOPCIDevice, pci_msix_present),
+         VMSTATE_VFIO_INTX(intx, VFIOPCIDevice),
+         VMSTATE_END_OF_LIST()
+     }
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 8525a8640e..d9cdd90ea5 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2814,8 +2814,8 @@ static const VMStateDescription vmstate_vfio_pci_config = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .fields = (const VMStateField[]) {
+-        VMSTATE_PCI_DEVICE(pdev, VFIOPCIDevice),
+-        VMSTATE_MSIX_TEST(pdev, VFIOPCIDevice, vfio_msix_present),
++        VMSTATE_PCI_DEVICE(parent_obj, VFIOPCIDevice),
++        VMSTATE_MSIX_TEST(parent_obj, VFIOPCIDevice, vfio_msix_present),
+         VMSTATE_END_OF_LIST()
+     },
+     .subsections = (const VMStateDescription * const []) {
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index 08bab970cb..dd419f9147 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -123,7 +123,7 @@ typedef struct VFIOMSIXInfo {
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOPCIDevice, VFIO_PCI_BASE)
+ 
+ struct VFIOPCIDevice {
+-    PCIDevice pdev;
++    PCIDevice parent_obj;
+ 
+     VFIODevice vbasedev;
+     VFIOINTx intx;
+-- 
+2.52.0
+

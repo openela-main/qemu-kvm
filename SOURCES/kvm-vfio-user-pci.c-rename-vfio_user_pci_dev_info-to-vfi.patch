@@ -1,0 +1,54 @@
+From 34756ef0d3a3da9068878146fd00e83a1c55a08c Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:35 +0100
+Subject: [PATCH 078/116] vfio-user/pci.c: rename vfio_user_pci_dev_info to
+ vfio_user_pci_info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [62/100] 83106e7cacf0e4b91cbee8e17ecdb1a7976e6abf (rovick1/qemu-kvm)
+
+This changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-28-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit d0776b8c60fcc5833fba1d2ce8e0780c429108bc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index d4f5c7b9d7..b53ed3b456 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -463,7 +463,7 @@ static void vfio_user_pci_class_init(ObjectClass *klass, const void *data)
+     pdc->realize = vfio_user_pci_realize;
+ }
+ 
+-static const TypeInfo vfio_user_pci_dev_info = {
++static const TypeInfo vfio_user_pci_info = {
+     .name = TYPE_VFIO_USER_PCI,
+     .parent = TYPE_VFIO_PCI_DEVICE,
+     .instance_size = sizeof(VFIOUserPCIDevice),
+@@ -474,7 +474,7 @@ static const TypeInfo vfio_user_pci_dev_info = {
+ 
+ static void register_vfio_user_dev_type(void)
+ {
+-    type_register_static(&vfio_user_pci_dev_info);
++    type_register_static(&vfio_user_pci_info);
+ }
+ 
+- type_init(register_vfio_user_dev_type)
++type_init(register_vfio_user_dev_type)
+-- 
+2.52.0
+

@@ -1,0 +1,52 @@
+From 2e59058caf20c55428f60d01958cdcb3e24e214c Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Sun, 28 Sep 2025 04:54:30 -0400
+Subject: [PATCH 101/116] vfio/iommufd: Restore vbasedev's reference to hwpt
+ after CPR transfer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [85/100] bee86cff29b04fee93669e35482a362d70198d82 (rovick1/qemu-kvm)
+
+After CPR transfer, if there are more than one VFIO devices, device is
+not added to hwpt->device_list and its reference to hwpt isn't restored
+on destination. We still need to call iommufd_cdev_attach_container() to
+restore it after a matching container is found, or else SIGSEV triggers.
+
+Fixes: 4296ee07455e ("vfio/iommufd: reconstruct device")
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/qemu-devel/20250928085432.40107-5-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 8bf49fff0dfbb065ad65daa48d2e1a63ad2fd552)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 3b0288f416..ce10371818 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -560,10 +560,9 @@ static bool iommufd_cdev_attach(const char *name, VFIODevice *vbasedev,
+             continue;
+         }
+ 
+-        if (!cpr_is_incoming()) {
++        if (!cpr_is_incoming() ||
++            (vbasedev->cpr.ioas_id == container->ioas_id)) {
+             res = iommufd_cdev_attach_container(vbasedev, container, &err);
+-        } else if (vbasedev->cpr.ioas_id == container->ioas_id) {
+-            res = true;
+         } else {
+             continue;
+         }
+-- 
+2.52.0
+

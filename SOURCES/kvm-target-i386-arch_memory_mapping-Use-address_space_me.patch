@@ -1,0 +1,83 @@
+From 93d697c70717c2f9a544909774aaa978c0117d65 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Mon, 29 Sep 2025 15:35:28 +0200
+Subject: [PATCH 047/111] target/i386/arch_memory_mapping: Use
+ address_space_memory_is_io()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [47/111] 118cf50c385e9d53f0b925de1d4650d28ec36049 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Since all functions have an address space argument, it is
+trivial to replace cpu_physical_memory_is_io() by
+address_space_memory_is_io().
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Message-Id: <20251002084203.63899-4-philmd@linaro.org>
+(cherry picked from commit 6ffaa9219616d12bc6c3e7cb26a77f7432ac0c70)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/i386/arch_memory_mapping.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/target/i386/arch_memory_mapping.c b/target/i386/arch_memory_mapping.c
+index a2398c2173..560f4689ab 100644
+--- a/target/i386/arch_memory_mapping.c
++++ b/target/i386/arch_memory_mapping.c
+@@ -35,7 +35,7 @@ static void walk_pte(MemoryMappingList *list, AddressSpace *as,
+         }
+ 
+         start_paddr = (pte & ~0xfff) & ~(0x1ULL << 63);
+-        if (cpu_physical_memory_is_io(start_paddr)) {
++        if (address_space_is_io(as, start_paddr)) {
+             /* I/O region */
+             continue;
+         }
+@@ -65,7 +65,7 @@ static void walk_pte2(MemoryMappingList *list, AddressSpace *as,
+         }
+ 
+         start_paddr = pte & ~0xfff;
+-        if (cpu_physical_memory_is_io(start_paddr)) {
++        if (address_space_is_io(as, start_paddr)) {
+             /* I/O region */
+             continue;
+         }
+@@ -100,7 +100,7 @@ static void walk_pde(MemoryMappingList *list, AddressSpace *as,
+         if (pde & PG_PSE_MASK) {
+             /* 2 MB page */
+             start_paddr = (pde & ~0x1fffff) & ~(0x1ULL << 63);
+-            if (cpu_physical_memory_is_io(start_paddr)) {
++            if (address_space_is_io(as, start_paddr)) {
+                 /* I/O region */
+                 continue;
+             }
+@@ -142,7 +142,7 @@ static void walk_pde2(MemoryMappingList *list, AddressSpace *as,
+              */
+             high_paddr = ((hwaddr)(pde & 0x1fe000) << 19);
+             start_paddr = (pde & ~0x3fffff) | high_paddr;
+-            if (cpu_physical_memory_is_io(start_paddr)) {
++            if (address_space_is_io(as, start_paddr)) {
+                 /* I/O region */
+                 continue;
+             }
+@@ -203,7 +203,7 @@ static void walk_pdpe(MemoryMappingList *list, AddressSpace *as,
+         if (pdpe & PG_PSE_MASK) {
+             /* 1 GB page */
+             start_paddr = (pdpe & ~0x3fffffff) & ~(0x1ULL << 63);
+-            if (cpu_physical_memory_is_io(start_paddr)) {
++            if (address_space_is_io(as, start_paddr)) {
+                 /* I/O region */
+                 continue;
+             }
+-- 
+2.52.0
+

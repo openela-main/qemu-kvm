@@ -1,0 +1,150 @@
+From a6d16269f9e1b8a9a397f4bfc30db35ee68e9412 Mon Sep 17 00:00:00 2001
+From: Gavin Shan <gshan@redhat.com>
+Date: Sat, 22 Aug 2026 11:26:51 +1000
+Subject: [PATCH 3/3] system/memory: Make ram device region directly accessible
+
+RH-Author: Gavin Shan <gshan@redhat.com>
+RH-MergeRequest: 517: memory: Make ram device region directly accessible
+RH-Jira: RHEL-246035
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [3/3] 853127b4ff1b8b834c958791d1d6f78dde4d0e0e (gwshan/qemu-centos10)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-246035
+
+This basically reverts 4a2e242bbb30 ("memory: Don't use memcpy for
+ram_device regions") to make ram device region directly accessible
+again. With this, the bounce buffer is bypassed in address_space_map()
+when a ram device region is involved, potentially avoid to overrun
+the (small) bounce buffer.
+
+Reported-by: Julia Graham <jugraham@redhat.com>
+Suggested-by: Michael S. Tsirkin <mst@redhat.com>
+Suggested-by: Peter Xu <peterx@redhat.com>
+Suggested-by: Richard Henderson <richard.henderson@linaro.org>
+Suggested-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Link: https://lore.kernel.org/r/20260728031731.286666-4-gshan@redhat.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit ff77a515113f052cc5fc571b6a328142fdfcf220)
+Signed-off-by: Gavin Shan <gshan@redhat.com>
+Conflicts:
+	system/memory.c
+	Conflict due to missed upstream commits, but the existing
+	memory_region_init_ram_ptr() is still well appliable in
+	memory_region_init_ram_device_ptr().
+	5cb466d7ca56 ("memory: Add internal memory_region_set_ops helper function")
+	8fe668d0b492 ("memory: Shorten memory_region_init_ram_device_ptr and memory_region_init_rom_device")
+	7f116e951d80 ("memory: Factor out common ram ptr initialization")
+---
+ include/system/memory.h | 11 ++--------
+ system/memory.c         | 48 +----------------------------------------
+ system/trace-events     |  2 --
+ 3 files changed, 3 insertions(+), 58 deletions(-)
+
+diff --git a/include/system/memory.h b/include/system/memory.h
+index 351cf1253c..161d1944e0 100644
+--- a/include/system/memory.h
++++ b/include/system/memory.h
+@@ -3161,15 +3161,8 @@ static inline bool memory_region_supports_direct_access(MemoryRegion *mr)
+     if (memory_region_is_romd(mr)) {
+         return true;
+     }
+-    if (!memory_region_is_ram(mr)) {
+-        return false;
+-    }
+-    /*
+-     * RAM DEVICE regions can be accessed directly using memcpy, but it might
+-     * be MMIO and access using mempy can be wrong (e.g., using instructions not
+-     * intended for MMIO access). So we treat this as IO.
+-     */
+-    return !memory_region_is_ram_device(mr);
++
++    return memory_region_is_ram(mr);
+ }
+ 
+ static inline bool memory_access_is_direct(MemoryRegion *mr, bool is_write,
+diff --git a/system/memory.c b/system/memory.c
+index bdd53369a9..70dc6d852f 100644
+--- a/system/memory.c
++++ b/system/memory.c
+@@ -1360,43 +1360,6 @@ const MemoryRegionOps unassigned_mem_ops = {
+     .endianness = DEVICE_NATIVE_ENDIAN,
+ };
+ 
+-static uint64_t memory_region_ram_device_read(void *opaque,
+-                                              hwaddr addr, unsigned size)
+-{
+-    MemoryRegion *mr = opaque;
+-    uint64_t data = ldn_he_p(mr->ram_block->host + addr, size);
+-
+-    trace_memory_region_ram_device_read(get_cpu_index(), mr, addr, data, size);
+-
+-    return data;
+-}
+-
+-static void memory_region_ram_device_write(void *opaque, hwaddr addr,
+-                                           uint64_t data, unsigned size)
+-{
+-    MemoryRegion *mr = opaque;
+-
+-    trace_memory_region_ram_device_write(get_cpu_index(), mr, addr, data, size);
+-
+-    stn_he_p(mr->ram_block->host + addr, size, data);
+-}
+-
+-static const MemoryRegionOps ram_device_mem_ops = {
+-    .read = memory_region_ram_device_read,
+-    .write = memory_region_ram_device_write,
+-    .endianness = HOST_BIG_ENDIAN ? DEVICE_BIG_ENDIAN : DEVICE_LITTLE_ENDIAN,
+-    .valid = {
+-        .min_access_size = 1,
+-        .max_access_size = 8,
+-        .unaligned = true,
+-    },
+-    .impl = {
+-        .min_access_size = 1,
+-        .max_access_size = 8,
+-        .unaligned = true,
+-    },
+-};
+-
+ bool memory_region_access_valid(MemoryRegion *mr,
+                                 hwaddr addr,
+                                 unsigned size,
+@@ -1707,17 +1670,8 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+                                        uint64_t size,
+                                        void *ptr)
+ {
+-    memory_region_init(mr, owner, name, size);
+-    mr->ram = true;
+-    mr->terminates = true;
++    memory_region_init_ram_ptr(mr, owner, name, size, ptr);
+     mr->ram_device = true;
+-    mr->ops = &ram_device_mem_ops;
+-    mr->opaque = mr;
+-    mr->destructor = memory_region_destructor_ram;
+-
+-    /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
+-    assert(ptr != NULL);
+-    mr->ram_block = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_abort);
+ }
+ 
+ void memory_region_init_alias(MemoryRegion *mr,
+diff --git a/system/trace-events b/system/trace-events
+index 82856e44f2..eb3e7681ab 100644
+--- a/system/trace-events
++++ b/system/trace-events
+@@ -20,8 +20,6 @@ memory_region_ops_read(int cpu_index, void *mr, uint64_t addr, uint64_t value, u
+ memory_region_ops_write(int cpu_index, void *mr, uint64_t addr, uint64_t value, unsigned size, const char *name) "cpu %d mr %p addr 0x%"PRIx64" value 0x%"PRIx64" size %u name '%s'"
+ memory_region_subpage_read(int cpu_index, void *mr, uint64_t offset, uint64_t value, unsigned size) "cpu %d mr %p offset 0x%"PRIx64" value 0x%"PRIx64" size %u"
+ memory_region_subpage_write(int cpu_index, void *mr, uint64_t offset, uint64_t value, unsigned size) "cpu %d mr %p offset 0x%"PRIx64" value 0x%"PRIx64" size %u"
+-memory_region_ram_device_read(int cpu_index, void *mr, uint64_t addr, uint64_t value, unsigned size) "cpu %d mr %p addr 0x%"PRIx64" value 0x%"PRIx64" size %u"
+-memory_region_ram_device_write(int cpu_index, void *mr, uint64_t addr, uint64_t value, unsigned size) "cpu %d mr %p addr 0x%"PRIx64" value 0x%"PRIx64" size %u"
+ memory_region_sync_dirty(const char *mr, const char *listener, int global) "mr '%s' listener '%s' synced (global=%d)"
+ flatview_new(void *view, void *root) "%p (root %p)"
+ flatview_destroy(void *view, void *root) "%p (root %p)"
+-- 
+2.52.0
+

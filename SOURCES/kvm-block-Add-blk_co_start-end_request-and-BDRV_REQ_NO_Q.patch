@@ -1,15 +1,15 @@
-From bd929a4dbcd20cb9f6314c867726b59e18254994 Mon Sep 17 00:00:00 2001
+From c452d113b1d71de097e3b87f7d40d6865731b275 Mon Sep 17 00:00:00 2001
 From: Kevin Wolf <kwolf@redhat.com>
 Date: Tue, 21 Apr 2026 18:11:27 +0200
-Subject: [PATCH 2/8] block: Add blk_co_start/end_request() and
+Subject: [PATCH 02/52] block: Add blk_co_start/end_request() and
  BDRV_REQ_NO_QUEUE
 
 RH-Author: Kevin Wolf <kwolf@redhat.com>
-RH-MergeRequest: 562: ide: Fix deadlock between TRIM and drain [10.2.z]
-RH-Jira: RHEL-190702
-RH-Acked-by: German Maglione <None>
-RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
-RH-Commit: [2/8] 12df3f715235d07f3b45fa3ee56e5e8aa45e866c (kmwolf/rhel-qemu-kvm)
+RH-MergeRequest: 503: ide: Fix deadlock between TRIM and drain
+RH-Jira: RHEL-121686
+RH-Acked-by: Hanna Czenczek <hreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Commit: [2/7] 4053fabc93d73e2c7143763fa2676c7be7ad249d (kmwolf/centos-qemu-kvm)
 
 If a device uses blk_inc/dec_in_flight() in order to build macro
 operations that involve multiple requests for the block layer and that

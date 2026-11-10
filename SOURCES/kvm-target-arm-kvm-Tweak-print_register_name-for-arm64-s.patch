@@ -1,0 +1,44 @@
+From efcd88369bb1402aaf8b1084666ab6182717740f Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Fri, 6 Mar 2026 09:01:12 +0000
+Subject: [PATCH 006/116] target/arm/kvm: Tweak print_register_name() for arm64
+ system register
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [6/16] e434272a6ecab513d6bc8c4811cd8e1463cdbfad (eauger1/centos-qemu-kvm)
+
+As opposed to other register types, arm64 system register decoding
+is not introduced by any 'register' mention which can lead to
+unfriendly user-facing traces.  Let's add "system register"
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260304101625.1962633-5-eric.auger@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 3e0a3a8e91efabef01dad8ea1cd1f13dcc46b14d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/kvm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/arm/kvm.c b/target/arm/kvm.c
+index 283d634ca1..ccf0fc501a 100644
+--- a/target/arm/kvm.c
++++ b/target/arm/kvm.c
+@@ -919,7 +919,7 @@ char *kvm_print_register_name(uint64_t regidx)
+         case KVM_REG_ARM_DEMUX:
+             return g_strdup_printf("demuxed reg %"PRIx64, regidx);
+         case KVM_REG_ARM64_SYSREG:
+-            return g_strdup_printf("op0:%d op1:%d crn:%d crm:%d op2:%d",
++            return g_strdup_printf("system register op0:%d op1:%d crn:%d crm:%d op2:%d",
+                                    CP_REG_ARM64_SYSREG_OP(regidx, OP0),
+                                    CP_REG_ARM64_SYSREG_OP(regidx, OP1),
+                                    CP_REG_ARM64_SYSREG_OP(regidx, CRN),
+-- 
+2.52.0
+

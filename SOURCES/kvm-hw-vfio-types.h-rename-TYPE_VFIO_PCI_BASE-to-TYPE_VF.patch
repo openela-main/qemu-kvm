@@ -1,0 +1,337 @@
+From ea749e5fe5c3337af25560b5c36476c611a6420a Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:24 +0100
+Subject: [PATCH 067/116] hw/vfio/types.h: rename TYPE_VFIO_PCI_BASE to
+ TYPE_VFIO_PCI_DEVICE
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [51/100] 4690d24398c7169d39d8254012faaf8576bb10e9 (rovick1/qemu-kvm)
+
+This brings the QOM type name in line with the underlying VFIOPCIDevice structure.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-17-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit af2a8bfb3cd38cceb39a152ff33c7daa4c81c506)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/s390x/s390-pci-vfio.c | 14 +++++++-------
+ hw/vfio-user/pci.c       | 13 +++++++------
+ hw/vfio/device.c         |  2 +-
+ hw/vfio/pci.c            | 28 ++++++++++++++--------------
+ hw/vfio/pci.h            |  2 +-
+ hw/vfio/types.h          |  4 ++--
+ 6 files changed, 32 insertions(+), 31 deletions(-)
+
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index 7760780aff..9e31029d7a 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -62,7 +62,7 @@ S390PCIDMACount *s390_pci_start_dma_count(S390pciState *s,
+ {
+     S390PCIDMACount *cnt;
+     uint32_t avail;
+-    VFIOPCIDevice *vpdev = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpdev = VFIO_PCI_DEVICE(pbdev->pdev);
+     int id;
+ 
+     assert(vpdev);
+@@ -108,7 +108,7 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_base *cap;
+-    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
+     uint64_t vfio_size;
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
+@@ -162,7 +162,7 @@ static bool get_host_fh(S390PCIBusDevice *pbdev, struct vfio_device_info *info,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_base *cap;
+-    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
+ 
+@@ -185,7 +185,7 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
+     struct vfio_device_info_cap_zpci_group *cap;
+     S390pciState *s = s390_get_phb();
+     ClpRspQueryPciGrp *resgrp;
+-    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
+     uint8_t start_gid = pbdev->zpci_fn.pfgid;
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_GROUP);
+@@ -264,7 +264,7 @@ static void s390_pci_read_util(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_util *cap;
+-    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_UTIL);
+ 
+@@ -291,7 +291,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_pfip *cap;
+-    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_PFIP);
+ 
+@@ -314,7 +314,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
+ 
+ static struct vfio_device_info *get_device_info(S390PCIBusDevice *pbdev)
+ {
+-    VFIOPCIDevice *vfio_pci = VFIO_PCI_BASE(pbdev->pdev);
++    VFIOPCIDevice *vfio_pci = VFIO_PCI_DEVICE(pbdev->pdev);
+ 
+     return vfio_get_device_info(vfio_pci->vbasedev.fd);
+ }
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index e2c309784f..efceae69de 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -234,9 +234,10 @@ static void vfio_user_pci_realize(PCIDevice *pdev, Error **errp)
+ {
+     ERRP_GUARD();
+     VFIOUserPCIDevice *udev = VFIO_USER_PCI(pdev);
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+     const char *sock_name;
++
+     AddressSpace *as;
+     SocketAddress addr;
+     VFIOUserProxy *proxy;
+@@ -346,7 +347,7 @@ error:
+ static void vfio_user_instance_init(Object *obj)
+ {
+     PCIDevice *pci_dev = PCI_DEVICE(obj);
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+     device_add_bootindex_property(obj, &vdev->bootindex,
+@@ -371,7 +372,7 @@ static void vfio_user_instance_init(Object *obj)
+ 
+ static void vfio_user_instance_finalize(Object *obj)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+     if (vdev->msix != NULL) {
+@@ -387,7 +388,7 @@ static void vfio_user_instance_finalize(Object *obj)
+ 
+ static void vfio_user_pci_reset(DeviceState *dev)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(dev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(dev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+     vfio_pci_pre_reset(vdev);
+@@ -421,7 +422,7 @@ static void vfio_user_pci_set_socket(Object *obj, Visitor *v, const char *name,
+     VFIOUserPCIDevice *udev = VFIO_USER_PCI(obj);
+     bool success;
+ 
+-    if (VFIO_PCI_BASE(udev)->vbasedev.proxy) {
++    if (VFIO_PCI_DEVICE(udev)->vbasedev.proxy) {
+         error_setg(errp, "Proxy is connected");
+         return;
+     }
+@@ -464,7 +465,7 @@ static void vfio_user_pci_dev_class_init(ObjectClass *klass, const void *data)
+ 
+ static const TypeInfo vfio_user_pci_dev_info = {
+     .name = TYPE_VFIO_USER_PCI,
+-    .parent = TYPE_VFIO_PCI_BASE,
++    .parent = TYPE_VFIO_PCI_DEVICE,
+     .instance_size = sizeof(VFIOUserPCIDevice),
+     .class_init = vfio_user_pci_dev_class_init,
+     .instance_init = vfio_user_instance_init,
+diff --git a/hw/vfio/device.c b/hw/vfio/device.c
+index 931a949c08..8b63e765ac 100644
+--- a/hw/vfio/device.c
++++ b/hw/vfio/device.c
+@@ -434,7 +434,7 @@ bool vfio_device_hiod_create_and_realize(VFIODevice *vbasedev,
+ VFIODevice *vfio_get_vfio_device(Object *obj)
+ {
+     if (object_dynamic_cast(obj, TYPE_VFIO_PCI)) {
+-        return &VFIO_PCI_BASE(obj)->vbasedev;
++        return &VFIO_PCI_DEVICE(obj)->vbasedev;
+     } else {
+         return NULL;
+     }
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index fd8d8f7e32..937283bcc6 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -308,7 +308,7 @@ static void vfio_intx_update(VFIOPCIDevice *vdev, PCIINTxRoute *route)
+ 
+ static void vfio_intx_routing_notifier(PCIDevice *pdev)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     PCIINTxRoute route;
+ 
+     if (vdev->interrupt != VFIO_INT_INTx) {
+@@ -663,7 +663,7 @@ void vfio_pci_vector_init(VFIOPCIDevice *vdev, int nr)
+ static int vfio_msix_vector_do_use(PCIDevice *pdev, unsigned int nr,
+                                    MSIMessage *msg, IOHandler *handler)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIOMSIVector *vector;
+     int ret;
+     bool resizing = !!(vdev->nr_vectors < nr + 1);
+@@ -758,7 +758,7 @@ static int vfio_msix_vector_use(PCIDevice *pdev,
+ 
+ static void vfio_msix_vector_release(PCIDevice *pdev, unsigned int nr)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIOMSIVector *vector = &vdev->msi_vectors[nr];
+ 
+     trace_vfio_msix_vector_release(vdev->vbasedev.name, nr);
+@@ -1349,7 +1349,7 @@ static const MemoryRegionOps vfio_vga_ops = {
+  */
+ static void vfio_sub_page_bar_update_mapping(PCIDevice *pdev, int bar)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIORegion *region = &vdev->bars[bar].region;
+     MemoryRegion *mmap_mr, *region_mr, *base_mr;
+     PCIIORegion *r;
+@@ -1395,7 +1395,7 @@ static void vfio_sub_page_bar_update_mapping(PCIDevice *pdev, int bar)
+  */
+ uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+     uint32_t emu_bits = 0, emu_val = 0, phys_val = 0, val;
+ 
+@@ -1429,7 +1429,7 @@ uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
+ void vfio_pci_write_config(PCIDevice *pdev,
+                            uint32_t addr, uint32_t val, int len)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+     uint32_t val_le = cpu_to_le32(val);
+     int ret;
+@@ -3395,7 +3395,7 @@ bool vfio_pci_interrupt_setup(VFIOPCIDevice *vdev, Error **errp)
+ static void vfio_pci_realize(PCIDevice *pdev, Error **errp)
+ {
+     ERRP_GUARD();
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+     int i;
+     char uuid[UUID_STR_LEN];
+@@ -3570,14 +3570,14 @@ error:
+ 
+ static void vfio_pci_finalize(Object *obj)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
+ 
+     vfio_pci_put_device(vdev);
+ }
+ 
+ static void vfio_exitfn(PCIDevice *pdev)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(pdev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(pdev);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+     vfio_unregister_req_notifier(vdev);
+@@ -3601,7 +3601,7 @@ static void vfio_exitfn(PCIDevice *pdev)
+ 
+ static void vfio_pci_reset(DeviceState *dev)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(dev);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(dev);
+ 
+     /* Do not reset the device during qemu_system_reset prior to cpr load */
+     if (cpr_is_incoming()) {
+@@ -3646,7 +3646,7 @@ post_reset:
+ static void vfio_pci_init(Object *obj)
+ {
+     PCIDevice *pci_dev = PCI_DEVICE(obj);
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
+     VFIODevice *vbasedev = &vdev->vbasedev;
+ 
+     device_add_bootindex_property(obj, &vdev->bootindex,
+@@ -3687,7 +3687,7 @@ static void vfio_pci_base_dev_class_init(ObjectClass *klass, const void *data)
+ }
+ 
+ static const TypeInfo vfio_pci_base_dev_info = {
+-    .name = TYPE_VFIO_PCI_BASE,
++    .name = TYPE_VFIO_PCI_DEVICE,
+     .parent = TYPE_PCI_DEVICE,
+     .instance_size = sizeof(VFIOPCIDevice),
+     .abstract = true,
+@@ -3780,7 +3780,7 @@ static const Property vfio_pci_dev_properties[] = {
+ #ifdef CONFIG_IOMMUFD
+ static void vfio_pci_set_fd(Object *obj, const char *str, Error **errp)
+ {
+-    VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
++    VFIOPCIDevice *vdev = VFIO_PCI_DEVICE(obj);
+     vfio_device_set_fd(&vdev->vbasedev, str, errp);
+ }
+ #endif
+@@ -3936,7 +3936,7 @@ static void vfio_pci_class_init(ObjectClass *klass, const void *data)
+ 
+ static const TypeInfo vfio_pci_info = {
+     .name = TYPE_VFIO_PCI,
+-    .parent = TYPE_VFIO_PCI_BASE,
++    .parent = TYPE_VFIO_PCI_DEVICE,
+     .class_init = vfio_pci_class_init,
+     .instance_init = vfio_pci_init,
+     .instance_finalize = vfio_pci_finalize,
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index dd419f9147..975836945a 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -120,7 +120,7 @@ typedef struct VFIOMSIXInfo {
+     MemoryRegion *pba_region;
+ } VFIOMSIXInfo;
+ 
+-OBJECT_DECLARE_SIMPLE_TYPE(VFIOPCIDevice, VFIO_PCI_BASE)
++OBJECT_DECLARE_SIMPLE_TYPE(VFIOPCIDevice, VFIO_PCI_DEVICE)
+ 
+ struct VFIOPCIDevice {
+     PCIDevice parent_obj;
+diff --git a/hw/vfio/types.h b/hw/vfio/types.h
+index c19334ff25..5482d90808 100644
+--- a/hw/vfio/types.h
++++ b/hw/vfio/types.h
+@@ -9,11 +9,11 @@
+ #define HW_VFIO_VFIO_TYPES_H
+ 
+ /*
+- * TYPE_VFIO_PCI_BASE is an abstract type used to share code
++ * TYPE_VFIO_PCI_DEVICE is an abstract type used to share code
+  * between VFIO implementations that use a kernel driver
+  * with those that use user sockets.
+  */
+-#define TYPE_VFIO_PCI_BASE "vfio-pci-base"
++#define TYPE_VFIO_PCI_DEVICE "vfio-pci-device"
+ 
+ #define TYPE_VFIO_PCI "vfio-pci"
+ /* TYPE_VFIO_PCI shares struct VFIOPCIDevice. */
+-- 
+2.52.0
+

@@ -1,0 +1,70 @@
+From fe9e05cb05979c6c57f37711dae34c534824f72b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 14:12:47 +0000
+Subject: [PATCH 11/30] crypto: remove redundant access() checks before loading
+ certs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [10/27] 9d5c3aaf23b4d74ef000ca6efc2e5062b067a5db (berrange/centos-src-qemu)
+
+The qcrypto_tls_creds_get_path method will perform an access()
+check on the file and return a NULL path if it fails. By the
+time we get to loading the cert files we know they must exist
+on disk and thus the second access() check is redundant.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 9fe991d0a490e18c64b02540b141ad8c3e2a477e)
+---
+ crypto/tlscredsx509.c | 22 ++++++++++------------
+ 1 file changed, 10 insertions(+), 12 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 75c70af522..0acb17b6ec 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -496,8 +496,7 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+     size_t i;
+     int ret = -1;
+ 
+-    if (certFile &&
+-        access(certFile, R_OK) == 0) {
++    if (certFile) {
+         if (qcrypto_tls_creds_load_cert_list(creds,
+                                              certFile,
+                                              &certs,
+@@ -508,16 +507,15 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+             goto cleanup;
+         }
+     }
+-    if (access(cacertFile, R_OK) == 0) {
+-        if (qcrypto_tls_creds_load_cert_list(creds,
+-                                             cacertFile,
+-                                             &cacerts,
+-                                             &ncacerts,
+-                                             isServer,
+-                                             true,
+-                                             errp) < 0) {
+-            goto cleanup;
+-        }
++
++    if (qcrypto_tls_creds_load_cert_list(creds,
++                                         cacertFile,
++                                         &cacerts,
++                                         &ncacerts,
++                                         isServer,
++                                         true,
++                                         errp) < 0) {
++        goto cleanup;
+     }
+ 
+     for (i = 0; i < ncerts; i++) {
+-- 
+2.52.0
+

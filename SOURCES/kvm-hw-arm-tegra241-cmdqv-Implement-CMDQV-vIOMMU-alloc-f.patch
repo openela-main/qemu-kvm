@@ -1,0 +1,130 @@
+From ee99c9bf31e30f284e374d8b02c44b8fdaf4139f Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:34 +0100
+Subject: [PATCH 092/111] hw/arm/tegra241-cmdqv: Implement CMDQV vIOMMU
+ alloc/free
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [92/111] f932036d720a12681cb5515842421d3ce56e9e30 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Replace the stub implementation with real vIOMMU allocation for
+Tegra241 CMDQV.
+
+Allocate a matching vEVENTQ together with the vIOMMU, since it is
+specific to the Tegra241 CMDQV vIOMMU and used to receive CMDQV
+events.
+
+Free both objects on teardown.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260609112552.378999-14-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 43763a1ab76fb618119bb76b0e4a93b599b40f13)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 48 ++++++++++++++++++++++++++++++++++++++++-
+ hw/arm/tegra241-cmdqv.h |  1 +
+ 2 files changed, 48 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 2875affc8d..c1351c8519 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -10,6 +10,7 @@
+ #include "qemu/osdep.h"
+ 
+ #include "hw/arm/smmuv3.h"
++#include "hw/arm/smmuv3-common.h"
+ #include "smmuv3-accel.h"
+ #include "tegra241-cmdqv.h"
+ 
+@@ -26,13 +27,58 @@ static void tegra241_cmdqv_write_mmio(void *opaque, hwaddr offset,
+ 
+ static void tegra241_cmdqv_free_viommu(SMMUv3State *s)
+ {
++    SMMUv3AccelState *accel = s->s_accel;
++    IOMMUFDViommu *viommu = accel->viommu;
++    Tegra241CMDQV *cmdqv = accel->cmdqv;
++    IOMMUFDVeventq *veventq = cmdqv->veventq;
++
++    if (!viommu) {
++        return;
++    }
++    if (veventq) {
++        close(veventq->veventq_fd);
++        iommufd_backend_free_id(viommu->iommufd, veventq->veventq_id);
++        g_free(veventq);
++        cmdqv->veventq = NULL;
++    }
++    iommufd_backend_free_id(viommu->iommufd, viommu->viommu_id);
+ }
+ 
+ static bool
+ tegra241_cmdqv_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                             uint32_t *out_viommu_id, Error **errp)
+ {
+-    error_setg(errp, "NVIDIA Tegra241 CMDQV is unsupported");
++    Tegra241CMDQV *cmdqv = s->s_accel->cmdqv;
++    uint32_t viommu_id, veventq_id, veventq_fd;
++    IOMMUFDVeventq *veventq;
++
++    if (!iommufd_backend_alloc_viommu(idev->iommufd, idev->devid,
++                                      IOMMU_VIOMMU_TYPE_TEGRA241_CMDQV,
++                                      idev->hwpt_id, cmdqv->cmdqv_data,
++                                      sizeof(*cmdqv->cmdqv_data), &viommu_id,
++                                      errp)) {
++        return false;
++    }
++
++    if (!iommufd_backend_alloc_veventq(idev->iommufd, viommu_id,
++                                       IOMMU_VEVENTQ_TYPE_TEGRA241_CMDQV,
++                                       1 << SMMU_EVENTQS, &veventq_id,
++                                       &veventq_fd,
++                                       errp)) {
++        error_append_hint(errp, "Tegra241 CMDQV: failed to alloc veventq");
++        goto free_viommu;
++    }
++
++    veventq = g_new(IOMMUFDVeventq, 1);
++    veventq->veventq_id = veventq_id;
++    veventq->veventq_fd = veventq_fd;
++    cmdqv->veventq = veventq;
++
++    *out_viommu_id = viommu_id;
++    return true;
++
++free_viommu:
++    iommufd_backend_free_id(idev->iommufd, viommu_id);
+     return false;
+ }
+ 
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index a5f65a8991..9fc720e96c 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -32,6 +32,7 @@ typedef struct Tegra241CMDQV {
+     SMMUv3AccelState *s_accel;
+     MemoryRegion mmio_cmdqv;
+     qemu_irq irq;
++    IOMMUFDVeventq *veventq;
+ } Tegra241CMDQV;
+ 
+ const SMMUv3AccelCmdqvOps *tegra241_cmdqv_get_ops(void);
+-- 
+2.52.0
+

@@ -1,0 +1,99 @@
+From 28871cb5c6ef8c6f02786ebfef42f5080c8e7b9b Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:26:01 +0100
+Subject: [PATCH 066/116] s390x/s390-pci-vfio.c: use QOM casts where
+ appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [50/100] ac7a09a8ded0883e74316ac4b8c8bd4af1e3f35a (rovick1/qemu-kvm)
+
+Use QOM casts to cast to VFIOPCIDevice instead of using container_of().
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-22-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit e2827210d6a9c56c1b14b00b414dfa9eb7843711)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/s390x/s390-pci-vfio.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index c51bcea5fc..7760780aff 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -62,7 +62,7 @@ S390PCIDMACount *s390_pci_start_dma_count(S390pciState *s,
+ {
+     S390PCIDMACount *cnt;
+     uint32_t avail;
+-    VFIOPCIDevice *vpdev = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpdev = VFIO_PCI_BASE(pbdev->pdev);
+     int id;
+ 
+     assert(vpdev);
+@@ -108,7 +108,7 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_base *cap;
+-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
+     uint64_t vfio_size;
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
+@@ -162,7 +162,7 @@ static bool get_host_fh(S390PCIBusDevice *pbdev, struct vfio_device_info *info,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_base *cap;
+-    VFIOPCIDevice *vpci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
+ 
+@@ -185,7 +185,7 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
+     struct vfio_device_info_cap_zpci_group *cap;
+     S390pciState *s = s390_get_phb();
+     ClpRspQueryPciGrp *resgrp;
+-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
+     uint8_t start_gid = pbdev->zpci_fn.pfgid;
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_GROUP);
+@@ -264,7 +264,7 @@ static void s390_pci_read_util(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_util *cap;
+-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_UTIL);
+ 
+@@ -291,7 +291,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_device_info_cap_zpci_pfip *cap;
+-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vpci = VFIO_PCI_BASE(pbdev->pdev);
+ 
+     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_PFIP);
+ 
+@@ -314,7 +314,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
+ 
+ static struct vfio_device_info *get_device_info(S390PCIBusDevice *pbdev)
+ {
+-    VFIOPCIDevice *vfio_pci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
++    VFIOPCIDevice *vfio_pci = VFIO_PCI_BASE(pbdev->pdev);
+ 
+     return vfio_get_device_info(vfio_pci->vbasedev.fd);
+ }
+-- 
+2.52.0
+

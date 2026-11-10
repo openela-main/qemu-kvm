@@ -1,0 +1,101 @@
+From 980df3009788a6c4e449c98caecf117f50820753 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 043/111] hw/pci: Factor out common PASID capability
+ initialization
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [43/111] 1016e3b1598c9595a0b7ea324a44d84d53fd807e (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Refactor PCIe PASID capability initialization by moving the common
+register init into a new helper, pcie_pasid_common_init().
+
+Subsequent patch to synthesize a vPASID will make use of this
+helper.
+
+No functional change intended.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-36-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 7d59fa20594ec053861f7c49ac53090a41901209)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci/pcie.c         | 19 ++++++++++++-------
+ include/hw/pci/pcie.h |  2 ++
+ 2 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/hw/pci/pcie.c b/hw/pci/pcie.c
+index 348b26e4f1..40242fead2 100644
+--- a/hw/pci/pcie.c
++++ b/hw/pci/pcie.c
+@@ -1284,18 +1284,13 @@ void pcie_acs_reset(PCIDevice *dev)
+     }
+ }
+ 
+-/* PASID */
+-void pcie_pasid_init(PCIDevice *dev, uint16_t offset, uint8_t pasid_width,
+-                     bool exec_perm, bool priv_mod)
++void pcie_pasid_common_init(PCIDevice *dev, uint16_t offset,
++                            uint8_t pasid_width, bool exec_perm, bool priv_mod)
+ {
+     static const uint16_t control_reg_rw_mask = 0x07;
+     uint16_t capability_reg;
+ 
+     assert(pasid_width <= PCI_EXT_CAP_PASID_MAX_WIDTH);
+-
+-    pcie_add_capability(dev, PCI_EXT_CAP_ID_PASID, PCI_PASID_VER, offset,
+-                        PCI_EXT_CAP_PASID_SIZEOF);
+-
+     capability_reg = ((uint16_t)pasid_width) << PCI_PASID_CAP_WIDTH_SHIFT;
+     capability_reg |= exec_perm ? PCI_PASID_CAP_EXEC : 0;
+     capability_reg |= priv_mod  ? PCI_PASID_CAP_PRIV : 0;
+@@ -1307,6 +1302,16 @@ void pcie_pasid_init(PCIDevice *dev, uint16_t offset, uint8_t pasid_width,
+     pci_set_word(dev->wmask + offset + PCI_PASID_CTRL, control_reg_rw_mask);
+ 
+     dev->exp.pasid_cap = offset;
++
++}
++
++/* PASID */
++void pcie_pasid_init(PCIDevice *dev, uint16_t offset, uint8_t pasid_width,
++                     bool exec_perm, bool priv_mod)
++{
++    pcie_add_capability(dev, PCI_EXT_CAP_ID_PASID, PCI_PASID_VER, offset,
++                        PCI_EXT_CAP_PASID_SIZEOF);
++    pcie_pasid_common_init(dev, offset, pasid_width, exec_perm, priv_mod);
+ }
+ 
+ /* PRI */
+diff --git a/include/hw/pci/pcie.h b/include/hw/pci/pcie.h
+index 3d01718c96..029a809ae2 100644
+--- a/include/hw/pci/pcie.h
++++ b/include/hw/pci/pcie.h
+@@ -155,6 +155,8 @@ void pcie_cap_slot_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+ void pcie_cap_slot_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                      DeviceState *dev, Error **errp);
+ 
++void pcie_pasid_common_init(PCIDevice *dev, uint16_t offset,
++                            uint8_t pasid_width, bool exec_perm, bool priv_mod);
+ void pcie_pasid_init(PCIDevice *dev, uint16_t offset, uint8_t pasid_width,
+                      bool exec_perm, bool priv_mod);
+ void pcie_pri_init(PCIDevice *dev, uint16_t offset, uint32_t outstanding_pr_cap,
+-- 
+2.52.0
+

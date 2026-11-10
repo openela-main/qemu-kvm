@@ -1,0 +1,166 @@
+From 9eba869ae9f22f7c9470ca84b01bc775441ffa77 Mon Sep 17 00:00:00 2001
+From: Steve Sistare <steven.sistare@oracle.com>
+Date: Wed, 1 Oct 2025 08:33:57 -0700
+Subject: [PATCH 092/116] migration: cpr-exec save and load
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [76/100] dccfce1a851364d8a3fc15ccc537277fd2f3b55b (rovick1/qemu-kvm)
+
+To preserve CPR state across exec, create a QEMUFile based on a memfd, and
+keep the memfd open across exec.  Save the value of the memfd in an
+environment variable so post-exec QEMU can find it.
+
+These new functions are called in a subsequent patch.
+
+Signed-off-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/r/1759332851-370353-6-git-send-email-steven.sistare@oracle.com
+[peterx: fix build for Windows]
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ include/migration/cpr.h |  5 +++
+ migration/cpr-exec.c    | 99 +++++++++++++++++++++++++++++++++++++++++
+ migration/meson.build   |  1 +
+ 3 files changed, 105 insertions(+)
+ create mode 100644 migration/cpr-exec.c
+
+diff --git a/include/migration/cpr.h b/include/migration/cpr.h
+index 2b074d7a65..b84389ff04 100644
+--- a/include/migration/cpr.h
++++ b/include/migration/cpr.h
+@@ -53,4 +53,9 @@ int cpr_get_fd_param(const char *name, const char *fdname, int index,
+ QEMUFile *cpr_transfer_output(MigrationChannel *channel, Error **errp);
+ QEMUFile *cpr_transfer_input(MigrationChannel *channel, Error **errp);
+ 
++QEMUFile *cpr_exec_output(Error **errp);
++QEMUFile *cpr_exec_input(Error **errp);
++void cpr_exec_persist_state(QEMUFile *f);
++bool cpr_exec_has_state(void);
++void cpr_exec_unpersist_state(void);
+ #endif
+diff --git a/migration/cpr-exec.c b/migration/cpr-exec.c
+new file mode 100644
+index 0000000000..81d84425e1
+--- /dev/null
++++ b/migration/cpr-exec.c
+@@ -0,0 +1,99 @@
++/*
++ * Copyright (c) 2021-2025 Oracle and/or its affiliates.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/cutils.h"
++#include "qemu/memfd.h"
++#include "qapi/error.h"
++#include "io/channel-file.h"
++#include "io/channel-socket.h"
++#include "migration/cpr.h"
++#include "migration/qemu-file.h"
++#include "migration/misc.h"
++#include "migration/vmstate.h"
++#include "system/runstate.h"
++
++#define CPR_EXEC_STATE_NAME "QEMU_CPR_EXEC_STATE"
++
++static QEMUFile *qemu_file_new_fd_input(int fd, const char *name)
++{
++    g_autoptr(QIOChannelFile) fioc = qio_channel_file_new_fd(fd);
++    QIOChannel *ioc = QIO_CHANNEL(fioc);
++    qio_channel_set_name(ioc, name);
++    return qemu_file_new_input(ioc);
++}
++
++static QEMUFile *qemu_file_new_fd_output(int fd, const char *name)
++{
++    g_autoptr(QIOChannelFile) fioc = qio_channel_file_new_fd(fd);
++    QIOChannel *ioc = QIO_CHANNEL(fioc);
++    qio_channel_set_name(ioc, name);
++    return qemu_file_new_output(ioc);
++}
++
++void cpr_exec_persist_state(QEMUFile *f)
++{
++    QIOChannelFile *fioc = QIO_CHANNEL_FILE(qemu_file_get_ioc(f));
++    int mfd = dup(fioc->fd);
++    char val[16];
++
++    /* Remember mfd in environment for post-exec load */
++    qemu_clear_cloexec(mfd);
++    snprintf(val, sizeof(val), "%d", mfd);
++    g_setenv(CPR_EXEC_STATE_NAME, val, 1);
++}
++
++static int cpr_exec_find_state(void)
++{
++    const char *val = g_getenv(CPR_EXEC_STATE_NAME);
++    int mfd;
++
++    assert(val);
++    g_unsetenv(CPR_EXEC_STATE_NAME);
++    assert(!qemu_strtoi(val, NULL, 10, &mfd));
++    return mfd;
++}
++
++bool cpr_exec_has_state(void)
++{
++    return g_getenv(CPR_EXEC_STATE_NAME) != NULL;
++}
++
++void cpr_exec_unpersist_state(void)
++{
++    int mfd;
++    const char *val = g_getenv(CPR_EXEC_STATE_NAME);
++
++    g_unsetenv(CPR_EXEC_STATE_NAME);
++    assert(val);
++    assert(!qemu_strtoi(val, NULL, 10, &mfd));
++    close(mfd);
++}
++
++QEMUFile *cpr_exec_output(Error **errp)
++{
++    int mfd;
++
++#ifdef CONFIG_LINUX
++    mfd = qemu_memfd_create(CPR_EXEC_STATE_NAME, 0, false, 0, 0, errp);
++#else
++    mfd = -1;
++#endif
++
++    if (mfd < 0) {
++        return NULL;
++    }
++
++    return qemu_file_new_fd_output(mfd, CPR_EXEC_STATE_NAME);
++}
++
++QEMUFile *cpr_exec_input(Error **errp)
++{
++    int mfd = cpr_exec_find_state();
++
++    lseek(mfd, 0, SEEK_SET);
++    return qemu_file_new_fd_input(mfd, CPR_EXEC_STATE_NAME);
++}
+diff --git a/migration/meson.build b/migration/meson.build
+index 276da3be5a..6087ccc733 100644
+--- a/migration/meson.build
++++ b/migration/meson.build
+@@ -16,6 +16,7 @@ system_ss.add(files(
+   'channel-block.c',
+   'cpr.c',
+   'cpr-transfer.c',
++  'cpr-exec.c',
+   'cpu-throttle.c',
+   'dirtyrate.c',
+   'exec.c',
+-- 
+2.52.0
+

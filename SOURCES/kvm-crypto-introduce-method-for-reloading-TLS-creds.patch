@@ -1,0 +1,104 @@
+From 6f158b6a18e905dcd4d3c7e0451b97cbc0694b00 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 30 Jul 2025 14:31:49 +0100
+Subject: [PATCH 19/30] crypto: introduce method for reloading TLS creds
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [18/27] e4b17d44a26c5d77f4ff4d504e98d8c695fd9be7 (berrange/centos-src-qemu)
+
+This prevents direct access of the class members by the VNC
+display code.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit a5d2bf4a875cc83dd10bca2a294f2df9104d874d)
+---
+ crypto/tlscreds.c         | 15 +++++++++++++++
+ include/crypto/tlscreds.h | 13 +++++++++++++
+ ui/vnc.c                  |  9 +--------
+ 3 files changed, 29 insertions(+), 8 deletions(-)
+
+diff --git a/crypto/tlscreds.c b/crypto/tlscreds.c
+index c302b3cd72..0db9bf6eeb 100644
+--- a/crypto/tlscreds.c
++++ b/crypto/tlscreds.c
+@@ -283,6 +283,21 @@ char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds)
+ }
+ 
+ 
++bool qcrypto_tls_creds_reload(QCryptoTLSCreds *creds,
++                              Error **errp)
++{
++    QCryptoTLSCredsClass *credscls = QCRYPTO_TLS_CREDS_GET_CLASS(creds);
++
++    if (credscls->reload) {
++        return credscls->reload(creds, errp);
++    }
++
++    error_setg(errp, "%s does not support reloading credentials",
++               object_get_typename(OBJECT(creds)));
++    return false;
++}
++
++
+ static const TypeInfo qcrypto_tls_creds_info = {
+     .parent = TYPE_OBJECT,
+     .name = TYPE_QCRYPTO_TLS_CREDS,
+diff --git a/include/crypto/tlscreds.h b/include/crypto/tlscreds.h
+index afd1016088..bb9280ed1a 100644
+--- a/include/crypto/tlscreds.h
++++ b/include/crypto/tlscreds.h
+@@ -77,4 +77,17 @@ bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
+  */
+ char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds);
+ 
++
++/**
++ * qcrypto_tls_creds_reload:
++ * @creds: pointer to a TLS credentials object
++ * @errp: pointer to a NULL-initialized error object
++ *
++ * Request a reload of the TLS credentials, if supported
++ *
++ * Returns: true on success, false on error or if not supported
++ */
++bool qcrypto_tls_creds_reload(QCryptoTLSCreds *creds,
++                              Error **errp);
++
+ #endif /* QCRYPTO_TLSCREDS_H */
+diff --git a/ui/vnc.c b/ui/vnc.c
+index 8ca77b2971..5e7197b7bf 100644
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -578,7 +578,6 @@ VncInfo2List *qmp_query_vnc_servers(Error **errp)
+ bool vnc_display_reload_certs(const char *id, Error **errp)
+ {
+     VncDisplay *vd = vnc_display_find(id);
+-    QCryptoTLSCredsClass *creds = NULL;
+ 
+     if (!vd) {
+         error_setg(errp, "Can not find vnc display");
+@@ -590,13 +589,7 @@ bool vnc_display_reload_certs(const char *id, Error **errp)
+         return false;
+     }
+ 
+-    creds = QCRYPTO_TLS_CREDS_GET_CLASS(OBJECT(vd->tlscreds));
+-    if (creds->reload == NULL) {
+-        error_setg(errp, "%s doesn't support to reload TLS credential",
+-                   object_get_typename(OBJECT(vd->tlscreds)));
+-        return false;
+-    }
+-    if (!creds->reload(vd->tlscreds, errp)) {
++    if (!qcrypto_tls_creds_reload(vd->tlscreds, errp)) {
+         return false;
+     }
+ 
+-- 
+2.52.0
+

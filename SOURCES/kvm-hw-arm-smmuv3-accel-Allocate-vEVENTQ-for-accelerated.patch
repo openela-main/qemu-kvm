@@ -1,0 +1,225 @@
+From ad0ae224f8e30f6504181cc9d580422ce204b03a Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Fri, 6 Mar 2026 09:01:11 +0000
+Subject: [PATCH 052/111] hw/arm/smmuv3-accel: Allocate vEVENTQ for accelerated
+ SMMUv3 devices
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [52/111] 91c7085fb8f11c45dfde43b0b5aaaac772571282 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+When the guest enables the Event Queue and a vIOMMU is present, allocate a
+vEVENTQ object so that host-side events related to the vIOMMU can be
+received and propagated back to the guest.
+
+Allocate a vEVENTQ only when both of the following conditions are met:
+
+  1) The guest SMMUv3 driver has set EVENTQEN = 1 in SMMU_CR0.
+  2) A vIOMMU exists (created when the first VFIO device is attached).
+
+These two conditions may occur in any order.
+
+In the cold-plug case, the vIOMMU already exists before the guest
+driver probes. When the guest sets EVENTQEN = 1 during driver probe,
+the vEVENTQ is allocated at that point.
+
+With hot-plug, the VFIO device may be attached either before or after
+the guest sets EVENTQEN. If the vIOMMU is created first, allocation is
+deferred until EVENTQEN = 1. If EVENTQEN is already set, allocation
+happens when the vIOMMU is created.
+
+In all cases, allocation is triggered when the second required
+condition becomes true.
+
+Errors from command queue consumption and vEVENTQ allocation are reported
+independently as the two operations are unrelated.
+
+Event read and propagation will be added in a later patch.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260226084456.112142-4-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 46f0d48393529cfa3659012971c20f6808eb3b78)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 61 +++++++++++++++++++++++++++++++++++++++++--
+ hw/arm/smmuv3-accel.h |  6 +++++
+ hw/arm/smmuv3.c       |  6 +++++
+ 3 files changed, 71 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index c19c526fca..f703ea1aac 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -390,6 +390,19 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *bs, void *cmd, SMMUDevice *sdev,
+                    sizeof(Cmd), &entry_num, cmd, errp);
+ }
+ 
++static void smmuv3_accel_free_veventq(SMMUv3AccelState *accel)
++{
++    IOMMUFDVeventq *veventq = accel->veventq;
++
++    if (!veventq) {
++        return;
++    }
++    close(veventq->veventq_fd);
++    iommufd_backend_free_id(accel->viommu->iommufd, veventq->veventq_id);
++    g_free(veventq);
++    accel->veventq = NULL;
++}
++
+ static void smmuv3_accel_free_viommu(SMMUv3AccelState *accel)
+ {
+     IOMMUFDViommu *viommu = accel->viommu;
+@@ -397,6 +410,7 @@ static void smmuv3_accel_free_viommu(SMMUv3AccelState *accel)
+     if (!viommu) {
+         return;
+     }
++    smmuv3_accel_free_veventq(accel);
+     iommufd_backend_free_id(viommu->iommufd, accel->bypass_hwpt_id);
+     iommufd_backend_free_id(viommu->iommufd, accel->abort_hwpt_id);
+     iommufd_backend_free_id(viommu->iommufd, accel->viommu->viommu_id);
+@@ -404,6 +418,41 @@ static void smmuv3_accel_free_viommu(SMMUv3AccelState *accel)
+     accel->viommu = NULL;
+ }
+ 
++bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
++{
++    SMMUv3AccelState *accel = s->s_accel;
++    IOMMUFDVeventq *veventq;
++    uint32_t veventq_id;
++    uint32_t veventq_fd;
++
++    if (!accel || !accel->viommu) {
++        return true;
++    }
++
++    if (accel->veventq) {
++        return true;
++    }
++
++    if (!smmuv3_eventq_enabled(s)) {
++        return true;
++    }
++
++    if (!iommufd_backend_alloc_veventq(accel->viommu->iommufd,
++                                       accel->viommu->viommu_id,
++                                       IOMMU_VEVENTQ_TYPE_ARM_SMMUV3,
++                                       1 << s->eventq.log2size, &veventq_id,
++                                       &veventq_fd, errp)) {
++        return false;
++    }
++
++    veventq = g_new0(IOMMUFDVeventq, 1);
++    veventq->veventq_id = veventq_id;
++    veventq->veventq_fd = veventq_fd;
++    veventq->viommu = accel->viommu;
++    accel->veventq = veventq;
++    return true;
++}
++
+ static bool
+ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                           Error **errp)
+@@ -429,6 +478,7 @@ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+     viommu->viommu_id = viommu_id;
+     viommu->s2_hwpt_id = s2_hwpt_id;
+     viommu->iommufd = idev->iommufd;
++    accel->viommu = viommu;
+ 
+     /*
+      * Pre-allocate HWPTs for S1 bypass and abort cases. These will be attached
+@@ -448,14 +498,20 @@ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+         goto free_abort_hwpt;
+     }
+ 
++    /* Allocate a vEVENTQ if guest has enabled event queue */
++    if (!smmuv3_accel_alloc_veventq(s, errp)) {
++        goto free_bypass_hwpt;
++    }
++
+     /* Attach a HWPT based on SMMUv3 GBPA.ABORT value */
+     hwpt_id = smmuv3_accel_gbpa_hwpt(s, accel);
+     if (!host_iommu_device_iommufd_attach_hwpt(idev, hwpt_id, errp)) {
+-        goto free_bypass_hwpt;
++        goto free_veventq;
+     }
+-    accel->viommu = viommu;
+     return true;
+ 
++free_veventq:
++    smmuv3_accel_free_veventq(accel);
+ free_bypass_hwpt:
+     iommufd_backend_free_id(idev->iommufd, accel->bypass_hwpt_id);
+ free_abort_hwpt:
+@@ -463,6 +519,7 @@ free_abort_hwpt:
+ free_viommu:
+     iommufd_backend_free_id(idev->iommufd, viommu->viommu_id);
+     g_free(viommu);
++    accel->viommu = NULL;
+     return false;
+ }
+ 
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index a8a64802ec..dba6c71de5 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -22,6 +22,7 @@
+  */
+ typedef struct SMMUv3AccelState {
+     IOMMUFDViommu *viommu;
++    IOMMUFDVeventq *veventq;
+     uint32_t bypass_hwpt_id;
+     uint32_t abort_hwpt_id;
+     QLIST_HEAD(, SMMUv3AccelDevice) device_list;
+@@ -50,6 +51,7 @@ bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp);
+ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+                                 Error **errp);
+ void smmuv3_accel_idr_override(SMMUv3State *s);
++bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp);
+ void smmuv3_accel_reset(SMMUv3State *s);
+ #else
+ static inline void smmuv3_accel_init(SMMUv3State *s)
+@@ -80,6 +82,10 @@ smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+ static inline void smmuv3_accel_idr_override(SMMUv3State *s)
+ {
+ }
++static inline bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
++{
++    return true;
++}
+ static inline void smmuv3_accel_reset(SMMUv3State *s)
+ {
+ }
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 49311f5bbf..1a218f749d 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1605,6 +1605,12 @@ static MemTxResult smmu_writel(SMMUv3State *s, hwaddr offset,
+         s->cr0ack = data & ~SMMU_CR0_RESERVED;
+         /* in case the command queue has been enabled */
+         smmuv3_cmdq_consume(s, &local_err);
++        if (local_err) {
++            error_report_err(local_err);
++            local_err = NULL;
++        }
++        /* Allocate vEVENTQ if EVENTQ is enabled and a vIOMMU is available */
++        smmuv3_accel_alloc_veventq(s, &local_err);
+         break;
+     case A_CR1:
+         s->cr[1] = data;
+-- 
+2.52.0
+

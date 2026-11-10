@@ -1,0 +1,53 @@
+From c0751ea51b4b91ae48f86e5a33715b7c458e0a68 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:22 +0100
+Subject: [PATCH 064/116] vfio/pci.c: rename vfio_pci_dev_class_init() to
+ vfio_pci_class_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [48/100] dc121b3bf306f7f933a2858eb264bfb89b07bf36 (rovick1/qemu-kvm)
+
+This changes the function prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-15-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 784fa15f02fc0adbf8897f5c3012652174cc7274)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index d30f60c21a..96a0d8b290 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3785,7 +3785,7 @@ static void vfio_pci_set_fd(Object *obj, const char *str, Error **errp)
+ }
+ #endif
+ 
+-static void vfio_pci_dev_class_init(ObjectClass *klass, const void *data)
++static void vfio_pci_class_init(ObjectClass *klass, const void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
+@@ -3937,7 +3937,7 @@ static void vfio_pci_dev_class_init(ObjectClass *klass, const void *data)
+ static const TypeInfo vfio_pci_dev_info = {
+     .name = TYPE_VFIO_PCI,
+     .parent = TYPE_VFIO_PCI_BASE,
+-    .class_init = vfio_pci_dev_class_init,
++    .class_init = vfio_pci_class_init,
+     .instance_init = vfio_pci_init,
+     .instance_finalize = vfio_pci_finalize,
+ };
+-- 
+2.52.0
+

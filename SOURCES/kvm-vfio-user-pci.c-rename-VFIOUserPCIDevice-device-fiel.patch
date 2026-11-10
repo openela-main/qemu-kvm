@@ -1,0 +1,47 @@
+From b8105a116255cf1237c709b4c16dc9d4b98fa39b Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:53 +0100
+Subject: [PATCH 040/116] vfio-user/pci.c: rename VFIOUserPCIDevice device
+ field to parent_obj
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [24/100] a44be813509b770809e2e897c238d18496ae4c3d (rovick1/qemu-kvm)
+
+Now that nothing accesses the device field directly, rename device to
+parent_obj as per our current coding guidelines.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-14-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 5fc421b8cd4813fa8ca9131905f12c4eedf55051)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index 7b6a6514f6..c3947a8f2e 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -20,7 +20,7 @@
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOUserPCIDevice, VFIO_USER_PCI)
+ 
+ struct VFIOUserPCIDevice {
+-    VFIOPCIDevice device;
++    VFIOPCIDevice parent_obj;
+ 
+     SocketAddress *socket;
+     bool send_queued;   /* all sends are queued */
+-- 
+2.52.0
+

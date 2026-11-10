@@ -1,0 +1,67 @@
+From a280e29d82926826575b509cceec10f81a9c2350 Mon Sep 17 00:00:00 2001
+From: "Houqi (Nick) Zuo" <hzuo@redhat.com>
+Date: Mon, 8 Dec 2025 12:35:18 +0800
+Subject: [PATCH 01/30] net/tap-linux.c: avoid abort when setting invalid fd
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Laurent Vivier <lvivier@redhat.com>
+RH-MergeRequest: 506: net/tap-linux.c: avoid abort when setting invalid fd
+RH-Jira: RHEL-113894
+RH-Acked-by: Eugenio Pérez <eperezma@redhat.com>
+RH-Acked-by: Koushik Dutta <None>
+RH-Commit: [1/1] 76405de0ad722774e385f8cc0a7567fa8cffcac8 (lvivier/qemu-kvm-centos)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-113894
+
+This patch removes abort() call in the tap_fd_set_vnet_hdr_len()
+function. If the fd is found to be in a bad state (e.g., EBADFD
+ or ENODEV), the function will print an error message.
+
+When QEMU creates a tap device automatically and the tap device is
+manually removed from the host while the guest is running, the tap
+device file descriptor becomes invalid. Later, when the guest executes
+shutdown, the tap_fd_set_vnet_hdr_len() function may be called and
+abort QEMU with a core dump when attempting to use the invalid fd.
+The expected behavior for this negative test case is that QEMU should
+report an error but continue running rather than aborting.
+
+Testing:
+- Start QEMU with automatically created tap device
+- Manually remove the tap device on the host
+- Execute shutdown in the guest
+- Verify QEMU reports an error but does not abort
+
+Fixes: 0caed25cd171 ("virtio: Call set_features during reset")
+Signed-off-by: Houqi (Nick) Zuo <hzuo@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit a1708203b583ec04fb9b793840dc282d3c89a20d)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ net/tap-linux.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/net/tap-linux.c b/net/tap-linux.c
+index 8e275d2ea4..7996e305c7 100644
+--- a/net/tap-linux.c
++++ b/net/tap-linux.c
+@@ -209,10 +209,11 @@ bool tap_probe_has_tunnel(int fd)
+ 
+ void tap_fd_set_vnet_hdr_len(int fd, int len)
+ {
+-    if (ioctl(fd, TUNSETVNETHDRSZ, &len) == -1) {
+-        fprintf(stderr, "TUNSETVNETHDRSZ ioctl() failed: %s. Exiting.\n",
+-                strerror(errno));
+-        abort();
++    int ret;
++
++    ret = ioctl(fd, TUNSETVNETHDRSZ, &len);
++    if (ret != 0) {
++        error_report("TUNSETVNETHDRSZ ioctl() failed: %s.", strerror(errno));
+     }
+ }
+ 
+-- 
+2.52.0
+

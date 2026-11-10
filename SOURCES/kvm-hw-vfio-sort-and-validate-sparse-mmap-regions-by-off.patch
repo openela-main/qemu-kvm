@@ -1,0 +1,121 @@
+From d0ac3ec4e1dc8ede0d4ea9bba020aa42845d2b0e Mon Sep 17 00:00:00 2001
+From: Ankit Agrawal <ankita@nvidia.com>
+Date: Tue, 17 Feb 2026 15:30:08 +0000
+Subject: [PATCH 1/4] hw/vfio: sort and validate sparse mmap regions by offset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 500: NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - GB200
+RH-Jira: RHEL-150900
+RH-Acked-by: Rodolfo Vick <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/3] d3a69bde63db8369e77d3703771fab637c9157a7 (clegoate/qemu-kvm-centos)
+
+Sort sparse mmap regions by offset during region setup to ensure
+predictable mapping order, avoid overlaps and a proper handling
+of the gaps between sub-regions.
+
+Add validation to detect overlapping sparse regions early during
+setup before any mapping operations begin.
+
+The sorting is performed on the subregions ranges during
+vfio_setup_region_sparse_mmaps(). This also ensures that subsequent
+mapping code can rely on subregions being in ascending offset order.
+
+This is preparatory work for alignment adjustments needed to support
+hugepfnmap on systems where device memory (e.g., Grace-based systems)
+may have non-power-of-2 sizes.
+
+cc: Alex Williamson <alex@shazbot.org>
+Reviewed-by: Alex Williamson <alex@shazbot.org>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Ankit Agrawal <ankita@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260217153010.408739-2-ankita@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit da02b21cc70ef04a9ad15198f33551f17c94dff5)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/region.c | 46 +++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 45 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index 1deaef12fd..a61e47a79c 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -149,6 +149,19 @@ static const MemoryRegionOps vfio_region_ops = {
+     },
+ };
+ 
++static int vfio_mmap_compare_offset(const void *a, const void *b)
++{
++    const VFIOMmap *mmap_a = a;
++    const VFIOMmap *mmap_b = b;
++
++    if (mmap_a->offset < mmap_b->offset) {
++        return -1;
++    } else if (mmap_a->offset > mmap_b->offset) {
++        return 1;
++    }
++    return 0;
++}
++
+ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
+                                           struct vfio_region_info *info)
+ {
+@@ -182,6 +195,35 @@ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
+     region->nr_mmaps = j;
+     region->mmaps = g_realloc(region->mmaps, j * sizeof(VFIOMmap));
+ 
++    /*
++     * Sort sparse mmaps by offset to ensure proper handling of gaps
++     * and predictable mapping order in vfio_region_mmap().
++     */
++    if (region->nr_mmaps > 1) {
++        qsort(region->mmaps, region->nr_mmaps, sizeof(VFIOMmap),
++              vfio_mmap_compare_offset);
++
++        /*
++         * Validate that sparse regions don't overlap after sorting.
++         */
++        for (i = 1; i < region->nr_mmaps; i++) {
++            off_t prev_end = region->mmaps[i - 1].offset +
++                             region->mmaps[i - 1].size;
++            if (prev_end > region->mmaps[i].offset) {
++                error_report("%s: overlapping sparse mmap regions detected "
++                             "in region %d: [0x%"PRIx64"-0x%"PRIx64"] overlaps "
++                             "with [0x%"PRIx64"-0x%"PRIx64"]",
++                             __func__, region->nr, region->mmaps[i - 1].offset,
++                             prev_end - 1, region->mmaps[i].offset,
++                             region->mmaps[i].offset + region->mmaps[i].size - 1);
++                g_free(region->mmaps);
++                region->mmaps = NULL;
++                region->nr_mmaps = 0;
++                return -EINVAL;
++            }
++        }
++    }
++
+     return 0;
+ }
+ 
+@@ -213,11 +255,13 @@ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
+ 
+             ret = vfio_setup_region_sparse_mmaps(region, info);
+ 
+-            if (ret) {
++            if (ret == -ENODEV) {
+                 region->nr_mmaps = 1;
+                 region->mmaps = g_new0(VFIOMmap, region->nr_mmaps);
+                 region->mmaps[0].offset = 0;
+                 region->mmaps[0].size = region->size;
++            } else if (ret) {
++                return ret;
+             }
+         }
+     }
+-- 
+2.52.0
+

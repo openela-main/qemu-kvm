@@ -1,0 +1,56 @@
+From 79d4b64857908d6e54c633c1d81fb9fd36ebb4fa Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 7 May 2026 15:36:57 +0530
+Subject: [PATCH 6/9] hw/tpm: Simplify tpm_ppi_enabled()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 485: hw/tpm: add PPI support to tpm-tis-device for ARM64 virt
+RH-Jira: RHEL-112608
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [5/8] f8acb6c9d4307caa23c2da28f09212f09c3a0832 (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-112608
+
+TPM instances don't expose any "ppi" property anymore,
+remove that dead code.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Message-Id: <20260317120241.16320-6-philmd@linaro.org>
+(cherry picked from commit 3912e312ae8486eb00bf4c4a1e0048dbc976e19e)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ include/system/tpm.h | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/include/system/tpm.h b/include/system/tpm.h
+index 9458ad6668..874068d19a 100644
+--- a/include/system/tpm.h
++++ b/include/system/tpm.h
+@@ -13,7 +13,6 @@
+ #define QEMU_TPM_H
+ 
+ #include "qapi/qapi-types-tpm.h"
+-#include "qapi/error.h"
+ #include "qom/object.h"
+ 
+ #ifdef CONFIG_TPM
+@@ -85,10 +84,7 @@ static inline bool tpm_ppi_enabled(TPMIf *ti)
+     if (!ti) {
+         return false;
+     }
+-    if (TPM_IF_GET_CLASS(ti)->ppi_enabled) {
+-        return true;
+-    }
+-    return object_property_get_bool(OBJECT(ti), "ppi", &error_abort);
++    return TPM_IF_GET_CLASS(ti)->ppi_enabled;
+ }
+ 
+ #else /* CONFIG_TPM */
+-- 
+2.52.0
+

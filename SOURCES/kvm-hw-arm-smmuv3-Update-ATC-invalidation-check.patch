@@ -1,0 +1,52 @@
+From ef1caeab79fd5be8bd3e46170af2c6c630dc3958 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Mon, 8 Jun 2026 10:48:52 -0700
+Subject: [PATCH 066/111] hw/arm/smmuv3: Update ATC invalidation check
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [66/111] 3c32cca7cc7c03287d85f5aaae983149d19a5cad (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-163596
+
+Use smmuv3_ats_enabled() to determine whether ATS is enabled for the
+guest when handling an ATC invalidation command, as setting the ATS
+property value to 'auto' will resolve to ATS being detected as
+enabled in the ATC invalidation check otherwise.
+
+Fixes: f7f5013a55a3 ("hw/arm/smmuv3-accel: Add support for ATS")
+Reported-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260608174900.2227340-2-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 8addbdb793b783228ab22867ac5e2d59ea6662a7)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 5fc55aa30a..c724c6b819 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1528,7 +1528,7 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+         {
+             SMMUDevice *sdev = smmu_find_sdev(bs, CMD_SID(&cmd));
+ 
+-            if (!sdev || !s->ats) {
++            if (!sdev || !smmuv3_ats_enabled(s)) {
+                 trace_smmuv3_unhandled_cmd(type);
+                 break;
+             }
+-- 
+2.52.0
+

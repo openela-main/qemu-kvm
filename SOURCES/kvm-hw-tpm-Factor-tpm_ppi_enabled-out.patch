@@ -1,0 +1,86 @@
+From 90f8689a9e63aa1bc2e5fc1513c1a83dad59b8bb Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 7 May 2026 15:36:48 +0530
+Subject: [PATCH 2/9] hw/tpm: Factor tpm_ppi_enabled() out
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 485: hw/tpm: add PPI support to tpm-tis-device for ARM64 virt
+RH-Jira: RHEL-112608
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/8] cd42765aadffad8c155789613f604ab32ff51b9a (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-112608
+
+Factor out tpm_ppi_enabled() before modifying it in a unique place.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Message-Id: <20260317120241.16320-2-philmd@linaro.org>
+(cherry picked from commit 60ab4a04379632294a57ed1878371bbfba418568)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ hw/acpi/tpm.c        | 2 +-
+ hw/i386/acpi-build.c | 2 +-
+ include/system/tpm.h | 9 +++++++++
+ 3 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/hw/acpi/tpm.c b/hw/acpi/tpm.c
+index cdc0227536..5fe95f2e3f 100644
+--- a/hw/acpi/tpm.c
++++ b/hw/acpi/tpm.c
+@@ -25,7 +25,7 @@ void tpm_build_ppi_acpi(TPMIf *tpm, Aml *dev)
+     Aml *method, *field, *ifctx, *ifctx2, *ifctx3, *func_mask,
+         *not_implemented, *pak, *tpm2, *tpm3, *pprm, *pprq, *zero, *one;
+ 
+-    if (!object_property_get_bool(OBJECT(tpm), "ppi", &error_abort)) {
++    if (!tpm_ppi_enabled(tpm)) {
+         return;
+     }
+ 
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 423c4959fe..f97d7b9f0c 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -2215,7 +2215,7 @@ void acpi_setup(void)
+                     tables.tcpalog->data, acpi_data_len(tables.tcpalog));
+ 
+     tpm = tpm_find();
+-    if (tpm && object_property_get_bool(OBJECT(tpm), "ppi", &error_abort)) {
++    if (tpm_ppi_enabled(tpm)) {
+         tpm_config = (FwCfgTPMConfig) {
+             .tpmppi_address = cpu_to_le32(TPM_PPI_ADDR_BASE),
+             .tpm_version = tpm_get_version(tpm),
+diff --git a/include/system/tpm.h b/include/system/tpm.h
+index 1ee568b3b6..b90dd4e8cb 100644
+--- a/include/system/tpm.h
++++ b/include/system/tpm.h
+@@ -13,6 +13,7 @@
+ #define QEMU_TPM_H
+ 
+ #include "qapi/qapi-types-tpm.h"
++#include "qapi/error.h"
+ #include "qom/object.h"
+ 
+ #ifdef CONFIG_TPM
+@@ -78,6 +79,14 @@ static inline TPMVersion tpm_get_version(TPMIf *ti)
+     return TPM_IF_GET_CLASS(ti)->get_version(ti);
+ }
+ 
++static inline bool tpm_ppi_enabled(TPMIf *ti)
++{
++    if (!ti) {
++        return false;
++    }
++    return object_property_get_bool(OBJECT(ti), "ppi", &error_abort);
++}
++
+ #else /* CONFIG_TPM */
+ 
+ #define tpm_init()  (0)
+-- 
+2.52.0
+

@@ -1,0 +1,401 @@
+From 89171faf9a80ac41fa9a8625782503cb6570e06a Mon Sep 17 00:00:00 2001
+From: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Date: Tue, 16 Sep 2025 16:13:53 +0300
+Subject: [PATCH 048/116] treewide: handle result of qio_channel_set_blocking()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [32/100] 0d816a7a5efb940a01f4bba3e2a3a91f12af3cd4 (rovick1/qemu-kvm)
+
+Currently, we just always pass NULL as errp argument. That doesn't
+look good.
+
+Some realizations of interface may actually report errors.
+Channel-socket realization actually either ignore or crash on
+errors, but we are going to straighten it out to always reporting
+an errp in further commits.
+
+So, convert all callers to either handle the error (where environment
+allows) or explicitly use &error_abort.
+
+Take also a chance to change the return value to more convenient
+bool (keeping also in mind, that underlying realizations may
+return -1 on failure, not -errno).
+
+Suggested-by: Daniel P. Berrangé <berrange@redhat.com>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+[DB: fix return type mismatch in TLS/websocket channel
+     impls for qio_channel_set_blocking]
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 1ed8903916394fca2347c700da974ca3856274b2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ block/nbd.c                      |  4 +++-
+ chardev/char-socket.c            | 20 ++++++++++++++++----
+ hw/remote/proxy.c                |  6 +++++-
+ hw/remote/remote-obj.c           |  6 +++++-
+ hw/vfio-user/proxy.c             | 11 ++++++++---
+ include/io/channel.h             |  6 +++---
+ io/channel-tls.c                 |  2 +-
+ io/channel-websock.c             |  3 +--
+ io/channel.c                     |  4 ++--
+ nbd/server.c                     |  4 +++-
+ scsi/qemu-pr-helper.c            |  9 ++++++---
+ tests/unit/io-channel-helpers.c  |  5 +++--
+ tests/unit/test-io-channel-tls.c |  4 ++--
+ tools/i386/qemu-vmsr-helper.c    |  6 ++++--
+ ui/vnc.c                         |  2 +-
+ util/vhost-user-server.c         |  7 ++++++-
+ 16 files changed, 69 insertions(+), 30 deletions(-)
+
+diff --git a/block/nbd.c b/block/nbd.c
+index d5a2b21c6d..5d231d5c4e 100644
+--- a/block/nbd.c
++++ b/block/nbd.c
+@@ -351,7 +351,9 @@ int coroutine_fn nbd_co_do_establish_connection(BlockDriverState *bs,
+         return ret;
+     }
+ 
+-    qio_channel_set_blocking(s->ioc, false, NULL);
++    if (!qio_channel_set_blocking(s->ioc, false, errp)) {
++        return -EINVAL;
++    }
+     qio_channel_set_follow_coroutine_ctx(s->ioc, true);
+ 
+     /* successfully connected */
+diff --git a/chardev/char-socket.c b/chardev/char-socket.c
+index 1e8313915b..f155269890 100644
+--- a/chardev/char-socket.c
++++ b/chardev/char-socket.c
+@@ -539,16 +539,24 @@ static int tcp_chr_sync_read(Chardev *chr, const uint8_t *buf, int len)
+     SocketChardev *s = SOCKET_CHARDEV(chr);
+     int size;
+     int saved_errno;
++    Error *local_err = NULL;
+ 
+     if (s->state != TCP_CHARDEV_STATE_CONNECTED) {
+         return 0;
+     }
+ 
+-    qio_channel_set_blocking(s->ioc, true, NULL);
++    if (!qio_channel_set_blocking(s->ioc, true, &local_err)) {
++        error_report_err(local_err);
++        return -1;
++    }
+     size = tcp_chr_recv(chr, (void *) buf, len);
+     saved_errno = errno;
+     if (s->state != TCP_CHARDEV_STATE_DISCONNECTED) {
+-        qio_channel_set_blocking(s->ioc, false, NULL);
++        if (!qio_channel_set_blocking(s->ioc, false, &local_err)) {
++            error_report_err(local_err);
++            /* failed to recover non-blocking state */
++            tcp_chr_disconnect(chr);
++        }
+     }
+     if (size == 0) {
+         /* connection closed */
+@@ -893,18 +901,22 @@ static void tcp_chr_set_client_ioc_name(Chardev *chr,
+ static int tcp_chr_new_client(Chardev *chr, QIOChannelSocket *sioc)
+ {
+     SocketChardev *s = SOCKET_CHARDEV(chr);
++    Error *local_err = NULL;
+ 
+     if (s->state != TCP_CHARDEV_STATE_CONNECTING) {
+         return -1;
+     }
+ 
++    if (!qio_channel_set_blocking(QIO_CHANNEL(sioc), false, &local_err)) {
++        error_report_err(local_err);
++        return -1;
++    }
++
+     s->ioc = QIO_CHANNEL(sioc);
+     object_ref(OBJECT(sioc));
+     s->sioc = sioc;
+     object_ref(OBJECT(sioc));
+ 
+-    qio_channel_set_blocking(s->ioc, false, NULL);
+-
+     if (s->do_nodelay) {
+         qio_channel_set_delay(s->ioc, false);
+     }
+diff --git a/hw/remote/proxy.c b/hw/remote/proxy.c
+index b0165aa2a1..18e0f7a064 100644
+--- a/hw/remote/proxy.c
++++ b/hw/remote/proxy.c
+@@ -112,8 +112,12 @@ static void pci_proxy_dev_realize(PCIDevice *device, Error **errp)
+         return;
+     }
+ 
++    if (!qio_channel_set_blocking(dev->ioc, true, errp)) {
++        object_unref(dev->ioc);
++        return;
++    }
++
+     qemu_mutex_init(&dev->io_mutex);
+-    qio_channel_set_blocking(dev->ioc, true, NULL);
+ 
+     pci_conf[PCI_LATENCY_TIMER] = 0xff;
+     pci_conf[PCI_INTERRUPT_PIN] = 0x01;
+diff --git a/hw/remote/remote-obj.c b/hw/remote/remote-obj.c
+index 85882902d7..3402068ab9 100644
+--- a/hw/remote/remote-obj.c
++++ b/hw/remote/remote-obj.c
+@@ -107,7 +107,11 @@ static void remote_object_machine_done(Notifier *notifier, void *data)
+         error_report_err(err);
+         return;
+     }
+-    qio_channel_set_blocking(ioc, false, NULL);
++    if (!qio_channel_set_blocking(ioc, false, &err)) {
++        error_report_err(err);
++        object_unref(OBJECT(ioc));
++        return;
++    }
+ 
+     o->dev = dev;
+ 
+diff --git a/hw/vfio-user/proxy.c b/hw/vfio-user/proxy.c
+index 2c03d49f97..bbd7ec243d 100644
+--- a/hw/vfio-user/proxy.c
++++ b/hw/vfio-user/proxy.c
+@@ -886,10 +886,11 @@ VFIOUserProxy *vfio_user_connect_dev(SocketAddress *addr, Error **errp)
+     sioc = qio_channel_socket_new();
+     ioc = QIO_CHANNEL(sioc);
+     if (qio_channel_socket_connect_sync(sioc, addr, errp) < 0) {
+-        object_unref(OBJECT(ioc));
+-        return NULL;
++        goto fail;
++    }
++    if (!qio_channel_set_blocking(ioc, false, errp)) {
++        goto fail;
+     }
+-    qio_channel_set_blocking(ioc, false, NULL);
+ 
+     proxy = g_malloc0(sizeof(VFIOUserProxy));
+     proxy->sockname = g_strdup_printf("unix:%s", sockname);
+@@ -923,6 +924,10 @@ VFIOUserProxy *vfio_user_connect_dev(SocketAddress *addr, Error **errp)
+     QLIST_INSERT_HEAD(&vfio_user_sockets, proxy, next);
+ 
+     return proxy;
++
++fail:
++    object_unref(OBJECT(ioc));
++    return NULL;
+ }
+ 
+ void vfio_user_set_handler(VFIODevice *vbasedev,
+diff --git a/include/io/channel.h b/include/io/channel.h
+index 234e5db70d..6770d2ce35 100644
+--- a/include/io/channel.h
++++ b/include/io/channel.h
+@@ -513,9 +513,9 @@ int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
+  * return QIO_CHANNEL_ERR_BLOCK if they would otherwise
+  * block on I/O
+  */
+-int qio_channel_set_blocking(QIOChannel *ioc,
+-                             bool enabled,
+-                             Error **errp);
++bool qio_channel_set_blocking(QIOChannel *ioc,
++                              bool enabled,
++                              Error **errp);
+ 
+ /**
+  * qio_channel_set_follow_coroutine_ctx:
+diff --git a/io/channel-tls.c b/io/channel-tls.c
+index a8248a9216..7135896f79 100644
+--- a/io/channel-tls.c
++++ b/io/channel-tls.c
+@@ -425,7 +425,7 @@ static int qio_channel_tls_set_blocking(QIOChannel *ioc,
+ {
+     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
+ 
+-    return qio_channel_set_blocking(tioc->master, enabled, errp);
++    return qio_channel_set_blocking(tioc->master, enabled, errp) ? 0 : -1;
+ }
+ 
+ static void qio_channel_tls_set_delay(QIOChannel *ioc,
+diff --git a/io/channel-websock.c b/io/channel-websock.c
+index ec5e09f9ab..cb4dafdebb 100644
+--- a/io/channel-websock.c
++++ b/io/channel-websock.c
+@@ -1191,8 +1191,7 @@ static int qio_channel_websock_set_blocking(QIOChannel *ioc,
+ {
+     QIOChannelWebsock *wioc = QIO_CHANNEL_WEBSOCK(ioc);
+ 
+-    qio_channel_set_blocking(wioc->master, enabled, errp);
+-    return 0;
++    return qio_channel_set_blocking(wioc->master, enabled, errp) ? 0 : -1;
+ }
+ 
+ static void qio_channel_websock_set_delay(QIOChannel *ioc,
+diff --git a/io/channel.c b/io/channel.c
+index ebd9322765..852e684938 100644
+--- a/io/channel.c
++++ b/io/channel.c
+@@ -359,12 +359,12 @@ int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
+ }
+ 
+ 
+-int qio_channel_set_blocking(QIOChannel *ioc,
++bool qio_channel_set_blocking(QIOChannel *ioc,
+                               bool enabled,
+                               Error **errp)
+ {
+     QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
+-    return klass->io_set_blocking(ioc, enabled, errp);
++    return klass->io_set_blocking(ioc, enabled, errp) == 0;
+ }
+ 
+ 
+diff --git a/nbd/server.c b/nbd/server.c
+index d242be9811..acec0487a8 100644
+--- a/nbd/server.c
++++ b/nbd/server.c
+@@ -1411,7 +1411,9 @@ static coroutine_fn int nbd_negotiate(NBDClient *client, Error **errp)
+         ....options sent, ending in NBD_OPT_EXPORT_NAME or NBD_OPT_GO....
+      */
+ 
+-    qio_channel_set_blocking(client->ioc, false, NULL);
++    if (!qio_channel_set_blocking(client->ioc, false, errp)) {
++        return -EINVAL;
++    }
+     qio_channel_set_follow_coroutine_ctx(client->ioc, true);
+ 
+     trace_nbd_negotiate_begin();
+diff --git a/scsi/qemu-pr-helper.c b/scsi/qemu-pr-helper.c
+index b69dd982d6..074b4db472 100644
+--- a/scsi/qemu-pr-helper.c
++++ b/scsi/qemu-pr-helper.c
+@@ -733,8 +733,11 @@ static void coroutine_fn prh_co_entry(void *opaque)
+     uint32_t flags;
+     int r;
+ 
+-    qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
+-                             false, NULL);
++    if (!qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
++                                  false, &local_err)) {
++        goto out;
++    }
++
+     qio_channel_set_follow_coroutine_ctx(QIO_CHANNEL(client->ioc), true);
+ 
+     /* A very simple negotiation for future extensibility.  No features
+@@ -786,6 +789,7 @@ static void coroutine_fn prh_co_entry(void *opaque)
+         }
+     }
+ 
++out:
+     if (local_err) {
+         if (verbose == 0) {
+             error_free(local_err);
+@@ -794,7 +798,6 @@ static void coroutine_fn prh_co_entry(void *opaque)
+         }
+     }
+ 
+-out:
+     object_unref(OBJECT(client->ioc));
+     g_free(client);
+ }
+diff --git a/tests/unit/io-channel-helpers.c b/tests/unit/io-channel-helpers.c
+index c0799c21c2..22b42d14cd 100644
+--- a/tests/unit/io-channel-helpers.c
++++ b/tests/unit/io-channel-helpers.c
+@@ -20,6 +20,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "io-channel-helpers.h"
++#include "qapi/error.h"
+ #include "qemu/iov.h"
+ 
+ struct QIOChannelTest {
+@@ -109,8 +110,8 @@ void qio_channel_test_run_threads(QIOChannelTest *test,
+     test->src = src;
+     test->dst = dst;
+ 
+-    qio_channel_set_blocking(test->dst, blocking, NULL);
+-    qio_channel_set_blocking(test->src, blocking, NULL);
++    qio_channel_set_blocking(test->dst, blocking, &error_abort);
++    qio_channel_set_blocking(test->src, blocking, &error_abort);
+ 
+     reader = g_thread_new("reader",
+                           test_io_thread_reader,
+diff --git a/tests/unit/test-io-channel-tls.c b/tests/unit/test-io-channel-tls.c
+index e036ac5df4..6f282ad45d 100644
+--- a/tests/unit/test-io-channel-tls.c
++++ b/tests/unit/test-io-channel-tls.c
+@@ -184,8 +184,8 @@ static void test_io_channel_tls(const void *opaque)
+      * thread, so we need these non-blocking to avoid deadlock
+      * of ourselves
+      */
+-    qio_channel_set_blocking(QIO_CHANNEL(clientChanSock), false, NULL);
+-    qio_channel_set_blocking(QIO_CHANNEL(serverChanSock), false, NULL);
++    qio_channel_set_blocking(QIO_CHANNEL(clientChanSock), false, &error_abort);
++    qio_channel_set_blocking(QIO_CHANNEL(serverChanSock), false, &error_abort);
+ 
+     /* Now the real part of the test, setup the sessions */
+     clientChanTLS = qio_channel_tls_new_client(
+diff --git a/tools/i386/qemu-vmsr-helper.c b/tools/i386/qemu-vmsr-helper.c
+index 5f19a48cbd..6c0f4fe870 100644
+--- a/tools/i386/qemu-vmsr-helper.c
++++ b/tools/i386/qemu-vmsr-helper.c
+@@ -213,8 +213,10 @@ static void coroutine_fn vh_co_entry(void *opaque)
+     uint64_t vmsr;
+     int r;
+ 
+-    qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
+-                             false, NULL);
++    if (!qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
++                                  false, &local_err)) {
++        goto out;
++    }
+ 
+     qio_channel_set_follow_coroutine_ctx(QIO_CHANNEL(client->ioc), true);
+ 
+diff --git a/ui/vnc.c b/ui/vnc.c
+index 68ca4a68e7..8ca77b2971 100644
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -3337,7 +3337,7 @@ static void vnc_connect(VncDisplay *vd, QIOChannelSocket *sioc,
+ 
+     VNC_DEBUG("New client on socket %p\n", vs->sioc);
+     update_displaychangelistener(&vd->dcl, VNC_REFRESH_INTERVAL_BASE);
+-    qio_channel_set_blocking(vs->ioc, false, NULL);
++    qio_channel_set_blocking(vs->ioc, false, &error_abort);
+     if (vs->ioc_tag) {
+         g_source_remove(vs->ioc_tag);
+     }
+diff --git a/util/vhost-user-server.c b/util/vhost-user-server.c
+index b19229074a..d805a92394 100644
+--- a/util/vhost-user-server.c
++++ b/util/vhost-user-server.c
+@@ -336,6 +336,7 @@ static void vu_accept(QIONetListener *listener, QIOChannelSocket *sioc,
+                       gpointer opaque)
+ {
+     VuServer *server = opaque;
++    Error *local_err = NULL;
+ 
+     if (server->sioc) {
+         warn_report("Only one vhost-user client is allowed to "
+@@ -368,7 +369,11 @@ static void vu_accept(QIONetListener *listener, QIOChannelSocket *sioc,
+     object_ref(OBJECT(server->ioc));
+ 
+     /* TODO vu_message_write() spins if non-blocking! */
+-    qio_channel_set_blocking(server->ioc, false, NULL);
++    if (!qio_channel_set_blocking(server->ioc, false, &local_err)) {
++        error_report_err(local_err);
++        vu_deinit(&server->vu_dev);
++        return;
++    }
+ 
+     qio_channel_set_follow_coroutine_ctx(server->ioc, true);
+ 
+-- 
+2.52.0
+

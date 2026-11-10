@@ -1,0 +1,70 @@
+From 3a16bbb0ea0c4cd197c32829557d828eab5d595f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 18:30:48 +0000
+Subject: [PATCH 16/30] crypto: shorten the endpoint == server check in TLS
+ creds
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [15/27] 9f5752de2ccb5baf1c4641a9f2a15d948ce33d84 (berrange/centos-src-qemu)
+
+This eliminates a number of long lines aiding readability.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 7751083fa4ecd5ef31b83ed7c17dcf13f3e617f2)
+---
+ crypto/tlscredsx509.c | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index d93905ec77..7271b549ee 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -567,6 +567,8 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+     g_autofree char *cert = NULL;
+     g_autofree char *key = NULL;
+     g_autofree char *dhparams = NULL;
++    bool isServer = (creds->parent_obj.endpoint ==
++                     QCRYPTO_TLS_CREDS_ENDPOINT_SERVER);
+     int ret;
+ 
+     if (!creds->parent_obj.dir) {
+@@ -576,7 +578,7 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+ 
+     trace_qcrypto_tls_creds_x509_load(creds, creds->parent_obj.dir);
+ 
+-    if (creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
++    if (isServer) {
+         if (qcrypto_tls_creds_get_path(&creds->parent_obj,
+                                        QCRYPTO_TLS_CREDS_X509_CA_CERT,
+                                        true, &cacert, errp) < 0 ||
+@@ -609,9 +611,8 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+     }
+ 
+     if (creds->sanityCheck &&
+-        qcrypto_tls_creds_x509_sanity_check(creds,
+-            creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER,
+-            cacert, cert, errp) < 0) {
++        qcrypto_tls_creds_x509_sanity_check(creds, isServer,
++                                            cacert, cert, errp) < 0) {
+         return -1;
+     }
+ 
+@@ -663,7 +664,7 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+         }
+     }
+ 
+-    if (creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
++    if (isServer) {
+         if (qcrypto_tls_creds_get_dh_params_file(&creds->parent_obj, dhparams,
+                                                  &creds->parent_obj.dh_params,
+                                                  errp) < 0) {
+-- 
+2.52.0
+

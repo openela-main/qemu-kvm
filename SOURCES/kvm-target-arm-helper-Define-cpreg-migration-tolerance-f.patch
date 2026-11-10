@@ -1,0 +1,75 @@
+From 5c1ee6b3f760a68ec2545c157e72221e7452901c Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 20 Apr 2026 16:03:56 +0200
+Subject: [PATCH 015/116] target/arm/helper: Define cpreg migration tolerance
+ for DGBDTR_EL0
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [15/16] 4c159a6da8530899c605c9aa81c99a06be2f0819 (eauger1/centos-qemu-kvm)
+
+We want to remove AArch32 DBGDTRTX which was erroneously exposed.
+This was attempted by 655659a74a36b ("target/arm: Correct encoding
+of Debug Communications Channel registers") but it was discovered
+that the removal of this debug register broke forward migration on
+TCG. Now we have the cpreg migration tolerance infrastructure, we
+can declare one for the DBGDTRTX. This allow to revert the reinstate
+patch.
+
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Sebastian Ott <sebott@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Message-id: 20260420140552.104369-7-eric.auger@redhat.com
+[PMM: revised comment, included note about when we can drop
+ the workaround]
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 234b3eaddd4ff08b8b62d563742e37f7bb6486bd)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/helper.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/target/arm/helper.c b/target/arm/helper.c
+index 5e643ed6b2..0deb2bd760 100644
+--- a/target/arm/helper.c
++++ b/target/arm/helper.c
+@@ -6129,9 +6129,32 @@ void register_cp_regs_for_features(ARMCPU *cpu)
+             .fgt = FGT_CLIDR_EL1,
+             .resetvalue = GET_IDREG(isar, CLIDR)
+         };
++        uint64_t dbgtr_el0_kvmidx =
++            cpreg_to_kvm_id(ENCODE_CP_REG(14, 0, 1, 0, 5, 3, 0));
++
+         define_one_arm_cp_reg(cpu, &clidr);
+         define_arm_cp_regs(cpu, v7_cp_reginfo);
+         define_debug_regs(cpu);
++        /*
++         * We used to incorrectly expose a non-existent AArch32 "DBGDTRTX"
++         * register with this encoding. This has been fixed by commit
++         * 655659a74a36 ("target/arm: Correct encoding of Debug
++         * Communications Channel registers") by the introduction of correct
++         * separate cpreg definitions for AA64 and AA32 versions. However,
++         * the old cpreg definition couldn't be removed without breaking
++         * migration, so commit 4f2b82f604 reinstated the bogus encoding
++         * for migration data only.
++         *
++         * Now that we have migration tolerance infrastructure, we can use
++         * this to allow forward migration from the buggy QEMU versions,
++         * accepting and ignoring the bogus register if it is in the
++         * source data. QEMU 11.0 was the last version that sent the
++         * bogus encoding, so this workaround can be removed at the point
++         * where we no longer care about migration from that version
++         * (i.e. when we remove the "virt-11.0" machine type).
++         */
++        arm_register_cpreg_mig_tolerance(cpu, dbgtr_el0_kvmidx,
++                                         0, 0, ToleranceNotOnBothEnds);
+     } else {
+         define_arm_cp_regs(cpu, not_v7_cp_reginfo);
+     }
+-- 
+2.52.0
+

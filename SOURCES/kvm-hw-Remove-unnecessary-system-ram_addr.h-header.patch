@@ -1,0 +1,138 @@
+From eb8e987dcd0daf3dfabb014e71c7f4d840f569ca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Tue, 30 Sep 2025 09:20:38 +0200
+Subject: [PATCH 097/116] hw: Remove unnecessary 'system/ram_addr.h' header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [81/100] bd76df276be7e688948ada5f196d3086f80d227e (rovick1/qemu-kvm)
+
+None of these files require definition exposed by "system/ram_addr.h",
+remove its inclusion.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Jagannathan Raman <jag.raman@oracle.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Message-Id: <20251001175448.18933-7-philmd@linaro.org>
+(cherry picked from commit 97480ca692e94bb790190a43bb122bd0752b8f62)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/ppc/spapr.c                    | 1 -
+ hw/ppc/spapr_caps.c               | 1 -
+ hw/ppc/spapr_pci.c                | 1 -
+ hw/remote/memory.c                | 1 -
+ hw/remote/proxy-memory-listener.c | 1 -
+ hw/s390x/s390-virtio-ccw.c        | 1 -
+ hw/vfio/spapr.c                   | 1 -
+ hw/virtio/virtio-mem.c            | 1 -
+ 8 files changed, 8 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 1855a3cd8d..5906a1325d 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -77,7 +77,6 @@
+ #include "hw/virtio/virtio-scsi.h"
+ #include "hw/virtio/vhost-scsi-common.h"
+ 
+-#include "system/ram_addr.h"
+ #include "system/confidential-guest-support.h"
+ #include "hw/usb.h"
+ #include "qemu/config-file.h"
+diff --git a/hw/ppc/spapr_caps.c b/hw/ppc/spapr_caps.c
+index f2f5722d8a..0f94c192fd 100644
+--- a/hw/ppc/spapr_caps.c
++++ b/hw/ppc/spapr_caps.c
+@@ -27,7 +27,6 @@
+ #include "qapi/error.h"
+ #include "qapi/visitor.h"
+ #include "system/hw_accel.h"
+-#include "system/ram_addr.h"
+ #include "target/ppc/cpu.h"
+ #include "target/ppc/mmu-hash64.h"
+ #include "cpu-models.h"
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index 1ac1185825..f9095552e8 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -34,7 +34,6 @@
+ #include "hw/pci/pci_host.h"
+ #include "hw/ppc/spapr.h"
+ #include "hw/pci-host/spapr.h"
+-#include "system/ram_addr.h"
+ #include <libfdt.h>
+ #include "trace.h"
+ #include "qemu/error-report.h"
+diff --git a/hw/remote/memory.c b/hw/remote/memory.c
+index 00193a552f..8195aa5fb8 100644
+--- a/hw/remote/memory.c
++++ b/hw/remote/memory.c
+@@ -11,7 +11,6 @@
+ #include "qemu/osdep.h"
+ 
+ #include "hw/remote/memory.h"
+-#include "system/ram_addr.h"
+ #include "qapi/error.h"
+ 
+ static void remote_sysmem_reset(void)
+diff --git a/hw/remote/proxy-memory-listener.c b/hw/remote/proxy-memory-listener.c
+index 30ac74961d..e1a52d24f0 100644
+--- a/hw/remote/proxy-memory-listener.c
++++ b/hw/remote/proxy-memory-listener.c
+@@ -12,7 +12,6 @@
+ #include "qemu/range.h"
+ #include "system/memory.h"
+ #include "exec/cpu-common.h"
+-#include "system/ram_addr.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+ #include "hw/remote/mpqemu-link.h"
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index 4937a0c3b8..c2ebc086b3 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -13,7 +13,6 @@
+ 
+ #include "qemu/osdep.h"
+ #include "qapi/error.h"
+-#include "system/ram_addr.h"
+ #include "system/confidential-guest-support.h"
+ #include "hw/boards.h"
+ #include "hw/s390x/sclp.h"
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index 8d9d68da4e..0f23681a3f 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -17,7 +17,6 @@
+ 
+ #include "hw/vfio/vfio-container-legacy.h"
+ #include "hw/hw.h"
+-#include "system/ram_addr.h"
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+ #include "trace.h"
+diff --git a/hw/virtio/virtio-mem.c b/hw/virtio/virtio-mem.c
+index 1805597879..582f3f0e00 100644
+--- a/hw/virtio/virtio-mem.c
++++ b/hw/virtio/virtio-mem.c
+@@ -24,7 +24,6 @@
+ #include "hw/virtio/virtio-mem.h"
+ #include "qapi/error.h"
+ #include "qapi/visitor.h"
+-#include "system/ram_addr.h"
+ #include "migration/misc.h"
+ #include "hw/boards.h"
+ #include "hw/qdev-properties.h"
+-- 
+2.52.0
+

@@ -1,0 +1,446 @@
+From 673399c8d3ee747c11071589bcbff5e30496e490 Mon Sep 17 00:00:00 2001
+From: Arun Menon <armenon@redhat.com>
+Date: Thu, 18 Sep 2025 20:53:41 +0530
+Subject: [PATCH 087/116] migration: Remove error variant of
+ vmstate_save_state() function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [71/100] ba229c51e673198fe4c2082b2f8b598ee80839ae (rovick1/qemu-kvm)
+
+This commit removes the redundant vmstate_save_state_with_err()
+function.
+
+Previously, commit 969298f9d7 introduced vmstate_save_state_with_err()
+to handle error propagation, while vmstate_save_state() existed for
+non-error scenarios.
+This is because there were code paths where vmstate_save_state_v()
+(called internally by vmstate_save_state) did not explicitly set
+errors on failure.
+
+This change unifies error handling by
+ - updating vmstate_save_state() to accept an Error **errp argument.
+ - vmstate_save_state_v() ensures errors are set directly within the errp
+   object, eliminating the need for two separate functions.
+
+All calls to vmstate_save_state_with_err() are replaced with
+vmstate_save_state(). This simplifies the API and improves code
+maintainability.
+
+vmstate_save_state() that only calls vmstate_save_state_v(),
+by inference, also has errors set in errp in case of failure.
+The errors are reported using error_report_err().
+If we want the function to exit on error, then &error_fatal is
+passed.
+
+Reviewed-by: Fabiano Rosas <farosas@suse.de>
+Signed-off-by: Arun Menon <armenon@redhat.com>
+Tested-by: Fabiano Rosas <farosas@suse.de>
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Link: https://lore.kernel.org/r/20250918-propagate_tpm_error-v14-24-36f11a6fb9d3@redhat.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+(cherry picked from commit 6f9fc6f5012344292f7014e079e5225b8988383d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/display/virtio-gpu.c     |  3 ++-
+ hw/pci/pci.c                |  2 +-
+ hw/s390x/virtio-ccw.c       |  2 +-
+ hw/scsi/spapr_vscsi.c       |  2 +-
+ hw/vfio/pci.c               |  4 ++--
+ hw/virtio/virtio-mmio.c     |  2 +-
+ hw/virtio/virtio-pci.c      |  2 +-
+ hw/virtio/virtio.c          |  6 ++++--
+ include/migration/vmstate.h |  2 --
+ migration/cpr.c             |  3 +--
+ migration/savevm.c          | 11 ++++++++---
+ migration/vmstate-types.c   | 25 ++++++++++++++++++-------
+ migration/vmstate.c         | 10 ++--------
+ tests/unit/test-vmstate.c   | 20 +++++++++++++++++---
+ ui/vdagent.c                |  3 ++-
+ 15 files changed, 61 insertions(+), 36 deletions(-)
+
+diff --git a/hw/display/virtio-gpu.c b/hw/display/virtio-gpu.c
+index 5dc31bc6bf..477ec700a1 100644
+--- a/hw/display/virtio-gpu.c
++++ b/hw/display/virtio-gpu.c
+@@ -1246,7 +1246,8 @@ static int virtio_gpu_save(QEMUFile *f, void *opaque, size_t size,
+     }
+     qemu_put_be32(f, 0); /* end of list */
+ 
+-    return vmstate_save_state(f, &vmstate_virtio_gpu_scanouts, g, NULL);
++    return vmstate_save_state(f, &vmstate_virtio_gpu_scanouts, g, NULL,
++                              &error_fatal);
+ }
+ 
+ static bool virtio_gpu_load_restore_mapping(VirtIOGPU *g,
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 5b37b70815..d1c22999b9 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -926,7 +926,7 @@ void pci_device_save(PCIDevice *s, QEMUFile *f)
+      * This makes us compatible with old devices
+      * which never set or clear this bit. */
+     s->config[PCI_STATUS] &= ~PCI_STATUS_INTERRUPT;
+-    vmstate_save_state(f, &vmstate_pci_device, s, NULL);
++    vmstate_save_state(f, &vmstate_pci_device, s, NULL, &error_fatal);
+     /* Restore the interrupt status bit. */
+     pci_update_irq_status(s);
+ }
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index 6a9641a03d..4cb1ced001 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1130,7 +1130,7 @@ static int virtio_ccw_load_queue(DeviceState *d, int n, QEMUFile *f)
+ static void virtio_ccw_save_config(DeviceState *d, QEMUFile *f)
+ {
+     VirtioCcwDevice *dev = VIRTIO_CCW_DEVICE(d);
+-    vmstate_save_state(f, &vmstate_virtio_ccw_dev, dev, NULL);
++    vmstate_save_state(f, &vmstate_virtio_ccw_dev, dev, NULL, &error_fatal);
+ }
+ 
+ static int virtio_ccw_load_config(DeviceState *d, QEMUFile *f)
+diff --git a/hw/scsi/spapr_vscsi.c b/hw/scsi/spapr_vscsi.c
+index da173f4867..f0a7dd2b88 100644
+--- a/hw/scsi/spapr_vscsi.c
++++ b/hw/scsi/spapr_vscsi.c
+@@ -630,7 +630,7 @@ static void vscsi_save_request(QEMUFile *f, SCSIRequest *sreq)
+     vscsi_req *req = sreq->hba_private;
+     assert(req->active);
+ 
+-    vmstate_save_state(f, &vmstate_spapr_vscsi_req, req, NULL);
++    vmstate_save_state(f, &vmstate_spapr_vscsi_req, req, NULL, &error_fatal);
+ 
+     trace_spapr_vscsi_save_request(req->qtag, req->cur_desc_num,
+                                    req->cur_desc_offset);
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index f696e8116f..378b475b2c 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2824,8 +2824,8 @@ static int vfio_pci_save_config(VFIODevice *vbasedev, QEMUFile *f, Error **errp)
+ {
+     VFIOPCIDevice *vdev = container_of(vbasedev, VFIOPCIDevice, vbasedev);
+ 
+-    return vmstate_save_state_with_err(f, &vmstate_vfio_pci_config, vdev, NULL,
+-                                       errp);
++    return vmstate_save_state(f, &vmstate_vfio_pci_config, vdev, NULL,
++                              errp);
+ }
+ 
+ static int vfio_pci_load_config(VFIODevice *vbasedev, QEMUFile *f)
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index 0a688909fc..fb58c36452 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -613,7 +613,7 @@ static void virtio_mmio_save_extra_state(DeviceState *opaque, QEMUFile *f)
+ {
+     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
+ 
+-    vmstate_save_state(f, &vmstate_virtio_mmio, proxy, NULL);
++    vmstate_save_state(f, &vmstate_virtio_mmio, proxy, NULL, &error_fatal);
+ }
+ 
+ static int virtio_mmio_load_extra_state(DeviceState *opaque, QEMUFile *f)
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index ae875bd108..937e22f08a 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -188,7 +188,7 @@ static void virtio_pci_save_extra_state(DeviceState *d, QEMUFile *f)
+ {
+     VirtIOPCIProxy *proxy = to_virtio_pci_proxy(d);
+ 
+-    vmstate_save_state(f, &vmstate_virtio_pci, proxy, NULL);
++    vmstate_save_state(f, &vmstate_virtio_pci, proxy, NULL, &error_fatal);
+ }
+ 
+ static int virtio_pci_load_extra_state(DeviceState *d, QEMUFile *f)
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index e6cbbc8624..a7063d5555 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -3017,6 +3017,7 @@ int virtio_save(VirtIODevice *vdev, QEMUFile *f)
+     VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
+     uint32_t guest_features_lo = (vdev->guest_features & 0xffffffff);
+     int i;
++    Error *local_err = NULL;
+ 
+     if (k->save_config) {
+         k->save_config(qbus->parent, f);
+@@ -3060,14 +3061,15 @@ int virtio_save(VirtIODevice *vdev, QEMUFile *f)
+     }
+ 
+     if (vdc->vmsd) {
+-        int ret = vmstate_save_state(f, vdc->vmsd, vdev, NULL);
++        int ret = vmstate_save_state(f, vdc->vmsd, vdev, NULL, &local_err);
+         if (ret) {
++            error_report_err(local_err);
+             return ret;
+         }
+     }
+ 
+     /* Subsections */
+-    return vmstate_save_state(f, &vmstate_virtio, vdev, NULL);
++    return vmstate_save_state(f, &vmstate_virtio, vdev, NULL, &error_fatal);
+ }
+ 
+ /* A wrapper for use as a VMState .put function */
+diff --git a/include/migration/vmstate.h b/include/migration/vmstate.h
+index b9a41cc38a..47a1dc1810 100644
+--- a/include/migration/vmstate.h
++++ b/include/migration/vmstate.h
+@@ -1208,8 +1208,6 @@ extern const VMStateInfo vmstate_info_qlist;
+ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
+                        void *opaque, int version_id, Error **errp);
+ int vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+-                       void *opaque, JSONWriter *vmdesc);
+-int vmstate_save_state_with_err(QEMUFile *f, const VMStateDescription *vmsd,
+                        void *opaque, JSONWriter *vmdesc, Error **errp);
+ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
+                          void *opaque, JSONWriter *vmdesc,
+diff --git a/migration/cpr.c b/migration/cpr.c
+index 8abb6db76d..038f48f810 100644
+--- a/migration/cpr.c
++++ b/migration/cpr.c
+@@ -182,9 +182,8 @@ int cpr_state_save(MigrationChannel *channel, Error **errp)
+     qemu_put_be32(f, QEMU_CPR_FILE_MAGIC);
+     qemu_put_be32(f, QEMU_CPR_FILE_VERSION);
+ 
+-    ret = vmstate_save_state(f, &vmstate_cpr_state, &cpr_state, 0);
++    ret = vmstate_save_state(f, &vmstate_cpr_state, &cpr_state, 0, errp);
+     if (ret) {
+-        error_setg(errp, "vmstate_save_state error %d", ret);
+         qemu_fclose(f);
+         return ret;
+     }
+diff --git a/migration/savevm.c b/migration/savevm.c
+index f5a1ab9101..1eab91d3ad 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1050,8 +1050,8 @@ static int vmstate_save(QEMUFile *f, SaveStateEntry *se, JSONWriter *vmdesc,
+     if (!se->vmsd) {
+         vmstate_save_old_style(f, se, vmdesc);
+     } else {
+-        ret = vmstate_save_state_with_err(f, se->vmsd, se->opaque, vmdesc,
+-                                          errp);
++        ret = vmstate_save_state(f, se->vmsd, se->opaque, vmdesc,
++                                 errp);
+         if (ret) {
+             return ret;
+         }
+@@ -1279,6 +1279,7 @@ void qemu_savevm_state_header(QEMUFile *f)
+ {
+     MigrationState *s = migrate_get_current();
+     JSONWriter *vmdesc = s->vmdesc;
++    Error *local_err = NULL;
+ 
+     trace_savevm_state_header();
+     qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
+@@ -1297,7 +1298,11 @@ void qemu_savevm_state_header(QEMUFile *f)
+             json_writer_start_object(vmdesc, "configuration");
+         }
+ 
+-        vmstate_save_state(f, &vmstate_configuration, &savevm_state, vmdesc);
++        vmstate_save_state(f, &vmstate_configuration, &savevm_state,
++                           vmdesc, &local_err);
++        if (local_err) {
++            error_report_err(local_err);
++        }
+ 
+         if (vmdesc) {
+             json_writer_end_object(vmdesc);
+diff --git a/migration/vmstate-types.c b/migration/vmstate-types.c
+index c5cfd861e3..a1cd7a95fa 100644
+--- a/migration/vmstate-types.c
++++ b/migration/vmstate-types.c
+@@ -565,10 +565,14 @@ static int put_tmp(QEMUFile *f, void *pv, size_t size,
+     const VMStateDescription *vmsd = field->vmsd;
+     void *tmp = g_malloc(size);
+     int ret;
++    Error *local_err = NULL;
+ 
+     /* Writes the parent field which is at the start of the tmp */
+     *(void **)tmp = pv;
+-    ret = vmstate_save_state(f, vmsd, tmp, vmdesc);
++    ret = vmstate_save_state(f, vmsd, tmp, vmdesc, &local_err);
++    if (ret) {
++        error_report_err(local_err);
++    }
+     g_free(tmp);
+ 
+     return ret;
+@@ -676,13 +680,15 @@ static int put_qtailq(QEMUFile *f, void *pv, size_t unused_size,
+     size_t entry_offset = field->start;
+     void *elm;
+     int ret;
++    Error *local_err = NULL;
+ 
+     trace_put_qtailq(vmsd->name, vmsd->version_id);
+ 
+     QTAILQ_RAW_FOREACH(elm, pv, entry_offset) {
+         qemu_put_byte(f, true);
+-        ret = vmstate_save_state(f, vmsd, elm, vmdesc);
++        ret = vmstate_save_state(f, vmsd, elm, vmdesc, &local_err);
+         if (ret) {
++            error_report_err(local_err);
+             return ret;
+         }
+     }
+@@ -711,6 +717,7 @@ static gboolean put_gtree_elem(gpointer key, gpointer value, gpointer data)
+     struct put_gtree_data *capsule = (struct put_gtree_data *)data;
+     QEMUFile *f = capsule->f;
+     int ret;
++    Error *local_err = NULL;
+ 
+     qemu_put_byte(f, true);
+ 
+@@ -718,16 +725,20 @@ static gboolean put_gtree_elem(gpointer key, gpointer value, gpointer data)
+     if (!capsule->key_vmsd) {
+         qemu_put_be64(f, (uint64_t)(uintptr_t)(key)); /* direct key */
+     } else {
+-        ret = vmstate_save_state(f, capsule->key_vmsd, key, capsule->vmdesc);
++        ret = vmstate_save_state(f, capsule->key_vmsd, key, capsule->vmdesc,
++                                 &local_err);
+         if (ret) {
++            error_report_err(local_err);
+             capsule->ret = ret;
+             return true;
+         }
+     }
+ 
+     /* put the data */
+-    ret = vmstate_save_state(f, capsule->val_vmsd, value, capsule->vmdesc);
++    ret = vmstate_save_state(f, capsule->val_vmsd, value, capsule->vmdesc,
++                             &local_err);
+     if (ret) {
++        error_report_err(local_err);
+         capsule->ret = ret;
+         return true;
+     }
+@@ -857,14 +868,14 @@ static int put_qlist(QEMUFile *f, void *pv, size_t unused_size,
+     size_t entry_offset = field->start;
+     void *elm;
+     int ret;
++    Error *local_err = NULL;
+ 
+     trace_put_qlist(field->name, vmsd->name, vmsd->version_id);
+     QLIST_RAW_FOREACH(elm, pv, entry_offset) {
+         qemu_put_byte(f, true);
+-        ret = vmstate_save_state(f, vmsd, elm, vmdesc);
++        ret = vmstate_save_state(f, vmsd, elm, vmdesc, &local_err);
+         if (ret) {
+-            error_report("%s: failed to save %s (%d)", field->name,
+-                         vmsd->name, ret);
++            error_report_err(local_err);
+             return ret;
+         }
+     }
+diff --git a/migration/vmstate.c b/migration/vmstate.c
+index 8d1e9eb62b..ad8e5b71ae 100644
+--- a/migration/vmstate.c
++++ b/migration/vmstate.c
+@@ -406,12 +406,6 @@ bool vmstate_section_needed(const VMStateDescription *vmsd, void *opaque)
+ 
+ 
+ int vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+-                       void *opaque, JSONWriter *vmdesc_id)
+-{
+-    return vmstate_save_state_v(f, vmsd, opaque, vmdesc_id, vmsd->version_id, NULL);
+-}
+-
+-int vmstate_save_state_with_err(QEMUFile *f, const VMStateDescription *vmsd,
+                        void *opaque, JSONWriter *vmdesc_id, Error **errp)
+ {
+     return vmstate_save_state_v(f, vmsd, opaque, vmdesc_id, vmsd->version_id, errp);
+@@ -512,7 +506,7 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
+ 
+                 if (inner_field->flags & VMS_STRUCT) {
+                     ret = vmstate_save_state(f, inner_field->vmsd,
+-                                             curr_elem, vmdesc_loop);
++                                             curr_elem, vmdesc_loop, errp);
+                 } else if (inner_field->flags & VMS_VSTRUCT) {
+                     ret = vmstate_save_state_v(f, inner_field->vmsd,
+                                                curr_elem, vmdesc_loop,
+@@ -674,7 +668,7 @@ static int vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
+             qemu_put_byte(f, len);
+             qemu_put_buffer(f, (uint8_t *)vmsdsub->name, len);
+             qemu_put_be32(f, vmsdsub->version_id);
+-            ret = vmstate_save_state_with_err(f, vmsdsub, opaque, vmdesc, errp);
++            ret = vmstate_save_state(f, vmsdsub, opaque, vmdesc, errp);
+             if (ret) {
+                 return ret;
+             }
+diff --git a/tests/unit/test-vmstate.c b/tests/unit/test-vmstate.c
+index 4ff0ab632f..cadbab3c5e 100644
+--- a/tests/unit/test-vmstate.c
++++ b/tests/unit/test-vmstate.c
+@@ -67,9 +67,13 @@ static QEMUFile *open_test_file(bool write)
+ static void save_vmstate(const VMStateDescription *desc, void *obj)
+ {
+     QEMUFile *f = open_test_file(true);
++    Error *local_err = NULL;
+ 
+     /* Save file with vmstate */
+-    int ret = vmstate_save_state(f, desc, obj, NULL);
++    int ret = vmstate_save_state(f, desc, obj, NULL, &local_err);
++    if (ret) {
++        error_report_err(local_err);
++    }
+     g_assert(!ret);
+     qemu_put_byte(f, QEMU_VM_EOF);
+     g_assert(!qemu_file_get_error(f));
+@@ -438,10 +442,15 @@ static const VMStateDescription vmstate_skipping = {
+ 
+ static void test_save_noskip(void)
+ {
++    Error *local_err = NULL;
+     QEMUFile *fsave = open_test_file(true);
+     TestStruct obj = { .a = 1, .b = 2, .c = 3, .d = 4, .e = 5, .f = 6,
+                        .skip_c_e = false };
+-    int ret = vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL);
++    int ret = vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL,
++                                 &local_err);
++    if (ret) {
++        error_report_err(local_err);
++    }
+     g_assert(!ret);
+     g_assert(!qemu_file_get_error(fsave));
+ 
+@@ -460,10 +469,15 @@ static void test_save_noskip(void)
+ 
+ static void test_save_skip(void)
+ {
++    Error *local_err = NULL;
+     QEMUFile *fsave = open_test_file(true);
+     TestStruct obj = { .a = 1, .b = 2, .c = 3, .d = 4, .e = 5, .f = 6,
+                        .skip_c_e = true };
+-    int ret = vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL);
++    int ret = vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL,
++                                 &local_err);
++    if (ret) {
++        error_report_err(local_err);
++    }
+     g_assert(!ret);
+     g_assert(!qemu_file_get_error(fsave));
+ 
+diff --git a/ui/vdagent.c b/ui/vdagent.c
+index bc3c77f013..ddb91e75c6 100644
+--- a/ui/vdagent.c
++++ b/ui/vdagent.c
+@@ -992,7 +992,8 @@ static int put_cbinfo(QEMUFile *f, void *pv, size_t size,
+         }
+     }
+ 
+-    return vmstate_save_state(f, &vmstate_cbinfo_array, &cbinfo, vmdesc);
++    return vmstate_save_state(f, &vmstate_cbinfo_array, &cbinfo, vmdesc,
++                              &error_fatal);
+ }
+ 
+ static int get_cbinfo(QEMUFile *f, void *pv, size_t size,
+-- 
+2.52.0
+

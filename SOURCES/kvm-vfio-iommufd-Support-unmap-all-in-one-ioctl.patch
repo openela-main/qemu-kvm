@@ -1,0 +1,59 @@
+From cf9a245a831df3b807926c544b593675363a956f Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 9 Oct 2025 00:01:33 -0400
+Subject: [PATCH 103/116] vfio/iommufd: Support unmap all in one ioctl()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [87/100] aa45e281f3de07944c441b6096b73c54f3e45b97 (rovick1/qemu-kvm)
+
+IOMMUFD kernel uAPI supports unmapping whole address space in one call with
+[iova, size] set to [0, UINT64_MAX], this can simplify iommufd_cdev_unmap()
+a bit. See iommufd_ioas_unmap() in kernel for details.
+
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20251009040134.334251-3-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit b30823e5619ed5658d33e43abe1308195edb3e8b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/iommufd.c | 15 +--------------
+ 1 file changed, 1 insertion(+), 14 deletions(-)
+
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index ce10371818..bb5775aa71 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -62,21 +62,8 @@ static int iommufd_cdev_unmap(const VFIOContainer *bcontainer,
+ {
+     const VFIOIOMMUFDContainer *container = VFIO_IOMMU_IOMMUFD(bcontainer);
+ 
+-    /* unmap in halves */
+     if (unmap_all) {
+-        Int128 llsize = int128_rshift(int128_2_64(), 1);
+-        int ret;
+-
+-        ret = iommufd_backend_unmap_dma(container->be, container->ioas_id,
+-                                        0, int128_get64(llsize));
+-
+-        if (ret == 0) {
+-            ret = iommufd_backend_unmap_dma(container->be, container->ioas_id,
+-                                            int128_get64(llsize),
+-                                            int128_get64(llsize));
+-        }
+-
+-        return ret;
++        size = UINT64_MAX;
+     }
+ 
+     /* TODO: Handle dma_unmap_bitmap with iotlb args (migration) */
+-- 
+2.52.0
+

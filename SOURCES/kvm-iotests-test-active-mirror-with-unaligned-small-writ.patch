@@ -1,0 +1,77 @@
+From 86d893766713ddb454a9e7bf9e3069a41cf77b1e Mon Sep 17 00:00:00 2001
+From: Fiona Ebner <f.ebner@proxmox.com>
+Date: Tue, 20 Jan 2026 12:38:57 +0100
+Subject: [PATCH 45/52] iotests: test active mirror with unaligned, small write
+ zeroes op
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [38/45] 39a5ae389b5bd6ee71ee61fb45fb8456e7068511 (kmwolf/centos-qemu-kvm)
+
+This tests the scenario fixed by "block/mirror: check range
+when setting zero bitmap for sync write" [0].
+
+[0] https://lore.kernel.org/qemu-devel/20260112152544.261923-1-f.ebner@proxmox.com/
+
+Signed-off-by: Fiona Ebner <f.ebner@proxmox.com>
+Message-ID: <20260120113859.251743-1-f.ebner@proxmox.com>
+Reviewed-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Tested-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+Signed-off-by: Vladimir Sementsov-Ogievskiy <vsementsov@yandex-team.ru>
+(cherry picked from commit 267d7ae99a1d3b5be9d3421db3bdf651cc18c7ab)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ tests/qemu-iotests/151     | 20 ++++++++++++++++++++
+ tests/qemu-iotests/151.out |  4 ++--
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/tests/qemu-iotests/151 b/tests/qemu-iotests/151
+index 06ee3585db..9b9c815db5 100755
+--- a/tests/qemu-iotests/151
++++ b/tests/qemu-iotests/151
+@@ -191,6 +191,26 @@ class TestActiveMirror(iotests.QMPTestCase):
+ 
+         self.potential_writes_in_flight = False
+ 
++    def testUnalignedSmallerThanGranularityWriteZeroes(self):
++        # Fill the source image
++        self.vm.hmp_qemu_io('source', 'write -P 1 0 %i' % self.image_len);
++
++        # Start the block job
++        self.vm.cmd('blockdev-mirror',
++                    job_id='mirror',
++                    filter_node_name='mirror-node',
++                    device='source-node',
++                    target='target-node',
++                    sync='full',
++                    copy_mode='write-blocking')
++
++        # Wait for the READY event
++        self.wait_ready(drive='mirror')
++
++        for offset in range(6 * self.image_len // 8, 7 * self.image_len // 8, 1024 * 1024):
++            self.vm.hmp_qemu_io('source', 'aio_write -z %i 512' % (offset + 512))
++
++        self.complete_and_wait(drive='mirror', wait_ready=False)
+ 
+ class TestThrottledWithNbdExportBase(iotests.QMPTestCase):
+     image_len = 128 * 1024 * 1024  # MB
+diff --git a/tests/qemu-iotests/151.out b/tests/qemu-iotests/151.out
+index 3f8a935a08..2f7d3902f2 100644
+--- a/tests/qemu-iotests/151.out
++++ b/tests/qemu-iotests/151.out
+@@ -1,5 +1,5 @@
+-......
++.......
+ ----------------------------------------------------------------------
+-Ran 6 tests
++Ran 7 tests
+ 
+ OK
+-- 
+2.52.0
+

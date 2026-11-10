@@ -1,0 +1,53 @@
+From 45ff92e2f3f4684ca5c910e0e94f3f883f40988e Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:28 +0100
+Subject: [PATCH 071/116] vfio/pci.c: rename
+ vfio_pci_dev_nohotplug_properties[] to vfio_pci_nohotplug_properties[]
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [55/100] f5a45ca34a156360ccd20eea400b80fd27f1d9f1 (rovick1/qemu-kvm)
+
+This changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-21-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 05530ba2462f37fd55d72bdab31a7a5c29ab7519)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index ae84907aca..339324987c 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3942,7 +3942,7 @@ static const TypeInfo vfio_pci_info = {
+     .instance_finalize = vfio_pci_finalize,
+ };
+ 
+-static const Property vfio_pci_dev_nohotplug_properties[] = {
++static const Property vfio_pci_nohotplug_properties[] = {
+     DEFINE_PROP_BOOL("ramfb", VFIOPCIDevice, enable_ramfb, false),
+     DEFINE_PROP_BOOL("use-legacy-x86-rom", VFIOPCIDevice,
+                      use_legacy_x86_rom, false),
+@@ -3955,7 +3955,7 @@ static void vfio_pci_nohotplug_dev_class_init(ObjectClass *klass,
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+-    device_class_set_props(dc, vfio_pci_dev_nohotplug_properties);
++    device_class_set_props(dc, vfio_pci_nohotplug_properties);
+     dc->hotpluggable = false;
+ 
+     object_class_property_set_description(klass, /* 3.1 */
+-- 
+2.52.0
+

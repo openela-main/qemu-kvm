@@ -1,0 +1,54 @@
+From 065c3fd90a5ee90d1ccd02e71c5eb2b2ac714912 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Thu, 8 Jan 2026 19:50:12 +0100
+Subject: [PATCH 112/116] include/hw/hyperv: Remove unused 'struct
+ mshv_vp_registers' definition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [96/100] eb6aa396d9565bc13a0ace5a2b20a845a2444a91 (rovick1/qemu-kvm)
+
+The 'struct mshv_vp_registers' definition in hvgdk_mini.h is unused in
+QEMU and conflicts with the canonical definition in
+linux-headers/linux/mshv.h.
+
+Remove the duplicate definition to avoid build conflicts when the Linux
+headers are updated.
+
+Cc: Magnus Kulke <magnuskulke@linux.microsoft.com>
+Reviewed-by: Magnus Kulke <magnuskulke@linux.microsoft.com>
+Link: https://lore.kernel.org/qemu-devel/20260108185012.2568277-1-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit ec7109999af691d84e8d2b518d7a4f30d8fa6d62)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ include/hw/hyperv/hvgdk_mini.h | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/include/hw/hyperv/hvgdk_mini.h b/include/hw/hyperv/hvgdk_mini.h
+index d89315f545..cb52cc9de2 100644
+--- a/include/hw/hyperv/hvgdk_mini.h
++++ b/include/hw/hyperv/hvgdk_mini.h
+@@ -450,13 +450,6 @@ typedef struct hv_input_set_vp_registers {
+     struct hv_register_assoc elements[];
+ } hv_input_set_vp_registers;
+ 
+-#define MSHV_VP_MAX_REGISTERS   128
+-
+-struct mshv_vp_registers {
+-    int count; /* at most MSHV_VP_MAX_REGISTERS */
+-    struct hv_register_assoc *regs;
+-};
+-
+ union hv_interrupt_control {
+     uint64_t as_uint64;
+     struct {
+-- 
+2.52.0
+

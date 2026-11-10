@@ -1,0 +1,53 @@
+From 67a729c7cf2b097aa492c0a049a526411a40c0a1 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:16 +0100
+Subject: [PATCH 058/116] vfio/cpr-iommufd.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [42/100] 1746dde982eb2cfd00107f598efe53dcf6eb7c94 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOIOMMUFDContainer and VFIOContainer instead
+of accessing bcontainer directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-9-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 91bdb2f32902c83490cbafe524c82005a64e1f68)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr-iommufd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/cpr-iommufd.c b/hw/vfio/cpr-iommufd.c
+index 6aaf6f77a2..1d70c87996 100644
+--- a/hw/vfio/cpr-iommufd.c
++++ b/hw/vfio/cpr-iommufd.c
+@@ -176,7 +176,7 @@ void vfio_iommufd_cpr_unregister_iommufd(IOMMUFDBackend *be)
+ bool vfio_iommufd_cpr_register_container(VFIOIOMMUFDContainer *container,
+                                          Error **errp)
+ {
+-    VFIOContainer *bcontainer = &container->bcontainer;
++    VFIOContainer *bcontainer = VFIO_IOMMU(container);
+ 
+     migration_add_notifier_mode(&bcontainer->cpr_reboot_notifier,
+                                 vfio_cpr_reboot_notifier,
+@@ -189,7 +189,7 @@ bool vfio_iommufd_cpr_register_container(VFIOIOMMUFDContainer *container,
+ 
+ void vfio_iommufd_cpr_unregister_container(VFIOIOMMUFDContainer *container)
+ {
+-    VFIOContainer *bcontainer = &container->bcontainer;
++    VFIOContainer *bcontainer = VFIO_IOMMU(container);
+ 
+     migration_remove_notifier(&bcontainer->cpr_reboot_notifier);
+ }
+-- 
+2.52.0
+

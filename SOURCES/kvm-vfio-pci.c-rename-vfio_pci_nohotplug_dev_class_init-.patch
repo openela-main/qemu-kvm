@@ -1,0 +1,53 @@
+From 7a71a92eb375cc03dfa5f7a6822465d917f38aeb Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:29 +0100
+Subject: [PATCH 072/116] vfio/pci.c: rename
+ vfio_pci_nohotplug_dev_class_init() to vfio_pci_nohotplug_class_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [56/100] 3da726c4974320a800d8c27b80480f15ab45e734 (rovick1/qemu-kvm)
+
+This changes the function prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-22-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit cc44b39c274b35f1510725f60dd95af59d0bd3fb)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 339324987c..2b453fffcd 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3950,7 +3950,7 @@ static const Property vfio_pci_nohotplug_properties[] = {
+                             ON_OFF_AUTO_AUTO),
+ };
+ 
+-static void vfio_pci_nohotplug_dev_class_init(ObjectClass *klass,
++static void vfio_pci_nohotplug_class_init(ObjectClass *klass,
+                                               const void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+@@ -3975,7 +3975,7 @@ static const TypeInfo vfio_pci_nohotplug_dev_info = {
+     .name = TYPE_VFIO_PCI_NOHOTPLUG,
+     .parent = TYPE_VFIO_PCI,
+     .instance_size = sizeof(VFIOPCIDevice),
+-    .class_init = vfio_pci_nohotplug_dev_class_init,
++    .class_init = vfio_pci_nohotplug_class_init,
+ };
+ 
+ static void register_vfio_pci_dev_type(void)
+-- 
+2.52.0
+

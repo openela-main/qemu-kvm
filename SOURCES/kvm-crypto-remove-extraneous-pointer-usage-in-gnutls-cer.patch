@@ -1,0 +1,72 @@
+From 8b5d7a01770abb2a46bb6b50db185ae3af70546d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Fri, 11 Jul 2025 13:30:07 +0100
+Subject: [PATCH 03/30] crypto: remove extraneous pointer usage in gnutls certs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/27] bfb05b518dbff0a229b8fe58af4a38cd54b6cd8b (berrange/centos-src-qemu)
+
+The 'gnutls_x509_crt_t' type is already a pointer, not a struct,
+so the extra level of pointer indirection is not needed.
+
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 068e0379af39e5f02fc3e47f7638af194695c990)
+---
+ crypto/tlscredsx509.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 3df2a33b0b..4169ad9a75 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -325,25 +325,25 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+                                         bool isCA,
+                                         Error **errp)
+ {
+-    gnutls_x509_crt_t *cert_to_check = &cert;
++    gnutls_x509_crt_t cert_to_check = cert;
+     bool checking_issuer = true;
+     int retval = 0;
+ 
+     while (checking_issuer) {
+         checking_issuer = false;
+ 
+-        if (gnutls_x509_crt_check_issuer(*cert_to_check,
+-                                         *cert_to_check)) {
++        if (gnutls_x509_crt_check_issuer(cert_to_check,
++                                         cert_to_check)) {
+             /*
+              * The cert is self-signed indicating we have
+              * reached the root of trust.
+              */
+             return qcrypto_tls_creds_check_cert(
+-                creds, *cert_to_check, cacertFile,
++                creds, cert_to_check, cacertFile,
+                 isServer, isCA, errp);
+         }
+         for (int i = 0; i < ncacerts; i++) {
+-            if (gnutls_x509_crt_check_issuer(*cert_to_check,
++            if (gnutls_x509_crt_check_issuer(cert_to_check,
+                                              cacerts[i])) {
+                 retval = qcrypto_tls_creds_check_cert(
+                     creds, cacerts[i], cacertFile,
+@@ -351,7 +351,7 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+                 if (retval < 0) {
+                     return retval;
+                 }
+-                cert_to_check = &cacerts[i];
++                cert_to_check = cacerts[i];
+                 checking_issuer = true;
+                 break;
+             }
+-- 
+2.52.0
+

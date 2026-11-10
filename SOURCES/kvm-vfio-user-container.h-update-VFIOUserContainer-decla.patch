@@ -1,0 +1,53 @@
+From 01b0fa2ad3eb81243bb2032be91f3933ad47991d Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:48 +0100
+Subject: [PATCH 035/116] vfio-user/container.h: update VFIOUserContainer
+ declaration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [19/100] cd1782d0e5a391a92cced59496565bc077b84ea1 (rovick1/qemu-kvm)
+
+Update the VFIOUserContainer declaration so that it is closer to our coding
+guidelines: remove the explicit typedef (this is already handled by the
+OBJECT_DECLARE_TYPE() macro) and add a blank line after the parent object.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-9-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 52a1cc3dc00f09779aeb9aa9c6fcdc0284a40d4c)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/container.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio-user/container.h b/hw/vfio-user/container.h
+index 2bb1fa1343..d5d2275af7 100644
+--- a/hw/vfio-user/container.h
++++ b/hw/vfio-user/container.h
+@@ -13,10 +13,11 @@
+ #include "hw/vfio-user/proxy.h"
+ 
+ /* MMU container sub-class for vfio-user. */
+-typedef struct VFIOUserContainer {
++struct VFIOUserContainer {
+     VFIOContainerBase bcontainer;
++
+     VFIOUserProxy *proxy;
+-} VFIOUserContainer;
++};
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOUserContainer, VFIO_IOMMU_USER);
+ 
+-- 
+2.52.0
+

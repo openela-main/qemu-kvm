@@ -1,0 +1,53 @@
+From 5a616f38e879907a109b239e24ec670cbb89e3bb Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:30 +0100
+Subject: [PATCH 073/116] vfio/pci.c: rename vfio_pci_nohotplug_dev_info to
+ vfio_pci_nohotplug_info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [57/100] a86275cbf9578d7c1b888495f60c5b292338a801 (rovick1/qemu-kvm)
+
+This changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-23-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 5bdf0db823869a210434b5048d20dce5e686b7aa)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 2b453fffcd..c34ed85d5e 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3971,7 +3971,7 @@ static void vfio_pci_nohotplug_class_init(ObjectClass *klass,
+                                           "Controls loading of a legacy VGA BIOS ROM");
+ }
+ 
+-static const TypeInfo vfio_pci_nohotplug_dev_info = {
++static const TypeInfo vfio_pci_nohotplug_info = {
+     .name = TYPE_VFIO_PCI_NOHOTPLUG,
+     .parent = TYPE_VFIO_PCI,
+     .instance_size = sizeof(VFIOPCIDevice),
+@@ -3993,7 +3993,7 @@ static void register_vfio_pci_dev_type(void)
+ 
+     type_register_static(&vfio_pci_device_info);
+     type_register_static(&vfio_pci_info);
+-    type_register_static(&vfio_pci_nohotplug_dev_info);
++    type_register_static(&vfio_pci_nohotplug_info);
+ }
+ 
+ type_init(register_vfio_pci_dev_type)
+-- 
+2.52.0
+

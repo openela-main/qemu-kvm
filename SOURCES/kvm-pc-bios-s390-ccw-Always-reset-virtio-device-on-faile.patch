@@ -1,0 +1,45 @@
+From bad45ca2d89e152adfee22e2d6282d67262f1025 Mon Sep 17 00:00:00 2001
+From: Jared Rossi <jrossi@linux.ibm.com>
+Date: Sun, 8 Mar 2026 20:35:49 -0400
+Subject: [PATCH] pc-bios/s390-ccw: Always reset virtio device on failed boot
+ attempt
+
+RH-Author: Cornelia Huck <cohuck@redhat.com>
+RH-MergeRequest: 516: pc-bios/s390-ccw: Always reset virtio device on failed boot attempt
+RH-Jira: RHEL-151317
+RH-Acked-by: acordeir <None>
+RH-Acked-by: Richard W.M. Jones <rjones@redhat.com>
+RH-Commit: [1/1] a803bf75e4205bca950eb00793e3911dbc62d60b (cohuck/qemu-kvm-cs)
+
+The virtio spec necessitates that live virtqueues must not be altered.  Reset
+the failed device so that the queues are not live before we attempt to boot any
+fallback devices.
+
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Eric Farman <farman@linux.ibm.com>
+Signed-off-by: Jared Rossi <jrossi@linux.ibm.com>
+Message-ID: <20260309003601.242634-4-jrossi@linux.ibm.com>
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit dd8c8f16c0244fd5393dc305501675ca1ae2990a)
+Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+---
+ pc-bios/s390-ccw/main.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pc-bios/s390-ccw/main.c b/pc-bios/s390-ccw/main.c
+index 76bf743900..8e2c99bee1 100644
+--- a/pc-bios/s390-ccw/main.c
++++ b/pc-bios/s390-ccw/main.c
+@@ -277,7 +277,8 @@ static void ipl_boot_device(void)
+         break;
+     case CU_TYPE_VIRTIO:
+         if (virtio_setup() == 0) {
+-            zipl_load();
++            zipl_load(); /* only return on error */
++            virtio_reset(virtio_get_device());
+         }
+         break;
+     default:
+-- 
+2.52.0
+

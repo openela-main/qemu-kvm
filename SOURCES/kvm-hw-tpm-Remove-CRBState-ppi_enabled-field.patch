@@ -1,0 +1,90 @@
+From 76abf2879263ce6e8c1a08441fc62d88be8d3f58 Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 7 May 2026 15:36:52 +0530
+Subject: [PATCH 4/9] hw/tpm: Remove CRBState::ppi_enabled field
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 485: hw/tpm: add PPI support to tpm-tis-device for ARM64 virt
+RH-Jira: RHEL-112608
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [3/8] be4e2dfd89f6b5c07f0418c7e339b91b295057ce (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-112608
+
+The CRBState::ppi_enabled boolean was only set in the
+hw_compat_3_1[] array, via the 'ppi=false' property.
+We removed all machines using that array, and the array
+itself in commit a861ffef237 ("hw/core/machine: Remove
+the hw_compat_3_1[] array"). We can safely remove the
+now unused property. Since CRB devices always use PPI,
+simplify removing the CRBState::ppi_enabled field.
+Set the generic TPMIfClass::ppi_enabled so ACPI subsystem
+can keep checking its availability.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Message-Id: <20260317120241.16320-4-philmd@linaro.org>
+(cherry picked from commit 46427d53eb9551e947242fd10451acc4000c5cac)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ hw/tpm/tpm_crb.c | 13 ++++---------
+ 1 file changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/hw/tpm/tpm_crb.c b/hw/tpm/tpm_crb.c
+index bc7a78f898..3c4c97eccd 100644
+--- a/hw/tpm/tpm_crb.c
++++ b/hw/tpm/tpm_crb.c
+@@ -43,7 +43,6 @@ struct CRBState {
+ 
+     size_t be_buffer_size;
+ 
+-    bool ppi_enabled;
+     TPMPPI ppi;
+ };
+ typedef struct CRBState CRBState;
+@@ -228,16 +227,13 @@ static const VMStateDescription vmstate_tpm_crb = {
+ 
+ static const Property tpm_crb_properties[] = {
+     DEFINE_PROP_TPMBE("tpmdev", CRBState, tpmbe),
+-    DEFINE_PROP_BOOL("ppi", CRBState, ppi_enabled, true),
+ };
+ 
+ static void tpm_crb_reset(void *dev)
+ {
+     CRBState *s = CRB(dev);
+ 
+-    if (s->ppi_enabled) {
+-        tpm_ppi_reset(&s->ppi);
+-    }
++    tpm_ppi_reset(&s->ppi);
+     tpm_backend_reset(s->tpmbe);
+ 
+     memset(s->regs, 0, sizeof(s->regs));
+@@ -303,10 +299,8 @@ static void tpm_crb_realize(DeviceState *dev, Error **errp)
+     memory_region_add_subregion(get_system_memory(),
+         TPM_CRB_ADDR_BASE + sizeof(s->regs), &s->cmdmem);
+ 
+-    if (s->ppi_enabled) {
+-        tpm_ppi_init(&s->ppi, get_system_memory(),
+-                     TPM_PPI_ADDR_BASE, OBJECT(s));
+-    }
++    tpm_ppi_init(&s->ppi, get_system_memory(),
++                 TPM_PPI_ADDR_BASE, OBJECT(s));
+ 
+     if (xen_enabled()) {
+         tpm_crb_reset(dev);
+@@ -325,6 +319,7 @@ static void tpm_crb_class_init(ObjectClass *klass, const void *data)
+     dc->vmsd  = &vmstate_tpm_crb;
+     dc->user_creatable = true;
+     tc->model = TPM_MODEL_TPM_CRB;
++    tc->ppi_enabled = true;
+     tc->get_version = tpm_crb_get_version;
+     tc->request_completed = tpm_crb_request_completed;
+ 
+-- 
+2.52.0
+

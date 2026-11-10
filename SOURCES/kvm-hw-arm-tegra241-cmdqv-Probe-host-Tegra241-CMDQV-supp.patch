@@ -1,0 +1,103 @@
+From 2886a2c1b009f99327da4b691c30f7d0149f18e6 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:31 +0100
+Subject: [PATCH 089/111] hw/arm/tegra241-cmdqv: Probe host Tegra241 CMDQV
+ support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [89/111] 2dfd7f24b8300f222b3be054996d3bd17aabf9e6 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Use IOMMU_GET_HW_INFO to query host support for Tegra241 CMDQV.
+
+Validate the returned data type, version, and minimum number of vCMDQs and
+SIDs per Tegra241 CMDQ Virtual Interface(VI). Fail the probe if the host
+does not meet these requirements.
+
+The QEMU model supports one Virtual Interface(VI) per VM with 2 vCMDQs and
+16 SIDs per VI, so the probe ensures the host implementation is compatible
+with these limits.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-11-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 61e7de842085f313cab0be4f1b296f3dec52b5a2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 32 ++++++++++++++++++++++++++++++--
+ hw/arm/tegra241-cmdqv.h |  4 ++++
+ 2 files changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index ad5a0d4611..3a19a1af56 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -38,8 +38,36 @@ static bool tegra241_cmdqv_init(SMMUv3State *s, Error **errp)
+ static bool tegra241_cmdqv_probe(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                                  Error **errp)
+ {
+-    error_setg(errp, "NVIDIA Tegra241 CMDQV is unsupported");
+-    return false;
++    uint32_t data_type = IOMMU_HW_INFO_TYPE_TEGRA241_CMDQV;
++    struct iommu_hw_info_tegra241_cmdqv cmdqv_info;
++    uint64_t caps;
++
++    if (!iommufd_backend_get_device_info(idev->iommufd, idev->devid, &data_type,
++                                         &cmdqv_info, sizeof(cmdqv_info), &caps,
++                                         NULL, errp)) {
++        return false;
++    }
++    if (data_type != IOMMU_HW_INFO_TYPE_TEGRA241_CMDQV) {
++        error_setg(errp, "Host CMDQV: unexpected data type %u (expected %u)",
++                   data_type, IOMMU_HW_INFO_TYPE_TEGRA241_CMDQV);
++        return false;
++    }
++    if (cmdqv_info.version != CMDQV_VER) {
++        error_setg(errp, "Host CMDQV: unsupported version %u (expected %u)",
++                   cmdqv_info.version, CMDQV_VER);
++        return false;
++    }
++    if (cmdqv_info.log2vcmdqs < CMDQV_NUM_CMDQ_LOG2) {
++        error_setg(errp, "Host CMDQV: insufficient vCMDQs log2=%u (need >= %u)",
++                   cmdqv_info.log2vcmdqs, CMDQV_NUM_CMDQ_LOG2);
++        return false;
++    }
++    if (cmdqv_info.log2vsids < CMDQV_NUM_SID_PER_VI_LOG2) {
++        error_setg(errp, "Host CMDQV: insufficient SIDs log2=%u (need >= %u)",
++                   cmdqv_info.log2vsids, CMDQV_NUM_SID_PER_VI_LOG2);
++        return false;
++    }
++    return true;
+ }
+ 
+ static const SMMUv3AccelCmdqvOps tegra241_cmdqv_ops = {
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index 74a6954017..38c8b27b4d 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -10,6 +10,10 @@
+ #ifndef HW_ARM_TEGRA241_CMDQV_H
+ #define HW_ARM_TEGRA241_CMDQV_H
+ 
++#define CMDQV_VER                 1
++#define CMDQV_NUM_CMDQ_LOG2       1
++#define CMDQV_NUM_SID_PER_VI_LOG2 4
++
+ const SMMUv3AccelCmdqvOps *tegra241_cmdqv_get_ops(void);
+ 
+ #endif /* HW_ARM_TEGRA241_CMDQV_H */
+-- 
+2.52.0
+

@@ -1,0 +1,71 @@
+From 603081937866d300dc72d26a782168564478a8f4 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Sat, 11 Jul 2026 14:58:15 +0200
+Subject: [PATCH 08/12] s390x/sclp: reject invalid write event data headers
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [5/9] b38f0d679531edbc7f9f1ebaa8b6b8e5bd385292 (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit d88cd8f5570f4d6e08d62e098a8b7f53cdc75536
+Author: Christian Borntraeger <borntraeger@linux.ibm.com>
+Date:   Tue Jul 7 09:07:24 2026 +0200
+
+    s390x/sclp: reject invalid write event data headers
+
+    If a guest submits an sccb with a tiny header length but a large number
+    of event mask entries, the write_event_mask handler will
+    1. return the wrong RC (ok instead of error)
+    2. write to memory after the allocated sccb in qemu host memory.
+
+    Add the necessary checks.
+
+    Cc: qemu-stable@nongnu.org
+    Reviewed-by: Hendrik Brueckner <brueckner@linux.ibm.com>
+    Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Reviewed-by: Philippe Mathieu-Daudé <philmd@oss.qualcomm.com>
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Message-ID: <20260707070728.147203-2-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/event-facility.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/s390x/event-facility.c b/hw/s390x/event-facility.c
+index fee286ea63..184c469bd3 100644
+--- a/hw/s390x/event-facility.c
++++ b/hw/s390x/event-facility.c
+@@ -286,6 +286,7 @@ static void read_event_data(SCLPEventFacility *ef, SCCB *sccb)
+ static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
+ {
+     WriteEventMask *we_mask = (WriteEventMask *) sccb;
++    uint16_t sccb_length = be16_to_cpu(sccb->h.length);
+     uint16_t mask_length = be16_to_cpu(we_mask->mask_length);
+     sccb_mask_t tmp_mask;
+ 
+@@ -294,6 +295,11 @@ static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
+         return;
+     }
+ 
++    if (sccb_length < sizeof(WriteEventMask) + 4 * mask_length) {
++        sccb->h.response_code = cpu_to_be16(SCLP_RC_INSUFFICIENT_SCCB_LENGTH);
++        return;
++    }
++
+     /*
+      * Note: We currently only support masks up to 8 byte length;
+      *       the remainder is filled up with zeroes. Older Linux
+-- 
+2.52.0
+

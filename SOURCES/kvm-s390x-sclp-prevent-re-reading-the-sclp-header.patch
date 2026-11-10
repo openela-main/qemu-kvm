@@ -1,0 +1,66 @@
+From e2c3b08190f32460c9046fd71da7ea96fdca4afe Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Thu, 16 Jul 2026 10:34:43 +0200
+Subject: [PATCH 10/12] s390x/sclp: prevent re-reading the sclp header
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [7/9] f84a26f6a6546cc221689dff2a415053462bf4ab (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit 20701190e023216d0213a107a491402ce2cc501e
+Author: Christian Borntraeger <borntraeger@linux.ibm.com>
+Date:   Thu Jul 9 16:29:05 2026 +0200
+
+    s390x/sclp: prevent re-reading the sclp header
+
+    We verify the sccb length and then allocate based on that length. The
+    following access re-reads the sccb again. This can race against other
+    vCPUs overwriting the length field.
+
+    sclp_service_call_protected does not need a change as the ultravisor
+    provides a consistent snapshot.
+
+    Fixes: c1db53a5910f ("s390/sclp: read sccb from mem based on provided length")
+    Cc: qemu-stable@nongnu.org
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Reviewed-by: Collin Walling <walling@linux.ibm.com>
+    Message-ID: <20260709142906.197474-2-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Conflicts: target code is still using cpu_physical_memory_read() instead
+           of upsteam having switched to address_space_read() and
+           handling possible errors; sticking to old behavior for now
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/sclp.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/s390x/sclp.c b/hw/s390x/sclp.c
+index 16057356b1..27a354029c 100644
+--- a/hw/s390x/sclp.c
++++ b/hw/s390x/sclp.c
+@@ -328,10 +328,12 @@ int sclp_service_call(S390CPU *cpu, uint64_t sccb, uint32_t code)
+     /*
+      * we want to work on a private copy of the sccb, to prevent guests
+      * from playing dirty tricks by modifying the memory content after
+-     * the host has checked the values
++     * the host has checked the values.
++     * Reuse the previously fetched header
+      */
+     work_sccb = g_malloc0(be16_to_cpu(header.length));
+     cpu_physical_memory_read(sccb, work_sccb, be16_to_cpu(header.length));
++    work_sccb->h = header;
+ 
+     if (!sclp_command_code_valid(code)) {
+         work_sccb->h.response_code = cpu_to_be16(SCLP_RC_INVALID_SCLP_COMMAND);
+-- 
+2.52.0
+

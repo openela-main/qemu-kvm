@@ -1,0 +1,75 @@
+From c9239fed6d3b7f14b847f10d53fd7c057e08cafd Mon Sep 17 00:00:00 2001
+From: Hanna Czenczek <hreitz@redhat.com>
+Date: Mon, 10 Nov 2025 16:48:42 +0100
+Subject: [PATCH 14/52] nvme: Kick and check completions in BDS context
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [7/45] 6f2f54a3568591087538e0cc2d423ca71f44d661 (kmwolf/centos-qemu-kvm)
+
+nvme_process_completion() must run in the main BDS context, so schedule
+a BH for requests that aren’t there.
+
+The context in which we kick does not matter, but let’s just keep kick
+and process_completion together for simplicity’s sake.
+
+(For what it’s worth, a quick fio bandwidth test indicates that on my
+test hardware, if anything, this may be a bit better than kicking
+immediately before scheduling a pure nvme_process_completion() BH.  But
+I wouldn’t take more from those results than that it doesn’t really seem
+to matter either way.)
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Hanna Czenczek <hreitz@redhat.com>
+Message-ID: <20251110154854.151484-8-hreitz@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 7a501bbd51941fb1867d78e6b0d1dc69e396b9e2)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ block/nvme.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/block/nvme.c b/block/nvme.c
+index 8df53ee4ca..7ed5f570bc 100644
+--- a/block/nvme.c
++++ b/block/nvme.c
+@@ -481,7 +481,7 @@ static void nvme_trace_command(const NvmeCmd *cmd)
+     }
+ }
+ 
+-static void nvme_deferred_fn(void *opaque)
++static void nvme_kick_and_check_completions(void *opaque)
+ {
+     NVMeQueuePair *q = opaque;
+ 
+@@ -490,6 +490,18 @@ static void nvme_deferred_fn(void *opaque)
+     nvme_process_completion(q);
+ }
+ 
++static void nvme_deferred_fn(void *opaque)
++{
++    NVMeQueuePair *q = opaque;
++
++    if (qemu_get_current_aio_context() == q->s->aio_context) {
++        nvme_kick_and_check_completions(q);
++    } else {
++        aio_bh_schedule_oneshot(q->s->aio_context,
++                                nvme_kick_and_check_completions, q);
++    }
++}
++
+ static void nvme_submit_command(NVMeQueuePair *q, NVMeRequest *req,
+                                 NvmeCmd *cmd, BlockCompletionFunc cb,
+                                 void *opaque)
+-- 
+2.52.0
+

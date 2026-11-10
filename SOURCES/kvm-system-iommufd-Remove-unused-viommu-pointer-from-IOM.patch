@@ -1,0 +1,69 @@
+From aaa21147aa0f3cc4be8c9f161c147400f2847888 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:26 +0100
+Subject: [PATCH 083/111] system/iommufd: Remove unused viommu pointer from
+ IOMMUFDVeventq
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [83/111] f26bf60ada82caf5d5e8cbdcb643ea9e5995dbcf (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+The viommu field is assigned but never used. Callers freeing the
+veventq already have access to the IOMMUFDViommu object through other
+references, so this field is redundant.
+
+Removing it also simplifies upcoming changes where veventq is
+allocated based on the viommu id before the IOMMUFDViommu object is
+created (e.g. vendor CMDQV-based veventq allocation).
+
+No functional change.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-6-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 9e67a50ea91df52858849d0c36891e7a8931c05f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c    | 1 -
+ include/system/iommufd.h | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 4cef487679..70b2581c17 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -553,7 +553,6 @@ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
+     veventq = g_new0(IOMMUFDVeventq, 1);
+     veventq->veventq_id = veventq_id;
+     veventq->veventq_fd = veventq_fd;
+-    veventq->viommu = accel->viommu;
+     accel->veventq = veventq;
+ 
+     /* Set up event handler for veventq fd */
+diff --git a/include/system/iommufd.h b/include/system/iommufd.h
+index 2abb7c9605..4591096c3e 100644
+--- a/include/system/iommufd.h
++++ b/include/system/iommufd.h
+@@ -58,7 +58,6 @@ typedef struct IOMMUFDVdev {
+ 
+ /* Virtual event queue interface for a vIOMMU */
+ typedef struct IOMMUFDVeventq {
+-    IOMMUFDViommu *viommu;
+     uint32_t veventq_id;
+     uint32_t veventq_fd;
+     uint32_t last_event_seq; /* Sequence number of last processed event */
+-- 
+2.52.0
+

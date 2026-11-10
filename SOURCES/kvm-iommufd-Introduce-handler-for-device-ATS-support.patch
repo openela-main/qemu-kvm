@@ -1,0 +1,108 @@
+From 16aab08bd11689bf6dc24007586b7de17b47c517 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 23 Jun 2026 13:49:41 -0700
+Subject: [PATCH 29/30] iommufd: Introduce handler for device ATS support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 508: ATS support backport
+RH-Jira: RHEL-184675
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [1/2] 1cd2956e8fc0254ed437ee63807309803b23b4c6 (rovick1/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-184675
+
+Additional changes: Added IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED to headers.
+
+Introduce a support_ats() handler that returns whether ATS is supported
+for a device associated with a host IOMMU device, checking if the
+IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED capability bit is set.
+
+Implement this handler in a new function for iommufd.
+
+Suggested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Link: https://lore.kernel.org/qemu-devel/20260623204943.989903-2-nathanc@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 6befa5527418bcece6a81adb5e047bae43b733bf)
+Signed-off-by: Rodolfo Vick <rovick@redhat.com>
+---
+ backends/iommufd.c                 | 8 ++++++++
+ include/system/host_iommu_device.h | 9 +++++++++
+ linux-headers/linux/iommufd.h      | 4 ++++
+ 3 files changed, 21 insertions(+)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index e457173da5..3fe18d0fa9 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -633,6 +633,13 @@ static int hiod_iommufd_get_cap(HostIOMMUDevice *hiod, int cap, Error **errp)
+     }
+ }
+ 
++static bool hiod_iommufd_support_ats(HostIOMMUDevice *hiod)
++{
++    HostIOMMUDeviceCaps *caps = &hiod->caps;
++
++    return !(caps->hw_caps & IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED);
++}
++
+ static bool hiod_iommufd_get_pasid_info(HostIOMMUDevice *hiod,
+                                         PasidInfo *pasid_info)
+ {
+@@ -655,6 +662,7 @@ static void hiod_iommufd_class_init(ObjectClass *oc, const void *data)
+ 
+     hiodc->get_cap = hiod_iommufd_get_cap;
+     hiodc->get_pasid_info = hiod_iommufd_get_pasid_info;
++    hiodc->support_ats = hiod_iommufd_support_ats;
+ };
+ 
+ static const TypeInfo types[] = {
+diff --git a/include/system/host_iommu_device.h b/include/system/host_iommu_device.h
+index f000301583..2cb5365340 100644
+--- a/include/system/host_iommu_device.h
++++ b/include/system/host_iommu_device.h
+@@ -133,6 +133,15 @@ struct HostIOMMUDeviceClass {
+      * Returns: true on success, false on failure.
+      */
+     bool (*get_pasid_info)(HostIOMMUDevice *hiod, PasidInfo *pasid_info);
++    /**
++     *  @support_ats: Returns true if ATS can be used by the device,
++     *  false if the host IOMMU reports it is unavailable.
++     *
++     *  @hiod: handle to the host IOMMU device
++     *
++     *  Returns: true if ATS is supported, false otherwise
++     */
++    bool (*support_ats)(HostIOMMUDevice *hiod);
+ };
+ 
+ /*
+diff --git a/linux-headers/linux/iommufd.h b/linux-headers/linux/iommufd.h
+index 384183a403..8ca467b380 100644
+--- a/linux-headers/linux/iommufd.h
++++ b/linux-headers/linux/iommufd.h
+@@ -656,11 +656,15 @@ enum iommu_hw_info_type {
+  * @IOMMU_HW_CAP_PCI_PASID_PRIV: Privileged Mode Supported, user ignores it
+  *                               when the struct
+  *                               iommu_hw_info::out_max_pasid_log2 is zero.
++ * @IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED: ATS is not supported or cannot be used
++ *                                      on this device (absence implies ATS
++ *                                      may be enabled)
+  */
+ enum iommufd_hw_capabilities {
+ 	IOMMU_HW_CAP_DIRTY_TRACKING = 1 << 0,
+ 	IOMMU_HW_CAP_PCI_PASID_EXEC = 1 << 1,
+ 	IOMMU_HW_CAP_PCI_PASID_PRIV = 1 << 2,
++	IOMMU_HW_CAP_PCI_ATS_NOT_SUPPORTED = 1 << 3,
+ };
+ 
+ /**
+-- 
+2.52.0
+

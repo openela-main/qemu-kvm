@@ -1,0 +1,45 @@
+From d98931cdfa112251a5cf4e9bfb6ea8cd12388d43 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:51 +0100
+Subject: [PATCH 038/116] vfio-user/pci.c: update VFIOUserPCIDevice declaration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [22/100] 48c413bd4db7518a99030ec40b2de81f2bf596ba (rovick1/qemu-kvm)
+
+Update the VFIOUserPCIDevice declaration so that it is closer to our coding
+guidelines: add a blank line after the parent object.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-12-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit b458e9e9e4c171622f19df18f5363c7ef4e8697f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/pci.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index dfaa89498d..29cb592e9c 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -21,6 +21,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(VFIOUserPCIDevice, VFIO_USER_PCI)
+ 
+ struct VFIOUserPCIDevice {
+     VFIOPCIDevice device;
++
+     SocketAddress *socket;
+     bool send_queued;   /* all sends are queued */
+     uint32_t wait_time; /* timeout for message replies */
+-- 
+2.52.0
+

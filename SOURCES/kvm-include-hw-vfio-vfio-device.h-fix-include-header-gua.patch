@@ -1,0 +1,53 @@
+From 0ef36c50a10a90628980e19df4affe14deca26b9 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:36 +0100
+Subject: [PATCH 079/116] include/hw/vfio/vfio-device.h: fix include header
+ guard name
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [63/100] e6ec128a610db62fe58971f5b15f01924e74a3a1 (rovick1/qemu-kvm)
+
+The header guard was incorrectly called HW_VFIO_VFIO_COMMON_H instead of
+HW_VFIO_VFIO_DEVICE_H.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-29-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 7c773b4267ae10820ed5e3ec6b15219b39dbcebd)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/hw/vfio/vfio-device.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/include/hw/vfio/vfio-device.h b/include/hw/vfio/vfio-device.h
+index 28047a6339..dac305fc6f 100644
+--- a/include/hw/vfio/vfio-device.h
++++ b/include/hw/vfio/vfio-device.h
+@@ -18,8 +18,8 @@
+  *  Copyright (C) 2008, IBM, Muli Ben-Yehuda (muli@il.ibm.com)
+  */
+ 
+-#ifndef HW_VFIO_VFIO_COMMON_H
+-#define HW_VFIO_VFIO_COMMON_H
++#ifndef HW_VFIO_VFIO_DEVICE_H
++#define HW_VFIO_VFIO_DEVICE_H
+ 
+ #include "system/memory.h"
+ #include "qemu/queue.h"
+@@ -289,4 +289,4 @@ void vfio_device_init(VFIODevice *vbasedev, int type, VFIODeviceOps *ops,
+ int vfio_device_get_aw_bits(VFIODevice *vdev);
+ 
+ void vfio_kvm_device_close(void);
+-#endif /* HW_VFIO_VFIO_COMMON_H */
++#endif /* HW_VFIO_VFIO_DEVICE_H */
+-- 
+2.52.0
+

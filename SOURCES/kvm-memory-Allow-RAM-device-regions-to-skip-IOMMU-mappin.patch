@@ -1,0 +1,148 @@
+From 38481d1bcb08e5652e949ce60ba5dd46e95dc766 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:41 +0100
+Subject: [PATCH 099/111] memory: Allow RAM device regions to skip IOMMU
+ mapping
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [99/111] 0f2dac574eb1c2042ca4f0c2ea22e5493f6dc174 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Conflicts: system/memory.c. We don't have 5a525dcb4d60
+("system/memory: Constify various MemoryRegion arguments") so
+we get a contextual conflict wrt memory_region_has_guest_memfd
+which does not take a const MemoryRegion * arg downstream. Also
+forced to remove the const for memory_region_skip_iommu_map().
+Also impacts include/system/memory.h declaration.
+5a525dcb4d60 would draw more dependencies so better to skip it.
+
+Some RAM device regions created with memory_region_init_ram_device_ptr()
+are not intended to be P2P DMA targets.
+
+The VFIO listener currently treats all RAM device regions as DMA
+capable and attempts to map them into the IOMMU. For regions without
+dma-buf backing this fails and prints warnings such as:
+
+  IOMMU_IOAS_MAP failed: Bad address, PCI BAR?
+
+Introduce a MemoryRegion flag (ram_device_skip_iommu_map) to mark RAM
+device regions that should not be IOMMU mapped, paired with
+memory_region_skip_iommu_map() / memory_region_set_skip_iommu_map()
+accessors. When the flag is set, the VFIO listener skips DMA mapping
+for that region.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260609112552.378999-21-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 11b9798c7b524762b98ea62b1c3fbc6304699784)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/listener.c      |  6 ++++++
+ hw/vfio/trace-events    |  1 +
+ include/system/memory.h | 21 +++++++++++++++++++++
+ system/memory.c         | 10 ++++++++++
+ 4 files changed, 38 insertions(+)
+
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index afcf518f56..60249a7252 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -609,6 +609,12 @@ void vfio_container_region_add(VFIOContainer *bcontainer,
+         }
+     }
+ 
++    if (memory_region_skip_iommu_map(section->mr)) {
++        trace_vfio_listener_region_skip_dma_map(memory_region_name(section->mr),
++                                                iova, int128_get64(llsize));
++        return;
++    }
++
+     ret = vfio_container_dma_map(bcontainer, iova, int128_get64(llsize),
+                                  vaddr, section->readonly, section->mr);
+     if (ret) {
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index 82abfc99ae..d98fa5cefb 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -100,6 +100,7 @@ vfio_listener_region_del_iommu(const char *name) "region_del [iommu] %s"
+ vfio_listener_region_add_ram(uint64_t iova_start, uint64_t iova_end, void *vaddr) "region_add [ram] 0x%"PRIx64" - 0x%"PRIx64" [%p]"
+ vfio_known_safe_misalignment(const char *name, uint64_t iova, uint64_t offset_within_region, uintptr_t page_size) "Region \"%s\" iova=0x%"PRIx64" offset_within_region=0x%"PRIx64" qemu_real_host_page_size=0x%"PRIxPTR
+ vfio_listener_region_add_no_dma_map(const char *name, uint64_t iova, uint64_t size, uint64_t page_size) "Region \"%s\" 0x%"PRIx64" size=0x%"PRIx64" is not aligned to 0x%"PRIx64" and cannot be mapped for DMA"
++vfio_listener_region_skip_dma_map(const char *name, uint64_t iova, uint64_t size) "Region \"%s\" 0x%"PRIx64" size=0x%"PRIx64" marked to skip IOMMU mapping"
+ vfio_listener_region_del(uint64_t start, uint64_t end) "region_del 0x%"PRIx64" - 0x%"PRIx64
+ vfio_device_dirty_tracking_update(uint64_t start, uint64_t end, uint64_t min, uint64_t max) "section 0x%"PRIx64" - 0x%"PRIx64" -> update [0x%"PRIx64" - 0x%"PRIx64"]"
+ vfio_device_dirty_tracking_start(int nr_ranges, uint64_t min32, uint64_t max32, uint64_t min64, uint64_t max64, uint64_t minpci, uint64_t maxpci) "nr_ranges %d 32:[0x%"PRIx64" - 0x%"PRIx64"], 64:[0x%"PRIx64" - 0x%"PRIx64"], pci64:[0x%"PRIx64" - 0x%"PRIx64"]"
+diff --git a/include/system/memory.h b/include/system/memory.h
+index 4913206c8c..8e60f03d44 100644
+--- a/include/system/memory.h
++++ b/include/system/memory.h
+@@ -866,6 +866,8 @@ struct MemoryRegion {
+ 
+     /* For devices designed to perform re-entrant IO into their own IO MRs */
+     bool disable_reentrancy_guard;
++    /* RAM device region that does not require IOMMU mapping for P2P */
++    bool ram_device_skip_iommu_map;
+ };
+ 
+ struct IOMMUMemoryRegion {
+@@ -1821,6 +1823,25 @@ static inline bool memory_region_is_romd(MemoryRegion *mr)
+  */
+ bool memory_region_is_protected(MemoryRegion *mr);
+ 
++/**
++ * memory_region_skip_iommu_map: check whether a memory region is excluded
++ *                               from IOMMU mapping
++ *
++ * Returns %true if @mr is a RAM device region marked to skip IOMMU mapping.
++ *
++ * @mr: the memory region being queried
++ */
++bool memory_region_skip_iommu_map(MemoryRegion *mr);
++
++/**
++ * memory_region_set_skip_iommu_map: mark a RAM device region to skip IOMMU
++ *                                   mapping
++ *
++ * @mr: the memory region being modified
++ * @skip: %true to skip IOMMU mapping, %false to allow it
++ */
++void memory_region_set_skip_iommu_map(MemoryRegion *mr, bool skip);
++
+ /**
+  * memory_region_has_guest_memfd: check whether a memory region has guest_memfd
+  *     associated
+diff --git a/system/memory.c b/system/memory.c
+index 5646547940..bdd53369a9 100644
+--- a/system/memory.c
++++ b/system/memory.c
+@@ -1875,6 +1875,16 @@ bool memory_region_is_protected(MemoryRegion *mr)
+     return mr->ram && (mr->ram_block->flags & RAM_PROTECTED);
+ }
+ 
++bool memory_region_skip_iommu_map(MemoryRegion *mr)
++{
++    return memory_region_is_ram_device(mr) && mr->ram_device_skip_iommu_map;
++}
++
++void memory_region_set_skip_iommu_map(MemoryRegion *mr, bool skip)
++{
++    mr->ram_device_skip_iommu_map = skip;
++}
++
+ bool memory_region_has_guest_memfd(MemoryRegion *mr)
+ {
+     return mr->ram_block && mr->ram_block->guest_memfd >= 0;
+-- 
+2.52.0
+

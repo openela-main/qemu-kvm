@@ -1,0 +1,68 @@
+From d3c16be7233df4e4103cb048f392d4cb1ffa6e53 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Fri, 10 Apr 2026 17:23:13 +0200
+Subject: [PATCH 42/52] block: Create DEFAULT_BLOCK_CONF macro
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [35/45] 8794cac427709a1462918bad08b4f135911b3c1b (kmwolf/centos-qemu-kvm)
+
+The property default values from include/hw/block/block.h were
+duplicated in scsi_bus_legacy_handle_cmdline(), allowing them to go out
+of sync easily. There doesn't seem a good way to avoid the duplication,
+but moving them next to each other in the header file should help to
+avoid this problem in the future.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260410152314.86412-2-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit a1310cc6281d22ac948f4aa198dcc55d58fc039d)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/scsi/scsi-bus.c       | 7 +------
+ include/hw/block/block.h | 7 +++++++
+ 2 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/hw/scsi/scsi-bus.c b/hw/scsi/scsi-bus.c
+index 878ccf62c9..88373d957f 100644
+--- a/hw/scsi/scsi-bus.c
++++ b/hw/scsi/scsi-bus.c
+@@ -485,12 +485,7 @@ void scsi_bus_legacy_handle_cmdline(SCSIBus *bus)
+     Location loc;
+     DriveInfo *dinfo;
+     int unit;
+-    BlockConf conf = {
+-        .bootindex = -1,
+-        .share_rw = false,
+-        .rerror = BLOCKDEV_ON_ERROR_AUTO,
+-        .werror = BLOCKDEV_ON_ERROR_AUTO,
+-    };
++    BlockConf conf = DEFAULT_BLOCK_CONF;
+ 
+     loc_push_none(&loc);
+     for (unit = 0; unit <= bus->info->max_target; unit++) {
+diff --git a/include/hw/block/block.h b/include/hw/block/block.h
+index b4d914624e..7da643faff 100644
+--- a/include/hw/block/block.h
++++ b/include/hw/block/block.h
+@@ -51,6 +51,13 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
+     return exp;
+ }
+ 
++#define DEFAULT_BLOCK_CONF (BlockConf) {                                \
++    .bootindex = -1,                                                    \
++    .share_rw = false,                                                  \
++    .rerror = BLOCKDEV_ON_ERROR_AUTO,                                   \
++    .werror = BLOCKDEV_ON_ERROR_AUTO,                                   \
++}
++
+ #define DEFINE_BLOCK_PROPERTIES_BASE(_state, _conf)                     \
+     DEFINE_PROP_ON_OFF_AUTO("backend_defaults", _state,                 \
+                             _conf.backend_defaults, ON_OFF_AUTO_AUTO),  \
+-- 
+2.52.0
+

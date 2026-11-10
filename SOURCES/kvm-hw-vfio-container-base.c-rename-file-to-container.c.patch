@@ -1,0 +1,50 @@
+From c02ac939008f965072aeeba93c540fcedbd85422 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:14 +0100
+Subject: [PATCH 056/116] hw/vfio/container-base.c: rename file to container.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [40/100] dfbd85fffb2e87d12dc0e426c5b7e054b02ab6a5 (rovick1/qemu-kvm)
+
+Rename the file to reflect the previous rename of VFIOContainerBase to
+VFIOContainer.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-7-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit dcce51b19385ea65ac6db295204716a9eb311fbf)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/{container-base.c => container.c} | 0
+ hw/vfio/meson.build                       | 2 +-
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+ rename hw/vfio/{container-base.c => container.c} (100%)
+
+diff --git a/hw/vfio/container-base.c b/hw/vfio/container.c
+similarity index 100%
+rename from hw/vfio/container-base.c
+rename to hw/vfio/container.c
+diff --git a/hw/vfio/meson.build b/hw/vfio/meson.build
+index 62b7a7eaac..82f68698fb 100644
+--- a/hw/vfio/meson.build
++++ b/hw/vfio/meson.build
+@@ -3,7 +3,7 @@
+ vfio_ss = ss.source_set()
+ vfio_ss.add(files(
+   'listener.c',
+-  'container-base.c',
++  'container.c',
+   'container-legacy.c',
+   'helpers.c',
+ ))
+-- 
+2.52.0
+

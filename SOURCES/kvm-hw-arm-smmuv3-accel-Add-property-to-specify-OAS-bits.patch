@@ -1,0 +1,183 @@
+From 49c01e7b1f196b1251bbf6e3a993d662bd60b2a3 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 039/111] hw/arm/smmuv3-accel: Add property to specify OAS bits
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [39/111] db95cb3ea63f5ab2bdf80fccdf7f8baa4c81cc17 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+QEMU SMMUv3 currently sets the output address size (OAS) to 44 bits.
+With accelerator mode enabled, a device may use SVA, where CPU page tables
+are shared with the SMMU, requiring an OAS at least as large as the
+CPU’s output address size. A user option is added to configure this.
+
+However, the OAS value advertised by the virtual SMMU must remain
+compatible with the capabilities of the host SMMUv3. In accelerated
+mode, the host SMMU performs stage-2 translation and must be able to
+consume the intermediate physical addresses (IPA) produced by stage-1.
+
+The OAS exposed by the virtual SMMU defines the maximum IPA width that
+stage-1 translations may generate. For AArch64 implementations, the
+maximum usable IPA size on the host SMMU is determined by its own OAS.
+Check that the configured OAS does not exceed what the host SMMU
+can safely support.
+
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-32-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit a015ac990fd31bd4c93ce430aa4fce19dbfa49f8)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c          | 22 ++++++++++++++++++++++
+ hw/arm/smmuv3.c                | 16 +++++++++++++++-
+ include/hw/arm/smmuv3-common.h |  5 ++++-
+ include/hw/arm/smmuv3.h        |  1 +
+ 4 files changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index a97abc1f79..ea420afeb7 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -27,6 +27,14 @@
+ static MemoryRegion root, sysmem;
+ static AddressSpace *shared_as_sysmem;
+ 
++static int smmuv3_oas_bits(uint32_t oas)
++{
++    static const int map[] = { 32, 36, 40, 42, 44, 48, 52, 56 };
++
++    g_assert(oas < ARRAY_SIZE(map));
++    return map[oas];
++}
++
+ static bool
+ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+                                  struct iommu_hw_info_arm_smmuv3 *info,
+@@ -74,6 +82,15 @@ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+         error_setg(errp, "Host SMMUv3 doesn't support Range Invalidation");
+         return false;
+     }
++    /* Check OAS value opted is compatible with Host SMMUv3 IPA */
++    if (FIELD_EX32(info->idr[5], IDR5, OAS) <
++                FIELD_EX32(s->idr[5], IDR5, OAS)) {
++        error_setg(errp, "Host SMMUv3 supports only %d-bit IPA, but the vSMMU "
++                   "OAS implies %d-bit IPA",
++                   smmuv3_oas_bits(FIELD_EX32(info->idr[5], IDR5, OAS)),
++                   smmuv3_oas_bits(FIELD_EX32(s->idr[5], IDR5, OAS)));
++        return false;
++    }
+ 
+     /* QEMU SMMUv3 supports GRAN4K/GRAN16K/GRAN64K translation granules */
+     if (FIELD_EX32(info->idr[5], IDR5, GRAN4K) !=
+@@ -657,6 +674,11 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+ 
+     /* QEMU SMMUv3 has no ATS. Advertise ATS if opt-in by property */
+     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATS, s->ats);
++
++    /* Advertise 48-bit OAS in IDR5 when requested (default is 44 bits). */
++    if (s->oas == SMMU_OAS_48BIT) {
++        s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS_48);
++    }
+ }
+ 
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index ead0785b2b..ef75a9bec0 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -299,7 +299,8 @@ static void smmuv3_init_id_regs(SMMUv3State *s)
+     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, 1);
+     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, BBML, 2);
+ 
+-    s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS); /* 44 bits */
++    /* OAS: 44 bits */
++    s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS_44);
+     /* 4K, 16K and 64K granule support */
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN4K, 1);
+     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN16K, 1);
+@@ -1949,6 +1950,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+             error_setg(errp, "ats can only be enabled if accel=on");
+             return false;
+         }
++        if (s->oas != SMMU_OAS_44BIT) {
++            error_setg(errp, "OAS must be 44 bits when accel=off");
++            return false;
++        }
+         return true;
+     }
+ 
+@@ -1959,6 +1964,11 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         return false;
+     }
+ 
++    if (s->oas != SMMU_OAS_44BIT && s->oas != SMMU_OAS_48BIT) {
++        error_setg(errp, "OAS can only be set to 44 or 48 bits");
++        return false;
++    }
++
+     return true;
+ }
+ 
+@@ -2085,6 +2095,7 @@ static const Property smmuv3_properties[] = {
+     /* RIL can be turned off for accel cases */
+     DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
+     DEFINE_PROP_BOOL("ats", SMMUv3State, ats, false),
++    DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2115,6 +2126,9 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+     object_class_property_set_description(klass, "ats",
+         "Enable/disable ATS support (for accel=on). Please ensure host "
+         "platform has ATS support before enabling this");
++    object_class_property_set_description(klass, "oas",
++        "Specify Output Address Size (for accel=on). Supported values "
++        "are 44 or 48 bits. Defaults to 44 bits");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index 4d8af5736a..bc2d49ef4e 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -342,7 +342,10 @@ REG32(IDR5,                0x14)
+      FIELD(IDR5, VAX,        10, 2);
+      FIELD(IDR5, STALL_MAX,  16, 16);
+ 
+-#define SMMU_IDR5_OAS 4
++#define SMMU_OAS_44BIT 44
++#define SMMU_OAS_48BIT 48
++#define SMMU_IDR5_OAS_44 4
++#define SMMU_IDR5_OAS_48 5
+ 
+ REG32(IIDR,                0x18)
+ REG32(AIDR,                0x1c)
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 242d6429ed..d488a39cd0 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -71,6 +71,7 @@ struct SMMUv3State {
+     Error *migration_blocker;
+     bool ril;
+     bool ats;
++    uint8_t oas;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

@@ -1,0 +1,301 @@
+From c059aad1f8421066b0d7b3e48da8e75f7bad5de6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 18:29:11 +0000
+Subject: [PATCH 24/30] crypto: avoid loading the CA certs twice
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [23/27] 0cc29b2a69da63e04bfc69700af804a277836e57 (berrange/centos-src-qemu)
+
+The x509 TLS credentials code will load the CA certs once to perform
+sanity chcking on the certs, then discard the certificate objects
+and let gnutls load them a second time.
+
+This introduces a new QCryptoTLSCredsX509Files struct which will
+hold the CA certificates loaded for sanity checking and pass them on
+to gnutls, avoiding the duplicated loading.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit aeac275c114b52151642488dfcc7894631256289)
+---
+ crypto/tlscredsx509.c | 141 ++++++++++++++++++++++++++----------------
+ 1 file changed, 87 insertions(+), 54 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index e28fcdc6ff..911942a1a1 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -40,6 +40,35 @@ struct QCryptoTLSCredsX509 {
+ #include <gnutls/x509.h>
+ 
+ 
++typedef struct QCryptoTLSCredsX509Files QCryptoTLSCredsX509Files;
++struct QCryptoTLSCredsX509Files {
++    char *cacertpath;
++    gnutls_x509_crt_t *cacerts;
++    unsigned int ncacerts;
++};
++
++static QCryptoTLSCredsX509Files *
++qcrypto_tls_creds_x509_files_new(void)
++{
++    return g_new0(QCryptoTLSCredsX509Files, 1);
++}
++
++
++static void
++qcrypto_tls_creds_x509_files_free(QCryptoTLSCredsX509Files *files)
++{
++    size_t i;
++    for (i = 0; i < files->ncacerts; i++) {
++        gnutls_x509_crt_deinit(files->cacerts[i]);
++    }
++    g_free(files->cacerts);
++    g_free(files->cacertpath);
++    g_free(files);
++}
++
++G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoTLSCredsX509Files,
++                              qcrypto_tls_creds_x509_files_free);
++
+ static int
+ qcrypto_tls_creds_check_cert_times(gnutls_x509_crt_t cert,
+                                    const char *certFile,
+@@ -315,11 +344,9 @@ qcrypto_tls_creds_check_cert(QCryptoTLSCredsX509 *creds,
+ 
+ static int
+ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
++                                        QCryptoTLSCredsX509Files *files,
+                                         gnutls_x509_crt_t *certs,
+                                         unsigned int ncerts,
+-                                        gnutls_x509_crt_t *cacerts,
+-                                        unsigned int ncacerts,
+-                                        const char *cacertFile,
+                                         bool isServer,
+                                         Error **errp)
+ {
+@@ -360,13 +387,13 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+              * reached the root of trust.
+              */
+             return qcrypto_tls_creds_check_cert(
+-                creds, cert_to_check, cacertFile,
++                creds, cert_to_check, files->cacertpath,
+                 isServer, true, errp);
+         }
+-        for (int i = 0; i < ncacerts; i++) {
++        for (int i = 0; i < files->ncacerts; i++) {
+             if (gnutls_x509_crt_check_issuer(cert_to_check,
+-                                             cacerts[i])) {
+-                cert_issuer = cacerts[i];
++                                             files->cacerts[i])) {
++                cert_issuer = files->cacerts[i];
+                 break;
+             }
+         }
+@@ -374,7 +401,7 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+             break;
+         }
+ 
+-        if (qcrypto_tls_creds_check_cert(creds, cert_issuer, cacertFile,
++        if (qcrypto_tls_creds_check_cert(creds, cert_issuer, files->cacertpath,
+                                          isServer, true, errp) < 0) {
+             return -1;
+         }
+@@ -394,19 +421,17 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+ }
+ 
+ static int
+-qcrypto_tls_creds_check_cert_pair(gnutls_x509_crt_t *certs,
++qcrypto_tls_creds_check_cert_pair(QCryptoTLSCredsX509Files *files,
++                                  gnutls_x509_crt_t *certs,
+                                   size_t ncerts,
+                                   const char *certFile,
+-                                  gnutls_x509_crt_t *cacerts,
+-                                  size_t ncacerts,
+-                                  const char *cacertFile,
+                                   bool isServer,
+                                   Error **errp)
+ {
+     unsigned int status;
+ 
+     if (gnutls_x509_crt_list_verify(certs, ncerts,
+-                                    cacerts, ncacerts,
++                                    files->cacerts, files->ncacerts,
+                                     NULL, 0,
+                                     0, &status) < 0) {
+         error_setg(errp, isServer ?
+@@ -414,7 +439,7 @@ qcrypto_tls_creds_check_cert_pair(gnutls_x509_crt_t *certs,
+                    "CA certificate %s" :
+                    "Unable to verify client certificate %s against "
+                    "CA certificate %s",
+-                   certFile, cacertFile);
++                   certFile, files->cacertpath);
+         return -1;
+     }
+ 
+@@ -439,7 +464,7 @@ qcrypto_tls_creds_check_cert_pair(gnutls_x509_crt_t *certs,
+ 
+         error_setg(errp,
+                    "Our own certificate %s failed validation against %s: %s",
+-                   certFile, cacertFile, reason);
++                   certFile, files->cacertpath, reason);
+         return -1;
+     }
+ 
+@@ -490,15 +515,13 @@ qcrypto_tls_creds_load_cert_list(QCryptoTLSCredsX509 *creds,
+ 
+ static int
+ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
++                                    QCryptoTLSCredsX509Files *files,
+                                     bool isServer,
+-                                    const char *cacertFile,
+                                     const char *certFile,
+                                     Error **errp)
+ {
+     gnutls_x509_crt_t *certs = NULL;
+     unsigned int ncerts = 0;
+-    gnutls_x509_crt_t *cacerts = NULL;
+-    unsigned int ncacerts = 0;
+     size_t i;
+     int ret = -1;
+ 
+@@ -514,16 +537,6 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+         }
+     }
+ 
+-    if (qcrypto_tls_creds_load_cert_list(creds,
+-                                         cacertFile,
+-                                         &cacerts,
+-                                         &ncacerts,
+-                                         isServer,
+-                                         true,
+-                                         errp) < 0) {
+-        goto cleanup;
+-    }
+-
+     for (i = 0; i < ncerts; i++) {
+         if (qcrypto_tls_creds_check_cert(creds,
+                                          certs[i], certFile,
+@@ -533,17 +546,14 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+     }
+ 
+     if (ncerts &&
+-        qcrypto_tls_creds_check_authority_chain(creds,
++        qcrypto_tls_creds_check_authority_chain(creds, files,
+                                                 certs, ncerts,
+-                                                cacerts, ncacerts,
+-                                                cacertFile, isServer,
+-                                                errp) < 0) {
++                                                isServer, errp) < 0) {
+         goto cleanup;
+     }
+ 
+-    if (ncerts && ncacerts &&
+-        qcrypto_tls_creds_check_cert_pair(certs, ncerts, certFile,
+-                                          cacerts, ncacerts, cacertFile,
++    if (ncerts &&
++        qcrypto_tls_creds_check_cert_pair(files, certs, ncerts, certFile,
+                                           isServer, errp) < 0) {
+         goto cleanup;
+     }
+@@ -555,21 +565,53 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+         gnutls_x509_crt_deinit(certs[i]);
+     }
+     g_free(certs);
+-    for (i = 0; i < ncacerts; i++) {
+-        gnutls_x509_crt_deinit(cacerts[i]);
+-    }
+-    g_free(cacerts);
+ 
+     return ret;
+ }
+ 
+ 
++static int
++qcrypto_tls_creds_x509_load_ca(QCryptoTLSCredsX509 *creds,
++                               QCryptoTLSCredsBox *box,
++                               QCryptoTLSCredsX509Files *files,
++                               bool isServer,
++                               Error **errp)
++{
++    int ret;
++
++    if (qcrypto_tls_creds_get_path(&creds->parent_obj,
++                                   QCRYPTO_TLS_CREDS_X509_CA_CERT,
++                                   true, &files->cacertpath, errp) < 0) {
++        return -1;
++    }
++
++    if (qcrypto_tls_creds_load_cert_list(creds,
++                                         files->cacertpath,
++                                         &files->cacerts,
++                                         &files->ncacerts,
++                                         isServer,
++                                         true,
++                                         errp) < 0) {
++        return -1;
++    }
++
++    ret = gnutls_certificate_set_x509_trust(box->data.cert,
++                                            files->cacerts, files->ncacerts);
++    if (ret < 0) {
++        error_setg(errp, "Cannot set CA certificate '%s': %s",
++                   files->cacertpath, gnutls_strerror(ret));
++        return -1;
++    }
++
++    return 0;
++}
++
+ static int
+ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+                             Error **errp)
+ {
+     g_autoptr(QCryptoTLSCredsBox) box = NULL;
+-    g_autofree char *cacert = NULL;
++    g_autoptr(QCryptoTLSCredsX509Files) files = NULL;
+     g_autofree char *cacrl = NULL;
+     g_autofree char *cert = NULL;
+     g_autofree char *key = NULL;
+@@ -598,9 +640,9 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+         return -1;
+     }
+ 
+-    if (qcrypto_tls_creds_get_path(&creds->parent_obj,
+-                                   QCRYPTO_TLS_CREDS_X509_CA_CERT,
+-                                   true, &cacert, errp) < 0) {
++    files = qcrypto_tls_creds_x509_files_new();
++
++    if (qcrypto_tls_creds_x509_load_ca(creds, box, files, isServer, errp) < 0) {
+         return -1;
+     }
+ 
+@@ -631,17 +673,8 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+     }
+ 
+     if (creds->sanityCheck &&
+-        qcrypto_tls_creds_x509_sanity_check(creds, isServer,
+-                                            cacert, cert, errp) < 0) {
+-        return -1;
+-    }
+-
+-    ret = gnutls_certificate_set_x509_trust_file(box->data.cert,
+-                                                 cacert,
+-                                                 GNUTLS_X509_FMT_PEM);
+-    if (ret < 0) {
+-        error_setg(errp, "Cannot load CA certificate '%s': %s",
+-                   cacert, gnutls_strerror(ret));
++        qcrypto_tls_creds_x509_sanity_check(creds, files, isServer,
++                                            cert, errp) < 0) {
+         return -1;
+     }
+ 
+-- 
+2.52.0
+

@@ -1,0 +1,82 @@
+From 7743a6caf368f97cbd1afd0bcd3a48e0cab718e9 Mon Sep 17 00:00:00 2001
+From: John Levon <john.levon@nutanix.com>
+Date: Wed, 3 Dec 2025 15:33:11 +0530
+Subject: [PATCH 107/116] vfio-user: simplify vfio_user_process()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [91/100] 0ed846d289b58aae4610e3848cce58447e23cebb (rovick1/qemu-kvm)
+
+It can figure out if it's a reply by itself, rather than passing that
+information in.
+
+Signed-off-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Link: https://lore.kernel.org/qemu-devel/20251203100316.3604456-2-john.levon@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit a8731f691df2bd9efd041d836ece27e3173555f2)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/proxy.c | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/hw/vfio-user/proxy.c b/hw/vfio-user/proxy.c
+index bbd7ec243d..75845d7c89 100644
+--- a/hw/vfio-user/proxy.c
++++ b/hw/vfio-user/proxy.c
+@@ -147,8 +147,7 @@ VFIOUserFDs *vfio_user_getfds(int numfds)
+ /*
+  * Process a received message.
+  */
+-static void vfio_user_process(VFIOUserProxy *proxy, VFIOUserMsg *msg,
+-                              bool isreply)
++static void vfio_user_process(VFIOUserProxy *proxy, VFIOUserMsg *msg)
+ {
+ 
+     /*
+@@ -157,7 +156,7 @@ static void vfio_user_process(VFIOUserProxy *proxy, VFIOUserMsg *msg,
+      *
+      * Requests get queued for the BH.
+      */
+-    if (isreply) {
++    if ((msg->hdr->flags & VFIO_USER_TYPE) == VFIO_USER_REPLY) {
+         msg->complete = true;
+         if (msg->type == VFIO_MSG_WAIT) {
+             qemu_cond_signal(&msg->cv);
+@@ -187,7 +186,6 @@ static int vfio_user_complete(VFIOUserProxy *proxy, Error **errp)
+ {
+     VFIOUserMsg *msg = proxy->part_recv;
+     size_t msgleft = proxy->recv_left;
+-    bool isreply;
+     char *data;
+     int ret;
+ 
+@@ -214,8 +212,7 @@ static int vfio_user_complete(VFIOUserProxy *proxy, Error **errp)
+      */
+     proxy->part_recv = NULL;
+     proxy->recv_left = 0;
+-    isreply = (msg->hdr->flags & VFIO_USER_TYPE) == VFIO_USER_REPLY;
+-    vfio_user_process(proxy, msg, isreply);
++    vfio_user_process(proxy, msg);
+ 
+     /* return positive value */
+     return 1;
+@@ -381,7 +378,7 @@ static int vfio_user_recv_one(VFIOUserProxy *proxy, Error **errp)
+         data += ret;
+     }
+ 
+-    vfio_user_process(proxy, msg, isreply);
++    vfio_user_process(proxy, msg);
+     return 0;
+ 
+     /*
+-- 
+2.52.0
+

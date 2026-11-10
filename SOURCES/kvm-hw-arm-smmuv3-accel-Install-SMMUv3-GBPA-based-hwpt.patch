@@ -1,0 +1,134 @@
+From b95cb9924294da296caddfcd37ad15ea45f0d86c Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 023/111] hw/arm/smmuv3-accel: Install SMMUv3 GBPA based hwpt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [23/111] 6efcc61bf304eb1ab554334c20a963121b33108c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+On guest reboot or on GBPA update, attach a nested HWPT based on the
+GPBA.ABORT bit which either aborts all incoming transactions or bypasses
+them.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-16-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit b6b867b9c16d479af0ba95ac71411a0ff788220a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 36 ++++++++++++++++++++++++++++++++++++
+ hw/arm/smmuv3-accel.h |  9 +++++++++
+ hw/arm/smmuv3.c       |  2 ++
+ 3 files changed, 47 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 877b7e0e17..c125974d12 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -499,6 +499,42 @@ static const PCIIOMMUOps smmuv3_accel_ops = {
+     .unset_iommu_device = smmuv3_accel_unset_iommu_device,
+ };
+ 
++/* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
++bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
++{
++    SMMUv3AccelState *accel = s->s_accel;
++    SMMUv3AccelDevice *accel_dev;
++    Error *local_err = NULL;
++    bool all_ok = true;
++    uint32_t hwpt_id;
++
++    if (!accel || !accel->viommu) {
++        return true;
++    }
++
++    hwpt_id = smmuv3_accel_gbpa_hwpt(s, accel);
++    QLIST_FOREACH(accel_dev, &accel->device_list, next) {
++        if (!host_iommu_device_iommufd_attach_hwpt(accel_dev->idev, hwpt_id,
++                                                   &local_err)) {
++            error_append_hint(&local_err, "Failed to attach GBPA hwpt %u for "
++                              "idev devid %u", hwpt_id, accel_dev->idev->devid);
++            error_report_err(local_err);
++            local_err = NULL;
++            all_ok = false;
++        }
++    }
++    if (!all_ok) {
++        error_setg(errp, "Failed to attach all GBPA based HWPTs properly");
++    }
++    return all_ok;
++}
++
++void smmuv3_accel_reset(SMMUv3State *s)
++{
++     /* Attach a HWPT based on GBPA reset value */
++     smmuv3_accel_attach_gbpa_hwpt(s, NULL);
++}
++
+ static void smmuv3_accel_as_init(SMMUv3State *s)
+ {
+ 
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index 4e20b646dc..c7ed4dce3a 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -46,6 +46,8 @@ bool smmuv3_accel_install_ste(SMMUv3State *s, SMMUDevice *sdev, int sid,
+                               Error **errp);
+ bool smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+                                     Error **errp);
++bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp);
++void smmuv3_accel_reset(SMMUv3State *s);
+ #else
+ static inline void smmuv3_accel_init(SMMUv3State *s)
+ {
+@@ -62,6 +64,13 @@ smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+ {
+     return true;
+ }
++static inline bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
++{
++    return true;
++}
++static inline void smmuv3_accel_reset(SMMUv3State *s)
++{
++}
+ #endif
+ 
+ #endif /* HW_ARM_SMMUV3_ACCEL_H */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index bfb41b8866..42c60b1ec8 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1600,6 +1600,7 @@ static MemTxResult smmu_writel(SMMUv3State *s, hwaddr offset,
+         if (data & R_GBPA_UPDATE_MASK) {
+             /* Ignore update bit as write is synchronous. */
+             s->gbpa = data & ~R_GBPA_UPDATE_MASK;
++            smmuv3_accel_attach_gbpa_hwpt(s, &local_err);
+         }
+         break;
+     case A_STRTAB_BASE: /* 64b */
+@@ -1887,6 +1888,7 @@ static void smmu_reset_exit(Object *obj, ResetType type)
+     }
+ 
+     smmuv3_init_regs(s);
++    smmuv3_accel_reset(s);
+ }
+ 
+ static void smmu_realize(DeviceState *d, Error **errp)
+-- 
+2.52.0
+

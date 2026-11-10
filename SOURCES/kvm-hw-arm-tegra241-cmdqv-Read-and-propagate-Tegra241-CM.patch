@@ -1,0 +1,165 @@
+From 89fb1af579e19967cb0af6e779827a526ca9598a Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:44 +0100
+Subject: [PATCH 102/111] hw/arm/tegra241-cmdqv: Read and propagate Tegra241
+ CMDQV errors
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [102/111] b4f1bb2a739a357cdf2b145c0be5a93c9b771171 (eauger1/centos-qemu-kvm)
+
+Conflicts: hw/core/irq.h replaced by hw/irq.h in hw/arm/tegra241-cmdqv.c
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Install an event handler on the CMDQV vEVENTQ fd to read and propagate
+host received CMDQV errors to the guest.
+
+The handler runs in QEMU's main loop, using a non-blocking fd registered
+via qemu_set_fd_handler().
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-24-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 1de52612f3ff339598b8c19ee5caa563a371a323)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 63 +++++++++++++++++++++++++++++++++++++++++
+ hw/arm/trace-events     |  1 +
+ 2 files changed, 64 insertions(+)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 7264b4bfa9..71d02ae740 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -12,6 +12,7 @@
+ 
+ #include "hw/arm/smmuv3.h"
+ #include "hw/arm/smmuv3-common.h"
++#include "hw/irq.h"
+ #include "smmuv3-accel.h"
+ #include "tegra241-cmdqv.h"
+ #include "trace.h"
+@@ -729,6 +730,51 @@ out:
+     trace_tegra241_cmdqv_write_mmio(offset, value, size);
+ }
+ 
++static void tegra241_cmdqv_event_read(void *opaque)
++{
++    Tegra241CMDQV *cmdqv = opaque;
++    IOMMUFDVeventq *veventq = cmdqv->veventq;
++    struct {
++        struct iommufd_vevent_header hdr;
++        struct iommu_vevent_tegra241_cmdqv vevent;
++    } buf;
++    Error *local_err = NULL;
++
++    if (!smmuv3_accel_event_read_validate(veventq,
++                                          IOMMU_VEVENTQ_TYPE_TEGRA241_CMDQV,
++                                          &buf, sizeof(buf), &local_err)) {
++        warn_report_err_once(local_err);
++        return;
++    }
++
++    if (buf.vevent.lvcmdq_err_map[0] || buf.vevent.lvcmdq_err_map[1]) {
++        cmdqv->vintf_cmdq_err_map[0] =
++            extract64(buf.vevent.lvcmdq_err_map[0], 0, 32);
++        cmdqv->vintf_cmdq_err_map[1] =
++            extract64(buf.vevent.lvcmdq_err_map[0], 32, 32);
++        cmdqv->vintf_cmdq_err_map[2] =
++            extract64(buf.vevent.lvcmdq_err_map[1], 0, 32);
++        cmdqv->vintf_cmdq_err_map[3] =
++            extract64(buf.vevent.lvcmdq_err_map[1], 32, 32);
++        /*
++         * CMDQV_CMDQ_ERR_MAP and VINTF0_LVCMDQ_ERR_MAP are distinct
++         * registers (different MMIO offsets). With only VINTF0 exposed
++         * they carry the same data, so mirror.
++         */
++        for (int i = 0; i < 4; i++) {
++            cmdqv->cmdq_err_map[i] = cmdqv->vintf_cmdq_err_map[i];
++        }
++        /* Set the VINTF0 bit in VI_ERR_MAP_0 (only VINTF0 is exposed). */
++        cmdqv->vi_err_map[0] |= BIT(0);
++        if (!(cmdqv->vi_int_mask[0] & BIT(0))) {
++            qemu_irq_pulse(cmdqv->irq);
++        }
++        trace_tegra241_cmdqv_err_map(
++            cmdqv->vintf_cmdq_err_map[3], cmdqv->vintf_cmdq_err_map[2],
++            cmdqv->vintf_cmdq_err_map[1], cmdqv->vintf_cmdq_err_map[0]);
++    }
++}
++
+ static void tegra241_cmdqv_free_viommu(SMMUv3State *s)
+ {
+     SMMUv3AccelState *accel = s->s_accel;
+@@ -740,6 +786,7 @@ static void tegra241_cmdqv_free_viommu(SMMUv3State *s)
+         return;
+     }
+     if (veventq) {
++        qemu_set_fd_handler(veventq->veventq_fd, NULL, NULL, NULL);
+         close(veventq->veventq_fd);
+         iommufd_backend_free_id(viommu->iommufd, veventq->veventq_id);
+         g_free(veventq);
+@@ -759,6 +806,7 @@ tegra241_cmdqv_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+     Tegra241CMDQV *cmdqv = s->s_accel->cmdqv;
+     uint32_t viommu_id, veventq_id, veventq_fd;
+     IOMMUFDVeventq *veventq;
++    int flags;
+ 
+     if (!iommufd_backend_alloc_viommu(idev->iommufd, idev->devid,
+                                       IOMMU_VIOMMU_TYPE_TEGRA241_CMDQV,
+@@ -784,14 +832,29 @@ tegra241_cmdqv_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+         goto munmap_page0;
+     }
+ 
++    flags = fcntl(veventq_fd, F_GETFL);
++    if (flags < 0) {
++        error_setg(errp, "Failed to get flags for vEVENTQ fd");
++        goto free_veventq;
++    }
++    if (fcntl(veventq_fd, F_SETFL, O_NONBLOCK | flags) < 0) {
++        error_setg(errp, "Failed to set O_NONBLOCK on vEVENTQ fd");
++        goto free_veventq;
++    }
++
+     veventq = g_new(IOMMUFDVeventq, 1);
+     veventq->veventq_id = veventq_id;
+     veventq->veventq_fd = veventq_fd;
+     cmdqv->veventq = veventq;
+ 
++    /* Set up event handler for veventq fd */
++    qemu_set_fd_handler(veventq_fd, tegra241_cmdqv_event_read, NULL, cmdqv);
+     *out_viommu_id = viommu_id;
+     return true;
+ 
++free_veventq:
++    close(veventq_fd);
++    iommufd_backend_free_id(idev->iommufd, veventq_id);
+ munmap_page0:
+     munmap(cmdqv->vintf_page0, VINTF_PAGE_SIZE);
+     cmdqv->vintf_page0 = NULL;
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index a8dcbc82db..dbed00afbb 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -75,6 +75,7 @@ smmuv3_accel_install_ste(uint32_t vsid, const char * type, uint32_t hwpt_id) "vS
+ # tegra241-cmdqv
+ tegra241_cmdqv_read_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+ tegra241_cmdqv_write_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
++tegra241_cmdqv_err_map(uint32_t map3, uint32_t map2, uint32_t map1, uint32_t map0) "hw irq received. error (hex) maps: %04X:%04X:%04X:%04X"
+ tegra241_cmdqv_read_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_read_vcmdq_page1(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_write_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+-- 
+2.52.0
+

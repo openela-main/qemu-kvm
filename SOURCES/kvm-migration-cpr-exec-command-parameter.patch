@@ -1,0 +1,218 @@
+From b4ff0c555444a8ecd318d269ca662ff8cc6bf4d9 Mon Sep 17 00:00:00 2001
+From: Steve Sistare <steven.sistare@oracle.com>
+Date: Wed, 1 Oct 2025 08:33:56 -0700
+Subject: [PATCH 091/116] migration: cpr-exec-command parameter
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [75/100] f4b9811694a26506dbc5c31c8950f737ec70d3c5 (rovick1/qemu-kvm)
+
+Create the cpr-exec-command migration parameter, defined as a list of
+strings.  It will be used for cpr-exec migration mode in a subsequent
+patch, and contains forward references to cpr-exec mode in the qapi
+doc.
+
+No functional change, except that cpr-exec-command is shown by the
+'info migrate' command.
+
+Signed-off-by: Steve Sistare <steven.sistare@oracle.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Link: https://lore.kernel.org/r/1759332851-370353-5-git-send-email-steven.sistare@oracle.com
+Signed-off-by: Peter Xu <peterx@redhat.com>
+---
+ hmp-commands.hx                |  2 +-
+ migration/migration-hmp-cmds.c | 30 ++++++++++++++++++++++++++++++
+ migration/options.c            | 14 ++++++++++++++
+ qapi/migration.json            | 21 ++++++++++++++++++---
+ 4 files changed, 63 insertions(+), 4 deletions(-)
+
+diff --git a/hmp-commands.hx b/hmp-commands.hx
+index d0e4f35a30..3cace8f1f7 100644
+--- a/hmp-commands.hx
++++ b/hmp-commands.hx
+@@ -1009,7 +1009,7 @@ ERST
+ 
+     {
+         .name       = "migrate_set_parameter",
+-        .args_type  = "parameter:s,value:s",
++        .args_type  = "parameter:s,value:S",
+         .params     = "parameter value",
+         .help       = "Set the parameter for migration",
+         .cmd        = hmp_migrate_set_parameter,
+diff --git a/migration/migration-hmp-cmds.c b/migration/migration-hmp-cmds.c
+index 0fc21f0647..54df615753 100644
+--- a/migration/migration-hmp-cmds.c
++++ b/migration/migration-hmp-cmds.c
+@@ -306,6 +306,18 @@ void hmp_info_migrate_capabilities(Monitor *mon, const QDict *qdict)
+     qapi_free_MigrationCapabilityStatusList(caps);
+ }
+ 
++static void monitor_print_cpr_exec_command(Monitor *mon, strList *args)
++{
++    monitor_printf(mon, "%s:",
++        MigrationParameter_str(MIGRATION_PARAMETER_CPR_EXEC_COMMAND));
++
++    while (args) {
++        monitor_printf(mon, " %s", args->value);
++        args = args->next;
++    }
++    monitor_printf(mon, "\n");
++}
++
+ void hmp_info_migrate_parameters(Monitor *mon, const QDict *qdict)
+ {
+     MigrationParameters *params;
+@@ -435,6 +447,9 @@ void hmp_info_migrate_parameters(Monitor *mon, const QDict *qdict)
+                                MIGRATION_PARAMETER_DIRECT_IO),
+                            params->direct_io ? "on" : "off");
+         }
++
++        assert(params->has_cpr_exec_command);
++        monitor_print_cpr_exec_command(mon, params->cpr_exec_command);
+     }
+ 
+     qapi_free_MigrationParameters(params);
+@@ -716,6 +731,21 @@ void hmp_migrate_set_parameter(Monitor *mon, const QDict *qdict)
+         p->has_direct_io = true;
+         visit_type_bool(v, param, &p->direct_io, &err);
+         break;
++    case MIGRATION_PARAMETER_CPR_EXEC_COMMAND: {
++        g_autofree char **strv = NULL;
++        g_autoptr(GError) gerr = NULL;
++        strList **tail = &p->cpr_exec_command;
++
++        if (!g_shell_parse_argv(valuestr, NULL, &strv, &gerr)) {
++            error_setg(&err, "%s", gerr->message);
++            break;
++        }
++        for (int i = 0; strv[i]; i++) {
++            QAPI_LIST_APPEND(tail, strv[i]);
++        }
++        p->has_cpr_exec_command = true;
++        break;
++    }
+     default:
+         g_assert_not_reached();
+     }
+diff --git a/migration/options.c b/migration/options.c
+index 4e923a2e07..5183112775 100644
+--- a/migration/options.c
++++ b/migration/options.c
+@@ -959,6 +959,9 @@ MigrationParameters *qmp_query_migrate_parameters(Error **errp)
+     params->zero_page_detection = s->parameters.zero_page_detection;
+     params->has_direct_io = true;
+     params->direct_io = s->parameters.direct_io;
++    params->has_cpr_exec_command = true;
++    params->cpr_exec_command = QAPI_CLONE(strList,
++                                          s->parameters.cpr_exec_command);
+ 
+     return params;
+ }
+@@ -993,6 +996,7 @@ void migrate_params_init(MigrationParameters *params)
+     params->has_mode = true;
+     params->has_zero_page_detection = true;
+     params->has_direct_io = true;
++    params->has_cpr_exec_command = true;
+ }
+ 
+ /*
+@@ -1297,6 +1301,10 @@ static void migrate_params_test_apply(MigrateSetParameters *params,
+     if (params->has_direct_io) {
+         dest->direct_io = params->direct_io;
+     }
++
++    if (params->has_cpr_exec_command) {
++        dest->cpr_exec_command = params->cpr_exec_command;
++    }
+ }
+ 
+ static void migrate_params_apply(MigrateSetParameters *params, Error **errp)
+@@ -1429,6 +1437,12 @@ static void migrate_params_apply(MigrateSetParameters *params, Error **errp)
+     if (params->has_direct_io) {
+         s->parameters.direct_io = params->direct_io;
+     }
++
++    if (params->has_cpr_exec_command) {
++        qapi_free_strList(s->parameters.cpr_exec_command);
++        s->parameters.cpr_exec_command =
++            QAPI_CLONE(strList, params->cpr_exec_command);
++    }
+ }
+ 
+ void qmp_migrate_set_parameters(MigrateSetParameters *params, Error **errp)
+diff --git a/qapi/migration.json b/qapi/migration.json
+index 2387c21e9c..2be8fa1d16 100644
+--- a/qapi/migration.json
++++ b/qapi/migration.json
+@@ -924,6 +924,10 @@
+ #     only has effect if the @mapped-ram capability is enabled.
+ #     (Since 9.1)
+ #
++# @cpr-exec-command: Command to start the new QEMU process when @mode
++#     is @cpr-exec.  The first list element is the program's filename,
++#     the remainder its arguments.  (Since 10.2)
++#
+ # Features:
+ #
+ # @unstable: Members @x-checkpoint-delay and
+@@ -950,7 +954,8 @@
+            'vcpu-dirty-limit',
+            'mode',
+            'zero-page-detection',
+-           'direct-io'] }
++           'direct-io',
++           'cpr-exec-command'] }
+ 
+ ##
+ # @MigrateSetParameters:
+@@ -1105,6 +1110,10 @@
+ #     only has effect if the @mapped-ram capability is enabled.
+ #     (Since 9.1)
+ #
++# @cpr-exec-command: Command to start the new QEMU process when @mode
++#     is @cpr-exec.  The first list element is the program's filename,
++#     the remainder its arguments.  (Since 10.2)
++#
+ # Features:
+ #
+ # @unstable: Members @x-checkpoint-delay and
+@@ -1146,7 +1155,8 @@
+             '*vcpu-dirty-limit': 'uint64',
+             '*mode': 'MigMode',
+             '*zero-page-detection': 'ZeroPageDetection',
+-            '*direct-io': 'bool' } }
++            '*direct-io': 'bool',
++            '*cpr-exec-command': [ 'str' ]} }
+ 
+ ##
+ # @migrate-set-parameters:
+@@ -1315,6 +1325,10 @@
+ #     only has effect if the @mapped-ram capability is enabled.
+ #     (Since 9.1)
+ #
++# @cpr-exec-command: Command to start the new QEMU process when @mode
++#     is @cpr-exec.  The first list element is the program's filename,
++#     the remainder its arguments.  (Since 10.2)
++#
+ # Features:
+ #
+ # @unstable: Members @x-checkpoint-delay and
+@@ -1353,7 +1367,8 @@
+             '*vcpu-dirty-limit': 'uint64',
+             '*mode': 'MigMode',
+             '*zero-page-detection': 'ZeroPageDetection',
+-            '*direct-io': 'bool' } }
++            '*direct-io': 'bool',
++            '*cpr-exec-command': [ 'str' ]} }
+ 
+ ##
+ # @query-migrate-parameters:
+-- 
+2.52.0
+

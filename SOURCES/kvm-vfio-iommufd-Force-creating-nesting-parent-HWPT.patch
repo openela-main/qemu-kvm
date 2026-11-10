@@ -1,0 +1,121 @@
+From e860d57ea2f5ed6480d1717226e99626a5f4ba4e Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Tue, 6 Jan 2026 01:12:50 -0500
+Subject: [PATCH 076/111] vfio/iommufd: Force creating nesting parent HWPT
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [76/111] 49096907847a865983e879a968586122dccb292e (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Conflicts: contextual conflict in hw/vfio/device.c and
+include/hw/vfio/vfio-device.h due to out of order backport og
+de36da106dcf  hw/vfio: Add helper to retrieve device feature
+also change hw/core/hw-error.h into former hw/hw.h since we
+also miss 048a23851cd4  include: move hw/hw.h to hw/core/, rename
+
+Call pci_device_get_viommu_flags() to get if vIOMMU supports
+VIOMMU_FLAG_WANT_NESTING_PARENT.
+
+If yes, create a nesting parent HWPT and add it to the container's hwpt_list,
+letting this parent HWPT cover the entire second stage mappings (GPA=>HPA).
+
+This allows a VFIO passthrough device to directly attach to this default HWPT
+and then to use the system address space and its listener.
+
+Introduce a vfio_device_get_viommu_flags_want_nesting() helper to facilitate
+this implementation.
+
+It is safe to do so because a vIOMMU will be able to fail in set_iommu_device()
+call, if something else related to the VFIO device or vIOMMU isn't compatible.
+
+Suggested-by: Nicolin Chen <nicolinc@nvidia.com>
+Suggested-by: Yi Liu <yi.l.liu@intel.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260106061304.314546-9-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c3459c6bfaad6a3d0bef4d3ebc6753bb3e66c1ef)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/device.c              | 13 +++++++++++++
+ hw/vfio/iommufd.c             |  9 +++++++++
+ include/hw/vfio/vfio-device.h |  1 +
+ 3 files changed, 23 insertions(+)
+
+diff --git a/hw/vfio/device.c b/hw/vfio/device.c
+index 330f2598ff..c01eb72ee7 100644
+--- a/hw/vfio/device.c
++++ b/hw/vfio/device.c
+@@ -24,6 +24,8 @@
+ #include "hw/vfio/vfio-device.h"
+ #include "hw/vfio/pci.h"
+ #include "hw/hw.h"
++#include "hw/core/iommu.h"
++#include "hw/hw.h"
+ #include "trace.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+@@ -524,6 +526,17 @@ int vfio_device_get_feature(VFIODevice *vbasedev,
+     return vbasedev->io_ops->device_feature(vbasedev, feature);
+ }
+ 
++bool vfio_device_get_viommu_flags_want_nesting(VFIODevice *vbasedev)
++{
++    VFIOPCIDevice *vdev = vfio_pci_from_vfio_device(vbasedev);
++
++    if (vdev) {
++        return !!(pci_device_get_viommu_flags(PCI_DEVICE(vdev)) &
++                  VIOMMU_FLAG_WANT_NESTING_PARENT);
++    }
++    return false;
++}
++
+ /*
+  * Traditional ioctl() based io
+  */
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 67acdfa183..59dc17b166 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -363,6 +363,15 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+         flags = IOMMU_HWPT_ALLOC_DIRTY_TRACKING;
+     }
+ 
++    /*
++     * If vIOMMU requests VFIO's cooperation to create nesting parent HWPT,
++     * force to create it so that it could be reused by vIOMMU to create
++     * nested HWPT.
++     */
++    if (vfio_device_get_viommu_flags_want_nesting(vbasedev)) {
++        flags |= IOMMU_HWPT_ALLOC_NEST_PARENT;
++    }
++
+     if (cpr_is_incoming()) {
+         hwpt_id = vbasedev->cpr.hwpt_id;
+         goto skip_alloc;
+diff --git a/include/hw/vfio/vfio-device.h b/include/hw/vfio/vfio-device.h
+index fc28f580ba..27e2976593 100644
+--- a/include/hw/vfio/vfio-device.h
++++ b/include/hw/vfio/vfio-device.h
+@@ -260,6 +260,7 @@ void vfio_device_unprepare(VFIODevice *vbasedev);
+ 
+ int vfio_device_get_feature(VFIODevice *vbasedev,
+                             struct vfio_device_feature *feature);
++bool vfio_device_get_viommu_flags_want_nesting(VFIODevice *vbasedev);
+ 
+ int vfio_device_get_region_info(VFIODevice *vbasedev, int index,
+                                 struct vfio_region_info **info);
+-- 
+2.52.0
+

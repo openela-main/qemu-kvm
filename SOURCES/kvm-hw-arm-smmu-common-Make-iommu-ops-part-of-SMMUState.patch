@@ -1,0 +1,77 @@
+From 060b817ebbd77d3ec0a7a9d7bdfce8df4ce3e7e6 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 006/111] hw/arm/smmu-common: Make iommu ops part of SMMUState
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [6/111] 1a120125bce9df1d6897d71d66ed94f72c3a615d (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Make iommu ops part of SMMUState and set to the current default smmu_ops.
+No functional change intended. This will allow SMMUv3 accel implementation
+to set a different iommu ops later.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-5-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 797fffedac9355495c010a12d4766517db2aa911)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmu-common.c         | 7 +++++--
+ include/hw/arm/smmu-common.h | 1 +
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmu-common.c b/hw/arm/smmu-common.c
+index 75d840e389..d70ca81775 100644
+--- a/hw/arm/smmu-common.c
++++ b/hw/arm/smmu-common.c
+@@ -959,6 +959,9 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+                            "smmu-secure-memory-view");
+     }
+ 
++    if (!s->iommu_ops) {
++        s->iommu_ops = &smmu_ops;
++    }
+     /*
+      * We only allow default PCIe Root Complex(pcie.0) or pxb-pcie based extra
+      * root complexes to be associated with SMMU.
+@@ -978,9 +981,9 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+         }
+ 
+         if (s->smmu_per_bus) {
+-            pci_setup_iommu_per_bus(pci_bus, &smmu_ops, s);
++            pci_setup_iommu_per_bus(pci_bus, s->iommu_ops, s);
+         } else {
+-            pci_setup_iommu(pci_bus, &smmu_ops, s);
++            pci_setup_iommu(pci_bus, s->iommu_ops, s);
+         }
+         return;
+     }
+diff --git a/include/hw/arm/smmu-common.h b/include/hw/arm/smmu-common.h
+index e626c6c567..ffcac991de 100644
+--- a/include/hw/arm/smmu-common.h
++++ b/include/hw/arm/smmu-common.h
+@@ -166,6 +166,7 @@ struct SMMUState {
+     AddressSpace memory_as;
+     MemoryRegion *secure_memory;
+     AddressSpace secure_memory_as;
++    const PCIIOMMUOps *iommu_ops;
+ };
+ 
+ struct SMMUBaseClass {
+-- 
+2.52.0
+

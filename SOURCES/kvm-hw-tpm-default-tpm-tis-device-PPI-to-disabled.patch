@@ -1,0 +1,46 @@
+From fa2f8fe2dda08627add2104d534c2c375705514f Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 16 Jul 2026 14:19:40 +0530
+Subject: [PATCH 03/12] hw/tpm: default tpm-tis-device PPI to disabled
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 511: hw/tpm: fix tpm-ppi migration failure for older machine types
+RH-Jira: RHEL-180837
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [3/3] 848b5a32d209187bc7e59e69fde0743d9476d419 (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-180837
+UPSTREAM: RHEL-only
+
+Migration is currently broken between 10.3 and earlier qemu versions
+that do not implement tpm PPI (including 10.2) with "Unknown ramblock
+tpm-ppi" error.  Upstream 5e33de4f00c2 ("hw/core/machine: disable
+tpm-tis-device PPI for machine type <= 11.0") uses a compat setting
+to turn the PPI feature off for older machine types and change the
+default for 11.1.  However, downstream, we do not have a new machine
+type for 10.3 when the feature was introduced so we cannot
+discriminate between 10.2 and 10.3.  So turn the feature off for now.
+We will change the default for next machine type.
+
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ hw/tpm/tpm_tis_sysbus.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/tpm/tpm_tis_sysbus.c b/hw/tpm/tpm_tis_sysbus.c
+index 253c394087..63e126e360 100644
+--- a/hw/tpm/tpm_tis_sysbus.c
++++ b/hw/tpm/tpm_tis_sysbus.c
+@@ -94,7 +94,7 @@ static void tpm_tis_sysbus_reset(DeviceState *dev)
+ static const Property tpm_tis_sysbus_properties[] = {
+     DEFINE_PROP_UINT32("irq", TPMStateSysBus, state.irq_num, TPM_TIS_IRQ),
+     DEFINE_PROP_TPMBE("tpmdev", TPMStateSysBus, state.be_driver),
+-    DEFINE_PROP_BOOL("ppi", TPMStateSysBus, state.ppi_enabled, true),
++    DEFINE_PROP_BOOL("ppi", TPMStateSysBus, state.ppi_enabled, false),
+ };
+ 
+ static void tpm_tis_sysbus_initfn(Object *obj)
+-- 
+2.52.0
+

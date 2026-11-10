@@ -1,0 +1,124 @@
+From 0b7454223958c35ebd9c0d10c3293efc0e828de4 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:49 +0100
+Subject: [PATCH 036/116] vfio/container.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [20/100] da87b1375fe631dadbdad3febea57c88ab31bc47 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOUserContainer and VFIOContainerBase instead
+of accessing bcontainer directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: John Levon <john.levon@nutanix.com>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-10-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 06229592fa7e6173b979158e9759f0d40a183861)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/container.c | 26 +++++++++++---------------
+ 1 file changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/hw/vfio-user/container.c b/hw/vfio-user/container.c
+index d589dd90f5..3cdbd44c1a 100644
+--- a/hw/vfio-user/container.c
++++ b/hw/vfio-user/container.c
+@@ -24,16 +24,14 @@
+  */
+ static void vfio_user_listener_begin(VFIOContainerBase *bcontainer)
+ {
+-    VFIOUserContainer *container = container_of(bcontainer, VFIOUserContainer,
+-                                                 bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
+ 
+     container->proxy->async_ops = true;
+ }
+ 
+ static void vfio_user_listener_commit(VFIOContainerBase *bcontainer)
+ {
+-    VFIOUserContainer *container = container_of(bcontainer, VFIOUserContainer,
+-                                            bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
+ 
+     /* wait here for any async requests sent during the transaction */
+     container->proxy->async_ops = false;
+@@ -44,8 +42,8 @@ static int vfio_user_dma_unmap(const VFIOContainerBase *bcontainer,
+                                hwaddr iova, ram_addr_t size,
+                                IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
+-    VFIOUserContainer *container = container_of(bcontainer, VFIOUserContainer,
+-                                            bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
++
+     Error *local_err = NULL;
+     int ret = 0;
+ 
+@@ -86,8 +84,8 @@ static int vfio_user_dma_map(const VFIOContainerBase *bcontainer, hwaddr iova,
+                              ram_addr_t size, void *vaddr, bool readonly,
+                              MemoryRegion *mrp)
+ {
+-    VFIOUserContainer *container = container_of(bcontainer, VFIOUserContainer,
+-                                                bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
++
+     int fd = memory_region_get_fd(mrp);
+     Error *local_err = NULL;
+     int ret = 0;
+@@ -173,8 +171,7 @@ static int vfio_user_query_dirty_bitmap(const VFIOContainerBase *bcontainer,
+ 
+ static bool vfio_user_setup(VFIOContainerBase *bcontainer, Error **errp)
+ {
+-    VFIOUserContainer *container = container_of(bcontainer, VFIOUserContainer,
+-                                                bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
+ 
+     assert(container->proxy->dma_pgsizes != 0);
+     bcontainer->pgsizes = container->proxy->dma_pgsizes;
+@@ -218,7 +215,7 @@ vfio_user_container_connect(AddressSpace *as, VFIODevice *vbasedev,
+         goto put_space_exit;
+     }
+ 
+-    bcontainer = &container->bcontainer;
++    bcontainer = VFIO_IOMMU(container);
+ 
+     ret = ram_block_uncoordinated_discard_disable(true);
+     if (ret) {
+@@ -263,7 +260,7 @@ put_space_exit:
+ 
+ static void vfio_user_container_disconnect(VFIOUserContainer *container)
+ {
+-    VFIOContainerBase *bcontainer = &container->bcontainer;
++    VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+     VFIOAddressSpace *space = bcontainer->space;
+ 
+@@ -291,7 +288,7 @@ static bool vfio_user_device_get(VFIOUserContainer *container,
+ 
+     vbasedev->fd = -1;
+ 
+-    vfio_device_prepare(vbasedev, &container->bcontainer, &info);
++    vfio_device_prepare(vbasedev, VFIO_IOMMU(container), &info);
+ 
+     return true;
+ }
+@@ -315,8 +312,7 @@ static bool vfio_user_device_attach(const char *name, VFIODevice *vbasedev,
+ 
+ static void vfio_user_device_detach(VFIODevice *vbasedev)
+ {
+-    VFIOUserContainer *container = container_of(vbasedev->bcontainer,
+-                                                VFIOUserContainer, bcontainer);
++    VFIOUserContainer *container = VFIO_IOMMU_USER(vbasedev->bcontainer);
+ 
+     vfio_device_unprepare(vbasedev);
+ 
+-- 
+2.52.0
+

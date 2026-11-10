@@ -1,0 +1,229 @@
+From 4b7e28827bbe71127a7847040b5b92140fd411ad Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Tue, 30 Sep 2025 14:35:28 +0200
+Subject: [PATCH 084/116] hw/vfio: Use uint64_t for IOVA mapping size in
+ vfio_container_dma_*map
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [68/100] f8b00f9ff83c4438173efed13b0b336459541877 (rovick1/qemu-kvm)
+
+The 'ram_addr_t' type is described as:
+
+  a QEMU internal address space that maps guest RAM physical
+  addresses into an intermediate address space that can map
+  to host virtual address spaces.
+
+This doesn't represent well an IOVA mapping size. Simply use
+the uint64_t type.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250930123528.42878-5-philmd@linaro.org
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit f0b52aa08ab0868c18d881381a8fda4b59b37517)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/container.c         |  4 ++--
+ hw/vfio/container-legacy.c       |  8 ++++----
+ hw/vfio/container.c              |  4 ++--
+ hw/vfio/cpr-legacy.c             |  2 +-
+ hw/vfio/iommufd.c                |  6 +++---
+ include/hw/vfio/vfio-container.h | 10 +++++-----
+ include/hw/vfio/vfio-cpr.h       |  2 +-
+ 7 files changed, 18 insertions(+), 18 deletions(-)
+
+diff --git a/hw/vfio-user/container.c b/hw/vfio-user/container.c
+index 411eb7b28b..e45192fef6 100644
+--- a/hw/vfio-user/container.c
++++ b/hw/vfio-user/container.c
+@@ -39,7 +39,7 @@ static void vfio_user_listener_commit(VFIOContainer *bcontainer)
+ }
+ 
+ static int vfio_user_dma_unmap(const VFIOContainer *bcontainer,
+-                               hwaddr iova, ram_addr_t size,
++                               hwaddr iova, uint64_t size,
+                                IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
+     VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
+@@ -81,7 +81,7 @@ static int vfio_user_dma_unmap(const VFIOContainer *bcontainer,
+ }
+ 
+ static int vfio_user_dma_map(const VFIOContainer *bcontainer, hwaddr iova,
+-                             ram_addr_t size, void *vaddr, bool readonly,
++                             uint64_t size, void *vaddr, bool readonly,
+                              MemoryRegion *mrp)
+ {
+     VFIOUserContainer *container = VFIO_IOMMU_USER(bcontainer);
+diff --git a/hw/vfio/container-legacy.c b/hw/vfio/container-legacy.c
+index 2d19d97e2d..1394dd6fe8 100644
+--- a/hw/vfio/container-legacy.c
++++ b/hw/vfio/container-legacy.c
+@@ -83,7 +83,7 @@ static int vfio_ram_block_discard_disable(VFIOLegacyContainer *container,
+ }
+ 
+ static int vfio_dma_unmap_bitmap(const VFIOLegacyContainer *container,
+-                                 hwaddr iova, ram_addr_t size,
++                                 hwaddr iova, uint64_t size,
+                                  IOMMUTLBEntry *iotlb)
+ {
+     const VFIOContainer *bcontainer = VFIO_IOMMU(container);
+@@ -136,7 +136,7 @@ unmap_exit:
+ }
+ 
+ static int vfio_legacy_dma_unmap_one(const VFIOContainer *bcontainer,
+-                                     hwaddr iova, ram_addr_t size,
++                                     hwaddr iova, uint64_t size,
+                                      IOMMUTLBEntry *iotlb)
+ {
+     const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+@@ -181,7 +181,7 @@ static int vfio_legacy_dma_unmap_one(const VFIOContainer *bcontainer,
+  * DMA - Mapping and unmapping for the "type1" IOMMU interface used on x86
+  */
+ static int vfio_legacy_dma_unmap(const VFIOContainer *bcontainer,
+-                                 hwaddr iova, ram_addr_t size,
++                                 hwaddr iova, uint64_t size,
+                                  IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
+     int ret;
+@@ -206,7 +206,7 @@ static int vfio_legacy_dma_unmap(const VFIOContainer *bcontainer,
+ }
+ 
+ static int vfio_legacy_dma_map(const VFIOContainer *bcontainer, hwaddr iova,
+-                               ram_addr_t size, void *vaddr, bool readonly,
++                               uint64_t size, void *vaddr, bool readonly,
+                                MemoryRegion *mr)
+ {
+     const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 9d69439371..41de343924 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -74,7 +74,7 @@ void vfio_address_space_insert(VFIOAddressSpace *space,
+ }
+ 
+ int vfio_container_dma_map(VFIOContainer *bcontainer,
+-                           hwaddr iova, ram_addr_t size,
++                           hwaddr iova, uint64_t size,
+                            void *vaddr, bool readonly, MemoryRegion *mr)
+ {
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+@@ -93,7 +93,7 @@ int vfio_container_dma_map(VFIOContainer *bcontainer,
+ }
+ 
+ int vfio_container_dma_unmap(VFIOContainer *bcontainer,
+-                             hwaddr iova, ram_addr_t size,
++                             hwaddr iova, uint64_t size,
+                              IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index bbf7a0d35f..3a1d126556 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -39,7 +39,7 @@ static bool vfio_dma_unmap_vaddr_all(VFIOLegacyContainer *container,
+  * The incoming state is cleared thereafter.
+  */
+ static int vfio_legacy_cpr_dma_map(const VFIOContainer *bcontainer,
+-                                   hwaddr iova, ram_addr_t size, void *vaddr,
++                                   hwaddr iova, uint64_t size, void *vaddr,
+                                    bool readonly, MemoryRegion *mr)
+ {
+     const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 76f0806ec0..10fc065d20 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -35,7 +35,7 @@
+             TYPE_HOST_IOMMU_DEVICE_IOMMUFD "-vfio"
+ 
+ static int iommufd_cdev_map(const VFIOContainer *bcontainer, hwaddr iova,
+-                            ram_addr_t size, void *vaddr, bool readonly,
++                            uint64_t size, void *vaddr, bool readonly,
+                             MemoryRegion *mr)
+ {
+     const VFIOIOMMUFDContainer *container = VFIO_IOMMU_IOMMUFD(bcontainer);
+@@ -46,7 +46,7 @@ static int iommufd_cdev_map(const VFIOContainer *bcontainer, hwaddr iova,
+ }
+ 
+ static int iommufd_cdev_map_file(const VFIOContainer *bcontainer,
+-                                 hwaddr iova, ram_addr_t size,
++                                 hwaddr iova, uint64_t size,
+                                  int fd, unsigned long start, bool readonly)
+ {
+     const VFIOIOMMUFDContainer *container = VFIO_IOMMU_IOMMUFD(bcontainer);
+@@ -57,7 +57,7 @@ static int iommufd_cdev_map_file(const VFIOContainer *bcontainer,
+ }
+ 
+ static int iommufd_cdev_unmap(const VFIOContainer *bcontainer,
+-                              hwaddr iova, ram_addr_t size,
++                              hwaddr iova, uint64_t size,
+                               IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
+     const VFIOIOMMUFDContainer *container = VFIO_IOMMU_IOMMUFD(bcontainer);
+diff --git a/include/hw/vfio/vfio-container.h b/include/hw/vfio/vfio-container.h
+index 093c360f0e..c4b58d664b 100644
+--- a/include/hw/vfio/vfio-container.h
++++ b/include/hw/vfio/vfio-container.h
+@@ -81,10 +81,10 @@ void vfio_address_space_insert(VFIOAddressSpace *space,
+                                VFIOContainer *bcontainer);
+ 
+ int vfio_container_dma_map(VFIOContainer *bcontainer,
+-                           hwaddr iova, ram_addr_t size,
++                           hwaddr iova, uint64_t size,
+                            void *vaddr, bool readonly, MemoryRegion *mr);
+ int vfio_container_dma_unmap(VFIOContainer *bcontainer,
+-                             hwaddr iova, ram_addr_t size,
++                             hwaddr iova, uint64_t size,
+                              IOMMUTLBEntry *iotlb, bool unmap_all);
+ bool vfio_container_add_section_window(VFIOContainer *bcontainer,
+                                        MemoryRegionSection *section,
+@@ -167,7 +167,7 @@ struct VFIOIOMMUClass {
+      * Returns 0 to indicate success and -errno otherwise.
+      */
+     int (*dma_map)(const VFIOContainer *bcontainer,
+-                   hwaddr iova, ram_addr_t size,
++                   hwaddr iova, uint64_t size,
+                    void *vaddr, bool readonly, MemoryRegion *mr);
+     /**
+      * @dma_map_file
+@@ -182,7 +182,7 @@ struct VFIOIOMMUClass {
+      * @readonly: map read only if true
+      */
+     int (*dma_map_file)(const VFIOContainer *bcontainer,
+-                        hwaddr iova, ram_addr_t size,
++                        hwaddr iova, uint64_t size,
+                         int fd, unsigned long start, bool readonly);
+     /**
+      * @dma_unmap
+@@ -198,7 +198,7 @@ struct VFIOIOMMUClass {
+      * Returns 0 to indicate success and -errno otherwise.
+      */
+     int (*dma_unmap)(const VFIOContainer *bcontainer,
+-                     hwaddr iova, ram_addr_t size,
++                     hwaddr iova, uint64_t size,
+                      IOMMUTLBEntry *iotlb, bool unmap_all);
+ 
+ 
+diff --git a/include/hw/vfio/vfio-cpr.h b/include/hw/vfio/vfio-cpr.h
+index 26ee0c4fe1..81f4e24e22 100644
+--- a/include/hw/vfio/vfio-cpr.h
++++ b/include/hw/vfio/vfio-cpr.h
+@@ -21,7 +21,7 @@ struct VFIOIOMMUFDContainer;
+ struct IOMMUFDBackend;
+ 
+ typedef int (*dma_map_fn)(const struct VFIOContainer *bcontainer,
+-                          hwaddr iova, ram_addr_t size, void *vaddr,
++                          hwaddr iova, uint64_t size, void *vaddr,
+                           bool readonly, MemoryRegion *mr);
+ 
+ typedef struct VFIOContainerCPR {
+-- 
+2.52.0
+

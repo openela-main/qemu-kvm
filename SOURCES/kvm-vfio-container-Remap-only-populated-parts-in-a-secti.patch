@@ -1,0 +1,108 @@
+From 71afe9279971bf2738ca60316d66a6eac271b190 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Sun, 28 Sep 2025 04:54:27 -0400
+Subject: [PATCH 098/116] vfio/container: Remap only populated parts in a
+ section
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [82/100] a6a483d335d66c5d550a5e4eb12569915def6a11 (rovick1/qemu-kvm)
+
+If there are multiple containers and unmap-all fails for some of them, we
+need to remap vaddr for the other containers for which unmap-all succeeded.
+When ram discard is enabled, we should only remap populated parts in a
+section instead of the whole section.
+
+Fixes: eba1f657cbb1 ("vfio/container: recover from unmap-all-vaddr failure")
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Steven Sistare <steven.sistare@oracle.com>
+Reviewed-by: David Hildenbrand <david@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250928085432.40107-2-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 5a78db7f8099274550bdacdc1fc24943567ac615)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr-legacy.c       | 20 +++++++++++++++-----
+ hw/vfio/listener.c         |  4 ++--
+ include/hw/vfio/vfio-cpr.h |  2 +-
+ 3 files changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index 80af7469d0..b4581e8f85 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -228,22 +228,32 @@ void vfio_cpr_giommu_remap(VFIOContainer *bcontainer,
+     memory_region_iommu_replay(giommu->iommu_mr, &giommu->n);
+ }
+ 
++static int vfio_cpr_rdm_remap(MemoryRegionSection *section, void *opaque)
++{
++    RamDiscardListener *rdl = opaque;
++
++    return rdl->notify_populate(rdl, section);
++}
++
+ /*
+  * In old QEMU, VFIO_DMA_UNMAP_FLAG_VADDR may fail on some mapping after
+  * succeeding for others, so the latter have lost their vaddr.  Call this
+- * to restore vaddr for a section with a RamDiscardManager.
++ * to restore vaddr for populated parts in a section with a RamDiscardManager.
+  *
+- * The ram discard listener already exists.  Call its populate function
++ * The ram discard listener already exists.  Call its replay_populated function
+  * directly, which calls vfio_legacy_cpr_dma_map.
+  */
+-bool vfio_cpr_ram_discard_register_listener(VFIOContainer *bcontainer,
+-                                            MemoryRegionSection *section)
++bool vfio_cpr_ram_discard_replay_populated(VFIOContainer *bcontainer,
++                                           MemoryRegionSection *section)
+ {
++    RamDiscardManager *rdm = memory_region_get_ram_discard_manager(section->mr);
+     VFIORamDiscardListener *vrdl =
+         vfio_find_ram_discard_listener(bcontainer, section);
+ 
+     g_assert(vrdl);
+-    return vrdl->listener.notify_populate(&vrdl->listener, section) == 0;
++    return ram_discard_manager_replay_populated(rdm, section,
++                                                vfio_cpr_rdm_remap,
++                                                &vrdl->listener) == 0;
+ }
+ 
+ int vfio_cpr_group_get_device_fd(int d, const char *name)
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index b5cefc9395..df42bc58e7 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -578,8 +578,8 @@ void vfio_container_region_add(VFIOContainer *bcontainer,
+             if (!vfio_ram_discard_register_listener(bcontainer, section, &err)) {
+                 goto fail;
+             }
+-        } else if (!vfio_cpr_ram_discard_register_listener(bcontainer,
+-                                                           section)) {
++        } else if (!vfio_cpr_ram_discard_replay_populated(bcontainer,
++                                                          section)) {
+             error_setg(&err,
+                        "vfio_cpr_ram_discard_register_listener for %s failed",
+                        memory_region_name(section->mr));
+diff --git a/include/hw/vfio/vfio-cpr.h b/include/hw/vfio/vfio-cpr.h
+index 81f4e24e22..4606da500a 100644
+--- a/include/hw/vfio/vfio-cpr.h
++++ b/include/hw/vfio/vfio-cpr.h
+@@ -68,7 +68,7 @@ bool vfio_cpr_container_match(struct VFIOLegacyContainer *container,
+ void vfio_cpr_giommu_remap(struct VFIOContainer *bcontainer,
+                            MemoryRegionSection *section);
+ 
+-bool vfio_cpr_ram_discard_register_listener(
++bool vfio_cpr_ram_discard_replay_populated(
+     struct VFIOContainer *bcontainer, MemoryRegionSection *section);
+ 
+ void vfio_cpr_save_vector_fd(struct VFIOPCIDevice *vdev, const char *name,
+-- 
+2.52.0
+

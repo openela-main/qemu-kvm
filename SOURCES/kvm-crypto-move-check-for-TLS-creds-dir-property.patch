@@ -1,0 +1,103 @@
+From a9ee472ad318aa0d46ee2c98db43c885170b60de Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Thu, 16 Oct 2025 19:00:29 +0100
+Subject: [PATCH 12/30] crypto: move check for TLS creds 'dir' property
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [11/27] 0909498703770fb4b8b3e784a4f474e97e28bc85 (berrange/centos-src-qemu)
+
+The check for the 'dir' property is being repeated for every
+credential file to be loaded, but this results in incorrect
+logic for optional credentials. The 'dir' property is mandatory
+for PSK and x509 creds, even if some individual files are
+optional. Address this by separating the check for the 'dir'
+property.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 9d3343b00bee063f3cc7f5bee35c953fd4e7b6ee)
+---
+ crypto/tlscreds.c     | 9 ---------
+ crypto/tlscredsanon.c | 3 ++-
+ crypto/tlscredspsk.c  | 5 +++++
+ crypto/tlscredsx509.c | 8 ++++++--
+ 4 files changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/crypto/tlscreds.c b/crypto/tlscreds.c
+index 208a7e6d8f..65e97ddd11 100644
+--- a/crypto/tlscreds.c
++++ b/crypto/tlscreds.c
+@@ -102,15 +102,6 @@ qcrypto_tls_creds_get_path(QCryptoTLSCreds *creds,
+ {
+     int ret = -1;
+ 
+-    if (!creds->dir) {
+-        if (required) {
+-            error_setg(errp, "Missing 'dir' property value");
+-            return -1;
+-        } else {
+-            return 0;
+-        }
+-    }
+-
+     *cred = g_strdup_printf("%s/%s", creds->dir, filename);
+ 
+     if (access(*cred, R_OK) < 0) {
+diff --git a/crypto/tlscredsanon.c b/crypto/tlscredsanon.c
+index 44af9e6c9a..bc3351b5d6 100644
+--- a/crypto/tlscredsanon.c
++++ b/crypto/tlscredsanon.c
+@@ -43,7 +43,8 @@ qcrypto_tls_creds_anon_load(QCryptoTLSCredsAnon *creds,
+             creds->parent_obj.dir ? creds->parent_obj.dir : "<nodir>");
+ 
+     if (creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+-        if (qcrypto_tls_creds_get_path(&creds->parent_obj,
++        if (creds->parent_obj.dir &&
++            qcrypto_tls_creds_get_path(&creds->parent_obj,
+                                        QCRYPTO_TLS_CREDS_DH_PARAMS,
+                                        false, &dhparams, errp) < 0) {
+             return -1;
+diff --git a/crypto/tlscredspsk.c b/crypto/tlscredspsk.c
+index 5b68a6b7ba..545d3e45db 100644
+--- a/crypto/tlscredspsk.c
++++ b/crypto/tlscredspsk.c
+@@ -81,6 +81,11 @@ qcrypto_tls_creds_psk_load(QCryptoTLSCredsPSK *creds,
+     trace_qcrypto_tls_creds_psk_load(creds,
+             creds->parent_obj.dir ? creds->parent_obj.dir : "<nodir>");
+ 
++    if (!creds->parent_obj.dir) {
++        error_setg(errp, "Missing 'dir' property value");
++        goto cleanup;
++    }
++
+     if (creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+         if (creds->username) {
+             error_setg(errp, "username should not be set when endpoint=server");
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 0acb17b6ec..8fe6cc8e93 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -567,8 +567,12 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+     int ret;
+     int rv = -1;
+ 
+-    trace_qcrypto_tls_creds_x509_load(creds,
+-            creds->parent_obj.dir ? creds->parent_obj.dir : "<nodir>");
++    if (!creds->parent_obj.dir) {
++        error_setg(errp, "Missing 'dir' property value");
++        return -1;
++    }
++
++    trace_qcrypto_tls_creds_x509_load(creds, creds->parent_obj.dir);
+ 
+     if (creds->parent_obj.endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+         if (qcrypto_tls_creds_get_path(&creds->parent_obj,
+-- 
+2.52.0
+

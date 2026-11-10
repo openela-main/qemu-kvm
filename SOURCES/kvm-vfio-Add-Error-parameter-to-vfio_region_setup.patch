@@ -1,0 +1,147 @@
+From e4a9b1a603140f3e07aafed06d545125e856b608 Mon Sep 17 00:00:00 2001
+From: Ankit Agrawal <ankita@nvidia.com>
+Date: Tue, 17 Feb 2026 15:30:09 +0000
+Subject: [PATCH 2/4] vfio: Add Error ** parameter to vfio_region_setup()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Cédric Le Goater <clg@redhat.com>
+RH-MergeRequest: 500: NVIDIA:Grace:Backport hw/vfio: Enable hugepfnmap for non-power-of-2 device memory regions - GB200
+RH-Jira: RHEL-150900
+RH-Acked-by: Rodolfo Vick <None>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [2/3] ae95924770d3a7828fc3d67df36fc6d09baf2e97 (clegoate/qemu-kvm-centos)
+
+Add an Error **errp parameter to vfio_region_setup() and
+vfio_setup_region_sparse_mmaps to allow proper error handling
+instead of just returning error codes.
+
+The function sets errors via error_setg() when failure occur.
+
+Suggested-by: Cedric Le Goater <clg@redhat.com>
+Signed-off-by: Ankit Agrawal <ankita@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260217153010.408739-3-ankita@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit c42010197eb905fe826550bb5f7c236d5534ddb4)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/display.c     |  6 +++---
+ hw/vfio/pci.c         |  3 +--
+ hw/vfio/region.c      | 20 +++++++++++---------
+ hw/vfio/vfio-region.h |  2 +-
+ 4 files changed, 16 insertions(+), 15 deletions(-)
+
+diff --git a/hw/vfio/display.c b/hw/vfio/display.c
+index faacd9019a..5a42a6f7a2 100644
+--- a/hw/vfio/display.c
++++ b/hw/vfio/display.c
+@@ -446,13 +446,13 @@ static void vfio_display_region_update(void *opaque)
+ 
+     if (!dpy->region.buffer.size) {
+         /* mmap region */
++        Error *error = NULL;
+         ret = vfio_region_setup(OBJECT(vdev), &vdev->vbasedev,
+                                 &dpy->region.buffer,
+                                 plane.region_index,
+-                                "display");
++                                "display", &error);
+         if (ret != 0) {
+-            error_report("%s: vfio_region_setup(%d): %s",
+-                         __func__, plane.region_index, strerror(-ret));
++            error_report_err(error);
+             goto err;
+         }
+         ret = vfio_region_mmap(&dpy->region.buffer);
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 378b475b2c..1ba66699dc 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2993,11 +2993,10 @@ bool vfio_pci_populate_device(VFIOPCIDevice *vdev, Error **errp)
+         char *name = g_strdup_printf("%s BAR %d", vbasedev->name, i);
+ 
+         ret = vfio_region_setup(OBJECT(vdev), vbasedev,
+-                                &vdev->bars[i].region, i, name);
++                                &vdev->bars[i].region, i, name, errp);
+         g_free(name);
+ 
+         if (ret) {
+-            error_setg_errno(errp, -ret, "failed to get region %d info", i);
+             return false;
+         }
+ 
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index a61e47a79c..055033a79e 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -163,7 +163,8 @@ static int vfio_mmap_compare_offset(const void *a, const void *b)
+ }
+ 
+ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
+-                                          struct vfio_region_info *info)
++                                          struct vfio_region_info *info,
++                                          Error **errp)
+ {
+     struct vfio_info_cap_header *hdr;
+     struct vfio_region_info_cap_sparse_mmap *sparse;
+@@ -210,12 +211,12 @@ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
+             off_t prev_end = region->mmaps[i - 1].offset +
+                              region->mmaps[i - 1].size;
+             if (prev_end > region->mmaps[i].offset) {
+-                error_report("%s: overlapping sparse mmap regions detected "
+-                             "in region %d: [0x%"PRIx64"-0x%"PRIx64"] overlaps "
+-                             "with [0x%"PRIx64"-0x%"PRIx64"]",
+-                             __func__, region->nr, region->mmaps[i - 1].offset,
+-                             prev_end - 1, region->mmaps[i].offset,
+-                             region->mmaps[i].offset + region->mmaps[i].size - 1);
++                error_setg(errp, "%s: overlapping sparse mmap regions detected "
++                           "in region %d: [0x%"PRIx64"-0x%"PRIx64"] overlaps "
++                           "with [0x%"PRIx64"-0x%"PRIx64"]",
++                           __func__, region->nr, region->mmaps[i - 1].offset,
++                           prev_end - 1, region->mmaps[i].offset,
++                           region->mmaps[i].offset + region->mmaps[i].size - 1);
+                 g_free(region->mmaps);
+                 region->mmaps = NULL;
+                 region->nr_mmaps = 0;
+@@ -228,13 +229,14 @@ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
+ }
+ 
+ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
+-                      int index, const char *name)
++                      int index, const char *name, Error **errp)
+ {
+     struct vfio_region_info *info = NULL;
+     int ret;
+ 
+     ret = vfio_device_get_region_info(vbasedev, index, &info);
+     if (ret) {
++        error_setg_errno(errp, -ret, "failed to get region %d info", index);
+         return ret;
+     }
+ 
+@@ -253,7 +255,7 @@ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
+         if (!vbasedev->no_mmap &&
+             region->flags & VFIO_REGION_INFO_FLAG_MMAP) {
+ 
+-            ret = vfio_setup_region_sparse_mmaps(region, info);
++            ret = vfio_setup_region_sparse_mmaps(region, info, errp);
+ 
+             if (ret == -ENODEV) {
+                 region->nr_mmaps = 1;
+diff --git a/hw/vfio/vfio-region.h b/hw/vfio/vfio-region.h
+index ede6e0c8f9..9b21d4ee5b 100644
+--- a/hw/vfio/vfio-region.h
++++ b/hw/vfio/vfio-region.h
+@@ -38,7 +38,7 @@ void vfio_region_write(void *opaque, hwaddr addr,
+ uint64_t vfio_region_read(void *opaque,
+                           hwaddr addr, unsigned size);
+ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
+-                      int index, const char *name);
++                      int index, const char *name, Error **errp);
+ int vfio_region_mmap(VFIORegion *region);
+ void vfio_region_mmaps_set_enabled(VFIORegion *region, bool enabled);
+ void vfio_region_unmap(VFIORegion *region);
+-- 
+2.52.0
+

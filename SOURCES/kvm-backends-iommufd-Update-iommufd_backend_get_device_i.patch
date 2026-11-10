@@ -1,0 +1,106 @@
+From 22efc23db4a5d1773170bc1f898a55d979bd0b00 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:22 +0100
+Subject: [PATCH 078/111] backends/iommufd: Update
+ iommufd_backend_get_device_info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [78/111] 3ca7bb7a3544994a178876f3b15738112945a525 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+The updated IOMMUFD uAPI introduces the ability for userspace to request
+a specific hardware info data type via IOMMU_GET_HW_INFO. Update
+iommufd_backend_get_device_info() to set IOMMU_HW_INFO_FLAG_INPUT_TYPE
+when a non-zero type is supplied, and adjust all callers to pass a type
+value explicitly initialised to zero (IOMMU_HW_INFO_TYPE_DEFAULT) when
+no specific type is requested.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-2-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 3e79b45e0478de367745aa1f5d3b0a4573c69ab0)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c    | 7 +++++++
+ hw/arm/smmuv3-accel.c | 2 +-
+ hw/vfio/iommufd.c     | 4 ++--
+ 3 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index 5b919e4be9..416e193751 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -386,16 +386,23 @@ bool iommufd_backend_get_dirty_bitmap(IOMMUFDBackend *be,
+     return true;
+ }
+ 
++/*
++ * @type can carry a desired HW info type defined in the uapi headers. If caller
++ * doesn't have one, indicating it wants the default type, then @type should be
++ * zeroed (i.e. IOMMU_HW_INFO_TYPE_DEFAULT).
++ */
+ bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
+                                      uint32_t *type, void *data, uint32_t len,
+                                      uint64_t *caps, uint8_t *max_pasid_log2,
+                                      Error **errp)
+ {
+     struct iommu_hw_info info = {
++        .flags = (*type) ? IOMMU_HW_INFO_FLAG_INPUT_TYPE : 0,
+         .size = sizeof(info),
+         .dev_id = devid,
+         .data_len = len,
+         .data_uptr = (uintptr_t)data,
++        .in_data_type = *type,
+     };
+ 
+     if (ioctl(be->fd, IOMMU_GET_HW_INFO, &info)) {
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 0b01848292..f97129388f 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -176,7 +176,7 @@ smmuv3_accel_hw_compatible(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                            Error **errp)
+ {
+     struct iommu_hw_info_arm_smmuv3 info;
+-    uint32_t data_type;
++    uint32_t data_type = IOMMU_HW_INFO_TYPE_DEFAULT;
+     uint64_t caps;
+ 
+     if (!iommufd_backend_get_device_info(idev->iommufd, idev->devid, &data_type,
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 7e0287f814..93703a0036 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -307,7 +307,7 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+     IOMMUFDBackend *iommufd = vbasedev->iommufd;
+     VFIOContainer *bcontainer = VFIO_IOMMU(container);
+     bool viommu_nesting, viommu_nesting_dirty;
+-    uint32_t type, flags = 0;
++    uint32_t type = IOMMU_HW_INFO_TYPE_DEFAULT, flags = 0;
+     uint64_t hw_caps;
+     VendorCaps caps;
+     VFIOIOASHwpt *hwpt;
+@@ -897,7 +897,7 @@ static bool hiod_iommufd_vfio_realize(HostIOMMUDevice *hiod, void *opaque,
+     HostIOMMUDeviceIOMMUFD *idev;
+     HostIOMMUDeviceCaps *caps = &hiod->caps;
+     VendorCaps *vendor_caps = &caps->vendor_caps;
+-    enum iommu_hw_info_type type;
++    uint32_t type = IOMMU_HW_INFO_TYPE_DEFAULT;
+     uint8_t max_pasid_log2;
+     uint64_t hw_caps;
+ 
+-- 
+2.52.0
+

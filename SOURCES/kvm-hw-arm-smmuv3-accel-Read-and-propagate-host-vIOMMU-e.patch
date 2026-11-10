@@ -1,0 +1,143 @@
+From 6560e5f70f3f242b06b3523e1f910e25db719073 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 6 Mar 2026 09:01:11 +0000
+Subject: [PATCH 054/111] hw/arm/smmuv3-accel: Read and propagate host vIOMMU
+ events
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [54/111] 87b794e5d88a3402c0f8250bd80eb65dd3435b2d (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Install an event handler on the vEVENTQ fd to read and propagate host
+generated vIOMMU events to the guest.
+
+The handler runs in QEMU's main loop, using a non-blocking fd registered
+via qemu_set_fd_handler().
+
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260226084456.112142-6-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit c0c97fbc6cf764f0d66d5122c4117d0770e89902)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 64 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 64 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index f703ea1aac..17306cd04b 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -390,6 +390,50 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *bs, void *cmd, SMMUDevice *sdev,
+                    sizeof(Cmd), &entry_num, cmd, errp);
+ }
+ 
++static void smmuv3_accel_event_read(void *opaque)
++{
++    SMMUv3State *s = opaque;
++    IOMMUFDVeventq *veventq = s->s_accel->veventq;
++    struct {
++        struct iommufd_vevent_header hdr;
++        struct iommu_vevent_arm_smmuv3 vevent;
++    } buf;
++    enum iommu_veventq_type type = IOMMU_VEVENTQ_TYPE_ARM_SMMUV3;
++    uint32_t id = veventq->veventq_id;
++    uint32_t last_seq = veventq->last_event_seq;
++    ssize_t bytes;
++
++    bytes = read(veventq->veventq_fd, &buf, sizeof(buf));
++    if (bytes <= 0) {
++        if (errno == EAGAIN || errno == EINTR) {
++            return;
++        }
++        error_report_once("vEVENTQ(type %u id %u): read failed (%m)", type, id);
++        return;
++    }
++
++    if (bytes == sizeof(buf.hdr) &&
++        (buf.hdr.flags & IOMMU_VEVENTQ_FLAG_LOST_EVENTS)) {
++        error_report_once("vEVENTQ(type %u id %u): overflowed", type, id);
++        veventq->event_start = false;
++        return;
++    }
++    if (bytes < sizeof(buf)) {
++        error_report_once("vEVENTQ(type %u id %u): short read(%zd/%zd bytes)",
++                          type, id, bytes, sizeof(buf));
++        return;
++    }
++
++    /* Check sequence in hdr for lost events if any */
++    if (veventq->event_start && (buf.hdr.sequence - last_seq != 1)) {
++        error_report_once("vEVENTQ(type %u id %u): lost %u event(s)",
++                          type, id, buf.hdr.sequence - last_seq - 1);
++    }
++    veventq->last_event_seq = buf.hdr.sequence;
++    veventq->event_start = true;
++    smmuv3_propagate_event(s, (Evt *)&buf.vevent);
++}
++
+ static void smmuv3_accel_free_veventq(SMMUv3AccelState *accel)
+ {
+     IOMMUFDVeventq *veventq = accel->veventq;
+@@ -397,6 +441,7 @@ static void smmuv3_accel_free_veventq(SMMUv3AccelState *accel)
+     if (!veventq) {
+         return;
+     }
++    qemu_set_fd_handler(veventq->veventq_fd, NULL, NULL, NULL);
+     close(veventq->veventq_fd);
+     iommufd_backend_free_id(accel->viommu->iommufd, veventq->veventq_id);
+     g_free(veventq);
+@@ -424,6 +469,7 @@ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
+     IOMMUFDVeventq *veventq;
+     uint32_t veventq_id;
+     uint32_t veventq_fd;
++    int flags;
+ 
+     if (!accel || !accel->viommu) {
+         return true;
+@@ -445,12 +491,30 @@ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
+         return false;
+     }
+ 
++    flags = fcntl(veventq_fd, F_GETFL);
++    if (flags < 0) {
++        error_setg_errno(errp, errno, "Failed to get flags for vEVENTQ fd");
++        goto free_veventq;
++    }
++    if (fcntl(veventq_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
++        error_setg_errno(errp, errno, "Failed to set O_NONBLOCK on vEVENTQ fd");
++        goto free_veventq;
++    }
++
+     veventq = g_new0(IOMMUFDVeventq, 1);
+     veventq->veventq_id = veventq_id;
+     veventq->veventq_fd = veventq_fd;
+     veventq->viommu = accel->viommu;
+     accel->veventq = veventq;
++
++    /* Set up event handler for veventq fd */
++    qemu_set_fd_handler(veventq_fd, smmuv3_accel_event_read, NULL, s);
+     return true;
++
++free_veventq:
++    close(veventq_fd);
++    iommufd_backend_free_id(accel->viommu->iommufd, veventq_id);
++    return false;
+ }
+ 
+ static bool
+-- 
+2.52.0
+

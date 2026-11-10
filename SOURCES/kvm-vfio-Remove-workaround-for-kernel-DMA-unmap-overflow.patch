@@ -1,0 +1,92 @@
+From bf050d499dff24314563fb35faaa4f445a923fb8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Fri, 26 Sep 2025 10:54:23 +0200
+Subject: [PATCH 080/116] vfio: Remove workaround for kernel DMA unmap overflow
+ bug
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [64/100] c9310e612ea2b3e10620f507e64649fb1f46cdaf (rovick1/qemu-kvm)
+
+A kernel bug was introduced in Linux v4.15 via commit 71a7d3d78e3c
+("vfio/type1: Check for address space wrap-around on unmap"), which
+added a test for address space wrap-around in the vfio DMA unmap path.
+Unfortunately, due to an integer overflow, the kernel would
+incorrectly detect an unmap of the last page in the 64-bit address
+space as a wrap-around, causing the unmap to fail with -EINVAL.
+
+A QEMU workaround was introduced in commit 567d7d3e6be5 ("vfio/common:
+Work around kernel overflow bug in DMA unmap") to retry the unmap,
+excluding the final page of the range.
+
+The kernel bug was then fixed in Linux v5.0 via commit 58fec830fc19
+("vfio/type1: Fix dma_unmap wrap-around check"). Since the oldest
+supported LTS kernel is now v5.4, kernels affected by this bug are
+considered deprecated, and the workaround is no longer necessary.
+
+This change reverts 567d7d3e6be5, removing the workaround.
+
+Link: https://bugzilla.redhat.com/show_bug.cgi?id=1662291
+Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Link: https://lore.kernel.org/qemu-devel/20250926085423.375547-1-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 1d9a832b58be63e53ef0d2342c271a34ecb349db)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container-legacy.c | 20 +-------------------
+ hw/vfio/trace-events       |  1 -
+ 2 files changed, 1 insertion(+), 20 deletions(-)
+
+diff --git a/hw/vfio/container-legacy.c b/hw/vfio/container-legacy.c
+index 0101a72f53..2d19d97e2d 100644
+--- a/hw/vfio/container-legacy.c
++++ b/hw/vfio/container-legacy.c
+@@ -161,25 +161,7 @@ static int vfio_legacy_dma_unmap_one(const VFIOContainer *bcontainer,
+         need_dirty_sync = true;
+     }
+ 
+-    while (ioctl(container->fd, VFIO_IOMMU_UNMAP_DMA, &unmap)) {
+-        /*
+-         * The type1 backend has an off-by-one bug in the kernel (71a7d3d78e3c
+-         * v4.15) where an overflow in its wrap-around check prevents us from
+-         * unmapping the last page of the address space.  Test for the error
+-         * condition and re-try the unmap excluding the last page.  The
+-         * expectation is that we've never mapped the last page anyway and this
+-         * unmap request comes via vIOMMU support which also makes it unlikely
+-         * that this page is used.  This bug was introduced well after type1 v2
+-         * support was introduced, so we shouldn't need to test for v1.  A fix
+-         * is queued for kernel v5.0 so this workaround can be removed once
+-         * affected kernels are sufficiently deprecated.
+-         */
+-        if (errno == EINVAL && unmap.size && !(unmap.iova + unmap.size) &&
+-            container->iommu_type == VFIO_TYPE1v2_IOMMU) {
+-            trace_vfio_legacy_dma_unmap_overflow_workaround();
+-            unmap.size -= 1ULL << ctz64(bcontainer->pgsizes);
+-            continue;
+-        }
++    if (ioctl(container->fd, VFIO_IOMMU_UNMAP_DMA, &unmap)) {
+         return -errno;
+     }
+ 
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index e3d571f8c8..7496e1b64b 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -112,7 +112,6 @@ vfio_container_disconnect(int fd) "close container->fd=%d"
+ vfio_group_put(int fd) "close group->fd=%d"
+ vfio_device_get(const char * name, unsigned int flags, unsigned int num_regions, unsigned int num_irqs) "Device %s flags: %u, regions: %u, irqs: %u"
+ vfio_device_put(int fd) "close vdev->fd=%d"
+-vfio_legacy_dma_unmap_overflow_workaround(void) ""
+ 
+ # region.c
+ vfio_region_write(const char *name, int index, uint64_t addr, uint64_t data, unsigned size) " (%s:region%d+0x%"PRIx64", 0x%"PRIx64 ", %d)"
+-- 
+2.52.0
+

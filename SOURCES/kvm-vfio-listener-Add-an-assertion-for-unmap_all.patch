@@ -1,0 +1,45 @@
+From d02f661a6864f285860c96012cb91483aedc6ddd Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 9 Oct 2025 00:01:34 -0400
+Subject: [PATCH 104/116] vfio/listener: Add an assertion for unmap_all
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [88/100] 4ad8a0942a3c5bca0dfb7419bf0d6286a76b4216 (rovick1/qemu-kvm)
+
+Currently the maximum of iommu address space is 64bit. So when a maximum
+iommu memory section is deleted, it's in scope [0, 2^64). Add a
+assertion for that.
+
+Suggested-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20251009040134.334251-4-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 271fec6f18492630df2e1b4599ba2de6eb1d0668)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/listener.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index df42bc58e7..27174bf87c 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -716,6 +716,7 @@ static void vfio_listener_region_del(MemoryListener *listener,
+         bool unmap_all = false;
+ 
+         if (int128_eq(llsize, int128_2_64())) {
++            assert(!iova);
+             unmap_all = true;
+             llsize = int128_zero();
+         }
+-- 
+2.52.0
+

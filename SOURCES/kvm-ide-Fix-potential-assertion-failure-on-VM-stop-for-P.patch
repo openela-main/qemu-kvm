@@ -1,0 +1,57 @@
+From ba430cce181388723ec2d3174195e1d468ed18b2 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Thu, 26 Mar 2026 17:51:24 +0100
+Subject: [PATCH 41/52] ide: Fix potential assertion failure on VM stop for PIO
+ read error
+
+RH-Author: Kevin Wolf <kwolf@redhat.com>
+RH-MergeRequest: 504: virt-storage: Backport stable branch fixes
+RH-Jira: RHEL-186384
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [34/45] 4a6db09841ffa4323e11a9e47e170c919d292b3e (kmwolf/centos-qemu-kvm)
+
+ide_sector_read() as well as its callers neglect to call ide_set_retry()
+before starting I/O. If the I/O fails, this means that the retry
+information is stale. In particular, ide_handle_rw_error() has an
+assertion that s->bus->retry_unit == s->unit, which can fail if either
+there was no previous request or it came from another device on the bus.
+If the assertion weren't there, a wrong request would be retried after
+resuming the VM.
+
+Fix this by adding a ide_set_retry() call to ide_sector_read().
+
+This affects only reads because ide_transfer_start() does call
+ide_set_retry(). For writes, the data transfer comes first and the I/O
+is only started when the data has been read into s->io_buffer, so by
+that time, ide_set_retry() has been called. For reads, however, the I/O
+comes first and only then the data is transferred to the guest, so the
+call in ide_transfer_start() is too late.
+
+Buglink: https://redhat.atlassian.net/browse/RHEL-153537
+Reported-by: Tingting Mao <timao@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Message-ID: <20260326165124.138593-1-kwolf@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 59c1d31136688415e5d682a87942292dbb3caaeb)
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+---
+ hw/ide/core.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/ide/core.c b/hw/ide/core.c
+index 8b9f06547b..bf616b7703 100644
+--- a/hw/ide/core.c
++++ b/hw/ide/core.c
+@@ -789,6 +789,7 @@ static void ide_sector_read(IDEState *s)
+     s->error = 0; /* not needed by IDE spec, but needed by Windows */
+     sector_num = ide_get_sector(s);
+     n = s->nsector;
++    ide_set_retry(s);
+ 
+     if (n == 0) {
+         ide_transfer_stop(s);
+-- 
+2.52.0
+

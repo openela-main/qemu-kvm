@@ -1,0 +1,72 @@
+From 1748fcfa8e350d1e28c01ccd31c403d79858bf93 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:58 +0100
+Subject: [PATCH 044/116] vfio/cpr.c: use QOM casts where appropriate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [28/100] b5ac8c4ae6f9c35ddb091a1037e687668df40984 (rovick1/qemu-kvm)
+
+Use QOM casts to convert between VFIOPCIDevice and PCIDevice instead of
+accessing pdev directly.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-19-mark.caveayland@nutanix.com
+[ clg: Updated vfio_cpr_set_msi_virq() ]
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 54a3eb315023f59db0426d85604f4527bf7b1aaa)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/hw/vfio/cpr.c b/hw/vfio/cpr.c
+index a831243e02..f911988add 100644
+--- a/hw/vfio/cpr.c
++++ b/hw/vfio/cpr.c
+@@ -56,7 +56,7 @@ static void vfio_cpr_claim_vectors(VFIOPCIDevice *vdev, int nr_vectors,
+ {
+     int i, fd;
+     bool pending = false;
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+ 
+     vdev->nr_vectors = nr_vectors;
+     vdev->msi_vectors = g_new0(VFIOMSIVector, nr_vectors);
+@@ -99,7 +99,7 @@ static void vfio_cpr_claim_vectors(VFIOPCIDevice *vdev, int nr_vectors,
+ static int vfio_cpr_pci_pre_load(void *opaque)
+ {
+     VFIOPCIDevice *vdev = opaque;
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+     int size = MIN(pci_config_size(pdev), vdev->config_size);
+     int i;
+ 
+@@ -113,7 +113,7 @@ static int vfio_cpr_pci_pre_load(void *opaque)
+ static int vfio_cpr_pci_post_load(void *opaque, int version_id)
+ {
+     VFIOPCIDevice *vdev = opaque;
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+     int nr_vectors;
+ 
+     vfio_sub_page_bar_update_mappings(vdev);
+@@ -214,7 +214,7 @@ static int set_irqfd_notifier_gsi(KVMState *s, EventNotifier *n,
+ static int vfio_cpr_set_msi_virq(VFIOPCIDevice *vdev, Error **errp, bool enable)
+ {
+     const char *op = (enable ? "enable" : "disable");
+-    PCIDevice *pdev = &vdev->pdev;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
+     int i, nr_vectors, ret = 0;
+ 
+     if (msix_enabled(pdev)) {
+-- 
+2.52.0
+

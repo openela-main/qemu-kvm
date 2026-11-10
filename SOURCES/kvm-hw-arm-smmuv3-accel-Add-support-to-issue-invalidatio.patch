@@ -1,0 +1,164 @@
+From e63deec0748ea8d907098217a1692d442ba0d6a2 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 027/111] hw/arm/smmuv3-accel: Add support to issue
+ invalidation cmd to host
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [27/111] 5f28f189e1947bf85860a98e0952b5384d73db00 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Provide a helper and use that to issue the invalidation cmd to host SMMUv3.
+We only issue one cmd at a time for now.
+
+Support for batching of commands will be added later after analysing the
+impact.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-20-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 58a789c389cb691c8b25c1a673cfffe49fe93554)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 36 ++++++++++++++++++++++++++++++++++++
+ hw/arm/smmuv3-accel.h |  8 ++++++++
+ hw/arm/smmuv3.c       | 16 ++++++++++++++++
+ 3 files changed, 60 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index c6ee123cdf..89dc6f991c 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -233,6 +233,42 @@ bool smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+     return all_ok;
+ }
+ 
++/*
++ * This issues the invalidation cmd to the host SMMUv3.
++ *
++ * sdev is non-NULL for SID based invalidations (e.g. CFGI_CD), and NULL for
++ * non SID invalidations such as SMMU_CMD_TLBI_NH_ASID and SMMU_CMD_TLBI_NH_VA.
++ */
++bool smmuv3_accel_issue_inv_cmd(SMMUv3State *bs, void *cmd, SMMUDevice *sdev,
++                                Error **errp)
++{
++    SMMUv3State *s = ARM_SMMUV3(bs);
++    SMMUv3AccelState *accel = s->s_accel;
++    uint32_t entry_num = 1;
++
++    /*
++     * No accel or viommu means no VFIO/IOMMUFD devices, nothing to
++     * invalidate.
++     */
++    if (!accel || !accel->viommu) {
++        return true;
++    }
++
++    /*
++     * SID based invalidations (e.g. CFGI_CD) apply only to vfio-pci endpoints
++     * with a valid vIOMMU vdev.
++     */
++    if (sdev && !container_of(sdev, SMMUv3AccelDevice, sdev)->vdev) {
++        return true;
++    }
++
++    /* Single command (entry_num = 1); no need to check returned entry_num */
++    return iommufd_backend_invalidate_cache(
++                   accel->viommu->iommufd, accel->viommu->viommu_id,
++                   IOMMU_VIOMMU_INVALIDATE_DATA_ARM_SMMUV3,
++                   sizeof(Cmd), &entry_num, cmd, errp);
++}
++
+ static bool
+ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                           Error **errp)
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index c7ed4dce3a..41b37e3122 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -47,6 +47,8 @@ bool smmuv3_accel_install_ste(SMMUv3State *s, SMMUDevice *sdev, int sid,
+ bool smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+                                     Error **errp);
+ bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp);
++bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
++                                Error **errp);
+ void smmuv3_accel_reset(SMMUv3State *s);
+ #else
+ static inline void smmuv3_accel_init(SMMUv3State *s)
+@@ -68,6 +70,12 @@ static inline bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
+ {
+     return true;
+ }
++static inline bool
++smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
++                           Error **errp)
++{
++    return true;
++}
+ static inline void smmuv3_accel_reset(SMMUv3State *s)
+ {
+ }
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index f02e3ee46c..513da966a4 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1388,6 +1388,10 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+ 
+             trace_smmuv3_cmdq_cfgi_cd(sid);
+             smmuv3_flush_config(sdev);
++            if (!smmuv3_accel_issue_inv_cmd(s, &cmd, sdev, errp)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
+             break;
+         }
+         case SMMU_CMD_TLBI_NH_ASID:
+@@ -1411,6 +1415,10 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+             trace_smmuv3_cmdq_tlbi_nh_asid(asid);
+             smmu_inv_notifiers_all(&s->smmu_state);
+             smmu_iotlb_inv_asid_vmid(bs, asid, vmid);
++            if (!smmuv3_accel_issue_inv_cmd(s, &cmd, NULL, errp)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
+             break;
+         }
+         case SMMU_CMD_TLBI_NH_ALL:
+@@ -1438,6 +1446,10 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+             trace_smmuv3_cmdq_tlbi_nsnh();
+             smmu_inv_notifiers_all(&s->smmu_state);
+             smmu_iotlb_inv_all(bs);
++            if (!smmuv3_accel_issue_inv_cmd(s, &cmd, NULL, errp)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
+             break;
+         case SMMU_CMD_TLBI_NH_VAA:
+         case SMMU_CMD_TLBI_NH_VA:
+@@ -1446,6 +1458,10 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+                 break;
+             }
+             smmuv3_range_inval(bs, &cmd, SMMU_STAGE_1);
++            if (!smmuv3_accel_issue_inv_cmd(s, &cmd, NULL, errp)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
+             break;
+         case SMMU_CMD_TLBI_S12_VMALL:
+         {
+-- 
+2.52.0
+

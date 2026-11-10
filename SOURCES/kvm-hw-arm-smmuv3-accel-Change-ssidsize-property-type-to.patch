@@ -1,0 +1,206 @@
+From 034bb0700695cd0f3dac66a04549cf149b1bb923 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 061/111] hw/arm/smmuv3-accel: Change "ssidsize" property type
+ to SsidSizeMode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [61/111] ba4a1f1758a7a13d36cac6881fa52d97a5fdef09 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Conflicts: contextual conflict in hw/arm/smmuv3.c because we keep on
+using headers in hw directory and not in hw/core
+
+Change accel SMMUv3 SSIDSIZE property from uint8_t to SsidSizeMode.
+The 'auto' value is not implemented, as this commit is meant to set the
+property to the correct type and avoid breaking JSON/QMP when the auto
+mode is introduced. A future patch will implement resolution of 'auto'
+value to match the host SMMUv3 SSIDSIZE value.
+
+The conversion of the "ssidsize" property type to OnOffAuto is an
+incompatible change for JSON/QMP when a uint8_t value is expected for
+"ssidsize", but this property is new in 11.0 and this patch is
+submitted as a fix to the property type.
+
+Fixes: b8c6f8a69d27 ("hw/arm/smmuv3-accel: Make SubstreamID support configurable")
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-6-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ffded86bdda6171fea1771199f3f0c9e0601029f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c          | 23 +++++++++++++++++++++--
+ hw/arm/smmuv3.c                | 19 ++++++++++---------
+ include/hw/arm/smmuv3-common.h |  1 -
+ include/hw/arm/smmuv3.h        |  3 ++-
+ 4 files changed, 33 insertions(+), 13 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index c31b64295e..bc6cbfebc2 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -802,7 +802,7 @@ static uint64_t smmuv3_accel_get_viommu_flags(void *opaque)
+     SMMUState *bs = opaque;
+     SMMUv3State *s = ARM_SMMUV3(bs);
+ 
+-    if (s->ssidsize) {
++    if (s->ssidsize > SSID_SIZE_MODE_0) {
+         flags |= VIOMMU_FLAG_PASID_SUPPORTED;
+     }
+     return flags;
+@@ -817,6 +817,22 @@ static const PCIIOMMUOps smmuv3_accel_ops = {
+     .get_msi_direct_gpa = smmuv3_accel_get_msi_gpa,
+ };
+ 
++/*
++ * This returns the value of a SsidSizeMode value offset by 1 to
++ * account for the enum values offset by 1 from actual values.
++ *
++ * SSID_SIZE_MODE_0 = 1, SSID_SIZE_MODE_1 = 2, etc. so return 0
++ * if SSID_SIZE_MODE_0 is passed as input, return 1 if
++ * SSID_SIZE_MODE_1 is passed as input, etc.
++ */
++static uint8_t ssidsize_mode_to_value(SsidSizeMode mode)
++{
++    if (mode == SSID_SIZE_MODE_AUTO) {
++        return 0;
++    }
++    return mode - 1;
++}
++
+ void smmuv3_accel_idr_override(SMMUv3State *s)
+ {
+     if (!s->accel) {
+@@ -842,7 +858,10 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+      * By default QEMU SMMUv3 has no SubstreamID support. Update IDR1 if user
+      * has enabled it.
+      */
+-    s->idr[1] = FIELD_DP32(s->idr[1], IDR1, SSIDSIZE, s->ssidsize);
++    if (s->ssidsize > SSID_SIZE_MODE_0) {
++        s->idr[1] = FIELD_DP32(s->idr[1], IDR1, SSIDSIZE,
++                               ssidsize_mode_to_value(s->ssidsize));
++    }
+ }
+ 
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index a7e606c966..66546dbf9e 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -20,6 +20,7 @@
+ #include "qemu/bitops.h"
+ #include "hw/irq.h"
+ #include "hw/sysbus.h"
++#include "hw/qdev-properties-system.h"
+ #include "migration/blocker.h"
+ #include "migration/vmstate.h"
+ #include "hw/qdev-properties.h"
+@@ -625,7 +626,7 @@ static int decode_ste(SMMUv3State *s, SMMUTransCfg *cfg,
+     }
+ 
+     /* Multiple context descriptors require SubstreamID support */
+-    if (!s->ssidsize && STE_S1CDMAX(ste) != 0) {
++    if (s->ssidsize == SSID_SIZE_MODE_0 && STE_S1CDMAX(ste) != 0) {
+         qemu_log_mask(LOG_UNIMP,
+                 "SMMUv3: multiple S1 context descriptors require SubstreamID support. "
+                 "Configure ssidsize > 0 (requires accel=on)\n");
+@@ -1979,6 +1980,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         error_setg(errp, "ril auto mode is not supported");
+         return false;
+     }
++    if (s->ssidsize == SSID_SIZE_MODE_AUTO) {
++        error_setg(errp, "ssidsize auto mode is not supported");
++        return false;
++    }
+ 
+     if (!s->accel) {
+         if (s->ril == ON_OFF_AUTO_OFF) {
+@@ -1993,7 +1998,7 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+             error_setg(errp, "OAS must be 44 bits when accel=off");
+             return false;
+         }
+-        if (s->ssidsize) {
++        if (s->ssidsize > SSID_SIZE_MODE_0) {
+             error_setg(errp, "ssidsize can only be set if accel=on");
+             return false;
+         }
+@@ -2011,11 +2016,6 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         error_setg(errp, "OAS can only be set to 44 or 48 bits");
+         return false;
+     }
+-    if (s->ssidsize > SMMU_SSID_MAX_BITS) {
+-        error_setg(errp, "ssidsize must be in the range 0 to %d",
+-                   SMMU_SSID_MAX_BITS);
+-        return false;
+-    }
+ 
+     return true;
+ }
+@@ -2144,7 +2144,8 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_ON_OFF_AUTO("ril", SMMUv3State, ril, ON_OFF_AUTO_ON),
+     DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_OFF),
+     DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
+-    DEFINE_PROP_UINT8("ssidsize", SMMUv3State, ssidsize, 0),
++    DEFINE_PROP_SSIDSIZE_MODE("ssidsize", SMMUv3State, ssidsize,
++                              SSID_SIZE_MODE_0),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2185,7 +2186,7 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "A value of N allows SSIDs in the range [0 .. 2^N - 1]. "
+         "Valid range is 0-20, where 0 disables SubstreamID support. "
+         "Defaults to 0. A value greater than 0 is required to enable "
+-        "PASID support.");
++        "PASID support. ssidsize=auto is not supported.");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index f1d74d6832..75464b2f91 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -311,7 +311,6 @@ REG32(IDR1,                0x4)
+     FIELD(IDR1, TABLES_PRESET, 30, 1)
+     FIELD(IDR1, ECMDQ,        31, 1)
+ 
+-#define SMMU_SSID_MAX_BITS 20
+ #define SMMU_IDR1_SIDSIZE 16
+ #define SMMU_CMDQS   19
+ #define SMMU_EVENTQS 19
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index c35e599bbc..ddf472493d 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -21,6 +21,7 @@
+ 
+ #include "hw/arm/smmu-common.h"
+ #include "qom/object.h"
++#include "qapi/qapi-types-misc-arm.h"
+ 
+ #define TYPE_SMMUV3_IOMMU_MEMORY_REGION "smmuv3-iommu-memory-region"
+ 
+@@ -72,7 +73,7 @@ struct SMMUv3State {
+     OnOffAuto ril;
+     OnOffAuto ats;
+     uint8_t oas;
+-    uint8_t ssidsize;
++    SsidSizeMode ssidsize;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

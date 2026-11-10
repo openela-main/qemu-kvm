@@ -1,0 +1,46 @@
+From b466b2c82dcaec4df06d4d2992191bb4d01e5327 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Sun, 28 Sep 2025 04:54:28 -0400
+Subject: [PATCH 099/116] vfio/cpr-legacy: drop an erroneous assert
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [83/100] 665ecb595eb462e58612b0a03ede41eaf33d259c (rovick1/qemu-kvm)
+
+vfio_legacy_cpr_dma_map() is not only used in post_load on destination
+but also error recovery path on source side. Assert it for destination
+is wrong.
+
+Fixes: 7e9f21411302 ("vfio/container: restore DMA vaddr")
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Steve Sistare <steven.sistare@oracle.com>
+Link: https://lore.kernel.org/qemu-devel/20250928085432.40107-3-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 94230948960e56cb47e835266c7cd8df46da03a4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/cpr-legacy.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index b4581e8f85..7184c93991 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -52,8 +52,6 @@ static int vfio_legacy_cpr_dma_map(const VFIOContainer *bcontainer,
+         .size = size,
+     };
+ 
+-    g_assert(cpr_is_incoming());
+-
+     if (ioctl(container->fd, VFIO_IOMMU_MAP_DMA, &map)) {
+         return -errno;
+     }
+-- 
+2.52.0
+

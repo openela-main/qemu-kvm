@@ -1,0 +1,52 @@
+From 039f7c0cfeef7e5e7194d73659dad82bd1919443 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:13 +0100
+Subject: [PATCH 055/116] hw/vfio/container.c: rename file to
+ container-legacy.c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [39/100] 6075f31c1e5d6bbb311f53e27578ba07da404e3e (rovick1/qemu-kvm)
+
+This file is mostly concerned with the VFIOLegacyContainer implementation so
+rename it to reflect the previous rename of VFIOContainer to
+VFIOLegacyContainer.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-6-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit a3bcae62b6a161dea4521f254f19c5a8551c28af)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/{container.c => container-legacy.c} | 0
+ hw/vfio/meson.build                         | 2 +-
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+ rename hw/vfio/{container.c => container-legacy.c} (100%)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container-legacy.c
+similarity index 100%
+rename from hw/vfio/container.c
+rename to hw/vfio/container-legacy.c
+diff --git a/hw/vfio/meson.build b/hw/vfio/meson.build
+index d3ed3cb7ac..62b7a7eaac 100644
+--- a/hw/vfio/meson.build
++++ b/hw/vfio/meson.build
+@@ -4,7 +4,7 @@ vfio_ss = ss.source_set()
+ vfio_ss.add(files(
+   'listener.c',
+   'container-base.c',
+-  'container.c',
++  'container-legacy.c',
+   'helpers.c',
+ ))
+ vfio_ss.add(when: 'CONFIG_PSERIES', if_true: files('spapr.c'))
+-- 
+2.52.0
+

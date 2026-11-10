@@ -1,0 +1,104 @@
+From f826cb97e9de8c7bc8fae7b81b380d0e7726fb84 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 025/111] hw/arm/smmuv3-accel: Implement get_msi_direct_gpa
+ callback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [25/111] afc6a8d07e2db927aed8443d173b66fc3f8f6459 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Accelerated SMMUv3 instances rely on the physical SMMUv3 for nested
+translation (guest Stage-1, host Stage-2). In this mode, the guest Stage-1
+tables are programmed directly into hardware, and QEMU must not attempt to
+walk them for translation, as doing so is not reliably safe. For vfio-pci
+endpoints behind such a vSMMU, the only translation QEMU needs to perform
+is for the MSI doorbell used during KVM MSI setup.
+
+Implement the callback so that kvm_arch_fixup_msi_route() can retrieve the
+MSI doorbell GPA directly, instead of attempting a software walk of the
+guest translation tables.
+
+Also introduce an SMMUv3 device property to carry the MSI doorbell GPA.
+This property will be set by the virt machine in a subsequent patch.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-18-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 3558c85392a46db064eb983633de998a25ea9705)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c   | 10 ++++++++++
+ hw/arm/smmuv3.c         |  2 ++
+ include/hw/arm/smmuv3.h |  1 +
+ 3 files changed, 13 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index c125974d12..c6ee123cdf 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -393,6 +393,15 @@ static void smmuv3_accel_unset_iommu_device(PCIBus *bus, void *opaque,
+     }
+ }
+ 
++static uint64_t smmuv3_accel_get_msi_gpa(PCIBus *bus, void *opaque, int devfn)
++{
++    SMMUState *bs = opaque;
++    SMMUv3State *s = ARM_SMMUV3(bs);
++
++    g_assert(s->msi_gpa);
++    return s->msi_gpa;
++}
++
+ /*
+  * Only allow PCIe bridges, pxb-pcie roots, and GPEX roots so vfio-pci
+  * endpoints can sit downstream. Accelerated SMMUv3 requires a vfio-pci
+@@ -497,6 +506,7 @@ static const PCIIOMMUOps smmuv3_accel_ops = {
+     .get_viommu_flags = smmuv3_accel_get_viommu_flags,
+     .set_iommu_device = smmuv3_accel_set_iommu_device,
+     .unset_iommu_device = smmuv3_accel_unset_iommu_device,
++    .get_msi_direct_gpa = smmuv3_accel_get_msi_gpa,
+ };
+ 
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 42c60b1ec8..f02e3ee46c 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1998,6 +1998,8 @@ static const Property smmuv3_properties[] = {
+      * Defaults to stage 1
+      */
+     DEFINE_PROP_STRING("stage", SMMUv3State, stage),
++    /* GPA of MSI doorbell, for SMMUv3 accel use. */
++    DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index e54ece2d38..5616a8a2be 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -67,6 +67,7 @@ struct SMMUv3State {
+     /* SMMU has HW accelerator support for nested S1 + s2 */
+     bool accel;
+     struct SMMUv3AccelState *s_accel;
++    uint64_t msi_gpa;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

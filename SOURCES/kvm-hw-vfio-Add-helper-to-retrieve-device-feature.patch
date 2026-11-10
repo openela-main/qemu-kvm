@@ -1,0 +1,108 @@
+From 35f299ce5e5e3d665ab3d9ce323ed375d45e1a80 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Wed, 21 Jan 2026 11:41:10 +0000
+Subject: [PATCH 115/116] hw/vfio: Add helper to retrieve device feature
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [99/100] a043c8344cededd1eb7eed7ac82cfd14aecebbe1 (rovick1/qemu-kvm)
+
+Add vfio_device_get_feature() as a common helper to retrieve
+VFIO device features.
+
+No functional change intended.
+
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260121114111.34045-3-skolothumtho@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit de36da106dcfd42ee79779a25713e86500276382)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/vfio/container.c           | 2 +-
+ hw/vfio/device.c              | 9 +++++++++
+ hw/vfio/listener.c            | 4 ++--
+ include/hw/vfio/vfio-device.h | 3 +++
+ 4 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index cc0367ecc4..1b8569d36a 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -207,7 +207,7 @@ static int vfio_device_dma_logging_report(VFIODevice *vbasedev, hwaddr iova,
+     feature->flags = VFIO_DEVICE_FEATURE_GET |
+                      VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT;
+ 
+-    return vbasedev->io_ops->device_feature(vbasedev, feature);
++    return vfio_device_get_feature(vbasedev, feature);
+ }
+ 
+ static int vfio_container_iommu_query_dirty_bitmap(
+diff --git a/hw/vfio/device.c b/hw/vfio/device.c
+index 8b63e765ac..330f2598ff 100644
+--- a/hw/vfio/device.c
++++ b/hw/vfio/device.c
+@@ -515,6 +515,15 @@ void vfio_device_unprepare(VFIODevice *vbasedev)
+     vbasedev->bcontainer = NULL;
+ }
+ 
++int vfio_device_get_feature(VFIODevice *vbasedev,
++                            struct vfio_device_feature *feature)
++{
++    if (!vbasedev->io_ops || !vbasedev->io_ops->device_feature) {
++        return -EINVAL;
++    }
++    return vbasedev->io_ops->device_feature(vbasedev, feature);
++}
++
+ /*
+  * Traditional ioctl() based io
+  */
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index 27174bf87c..afcf518f56 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -880,7 +880,7 @@ static void vfio_devices_dma_logging_stop(VFIOContainer *bcontainer)
+             continue;
+         }
+ 
+-        ret = vbasedev->io_ops->device_feature(vbasedev, feature);
++        ret = vfio_device_get_feature(vbasedev, feature);
+ 
+         if (ret != 0) {
+             warn_report("%s: Failed to stop DMA logging, err %d (%s)",
+@@ -985,7 +985,7 @@ static bool vfio_devices_dma_logging_start(VFIOContainer *bcontainer,
+             continue;
+         }
+ 
+-        ret = vbasedev->io_ops->device_feature(vbasedev, feature);
++        ret = vfio_device_get_feature(vbasedev, feature);
+         if (ret) {
+             error_setg_errno(errp, -ret, "%s: Failed to start DMA logging",
+                              vbasedev->name);
+diff --git a/include/hw/vfio/vfio-device.h b/include/hw/vfio/vfio-device.h
+index dac305fc6f..fc28f580ba 100644
+--- a/include/hw/vfio/vfio-device.h
++++ b/include/hw/vfio/vfio-device.h
+@@ -258,6 +258,9 @@ void vfio_device_prepare(VFIODevice *vbasedev, VFIOContainer *bcontainer,
+ 
+ void vfio_device_unprepare(VFIODevice *vbasedev);
+ 
++int vfio_device_get_feature(VFIODevice *vbasedev,
++                            struct vfio_device_feature *feature);
++
+ int vfio_device_get_region_info(VFIODevice *vbasedev, int index,
+                                 struct vfio_region_info **info);
+ int vfio_device_get_region_info_type(VFIODevice *vbasedev, uint32_t type,
+-- 
+2.52.0
+

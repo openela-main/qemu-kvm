@@ -1,0 +1,90 @@
+From 0d033fb85e813db89680dea1383427ac46e38fe9 Mon Sep 17 00:00:00 2001
+From: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Date: Wed, 24 Sep 2025 13:37:25 +0900
+Subject: [PATCH 050/116] vfio: Do not unparent in instance_finalize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [34/100] 7c40971f01b26c9c77dfd2ada8856fec16529ebf (rovick1/qemu-kvm)
+
+Children are automatically unparented so manually unparenting is
+unnecessary.
+
+Worse, automatic unparenting happens before the instance_finalize()
+callback of the parent gets called, so object_unparent() calls in
+the callback will refer to objects that are already unparented, which
+is semantically incorrect.
+
+Signed-off-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Reviewed-by: Daniel P. Berrangé <berrange@redhat.com>
+Link: https://lore.kernel.org/r/20250924-use-v4-6-07c6c598f53d@rsg.ci.i.u-tokyo.ac.jp
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 9b80f8a8e758b427501e6bcbcb114ae45ff68387)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci-quirks.c | 9 +--------
+ hw/vfio/region.c     | 3 ---
+ 2 files changed, 1 insertion(+), 11 deletions(-)
+
+diff --git a/hw/vfio/pci-quirks.c b/hw/vfio/pci-quirks.c
+index c97606dbf1..b5da6afbf5 100644
+--- a/hw/vfio/pci-quirks.c
++++ b/hw/vfio/pci-quirks.c
+@@ -1159,15 +1159,12 @@ void vfio_vga_quirk_exit(VFIOPCIDevice *vdev)
+ 
+ void vfio_vga_quirk_finalize(VFIOPCIDevice *vdev)
+ {
+-    int i, j;
++    int i;
+ 
+     for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
+         while (!QLIST_EMPTY(&vdev->vga->region[i].quirks)) {
+             VFIOQuirk *quirk = QLIST_FIRST(&vdev->vga->region[i].quirks);
+             QLIST_REMOVE(quirk, next);
+-            for (j = 0; j < quirk->nr_mem; j++) {
+-                object_unparent(OBJECT(&quirk->mem[j]));
+-            }
+             g_free(quirk->mem);
+             g_free(quirk->data);
+             g_free(quirk);
+@@ -1207,14 +1204,10 @@ void vfio_bar_quirk_exit(VFIOPCIDevice *vdev, int nr)
+ void vfio_bar_quirk_finalize(VFIOPCIDevice *vdev, int nr)
+ {
+     VFIOBAR *bar = &vdev->bars[nr];
+-    int i;
+ 
+     while (!QLIST_EMPTY(&bar->quirks)) {
+         VFIOQuirk *quirk = QLIST_FIRST(&bar->quirks);
+         QLIST_REMOVE(quirk, next);
+-        for (i = 0; i < quirk->nr_mem; i++) {
+-            object_unparent(OBJECT(&quirk->mem[i]));
+-        }
+         g_free(quirk->mem);
+         g_free(quirk->data);
+         g_free(quirk);
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index d04c57db63..b165ab0b93 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -365,12 +365,9 @@ void vfio_region_finalize(VFIORegion *region)
+     for (i = 0; i < region->nr_mmaps; i++) {
+         if (region->mmaps[i].mmap) {
+             munmap(region->mmaps[i].mmap, region->mmaps[i].size);
+-            object_unparent(OBJECT(&region->mmaps[i].mem));
+         }
+     }
+ 
+-    object_unparent(OBJECT(region->mem));
+-
+     g_free(region->mem);
+     g_free(region->mmaps);
+ 
+-- 
+2.52.0
+

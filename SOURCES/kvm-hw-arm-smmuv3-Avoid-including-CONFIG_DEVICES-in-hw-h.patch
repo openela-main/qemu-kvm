@@ -1,0 +1,178 @@
+From b1520bc26a36eca3f4ea73606dcec1081918e323 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Tue, 10 Mar 2026 12:06:19 +0100
+Subject: [PATCH 085/111] hw/arm/smmuv3: Avoid including CONFIG_DEVICES in hw/
+ header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [85/111] 9e4fac5674fbf767b565deab18de671a3cdecdbd (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+By turning the inline functions into stubs we can avoid the
+use of target-specific CONFIG_DEVICES include in a hw/ header,
+allowing to build the source files including it as common objects.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-Id: <20260410200031.18572-3-philmd@linaro.org>
+(cherry picked from commit 12ce4d9630ae09edec706f6254417e3ec96e08e5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/meson.build          |  5 ++--
+ hw/arm/smmuv3-accel-stubs.c | 52 +++++++++++++++++++++++++++++++++++++
+ hw/arm/smmuv3-accel.h       | 42 ------------------------------
+ 3 files changed, 55 insertions(+), 44 deletions(-)
+ create mode 100644 hw/arm/smmuv3-accel-stubs.c
+
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index bcb27c0bf6..b3f2e4d5dd 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -61,8 +61,9 @@ arm_common_ss.add(when: 'CONFIG_ARMSSE', if_true: files('armsse.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX7', if_true: files('fsl-imx7.c', 'mcimx7d-sabre.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX8MP', if_true: files('fsl-imx8mp.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX8MP_EVK', if_true: files('imx8mp-evk.c'))
+-arm_ss.add(when: 'CONFIG_ARM_SMMUV3', if_true: files('smmuv3.c'))
+-arm_ss.add(when: 'CONFIG_ARM_SMMUV3_ACCEL', if_true: files('smmuv3-accel.c'))
++arm_common_ss.add(when: 'CONFIG_ARM_SMMUV3', if_true: files('smmuv3.c'))
++arm_common_ss.add(when: 'CONFIG_ARM_SMMUV3_ACCEL', if_true: files('smmuv3-accel.c'))
++stub_ss.add(files('smmuv3-accel-stubs.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX6UL', if_true: files('fsl-imx6ul.c', 'mcimx6ul-evk.c'))
+ arm_common_ss.add(when: 'CONFIG_NRF51_SOC', if_true: files('nrf51_soc.c'))
+ arm_ss.add(when: 'CONFIG_XEN', if_true: files(
+diff --git a/hw/arm/smmuv3-accel-stubs.c b/hw/arm/smmuv3-accel-stubs.c
+new file mode 100644
+index 0000000000..70cef66966
+--- /dev/null
++++ b/hw/arm/smmuv3-accel-stubs.c
+@@ -0,0 +1,52 @@
++/*
++ * Stubs for accelerated SMMU instance backed by an iommufd vIOMMU object.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "qapi/error.h"
++#include "hw/arm/smmuv3.h"
++#include "hw/arm/smmuv3-accel.h"
++
++bool smmuv3_accel_init(SMMUv3State *s, Error **errp)
++{
++    error_setg(errp, "accel=on support not compiled in");
++    return false;
++}
++
++bool smmuv3_accel_install_ste(SMMUv3State *s, SMMUDevice *sdev, int sid,
++                              Error **errp)
++{
++    return true;
++}
++
++bool smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
++                                    Error **errp)
++{
++    return true;
++}
++
++bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
++{
++    return true;
++}
++
++bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
++                                Error **errp)
++{
++    return true;
++}
++
++void smmuv3_accel_idr_override(SMMUv3State *s)
++{
++}
++
++bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
++{
++    return true;
++}
++
++void smmuv3_accel_reset(SMMUv3State *s)
++{
++}
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index 849015f98e..b45f25ad03 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -15,7 +15,6 @@
+ #ifdef CONFIG_LINUX
+ #include <linux/iommufd.h>
+ #endif
+-#include CONFIG_DEVICES
+ 
+ /*
+  * CMDQ-Virtualization (CMDQV) hardware support, extends the SMMUv3 to
+@@ -77,7 +76,6 @@ typedef struct SMMUv3AccelDevice {
+     SMMUv3AccelState *s_accel;
+ } SMMUv3AccelDevice;
+ 
+-#ifdef CONFIG_ARM_SMMUV3_ACCEL
+ bool smmuv3_accel_init(SMMUv3State *s, Error **errp);
+ bool smmuv3_accel_install_ste(SMMUv3State *s, SMMUDevice *sdev, int sid,
+                               Error **errp);
+@@ -89,45 +87,5 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+ void smmuv3_accel_idr_override(SMMUv3State *s);
+ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp);
+ void smmuv3_accel_reset(SMMUv3State *s);
+-#else
+-#include "qapi/error.h"
+-static inline bool smmuv3_accel_init(SMMUv3State *s, Error **errp)
+-{
+-    error_setg(errp, "accel=on support not compiled in");
+-    return false;
+-}
+-static inline bool
+-smmuv3_accel_install_ste(SMMUv3State *s, SMMUDevice *sdev, int sid,
+-                         Error **errp)
+-{
+-    return true;
+-}
+-static inline bool
+-smmuv3_accel_install_ste_range(SMMUv3State *s, SMMUSIDRange *range,
+-                               Error **errp)
+-{
+-    return true;
+-}
+-static inline bool smmuv3_accel_attach_gbpa_hwpt(SMMUv3State *s, Error **errp)
+-{
+-    return true;
+-}
+-static inline bool
+-smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+-                           Error **errp)
+-{
+-    return true;
+-}
+-static inline void smmuv3_accel_idr_override(SMMUv3State *s)
+-{
+-}
+-static inline bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
+-{
+-    return true;
+-}
+-static inline void smmuv3_accel_reset(SMMUv3State *s)
+-{
+-}
+-#endif
+ 
+ #endif /* HW_ARM_SMMUV3_ACCEL_H */
+-- 
+2.52.0
+

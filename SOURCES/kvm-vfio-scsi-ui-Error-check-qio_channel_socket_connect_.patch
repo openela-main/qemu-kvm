@@ -1,0 +1,100 @@
+From 481a0c91e004873fd5d28bc82bbe11ebba2901f9 Mon Sep 17 00:00:00 2001
+From: Markus Armbruster <armbru@redhat.com>
+Date: Wed, 23 Jul 2025 15:32:57 +0200
+Subject: [PATCH 018/116] vfio scsi ui: Error-check
+ qio_channel_socket_connect_sync() the same way
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [2/100] f61dd6e10ef6ff7b143fd59a1550b62237ba0ac6 (rovick1/qemu-kvm)
+
+qio_channel_socket_connect_sync() returns 0 on success, and -1 on
+failure, with errp set.  Some callers check the return value, and some
+check whether errp was set.
+
+For consistency, always check the return value, and always check it's
+negative.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-ID: <20250723133257.1497640-3-armbru@redhat.com>
+Reviewed-by: Zhao Liu <zhao1.liu@intel.com>
+(cherry picked from commit ec14a3de622ae30a8afa78b6f564bc743b753ee1)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/proxy.c     | 2 +-
+ scsi/pr-manager-helper.c | 9 ++-------
+ ui/input-barrier.c       | 5 +----
+ 3 files changed, 4 insertions(+), 12 deletions(-)
+
+diff --git a/hw/vfio-user/proxy.c b/hw/vfio-user/proxy.c
+index 2275d3fe39..2c03d49f97 100644
+--- a/hw/vfio-user/proxy.c
++++ b/hw/vfio-user/proxy.c
+@@ -885,7 +885,7 @@ VFIOUserProxy *vfio_user_connect_dev(SocketAddress *addr, Error **errp)
+ 
+     sioc = qio_channel_socket_new();
+     ioc = QIO_CHANNEL(sioc);
+-    if (qio_channel_socket_connect_sync(sioc, addr, errp)) {
++    if (qio_channel_socket_connect_sync(sioc, addr, errp) < 0) {
+         object_unref(OBJECT(ioc));
+         return NULL;
+     }
+diff --git a/scsi/pr-manager-helper.c b/scsi/pr-manager-helper.c
+index 6b86f01b01..aea751fb04 100644
+--- a/scsi/pr-manager-helper.c
++++ b/scsi/pr-manager-helper.c
+@@ -105,20 +105,15 @@ static int pr_manager_helper_initialize(PRManagerHelper *pr_mgr,
+         .u.q_unix.path = path
+     };
+     QIOChannelSocket *sioc = qio_channel_socket_new();
+-    Error *local_err = NULL;
+-
+     uint32_t flags;
+     int r;
+ 
+     assert(!pr_mgr->ioc);
+     qio_channel_set_name(QIO_CHANNEL(sioc), "pr-manager-helper");
+-    qio_channel_socket_connect_sync(sioc,
+-                                    &saddr,
+-                                    &local_err);
++    r = qio_channel_socket_connect_sync(sioc, &saddr, errp);
+     g_free(path);
+-    if (local_err) {
++    if (r < 0) {
+         object_unref(OBJECT(sioc));
+-        error_propagate(errp, local_err);
+         return -ENOTCONN;
+     }
+ 
+diff --git a/ui/input-barrier.c b/ui/input-barrier.c
+index 9793258aac..0a2198ca50 100644
+--- a/ui/input-barrier.c
++++ b/ui/input-barrier.c
+@@ -490,7 +490,6 @@ static gboolean input_barrier_event(QIOChannel *ioc G_GNUC_UNUSED,
+ static void input_barrier_complete(UserCreatable *uc, Error **errp)
+ {
+     InputBarrier *ib = INPUT_BARRIER(uc);
+-    Error *local_err = NULL;
+ 
+     if (!ib->name) {
+         error_setg(errp, QERR_MISSING_PARAMETER, "name");
+@@ -506,9 +505,7 @@ static void input_barrier_complete(UserCreatable *uc, Error **errp)
+     ib->sioc = qio_channel_socket_new();
+     qio_channel_set_name(QIO_CHANNEL(ib->sioc), "barrier-client");
+ 
+-    qio_channel_socket_connect_sync(ib->sioc, &ib->saddr, &local_err);
+-    if (local_err) {
+-        error_propagate(errp, local_err);
++    if (qio_channel_socket_connect_sync(ib->sioc, &ib->saddr, errp) < 0) {
+         return;
+     }
+ 
+-- 
+2.52.0
+

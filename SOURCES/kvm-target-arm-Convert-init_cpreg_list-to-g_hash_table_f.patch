@@ -1,0 +1,138 @@
+From 886d2d31fbfb8263e73cd4e96d79cd1c059d6b8c Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Mon, 11 May 2026 12:06:39 -0400
+Subject: [PATCH 003/116] target/arm: Convert init_cpreg_list to
+ g_hash_table_foreach
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 488: [rhel-10] Backport cross-kernel migration failure mitigation series
+RH-Jira: RHEL-174858
+RH-Acked-by: Mohammadfaiz Bawa <None>
+RH-Acked-by: Sebastian Ott <sebott@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [3/16] 704e757f243d944ee544496d50b7ead4a1e2e681 (eauger1/centos-qemu-kvm)
+
+Adjust count_cpreg and add_cpreg_to_list to be used with
+g_hash_table_foreach instead of g_list_foreach.  In this way we have
+the ARMCPRegInfo pointer directly rather than having to look it up
+from the key.
+
+Delay the sorting of the cpreg_indexes until after add_cpreg_to_list.
+This allows us to sort the data that we actually care about,
+the kvm id, as computed within add_cpreg_to_list, instead of
+having to repeatedly compute the kvm id within cpreg_key_compare.
+
+Signed-off-by: Richard Henderson <richard.henderson@linaro.org>
+Tested-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dee3c0c2cf9848cd849744474cdac108ce68a1ef)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ target/arm/helper.c | 54 ++++++++++++++++++---------------------------
+ 1 file changed, 21 insertions(+), 33 deletions(-)
+
+diff --git a/target/arm/helper.c b/target/arm/helper.c
+index d230f9e766..1cff4c5a68 100644
+--- a/target/arm/helper.c
++++ b/target/arm/helper.c
+@@ -209,11 +209,11 @@ bool write_list_to_cpustate(ARMCPU *cpu)
+     return ok;
+ }
+ 
+-static void add_cpreg_to_list(gpointer key, gpointer opaque)
++static void add_cpreg_to_list(gpointer key, gpointer value, gpointer opaque)
+ {
+     ARMCPU *cpu = opaque;
+     uint32_t regidx = (uintptr_t)key;
+-    const ARMCPRegInfo *ri = get_arm_cp_reginfo(cpu->cp_regs, regidx);
++    const ARMCPRegInfo *ri = value;
+ 
+     if (!(ri->type & (ARM_CP_NO_RAW | ARM_CP_ALIAS))) {
+         cpu->cpreg_indexes[cpu->cpreg_array_len] = cpreg_to_kvm_id(regidx);
+@@ -222,61 +222,49 @@ static void add_cpreg_to_list(gpointer key, gpointer opaque)
+     }
+ }
+ 
+-static void count_cpreg(gpointer key, gpointer opaque)
++static void count_cpreg(gpointer key, gpointer value, gpointer opaque)
+ {
+     ARMCPU *cpu = opaque;
+-    const ARMCPRegInfo *ri;
+-
+-    ri = g_hash_table_lookup(cpu->cp_regs, key);
++    const ARMCPRegInfo *ri = value;
+ 
+     if (!(ri->type & (ARM_CP_NO_RAW | ARM_CP_ALIAS))) {
+         cpu->cpreg_array_len++;
+     }
+ }
+ 
+-static gint cpreg_key_compare(gconstpointer a, gconstpointer b, gpointer d)
+-{
+-    uint64_t aidx = cpreg_to_kvm_id((uintptr_t)a);
+-    uint64_t bidx = cpreg_to_kvm_id((uintptr_t)b);
+-
+-    if (aidx > bidx) {
+-        return 1;
+-    }
+-    if (aidx < bidx) {
+-        return -1;
+-    }
+-    return 0;
+-}
+-
+ void init_cpreg_list(ARMCPU *cpu)
+ {
+     /*
+      * Initialise the cpreg_tuples[] array based on the cp_regs hash.
+      * Note that we require cpreg_tuples[] to be sorted by key ID.
+      */
+-    GList *keys;
+     int arraylen;
+ 
+-    keys = g_hash_table_get_keys(cpu->cp_regs);
+-    keys = g_list_sort_with_data(keys, cpreg_key_compare, NULL);
+-
+     cpu->cpreg_array_len = 0;
+-
+-    g_list_foreach(keys, count_cpreg, cpu);
++    g_hash_table_foreach(cpu->cp_regs, count_cpreg, cpu);
+ 
+     arraylen = cpu->cpreg_array_len;
+-    cpu->cpreg_indexes = g_new(uint64_t, arraylen);
+-    cpu->cpreg_values = g_new(uint64_t, arraylen);
+-    cpu->cpreg_vmstate_indexes = g_new(uint64_t, arraylen);
+-    cpu->cpreg_vmstate_values = g_new(uint64_t, arraylen);
+-    cpu->cpreg_vmstate_array_len = cpu->cpreg_array_len;
++    if (arraylen) {
++        cpu->cpreg_indexes = g_new(uint64_t, arraylen);
++        cpu->cpreg_values = g_new(uint64_t, arraylen);
++        cpu->cpreg_vmstate_indexes = g_new(uint64_t, arraylen);
++        cpu->cpreg_vmstate_values = g_new(uint64_t, arraylen);
++    } else {
++        cpu->cpreg_indexes = NULL;
++        cpu->cpreg_values = NULL;
++        cpu->cpreg_vmstate_indexes = NULL;
++        cpu->cpreg_vmstate_values = NULL;
++    }
++    cpu->cpreg_vmstate_array_len = arraylen;
+     cpu->cpreg_array_len = 0;
+ 
+-    g_list_foreach(keys, add_cpreg_to_list, cpu);
++    g_hash_table_foreach(cpu->cp_regs, add_cpreg_to_list, cpu);
+ 
+     assert(cpu->cpreg_array_len == arraylen);
+ 
+-    g_list_free(keys);
++    if (arraylen) {
++        qsort(cpu->cpreg_indexes, arraylen, sizeof(uint64_t), compare_u64);
++    }
+ }
+ 
+ bool arm_pan_enabled(CPUARMState *env)
+-- 
+2.52.0
+

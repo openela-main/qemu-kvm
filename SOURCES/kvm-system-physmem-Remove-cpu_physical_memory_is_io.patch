@@ -1,0 +1,62 @@
+From 5f3ad40eb9fabb58c7c6986ae42e814d54017db9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Mon, 29 Sep 2025 15:36:08 +0200
+Subject: [PATCH 049/111] system/physmem: Remove cpu_physical_memory_is_io()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [49/111] b20b8a1e8804c7105f541ad220967fd205d45322 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+There are no more uses of the legacy cpu_physical_memory_is_io()
+method. Remove it.
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Message-Id: <20251002084203.63899-6-philmd@linaro.org>
+(cherry picked from commit ec1eb357cb86eee74d63940154db1e1bfa86026a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/exec/cpu-common.h | 2 --
+ system/physmem.c          | 5 -----
+ 2 files changed, 7 deletions(-)
+
+diff --git a/include/exec/cpu-common.h b/include/exec/cpu-common.h
+index 9b658a3f48..7ac061bfcb 100644
+--- a/include/exec/cpu-common.h
++++ b/include/exec/cpu-common.h
+@@ -149,8 +149,6 @@ void *cpu_physical_memory_map(hwaddr addr,
+ void cpu_physical_memory_unmap(void *buffer, hwaddr len,
+                                bool is_write, hwaddr access_len);
+ 
+-bool cpu_physical_memory_is_io(hwaddr phys_addr);
+-
+ /* Coalesced MMIO regions are areas where write operations can be reordered.
+  * This usually implies that write operations are side-effect free.  This allows
+  * batching which can make a major impact on performance when using
+diff --git a/system/physmem.c b/system/physmem.c
+index 2e34205ad7..4a1294f8a0 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -3781,11 +3781,6 @@ int cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
+     return 0;
+ }
+ 
+-bool cpu_physical_memory_is_io(hwaddr phys_addr)
+-{
+-    return address_space_is_io(&address_space_memory, phys_addr);
+-}
+-
+ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
+ {
+     RAMBlock *block;
+-- 
+2.52.0
+

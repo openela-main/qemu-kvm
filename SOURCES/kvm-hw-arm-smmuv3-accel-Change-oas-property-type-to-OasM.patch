@@ -1,0 +1,145 @@
+From 9756413223d749c334e823d885e7a88c6781f2c6 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:30 +0000
+Subject: [PATCH 063/111] hw/arm/smmuv3-accel: Change "oas" property type to
+ OasMode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [63/111] d86f2fd1e98a85b59690c130b71eb79cedd1686a (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Change accel SMMUv3 OAS property from uint8_t to OasMode. The
+'auto' value is not implemented, as this commit is meant to
+set the property to the correct type and avoid breaking JSON/QMP
+when the auto mode is introduced. A future patch will implement
+resolution of 'auto' value to match the host SMMUv3 OAS value.
+
+The conversion of the "oas" property type to OnOffAuto is an
+incompatible change for JSON/QMP when a uint8_t value is expected for
+"oas", but this property is new in 11.0 and this patch is
+submitted as a fix to the property type.
+
+Fixes: a015ac990fd3 ("hw/arm/smmuv3-accel: Add property to specify OAS bits")
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-8-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit c2ff1305cc7da7cd4596f4409936f25489ea0397)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c          |  2 +-
+ hw/arm/smmuv3.c                | 17 +++++++++--------
+ include/hw/arm/smmuv3-common.h |  2 --
+ include/hw/arm/smmuv3.h        |  2 +-
+ 4 files changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index bc6cbfebc2..65c2f44880 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -850,7 +850,7 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+     }
+ 
+     /* Advertise 48-bit OAS in IDR5 when requested (default is 44 bits). */
+-    if (s->oas == SMMU_OAS_48BIT) {
++    if (s->oas == OAS_MODE_48) {
+         s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS_48);
+     }
+ 
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 66546dbf9e..7951d85ec9 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1984,6 +1984,11 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         error_setg(errp, "ssidsize auto mode is not supported");
+         return false;
+     }
++    if (s->oas != OAS_MODE_44 && s->oas != OAS_MODE_48) {
++        error_setg(errp, "QEMU SMMUv3 model only implements 44 and 48 bit"
++                   "OAS; other OasMode values are not supported");
++        return false;
++    }
+ 
+     if (!s->accel) {
+         if (s->ril == ON_OFF_AUTO_OFF) {
+@@ -1994,7 +1999,7 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+             error_setg(errp, "ats can only be enabled if accel=on");
+             return false;
+         }
+-        if (s->oas != SMMU_OAS_44BIT) {
++        if (s->oas > OAS_MODE_44) {
+             error_setg(errp, "OAS must be 44 bits when accel=off");
+             return false;
+         }
+@@ -2012,11 +2017,6 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+         return false;
+     }
+ 
+-    if (s->oas != SMMU_OAS_44BIT && s->oas != SMMU_OAS_48BIT) {
+-        error_setg(errp, "OAS can only be set to 44 or 48 bits");
+-        return false;
+-    }
+-
+     return true;
+ }
+ 
+@@ -2143,7 +2143,7 @@ static const Property smmuv3_properties[] = {
+     /* RIL can be turned off for accel cases */
+     DEFINE_PROP_ON_OFF_AUTO("ril", SMMUv3State, ril, ON_OFF_AUTO_ON),
+     DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_OFF),
+-    DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
++    DEFINE_PROP_OAS_MODE("oas", SMMUv3State, oas, OAS_MODE_44),
+     DEFINE_PROP_SSIDSIZE_MODE("ssidsize", SMMUv3State, ssidsize,
+                               SSID_SIZE_MODE_0),
+ };
+@@ -2180,7 +2180,8 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "supported.");
+     object_class_property_set_description(klass, "oas",
+         "Specify Output Address Size (for accel=on). Supported values "
+-        "are 44 or 48 bits. Defaults to 44 bits");
++        "are 44 or 48 bits. Defaults to 44 bits. oas=auto is not "
++        "supported.");
+     object_class_property_set_description(klass, "ssidsize",
+         "Number of bits used to represent SubstreamIDs (SSIDs). "
+         "A value of N allows SSIDs in the range [0 .. 2^N - 1]. "
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index 75464b2f91..b4557d117f 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -342,8 +342,6 @@ REG32(IDR5,                0x14)
+      FIELD(IDR5, VAX,        10, 2);
+      FIELD(IDR5, STALL_MAX,  16, 16);
+ 
+-#define SMMU_OAS_44BIT 44
+-#define SMMU_OAS_48BIT 48
+ #define SMMU_IDR5_OAS_44 4
+ #define SMMU_IDR5_OAS_48 5
+ 
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index ddf472493d..82f18eb090 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -72,7 +72,7 @@ struct SMMUv3State {
+     Error *migration_blocker;
+     OnOffAuto ril;
+     OnOffAuto ats;
+-    uint8_t oas;
++    OasMode oas;
+     SsidSizeMode ssidsize;
+ };
+ 
+-- 
+2.52.0
+

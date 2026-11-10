@@ -1,0 +1,44 @@
+From 49c47201b804596abd07a01540873cf8818d0049 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:54 +0100
+Subject: [PATCH 041/116] vfio/pci.h: update VFIOPCIDevice declaration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [25/100] d8ed3b3ddb415b5d777bbd928ba2014c4f1ad8d6 (rovick1/qemu-kvm)
+
+Update the VFIOPCIDevice declaration so that it is closer to our coding
+guidelines: add a blank line after the parent object.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-15-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 750e424fd04311aaeeb85536744c4cd3e460404d)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index e3ab3fe1f7..08bab970cb 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -124,6 +124,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(VFIOPCIDevice, VFIO_PCI_BASE)
+ 
+ struct VFIOPCIDevice {
+     PCIDevice pdev;
++
+     VFIODevice vbasedev;
+     VFIOINTx intx;
+     unsigned int config_size;
+-- 
+2.52.0
+

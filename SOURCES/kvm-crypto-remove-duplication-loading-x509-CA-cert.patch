@@ -1,0 +1,58 @@
+From 6612e62737fd0df2427ae0d4c748d27d5c600855 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Thu, 16 Oct 2025 19:32:39 +0100
+Subject: [PATCH 17/30] crypto: remove duplication loading x509 CA cert
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [16/27] 8c736e80792e3be964b5db6061f180515108020d (berrange/centos-src-qemu)
+
+The CA cert is mandatory in both client and server scenarios.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit fb8a0b0bfc816fd26ba62d7cae22db890fdb5203)
+---
+ crypto/tlscredsx509.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 7271b549ee..dd28faf872 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -578,11 +578,14 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+ 
+     trace_qcrypto_tls_creds_x509_load(creds, creds->parent_obj.dir);
+ 
++    if (qcrypto_tls_creds_get_path(&creds->parent_obj,
++                                   QCRYPTO_TLS_CREDS_X509_CA_CERT,
++                                   true, &cacert, errp) < 0) {
++        return -1;
++    }
++
+     if (isServer) {
+         if (qcrypto_tls_creds_get_path(&creds->parent_obj,
+-                                       QCRYPTO_TLS_CREDS_X509_CA_CERT,
+-                                       true, &cacert, errp) < 0 ||
+-            qcrypto_tls_creds_get_path(&creds->parent_obj,
+                                        QCRYPTO_TLS_CREDS_X509_CA_CRL,
+                                        false, &cacrl, errp) < 0 ||
+             qcrypto_tls_creds_get_path(&creds->parent_obj,
+@@ -598,9 +601,6 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
+         }
+     } else {
+         if (qcrypto_tls_creds_get_path(&creds->parent_obj,
+-                                       QCRYPTO_TLS_CREDS_X509_CA_CERT,
+-                                       true, &cacert, errp) < 0 ||
+-            qcrypto_tls_creds_get_path(&creds->parent_obj,
+                                        QCRYPTO_TLS_CREDS_X509_CLIENT_CERT,
+                                        false, &cert, errp) < 0 ||
+             qcrypto_tls_creds_get_path(&creds->parent_obj,
+-- 
+2.52.0
+

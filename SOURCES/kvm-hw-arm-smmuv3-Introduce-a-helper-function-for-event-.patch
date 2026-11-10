@@ -1,0 +1,119 @@
+From efca87fb97687307cc608b0beec14873d31014fa Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 6 Mar 2026 09:01:11 +0000
+Subject: [PATCH 053/111] hw/arm/smmuv3: Introduce a helper function for event
+ propagation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [53/111] 8ce584d593ad657ef9ea7fcd337ef53e13f1d2b2 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Factor out the code that propagates event records to the guest into a
+helper function. The accelerated SMMUv3 path can use this to propagate
+host events in a subsequent patch.
+
+Take the mutex inside the helper before accessing the Event Queue.
+Today event propagation occurs only in the core SMMUv3 path and is
+effectively serialized. A subsequent patch will also invoke this helper
+from the accelerated event read path, which may run concurrently.
+Therefore serialization is required here.
+
+No functional change intended.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260226084456.112142-5-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 43585524a7c628c0ebace5c33ba865c4e2c55177)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-internal.h |  4 ++++
+ hw/arm/smmuv3.c          | 20 ++++++++++++++------
+ hw/arm/trace-events      |  2 +-
+ 3 files changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/hw/arm/smmuv3-internal.h b/hw/arm/smmuv3-internal.h
+index 998d30473d..466bfd390e 100644
+--- a/hw/arm/smmuv3-internal.h
++++ b/hw/arm/smmuv3-internal.h
+@@ -352,7 +352,11 @@ typedef struct SMMUEventInfo {
+             (x)->word[6] = (uint32_t)(addr & 0xffffffff); \
+     } while (0)
+ 
++#define EVT_GET_TYPE(x)  extract32((x)->word[0], 0, 8)
++#define EVT_GET_SID(x)   ((x)->word[1])
++
+ void smmuv3_record_event(SMMUv3State *s, SMMUEventInfo *event);
++void smmuv3_propagate_event(SMMUv3State *s, Evt *evt);
+ int smmu_find_ste(SMMUv3State *s, uint32_t sid, STE *ste, SMMUEventInfo *event);
+ 
+ static inline int oas2bits(int oas_field)
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 1a218f749d..8b51554620 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -168,10 +168,22 @@ static MemTxResult smmuv3_write_eventq(SMMUv3State *s, Evt *evt)
+     return MEMTX_OK;
+ }
+ 
++void smmuv3_propagate_event(SMMUv3State *s, Evt *evt)
++{
++    MemTxResult r;
++
++    trace_smmuv3_propagate_event(smmu_event_string(EVT_GET_TYPE(evt)),
++                                 EVT_GET_SID(evt));
++    QEMU_LOCK_GUARD(&s->mutex);
++    r = smmuv3_write_eventq(s, evt);
++    if (r != MEMTX_OK) {
++        smmuv3_trigger_irq(s, SMMU_IRQ_GERROR, R_GERROR_EVENTQ_ABT_ERR_MASK);
++    }
++}
++
+ void smmuv3_record_event(SMMUv3State *s, SMMUEventInfo *info)
+ {
+     Evt evt = {};
+-    MemTxResult r;
+ 
+     if (!smmuv3_eventq_enabled(s)) {
+         return;
+@@ -251,11 +263,7 @@ void smmuv3_record_event(SMMUv3State *s, SMMUEventInfo *info)
+         g_assert_not_reached();
+     }
+ 
+-    trace_smmuv3_record_event(smmu_event_string(info->type), info->sid);
+-    r = smmuv3_write_eventq(s, &evt);
+-    if (r != MEMTX_OK) {
+-        smmuv3_trigger_irq(s, SMMU_IRQ_GERROR, R_GERROR_EVENTQ_ABT_ERR_MASK);
+-    }
++    smmuv3_propagate_event(s, &evt);
+     info->recorded = true;
+ }
+ 
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index 8135c0c734..3457536fb0 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -40,7 +40,7 @@ smmuv3_cmdq_opcode(const char *opcode) "<--- %s"
+ smmuv3_cmdq_consume_out(uint32_t prod, uint32_t cons, uint8_t prod_wrap, uint8_t cons_wrap) "prod:%d, cons:%d, prod_wrap:%d, cons_wrap:%d "
+ smmuv3_cmdq_consume_error(const char *cmd_name, uint8_t cmd_error) "Error on %s command execution: %d"
+ smmuv3_write_mmio(uint64_t addr, uint64_t val, unsigned size, uint32_t r) "addr: 0x%"PRIx64" val:0x%"PRIx64" size: 0x%x(%d)"
+-smmuv3_record_event(const char *type, uint32_t sid) "%s sid=0x%x"
++smmuv3_propagate_event(const char *type, uint32_t sid) "%s sid=0x%x"
+ smmuv3_find_ste(uint16_t sid, uint32_t features, uint16_t sid_split) "sid=0x%x features:0x%x, sid_split:0x%x"
+ smmuv3_find_ste_2lvl(uint64_t strtab_base, uint64_t l1ptr, int l1_ste_offset, uint64_t l2ptr, int l2_ste_offset, int max_l2_ste) "strtab_base:0x%"PRIx64" l1ptr:0x%"PRIx64" l1_off:0x%x, l2ptr:0x%"PRIx64" l2_off:0x%x max_l2_ste:%d"
+ smmuv3_get_ste(uint64_t addr) "STE addr: 0x%"PRIx64
+-- 
+2.52.0
+

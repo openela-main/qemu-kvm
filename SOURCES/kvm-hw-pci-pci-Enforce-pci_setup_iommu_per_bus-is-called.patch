@@ -1,0 +1,113 @@
+From ad829395fcfb2567599adb5d945698b3f91ae2ab Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Wed, 3 Jun 2026 14:44:13 +0200
+Subject: [PATCH 075/111] hw/pci/pci: Enforce pci_setup_iommu_per_bus() is
+ called only once per bus
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [75/111] 4ea1111d7a8ba80c4c3f793d8ddef8f26ebd640c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-142465
+
+Currently it is possible to attach several arm-smmuv3 devices to the
+same bus although it is a wrong setup.
+
+Change the prototype of pci_setup_iommu_per_bus to pass an error
+handle. This latter is set when iommu_per_bus is already set and
+used by the single caller (smmu_base_realize) to report a useful
+error to the end-user.
+
+While at it document pci_setup_iommu_per_bus callback in the header.
+
+Fixes: 66d2f665e163 ("hw/arm/virt: Allow user-creatable SMMUv3 dev instantiation")
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nathan Chen <nathanc@nvidia.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@mailo.com>
+Message-id: 20260603124415.1120808-1-eric.auger@redhat.com
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 17b9f38982c10cb0696bce73fcedb927aee52de1)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmu-common.c |  4 +++-
+ hw/pci/pci.c         |  9 +++++++--
+ include/hw/pci/pci.h | 16 +++++++++++++++-
+ 3 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/hw/arm/smmu-common.c b/hw/arm/smmu-common.c
+index d70ca81775..d8c16752d5 100644
+--- a/hw/arm/smmu-common.c
++++ b/hw/arm/smmu-common.c
+@@ -981,7 +981,9 @@ static void smmu_base_realize(DeviceState *dev, Error **errp)
+         }
+ 
+         if (s->smmu_per_bus) {
+-            pci_setup_iommu_per_bus(pci_bus, s->iommu_ops, s);
++            if (!pci_setup_iommu_per_bus(pci_bus, s->iommu_ops, s, errp)) {
++                return;
++            }
+         } else {
+             pci_setup_iommu(pci_bus, s->iommu_ops, s);
+         }
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 344914424c..4fd8afceed 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -3255,11 +3255,16 @@ void pci_setup_iommu(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque)
+  * IOMMU ops are returned, avoiding the use of the parent’s IOMMU when
+  * it's not appropriate.
+  */
+-void pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops,
+-                             void *opaque)
++bool pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops,
++                             void *opaque, Error **errp)
+ {
++    if (bus->iommu_per_bus) {
++        error_setg(errp, "An iommu is already attached to this bus");
++        return false;
++    }
+     pci_setup_iommu(bus, ops, opaque);
+     bus->iommu_per_bus = true;
++    return true;
+ }
+ 
+ static void pci_dev_get_w64(PCIBus *b, PCIDevice *dev, void *opaque)
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index e672c92348..f1ad29f0df 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -864,7 +864,21 @@ int pci_iommu_unregister_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
+  */
+ void pci_setup_iommu(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
+ 
+-void pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
++/**
++ * pci_setup_iommu_per_bus: Initialize specific IOMMU handlers for a PCIBus
++ *
++ * Similar to pci_setup_iommu but enforces that the iommu only protects
++ * @bus downstream end points and no other bus hierarchy
++ *
++ * @bus: the #PCIBus being updated.
++ * @ops: the #PCIIOMMUOps
++ * @opaque: passed to callbacks of the @ops structure.
++ * @errp: error handle
++ *
++ * Returns false on failure with @errp set, true on success
++ */
++bool pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops,
++                             void *opaque, Error **errp);
+ 
+ pcibus_t pci_bar_address(PCIDevice *d,
+                          int reg, uint8_t type, pcibus_t size);
+-- 
+2.52.0
+

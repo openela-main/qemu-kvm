@@ -1,0 +1,143 @@
+From 8b71f97dfda4e0df08b3a8b83657b7c6ccfea6e1 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Wed, 1 Apr 2026 09:41:33 +0100
+Subject: [PATCH 077/111] hw/vfio/iommufd: Control dirty tracking for nesting
+ parent HWPT
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [77/111] 74b083b2e35b690c32dc01ec37abe76f2f7a63cb (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Conflicts: contextual in all changed files. In hw/i386/intel_iommu.c
+we do not have nested intel iommu downstream, so impacted code does not
+exist. In hw/vfio/device.c and include/hw/vfio/vfio-device.h this is
+due to out of order de36da106dcf  hw/vfio: Add helper to retrieve device feature
+backport
+
+QEMU smmuv3 accel does not support live migration yet, so dirty
+tracking for the nesting parent HWPT is not useful.
+
+Also, nested vIOMMU use cases can break on some platforms. For
+example, SMMUv3 with HTTU may advertise dirty tracking capability,
+but the kernel supports it only for stage-1. Requesting dirty
+tracking for a nesting parent HWPT (stage-2) can fail.
+
+Add a vIOMMU flag to explicitly request dirty tracking for the
+nesting parent HWPT. For nested cases, dirty tracking is enabled
+only when requested by the vIOMMU.
+
+Non-nested cases and Intel vIOMMU keep the existing behavior.
+
+Fixes: fc6dafb98cec ("hw/arm/smmuv3: Implement get_viommu_cap() callback")
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Link: https://lore.kernel.org/qemu-devel/20260401084133.56266-1-skolothumtho@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 659275f84694e7b06d67d877137905d371a3fde4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/device.c              | 11 +++++++++++
+ hw/vfio/iommufd.c             | 11 +++++++++--
+ include/hw/core/iommu.h       |  2 ++
+ include/hw/vfio/vfio-device.h |  3 ++-
+ 4 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/device.c b/hw/vfio/device.c
+index c01eb72ee7..4bd2476464 100644
+--- a/hw/vfio/device.c
++++ b/hw/vfio/device.c
+@@ -526,6 +526,17 @@ int vfio_device_get_feature(VFIODevice *vbasedev,
+     return vbasedev->io_ops->device_feature(vbasedev, feature);
+ }
+ 
++bool vfio_device_get_viommu_flags_want_nesting_dirty(VFIODevice *vbasedev)
++{
++    VFIOPCIDevice *vdev = vfio_pci_from_vfio_device(vbasedev);
++
++    if (vdev) {
++        return !!(pci_device_get_viommu_flags(PCI_DEVICE(vdev)) &
++                  VIOMMU_FLAG_WANT_NESTING_DIRTY_TRACKING);
++    }
++    return false;
++}
++
+ bool vfio_device_get_viommu_flags_want_nesting(VFIODevice *vbasedev)
+ {
+     VFIOPCIDevice *vdev = vfio_pci_from_vfio_device(vbasedev);
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index 59dc17b166..7e0287f814 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -306,6 +306,7 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+     ERRP_GUARD();
+     IOMMUFDBackend *iommufd = vbasedev->iommufd;
+     VFIOContainer *bcontainer = VFIO_IOMMU(container);
++    bool viommu_nesting, viommu_nesting_dirty;
+     uint32_t type, flags = 0;
+     uint64_t hw_caps;
+     VendorCaps caps;
+@@ -359,8 +360,14 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+         return false;
+     }
+ 
++    viommu_nesting = vfio_device_get_viommu_flags_want_nesting(vbasedev);
++    viommu_nesting_dirty =
++        vfio_device_get_viommu_flags_want_nesting_dirty(vbasedev);
++
+     if (hw_caps & IOMMU_HW_CAP_DIRTY_TRACKING) {
+-        flags = IOMMU_HWPT_ALLOC_DIRTY_TRACKING;
++        if (!viommu_nesting || viommu_nesting_dirty) {
++            flags |= IOMMU_HWPT_ALLOC_DIRTY_TRACKING;
++        }
+     }
+ 
+     /*
+@@ -368,7 +375,7 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+      * force to create it so that it could be reused by vIOMMU to create
+      * nested HWPT.
+      */
+-    if (vfio_device_get_viommu_flags_want_nesting(vbasedev)) {
++    if (viommu_nesting) {
+         flags |= IOMMU_HWPT_ALLOC_NEST_PARENT;
+     }
+ 
+diff --git a/include/hw/core/iommu.h b/include/hw/core/iommu.h
+index 86af315c15..cd59a367ce 100644
+--- a/include/hw/core/iommu.h
++++ b/include/hw/core/iommu.h
+@@ -21,6 +21,8 @@ enum viommu_flags {
+     /* vIOMMU needs nesting parent HWPT to create nested HWPT */
+     VIOMMU_FLAG_WANT_NESTING_PARENT = BIT_ULL(0),
+     VIOMMU_FLAG_PASID_SUPPORTED = BIT_ULL(1),
++    /* vIOMMU needs dirty tracking on the nesting parent HWPT for nested use */
++    VIOMMU_FLAG_WANT_NESTING_DIRTY_TRACKING = BIT_ULL(2),
+ };
+ 
+ /* Host IOMMU quirks. Extracted from host IOMMU capabilities */
+diff --git a/include/hw/vfio/vfio-device.h b/include/hw/vfio/vfio-device.h
+index 27e2976593..82c8fce0ef 100644
+--- a/include/hw/vfio/vfio-device.h
++++ b/include/hw/vfio/vfio-device.h
+@@ -258,9 +258,10 @@ void vfio_device_prepare(VFIODevice *vbasedev, VFIOContainer *bcontainer,
+ 
+ void vfio_device_unprepare(VFIODevice *vbasedev);
+ 
++bool vfio_device_get_viommu_flags_want_nesting(VFIODevice *vbasedev);
++bool vfio_device_get_viommu_flags_want_nesting_dirty(VFIODevice *vbasedev);
+ int vfio_device_get_feature(VFIODevice *vbasedev,
+                             struct vfio_device_feature *feature);
+-bool vfio_device_get_viommu_flags_want_nesting(VFIODevice *vbasedev);
+ 
+ int vfio_device_get_region_info(VFIODevice *vbasedev, int index,
+                                 struct vfio_region_info **info);
+-- 
+2.52.0
+

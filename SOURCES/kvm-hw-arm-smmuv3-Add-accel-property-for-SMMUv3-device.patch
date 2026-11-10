@@ -1,0 +1,179 @@
+From 3f2d3f5c1d9a64009abfa03f01ddd2411449ff5f Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 036/111] hw/arm/smmuv3: Add accel property for SMMUv3 device
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [36/111] baba44ac01f76bcea04c4366994441a55cb7cb5e (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Add an "accel" property to enable SMMUv3 accelerator mode.
+
+Accelerator mode relies on IORT RMR entries for MSI support and is
+therefore not supported when booting with a device tree.
+
+In this mode, the host SMMUv3 operates in nested translation
+(Stage-1 + Stage-2), with the guest owning the Stage-1 page tables.
+Expose only Stage-1 to the guest to ensure it uses the correct page
+table format
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-29-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 6cc3a621c6f184ffa04bf68f7a57323c63f6ef56)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c          | 32 ++++++++++++++++++++++++++++++++
+ hw/arm/virt-acpi-build.c |  4 +---
+ hw/arm/virt.c            | 22 +++++++++++++---------
+ 3 files changed, 46 insertions(+), 12 deletions(-)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 6faa660bab..0d2f5a9b0c 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1916,6 +1916,29 @@ static void smmu_reset_exit(Object *obj, ResetType type)
+     smmuv3_accel_reset(s);
+ }
+ 
++static bool smmu_validate_property(SMMUv3State *s, Error **errp)
++{
++#ifndef CONFIG_ARM_SMMUV3_ACCEL
++    if (s->accel) {
++        error_setg(errp, "accel=on support not compiled in");
++        return false;
++    }
++#endif
++
++    if (!s->accel) {
++        return true;
++    }
++
++    /* If no stage specified, SMMUv3 defaults to stage 1 */
++    if (s->stage && strcmp(s->stage, "1")) {
++        error_setg(errp,
++                   "Only stage1 is supported for SMMUv3 with accel=on");
++        return false;
++    }
++
++    return true;
++}
++
+ static void smmu_realize(DeviceState *d, Error **errp)
+ {
+     SMMUState *sys = ARM_SMMU(d);
+@@ -1924,6 +1947,10 @@ static void smmu_realize(DeviceState *d, Error **errp)
+     SysBusDevice *dev = SYS_BUS_DEVICE(d);
+     Error *local_err = NULL;
+ 
++    if (!smmu_validate_property(s, errp)) {
++        return;
++    }
++
+     if (s->accel) {
+         smmuv3_accel_init(s);
+         error_setg(&s->migration_blocker, "Migration not supported with SMMUv3 "
+@@ -2029,6 +2056,7 @@ static const Property smmuv3_properties[] = {
+      * Defaults to stage 1
+      */
+     DEFINE_PROP_STRING("stage", SMMUv3State, stage),
++    DEFINE_PROP_BOOL("accel", SMMUv3State, accel, false),
+     /* GPA of MSI doorbell, for SMMUv3 accel use. */
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
+ };
+@@ -2052,6 +2080,10 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+     device_class_set_props(dc, smmuv3_properties);
+     dc->hotpluggable = false;
+     dc->user_creatable = true;
++
++    object_class_property_set_description(klass, "accel",
++        "Enable SMMUv3 accelerator support. Allows host SMMUv3 to be "
++        "configured in nested mode for vfio-pci dev assignment");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 1323d1a0da..33c6519f0a 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -406,9 +406,7 @@ static int iort_smmuv3_devices(Object *obj, void *opaque)
+     }
+ 
+     bus = PCI_BUS(object_property_get_link(obj, "primary-bus", &error_abort));
+-    if (object_property_find(obj, "accel")) {
+-        sdev.accel = object_property_get_bool(obj, "accel", &error_abort);
+-    }
++    sdev.accel = object_property_get_bool(obj, "accel", &error_abort);
+     pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
+     sbdev = SYS_BUS_DEVICE(obj);
+     sdev.base = platform_bus_get_mmio_addr(pbus, sbdev, 0);
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 672b8d912c..5486af4456 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1503,8 +1503,8 @@ static void create_smmuv3_dt_bindings(const VirtMachineState *vms, hwaddr base,
+     g_free(node);
+ }
+ 
+-static void create_smmuv3_dev_dtb(VirtMachineState *vms,
+-                                  DeviceState *dev, PCIBus *bus)
++static void create_smmuv3_dev_dtb(VirtMachineState *vms, DeviceState *dev,
++                                  PCIBus *bus, Error **errp)
+ {
+     PlatformBusDevice *pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
+     SysBusDevice *sbdev = SYS_BUS_DEVICE(dev);
+@@ -1512,10 +1512,15 @@ static void create_smmuv3_dev_dtb(VirtMachineState *vms,
+     hwaddr base = platform_bus_get_mmio_addr(pbus, sbdev, 0);
+     MachineState *ms = MACHINE(vms);
+ 
+-    if (!(vms->bootinfo.firmware_loaded && virt_is_acpi_enabled(vms)) &&
+-        strcmp("pcie.0", bus->qbus.name)) {
+-        warn_report("SMMUv3 device only supported with pcie.0 for DT");
+-        return;
++    if (!(vms->bootinfo.firmware_loaded && virt_is_acpi_enabled(vms))) {
++        if (object_property_get_bool(OBJECT(dev), "accel", &error_abort)) {
++            error_setg(errp, "SMMUv3 with accel=on not supported for DT");
++            return;
++        }
++        if (strcmp("pcie.0", bus->qbus.name)) {
++            warn_report("SMMUv3 device only supported with pcie.0 for DT");
++            return;
++        }
+     }
+     base += vms->memmap[VIRT_PLATFORM_BUS].base;
+     irq += vms->irqmap[VIRT_PLATFORM_BUS];
+@@ -3092,8 +3097,7 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
+             object_property_set_link(OBJECT(dev), "secure-memory",
+                                      OBJECT(vms->secure_sysmem), NULL);
+         }
+-        if (object_property_find(OBJECT(dev), "accel") &&
+-            object_property_get_bool(OBJECT(dev), "accel", &error_abort)) {
++        if (object_property_get_bool(OBJECT(dev), "accel", &error_abort)) {
+             hwaddr db_start = 0;
+ 
+             if (!kvm_enabled() || !kvm_irqchip_in_kernel()) {
+@@ -3148,7 +3152,7 @@ static void virt_machine_device_plug_cb(HotplugHandler *hotplug_dev,
+                 return;
+             }
+ 
+-            create_smmuv3_dev_dtb(vms, dev, bus);
++            create_smmuv3_dev_dtb(vms, dev, bus, errp);
+         }
+     }
+ 
+-- 
+2.52.0
+

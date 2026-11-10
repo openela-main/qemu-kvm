@@ -1,0 +1,53 @@
+From 6cf408cdf62e1d862f610bb8ad928ad221d6e98d Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:19 +0100
+Subject: [PATCH 061/116] vfio/spapr.c: rename VFIOContainer bcontainer field
+ to parent_obj
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [45/100] 38ba4a34a229a04036883dbe4020000d645e65c4 (rovick1/qemu-kvm)
+
+Now that nothing accesses the bcontainer field directly, rename bcontainer to
+parent_obj as per our current coding guidelines.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-12-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 1bd06d0385eb72bb54aa14af34e8361ec3ae8cee)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/spapr.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index c883ba6da9..8d9d68da4e 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -30,12 +30,13 @@ typedef struct VFIOHostDMAWindow {
+     QLIST_ENTRY(VFIOHostDMAWindow) hostwin_next;
+ } VFIOHostDMAWindow;
+ 
+-typedef struct VFIOSpaprContainer {
+-    VFIOLegacyContainer container;
++struct VFIOSpaprContainer {
++    VFIOLegacyContainer parent_obj;
++
+     MemoryListener prereg_listener;
+     QLIST_HEAD(, VFIOHostDMAWindow) hostwin_list;
+     unsigned int levels;
+-} VFIOSpaprContainer;
++};
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOSpaprContainer, VFIO_IOMMU_SPAPR);
+ 
+-- 
+2.52.0
+

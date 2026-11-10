@@ -1,0 +1,451 @@
+From 41cd0be6ec20382df99d2e13e181603452f7a203 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:37 +0100
+Subject: [PATCH 095/111] hw/arm/tegra241-cmdqv: Emulate VCMDQ register reads
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [95/111] 00a83972276e9eadcc48efa1fe453d197a5ac873 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Tegra241 CMDQV exposes per-VCMDQ register windows through two MMIO
+apertures:
+
+  Direct VCMDQ aperture (0x10000/0x20000): VCMDQ Page0/Page1
+  VINTF logical aperture (0x30000/0x40000): VINTF0 LVCMDQ Page0/Page1
+
+Both apertures are hardware aliases of the same underlying registers:
+
+  Page 0 (control/status): CONS_INDX, PROD_INDX, CONFIG, STATUS,
+                           GERROR, GERRORN
+  Page 1 (base/DRAM):      BASE_L/H, CONS_INDX_BASE_DRAM_L/H
+
+The direct aperture Page 0 is programmable at any time so long as
+CMDQV_EN is enabled. The VINTF (logical) aperture Page 0 is
+programmable only once SW has mapped a VCMDQ to a VINTF; the
+"logical" view is local to that VINTF.
+
+Add read emulation for both apertures, backed by a single per-VCMDQ
+register cache. VINTF aperture reads are translated to their
+equivalent direct-aperture offset and served from the same cached
+state.
+
+Per the CMDQV architecture, a VCMDQ must be allocated to a Virtual
+Interface before it is used to send commands to the SMMU. Until that
+allocation happens, reads return cached register state with no HW
+interaction. Subsequent patches wire up IOMMU_HW_QUEUE_ALLOC, mmap
+the host VINTF Page 0, and install it into guest MMIO; after that,
+Page 0 reads from either aperture are served from the hardware-backed
+mmap'd page instead of the cache. Page 1 is also a hardware alias,
+but the kernel only exposes mmap for Page 0, so Page 1 reads always
+trap to QEMU and are served from cache.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260609112552.378999-17-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 0d06b1cc2050fb8efdb9f023344b2e55125003f0)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 103 +++++++++++++++++++
+ hw/arm/tegra241-cmdqv.h | 216 ++++++++++++++++++++++++++++++++++++++++
+ hw/arm/trace-events     |   2 +
+ 3 files changed, 321 insertions(+)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 8950d5153b..2dfd377ee9 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -16,6 +16,79 @@
+ #include "tegra241-cmdqv.h"
+ #include "trace.h"
+ 
++/*
++ * Read a VCMDQ Page 0 register (control/status) using VCMDQ0_* offsets.
++ *
++ * The caller normalizes the MMIO offset such that @offset0 always refers
++ * to a VCMDQ0_* register, while @index selects the VCMDQ instance.
++ */
++static uint64_t tegra241_cmdqv_read_vcmdq_page0(Tegra241CMDQV *cmdqv,
++                                                hwaddr offset0, int index,
++                                                bool direct)
++{
++    uint64_t val = 0;
++
++    switch (offset0) {
++    case A_VCMDQ0_CONS_INDX:
++        val = cmdqv->vcmdq_cons_indx[index];
++        break;
++    case A_VCMDQ0_PROD_INDX:
++        val = cmdqv->vcmdq_prod_indx[index];
++        break;
++    case A_VCMDQ0_CONFIG:
++        val = cmdqv->vcmdq_config[index];
++        break;
++    case A_VCMDQ0_STATUS:
++        val = cmdqv->vcmdq_status[index];
++        break;
++    case A_VCMDQ0_GERROR:
++        val = cmdqv->vcmdq_gerror[index];
++        break;
++    case A_VCMDQ0_GERRORN:
++        val = cmdqv->vcmdq_gerrorn[index];
++        break;
++    default:
++        qemu_log_mask(LOG_UNIMP,
++                      "%s unhandled read access at 0x%" PRIx64 "\n",
++                      __func__, offset0);
++    }
++    trace_tegra241_cmdqv_read_vcmdq_page0(index, direct ? "direct" : "vi",
++                                          offset0, val);
++    return val;
++}
++
++/*
++ * Read a VCMDQ Page 1 register (base / DRAM address) using VCMDQ0_* offsets.
++ */
++static uint64_t tegra241_cmdqv_read_vcmdq_page1(Tegra241CMDQV *cmdqv,
++                                                hwaddr offset0, int index,
++                                                bool direct)
++{
++    uint64_t val = 0;
++
++    switch (offset0) {
++    case A_VCMDQ0_BASE_L:
++        val = cmdqv->vcmdq_base[index];
++        break;
++    case A_VCMDQ0_BASE_H:
++        val = cmdqv->vcmdq_base[index] >> 32;
++        break;
++    case A_VCMDQ0_CONS_INDX_BASE_DRAM_L:
++        val = cmdqv->vcmdq_cons_indx_base[index];
++        break;
++    case A_VCMDQ0_CONS_INDX_BASE_DRAM_H:
++        val = cmdqv->vcmdq_cons_indx_base[index] >> 32;
++        break;
++    default:
++        qemu_log_mask(LOG_UNIMP,
++                      "%s unhandled read access at 0x%" PRIx64 "\n",
++                      __func__, offset0);
++    }
++    trace_tegra241_cmdqv_read_vcmdq_page1(index, direct ? "direct" : "vi",
++                                          offset0, val);
++    return val;
++}
++
+ static uint64_t tegra241_cmdqv_config_vintf_read(Tegra241CMDQV *cmdqv,
+                                                  hwaddr offset)
+ {
+@@ -93,6 +166,7 @@ static uint64_t tegra241_cmdqv_read_mmio(void *opaque, hwaddr offset,
+ {
+     Tegra241CMDQV *cmdqv = (Tegra241CMDQV *)opaque;
+     uint64_t val = 0;
++    int index;
+ 
+     if (offset >= TEGRA241_CMDQV_IO_LEN) {
+         qemu_log_mask(LOG_UNIMP,
+@@ -126,6 +200,35 @@ static uint64_t tegra241_cmdqv_read_mmio(void *opaque, hwaddr offset,
+     case A_VINTF0_CONFIG ... A_VINTF0_LVCMDQ_ERR_MAP_3:
+         val = tegra241_cmdqv_config_vintf_read(cmdqv, offset);
+         break;
++    case A_VI_VCMDQ0_CONS_INDX ... A_VI_VCMDQ1_GERRORN:
++        /*
++         * VINTF Page0 registers are hardware aliases of VCMDQ Page0 registers.
++         * Translate the VINTF aperture offset to its VCMDQ Page0 equivalent
++         * before dispatching to the Page 0 helper.
++         */
++        offset -= CMDQV_VINTF_PAGE0_BASE - CMDQV_VCMDQ_PAGE0_BASE;
++        index = (offset - CMDQV_VCMDQ_PAGE0_BASE) / CMDQV_VCMDQ_STRIDE;
++        return tegra241_cmdqv_read_vcmdq_page0(cmdqv,
++                offset - index * CMDQV_VCMDQ_STRIDE, index, false);
++    case A_VCMDQ0_CONS_INDX ... A_VCMDQ1_GERRORN:
++        /*
++         * Decode a per-VCMDQ Page 0 access. Each VCMDQ occupies a
++         * CMDQV_VCMDQ_STRIDE-byte window; extract the index and normalize
++         * to the VCMDQ0_* offset before calling the Page 0 helper.
++         */
++        index = (offset - CMDQV_VCMDQ_PAGE0_BASE) / CMDQV_VCMDQ_STRIDE;
++        return tegra241_cmdqv_read_vcmdq_page0(cmdqv,
++                offset - index * CMDQV_VCMDQ_STRIDE, index, true);
++    case A_VI_VCMDQ0_BASE_L ... A_VI_VCMDQ1_CONS_INDX_BASE_DRAM_H:
++        /* Same VINTF-to-VCMDQ translation as VINTF Page0 case above. */
++        offset -= CMDQV_VINTF_PAGE1_BASE - CMDQV_VCMDQ_PAGE1_BASE;
++        index = (offset - CMDQV_VCMDQ_PAGE1_BASE) / CMDQV_VCMDQ_STRIDE;
++        return tegra241_cmdqv_read_vcmdq_page1(cmdqv,
++                offset - index * CMDQV_VCMDQ_STRIDE, index, false);
++    case A_VCMDQ0_BASE_L ... A_VCMDQ1_CONS_INDX_BASE_DRAM_H:
++        index = (offset - CMDQV_VCMDQ_PAGE1_BASE) / CMDQV_VCMDQ_STRIDE;
++        return tegra241_cmdqv_read_vcmdq_page1(cmdqv,
++                offset - index * CMDQV_VCMDQ_STRIDE, index, true);
+     default:
+         qemu_log_mask(LOG_UNIMP, "%s unhandled read access at 0x%" PRIx64 "\n",
+                       __func__, offset);
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index 4b86aa01d3..cc1b55a5e1 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -30,6 +30,13 @@
+  */
+ #define TEGRA241_CMDQV_IO_LEN 0x50000
+ 
++/* CMDQV MMIO aperture bases and VCMDQ stride */
++#define CMDQV_VCMDQ_PAGE0_BASE  0x10000  /* CMDQV_CMDQ_BASE */
++#define CMDQV_VCMDQ_PAGE1_BASE  0x20000
++#define CMDQV_VINTF_PAGE0_BASE  0x30000  /* CMDQV_VI_CMDQ_BASE */
++#define CMDQV_VINTF_PAGE1_BASE  0x40000
++#define CMDQV_VCMDQ_STRIDE      0x80
++
+ #define VINTF_PAGE_SIZE 0x10000
+ 
+ struct iommu_viommu_tegra241_cmdqv;
+@@ -57,6 +64,19 @@ typedef struct Tegra241CMDQV {
+     uint32_t vintf_sid_match[TEGRA241_CMDQV_MAX_NUM_SID];
+     uint32_t vintf_sid_replace[TEGRA241_CMDQV_MAX_NUM_SID];
+     uint32_t vintf_cmdq_err_map[4];
++    /*
++     * VCMDQ register cache. The direct (VCMDQ aperture) and logical
++     * (VINTF aperture) views are hardware aliases; both are served from
++     * this single cached copy.
++     */
++    uint32_t vcmdq_cons_indx[TEGRA241_CMDQV_MAX_CMDQ];
++    uint32_t vcmdq_prod_indx[TEGRA241_CMDQV_MAX_CMDQ];
++    uint32_t vcmdq_config[TEGRA241_CMDQV_MAX_CMDQ];
++    uint32_t vcmdq_status[TEGRA241_CMDQV_MAX_CMDQ];
++    uint32_t vcmdq_gerror[TEGRA241_CMDQV_MAX_CMDQ];
++    uint32_t vcmdq_gerrorn[TEGRA241_CMDQV_MAX_CMDQ];
++    uint64_t vcmdq_base[TEGRA241_CMDQV_MAX_CMDQ];
++    uint64_t vcmdq_cons_indx_base[TEGRA241_CMDQV_MAX_CMDQ];
+ } Tegra241CMDQV;
+ 
+ /* CMDQ-V Config page registers (offset 0x00000) */
+@@ -148,6 +168,202 @@ REG32(VINTF0_LVCMDQ_ERR_MAP_0, 0x10c0)
+ FIELD(VINTF0_LVCMDQ_ERR_MAP_0, LVCMDQ_ERR_MAP, 0, 32)
+ #define A_VINTF0_LVCMDQ_ERR_MAP_3 (A_VINTF0_LVCMDQ_ERR_MAP_0 + 3 * 4)
+ 
++/*
++ * Direct VCMDQ aperture register windows.
++ *
++ * Page 0 @ CMDQV_VCMDQ_PAGE0_BASE: VCMDQ control and status registers.
++ * Page 1 @ CMDQV_VCMDQ_PAGE1_BASE: VCMDQ base and DRAM address registers.
++ *
++ * Each VCMDQ occupies a CMDQV_VCMDQ_STRIDE-byte slot within its page.
++ */
++
++/* --- Page 0 register macros --- */
++#define SMMU_CMDQV_VCMDQi_CONS_INDX_(i)                     \
++    REG32(VCMDQ##i##_CONS_INDX,                             \
++          CMDQV_VCMDQ_PAGE0_BASE + i * CMDQV_VCMDQ_STRIDE)  \
++    FIELD(VCMDQ##i##_CONS_INDX, RD, 0, 20)                  \
++    FIELD(VCMDQ##i##_CONS_INDX, ERR, 24, 7)
++
++#define V_VCMDQ_CONS_INDX_ERR_CERROR_NONE         0
++#define V_VCMDQ_CONS_INDX_ERR_CERROR_ILL_OPCODE   1
++#define V_VCMDQ_CONS_INDX_ERR_CERROR_ABT          2
++#define V_VCMDQ_CONS_INDX_ERR_CERROR_ATC_INV_SYNC 3
++#define V_VCMDQ_CONS_INDX_ERR_CERROR_ILL_ACCESS   4
++
++#define SMMU_CMDQV_VCMDQi_PROD_INDX_(i)                          \
++    REG32(VCMDQ##i##_PROD_INDX,                                  \
++          CMDQV_VCMDQ_PAGE0_BASE + 0x4 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_PROD_INDX, WR, 0, 20)
++
++#define SMMU_CMDQV_VCMDQi_CONFIG_(i)                             \
++    REG32(VCMDQ##i##_CONFIG,                                     \
++          CMDQV_VCMDQ_PAGE0_BASE + 0x8 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_CONFIG, CMDQ_EN, 0, 1)
++
++#define SMMU_CMDQV_VCMDQi_STATUS_(i)                             \
++    REG32(VCMDQ##i##_STATUS,                                     \
++          CMDQV_VCMDQ_PAGE0_BASE + 0xc + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_STATUS, CMDQ_EN_OK, 0, 1)
++
++#define SMMU_CMDQV_VCMDQi_GERROR_(i)                              \
++    REG32(VCMDQ##i##_GERROR,                                      \
++          CMDQV_VCMDQ_PAGE0_BASE + 0x10 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_GERROR, CMDQ_ERR, 0, 1)                      \
++    FIELD(VCMDQ##i##_GERROR, CONS_DRAM_WR_ABT_ERR, 1, 1)          \
++    FIELD(VCMDQ##i##_GERROR, CMDQ_INIT_ERR, 2, 1)
++
++#define SMMU_CMDQV_VCMDQi_GERRORN_(i)                             \
++    REG32(VCMDQ##i##_GERRORN,                                     \
++          CMDQV_VCMDQ_PAGE0_BASE + 0x14 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_GERRORN, CMDQ_ERR, 0, 1)                     \
++    FIELD(VCMDQ##i##_GERRORN, CONS_DRAM_WR_ABT_ERR, 1, 1)         \
++    FIELD(VCMDQ##i##_GERRORN, CMDQ_INIT_ERR, 2, 1)
++
++/* Page 0 layout: VCMDQ0 */
++SMMU_CMDQV_VCMDQi_CONS_INDX_(0)
++SMMU_CMDQV_VCMDQi_PROD_INDX_(0)
++SMMU_CMDQV_VCMDQi_CONFIG_(0)
++SMMU_CMDQV_VCMDQi_STATUS_(0)
++SMMU_CMDQV_VCMDQi_GERROR_(0)
++SMMU_CMDQV_VCMDQi_GERRORN_(0)
++
++/* Page 0 layout: VCMDQ1 */
++SMMU_CMDQV_VCMDQi_CONS_INDX_(1)
++SMMU_CMDQV_VCMDQi_PROD_INDX_(1)
++SMMU_CMDQV_VCMDQi_CONFIG_(1)
++SMMU_CMDQV_VCMDQi_STATUS_(1)
++SMMU_CMDQV_VCMDQi_GERROR_(1)
++SMMU_CMDQV_VCMDQi_GERRORN_(1)
++
++/* --- Page 1 register macros --- */
++#define SMMU_CMDQV_VCMDQi_BASE_L_(i)                                          \
++    REG32(VCMDQ##i##_BASE_L, CMDQV_VCMDQ_PAGE1_BASE + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_BASE_L, LOG2SIZE, 0, 5)                                  \
++    FIELD(VCMDQ##i##_BASE_L, ADDR, 5, 27)
++
++#define SMMU_CMDQV_VCMDQi_BASE_H_(i)                             \
++    REG32(VCMDQ##i##_BASE_H,                                     \
++          CMDQV_VCMDQ_PAGE1_BASE + 0x4 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_BASE_H, ADDR, 0, 16)
++
++#define SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_L_(i)              \
++    REG32(VCMDQ##i##_CONS_INDX_BASE_DRAM_L,                      \
++          CMDQV_VCMDQ_PAGE1_BASE + 0x8 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_CONS_INDX_BASE_DRAM_L, ADDR, 0, 32)
++
++#define SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_H_(i)              \
++    REG32(VCMDQ##i##_CONS_INDX_BASE_DRAM_H,                      \
++          CMDQV_VCMDQ_PAGE1_BASE + 0xc + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VCMDQ##i##_CONS_INDX_BASE_DRAM_H, ADDR, 0, 16)
++
++/* Page 1 layout: VCMDQ0 */
++SMMU_CMDQV_VCMDQi_BASE_L_(0)
++SMMU_CMDQV_VCMDQi_BASE_H_(0)
++SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_L_(0)
++SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_H_(0)
++
++/* Page 1 layout: VCMDQ1 */
++SMMU_CMDQV_VCMDQi_BASE_L_(1)
++SMMU_CMDQV_VCMDQi_BASE_H_(1)
++SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_L_(1)
++SMMU_CMDQV_VCMDQi_CONS_INDX_BASE_DRAM_H_(1)
++
++/*
++ * VINTF0 logical VCMDQ aperture register windows.
++ *
++ * Page 0 @ CMDQV_VINTF_PAGE0_BASE: VCMDQ control and status registers.
++ * Page 1 @ CMDQV_VINTF_PAGE1_BASE: VCMDQ base and DRAM address registers.
++ *
++ * VCMDQs mapped via VINTF are accessed through this aperture as
++ * hardware aliases of the direct VCMDQ aperture above.
++ */
++
++/* --- Page 0 register macros --- */
++#define SMMU_CMDQV_VI_VCMDQi_CONS_INDX_(i)                  \
++    REG32(VI_VCMDQ##i##_CONS_INDX,                          \
++          CMDQV_VINTF_PAGE0_BASE + i * CMDQV_VCMDQ_STRIDE)  \
++    FIELD(VI_VCMDQ##i##_CONS_INDX, RD, 0, 20)               \
++    FIELD(VI_VCMDQ##i##_CONS_INDX, ERR, 24, 7)
++
++#define SMMU_CMDQV_VI_VCMDQi_PROD_INDX_(i)                       \
++    REG32(VI_VCMDQ##i##_PROD_INDX,                               \
++          CMDQV_VINTF_PAGE0_BASE + 0x4 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_PROD_INDX, WR, 0, 20)
++
++#define SMMU_CMDQV_VI_VCMDQi_CONFIG_(i)                          \
++    REG32(VI_VCMDQ##i##_CONFIG,                                  \
++          CMDQV_VINTF_PAGE0_BASE + 0x8 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_CONFIG, CMDQ_EN, 0, 1)
++
++#define SMMU_CMDQV_VI_VCMDQi_STATUS_(i)                          \
++    REG32(VI_VCMDQ##i##_STATUS,                                  \
++          CMDQV_VINTF_PAGE0_BASE + 0xc + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_STATUS, CMDQ_EN_OK, 0, 1)
++
++#define SMMU_CMDQV_VI_VCMDQi_GERROR_(i)                           \
++    REG32(VI_VCMDQ##i##_GERROR,                                   \
++          CMDQV_VINTF_PAGE0_BASE + 0x10 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_GERROR, CMDQ_ERR, 0, 1)                   \
++    FIELD(VI_VCMDQ##i##_GERROR, CONS_DRAM_WR_ABT_ERR, 1, 1)       \
++    FIELD(VI_VCMDQ##i##_GERROR, CMDQ_INIT_ERR, 2, 1)
++
++#define SMMU_CMDQV_VI_VCMDQi_GERRORN_(i)                          \
++    REG32(VI_VCMDQ##i##_GERRORN,                                  \
++          CMDQV_VINTF_PAGE0_BASE + 0x14 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_GERRORN, CMDQ_ERR, 0, 1)                  \
++    FIELD(VI_VCMDQ##i##_GERRORN, CONS_DRAM_WR_ABT_ERR, 1, 1)      \
++    FIELD(VI_VCMDQ##i##_GERRORN, CMDQ_INIT_ERR, 2, 1)
++
++/* Page 0 layout: VCMDQ0 */
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_(0)
++SMMU_CMDQV_VI_VCMDQi_PROD_INDX_(0)
++SMMU_CMDQV_VI_VCMDQi_CONFIG_(0)
++SMMU_CMDQV_VI_VCMDQi_STATUS_(0)
++SMMU_CMDQV_VI_VCMDQi_GERROR_(0)
++SMMU_CMDQV_VI_VCMDQi_GERRORN_(0)
++
++/* Page 0 layout: VCMDQ1 */
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_(1)
++SMMU_CMDQV_VI_VCMDQi_PROD_INDX_(1)
++SMMU_CMDQV_VI_VCMDQi_CONFIG_(1)
++SMMU_CMDQV_VI_VCMDQi_STATUS_(1)
++SMMU_CMDQV_VI_VCMDQi_GERROR_(1)
++SMMU_CMDQV_VI_VCMDQi_GERRORN_(1)
++
++/* --- Page 1 register macros --- */
++#define SMMU_CMDQV_VI_VCMDQi_BASE_L_(i)                     \
++    REG32(VI_VCMDQ##i##_BASE_L,                             \
++          CMDQV_VINTF_PAGE1_BASE + i * CMDQV_VCMDQ_STRIDE)  \
++    FIELD(VI_VCMDQ##i##_BASE_L, LOG2SIZE, 0, 5)             \
++    FIELD(VI_VCMDQ##i##_BASE_L, ADDR, 5, 27)
++
++#define SMMU_CMDQV_VI_VCMDQi_BASE_H_(i)                          \
++    REG32(VI_VCMDQ##i##_BASE_H,                                  \
++          CMDQV_VINTF_PAGE1_BASE + 0x4 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_BASE_H, ADDR, 0, 16)
++
++#define SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_L_(i)           \
++    REG32(VI_VCMDQ##i##_CONS_INDX_BASE_DRAM_L,                   \
++          CMDQV_VINTF_PAGE1_BASE + 0x8 + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_CONS_INDX_BASE_DRAM_L, ADDR, 0, 32)
++
++#define SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_H_(i)           \
++    REG32(VI_VCMDQ##i##_CONS_INDX_BASE_DRAM_H,                   \
++          CMDQV_VINTF_PAGE1_BASE + 0xc + i * CMDQV_VCMDQ_STRIDE) \
++    FIELD(VI_VCMDQ##i##_CONS_INDX_BASE_DRAM_H, ADDR, 0, 16)
++
++/* Page 1 layout: VCMDQ0 */
++SMMU_CMDQV_VI_VCMDQi_BASE_L_(0)
++SMMU_CMDQV_VI_VCMDQi_BASE_H_(0)
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_L_(0)
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_H_(0)
++
++/* Page 1 layout: VCMDQ1 */
++SMMU_CMDQV_VI_VCMDQi_BASE_L_(1)
++SMMU_CMDQV_VI_VCMDQi_BASE_H_(1)
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_L_(1)
++SMMU_CMDQV_VI_VCMDQi_CONS_INDX_BASE_DRAM_H_(1)
++
+ const SMMUv3AccelCmdqvOps *tegra241_cmdqv_get_ops(void);
+ 
+ #endif /* HW_ARM_TEGRA241_CMDQV_H */
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index 8c61d66a26..5156604228 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -75,6 +75,8 @@ smmuv3_accel_install_ste(uint32_t vsid, const char * type, uint32_t hwpt_id) "vS
+ # tegra241-cmdqv
+ tegra241_cmdqv_read_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+ tegra241_cmdqv_write_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
++tegra241_cmdqv_read_vcmdq_page0(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
++tegra241_cmdqv_read_vcmdq_page1(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ 
+ # strongarm.c
+ strongarm_uart_update_parameters(const char *label, int speed, char parity, int data_bits, int stop_bits) "%s speed=%d parity=%c data=%d stop=%d"
+-- 
+2.52.0
+

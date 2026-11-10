@@ -1,0 +1,81 @@
+From bb6023507aee06a4e9c7436425b863fe1088e515 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Fri, 6 Mar 2026 09:01:11 +0000
+Subject: [PATCH 051/111] hw/arm/smmuv3-accel: Add viommu free helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [51/111] ac43708d52e6d4d84e4d54b0cb955f8518fe35d6 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Move viommu teardown into a helper function and use it from the
+last device removal path.
+
+This groups related cleanup logic in one place and improves readability.
+It also makes it easier to extend the teardown in future, for example
+when freeing related objects such as vEVENTQ.
+
+No functional change.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260226084456.112142-3-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 674d57bf6e26a3ae7076a7ee56e6be90580d5208)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c | 21 +++++++++++++++------
+ 1 file changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index f5cd4df336..c19c526fca 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -390,6 +390,20 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *bs, void *cmd, SMMUDevice *sdev,
+                    sizeof(Cmd), &entry_num, cmd, errp);
+ }
+ 
++static void smmuv3_accel_free_viommu(SMMUv3AccelState *accel)
++{
++    IOMMUFDViommu *viommu = accel->viommu;
++
++    if (!viommu) {
++        return;
++    }
++    iommufd_backend_free_id(viommu->iommufd, accel->bypass_hwpt_id);
++    iommufd_backend_free_id(viommu->iommufd, accel->abort_hwpt_id);
++    iommufd_backend_free_id(viommu->iommufd, accel->viommu->viommu_id);
++    g_free(viommu);
++    accel->viommu = NULL;
++}
++
+ static bool
+ smmuv3_accel_alloc_viommu(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+                           Error **errp)
+@@ -549,12 +563,7 @@ static void smmuv3_accel_unset_iommu_device(PCIBus *bus, void *opaque,
+     trace_smmuv3_accel_unset_iommu_device(devfn, idev->devid);
+ 
+     if (QLIST_EMPTY(&accel->device_list)) {
+-        iommufd_backend_free_id(accel->viommu->iommufd, accel->bypass_hwpt_id);
+-        iommufd_backend_free_id(accel->viommu->iommufd, accel->abort_hwpt_id);
+-        iommufd_backend_free_id(accel->viommu->iommufd,
+-                                accel->viommu->viommu_id);
+-        g_free(accel->viommu);
+-        accel->viommu = NULL;
++        smmuv3_accel_free_viommu(accel);
+     }
+ }
+ 
+-- 
+2.52.0
+

@@ -1,0 +1,52 @@
+From c153b0934b729a36c377366769822a4ac87099ac Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Mon, 8 Jun 2026 10:48:53 -0700
+Subject: [PATCH 067/111] hw/arm/smmuv3: Improve accel SMMUv3 usage
+ documentation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [67/111] 1b682f65ef48f1736b6179c5e0520b4f17ba75e6 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-163596
+
+Add a statement to clarify that the host SMMUv3 must support HW-accelerated
+vfio-pci device assignment when setting accel=on.
+
+Reported-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260608174900.2227340-3-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 6328edbe5d72fd9f636b0e9785e72efe883d557e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index c724c6b819..f76a527182 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -2165,7 +2165,9 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+ 
+     object_class_property_set_description(klass, "accel",
+         "Enable SMMUv3 accelerator support. Allows host SMMUv3 to be "
+-        "configured in nested mode for vfio-pci dev assignment");
++        "configured in nested mode for vfio-pci dev assignment. Please "
++        "ensure the host SMMUv3 supports nested translation before "
++        "enabling.");
+     object_class_property_set_description(klass, "ril",
+         "Disable range invalidation support (for accel=on). ril=auto "
+         "is not supported.");
+-- 
+2.52.0
+

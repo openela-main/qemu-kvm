@@ -1,0 +1,58 @@
+From 7b4c4fc735e983f616c42a55022f6900687b4b05 Mon Sep 17 00:00:00 2001
+From: Christoph Schlameuss <cschlame@redhat.com>
+Date: Thu, 16 Jul 2026 10:34:43 +0200
+Subject: [PATCH 11/12] s390x/sclpcpi: check event length field before reading
+ from buffer
+
+RH-Author: Christoph Schlameuss <None>
+RH-MergeRequest: 510: s390x: interface harding fixes
+RH-Jira: RHEL-192791
+RH-Acked-by: Cornelia Huck <cohuck@redhat.com>
+RH-Acked-by: acordeir <None>
+RH-Commit: [8/9] b28bf870b91442a2d450dd0a6afee4d5673cc694 (cschlame/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-192791
+
+commit 8a116a28535c34b001e68b52f85d6be3acb75350
+Author: Christian Borntraeger <borntraeger@linux.ibm.com>
+Date:   Thu Jul 9 16:29:06 2026 +0200
+
+    s390x/sclpcpi: check event length field before reading from buffer
+
+    A guest might send a too short SCCB with SCLP_EVENT_CTRL_PGM_ID. QEMU
+    would fill its data structures with garbage data. Check for the precise
+    length of the CBI data structure and reject otherwise.
+
+    Fixes: f345978f24be ("hw/s390x: add Control-Program Identification to QOM")
+    Cc: qemu-stable@nongnu.org
+    Signed-off-by: Christian Borntraeger <borntraeger@linux.ibm.com>
+    Reviewed-by: Matthew Rosato <mjrosato@linux.ibm.com>
+    Reviewed-by: Janosch Frank <frankja@linux.ibm.com>
+    Reviewed-by: Eric Farman <farman@linux.ibm.com>
+    Message-ID: <20260709142906.197474-3-borntraeger@linux.ibm.com>
+    Signed-off-by: Cornelia Huck <cohuck@redhat.com>
+
+Signed-off-by: Christoph Schlameuss <cschlame@redhat.com>
+---
+ hw/s390x/sclpcpi.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/s390x/sclpcpi.c b/hw/s390x/sclpcpi.c
+index 68fc1b809b..ec4bdf2350 100644
+--- a/hw/s390x/sclpcpi.c
++++ b/hw/s390x/sclpcpi.c
+@@ -97,6 +97,11 @@ static int write_event_data(SCLPEvent *event, EventBufferHeader *evt_buf_hdr)
+                                              ebh);
+     SCLPEventCPI *e = SCLP_EVENT_CPI(event);
+ 
++    /* Caller checks sccb length, buffer header checking is our duty */
++    if (be16_to_cpu(evt_buf_hdr->length) != sizeof(ControlProgramIdMsg)) {
++        return SCLP_RC_INCONSISTENT_LENGTHS;
++    }
++
+     ascii_put(e->system_type, (char *)cpim->data.system_type,
+               sizeof(cpim->data.system_type));
+     ascii_put(e->system_name, (char *)cpim->data.system_name,
+-- 
+2.52.0
+

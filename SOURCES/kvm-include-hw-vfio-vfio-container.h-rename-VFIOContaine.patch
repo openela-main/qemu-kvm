@@ -1,0 +1,513 @@
+From 3e5a48ee28a9ecc28f27e34e4bdea3f30cb07154 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:09 +0100
+Subject: [PATCH 051/116] include/hw/vfio/vfio-container.h: rename
+ VFIOContainer to VFIOLegacyContainer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [35/100] 76092b57b3839acd6627010e30b7d7ce90db524f (rovick1/qemu-kvm)
+
+Conflicts:
+	hw/vfio/container.c: contextual conflict: downstream we
+        have vfio_device_count
+
+The VFIOContainer struct represents the legacy VFIO container even though the
+name suggests it may be the common superclass of all VFIO containers. Rename it
+to VFIOLegacyContainer to make this clearer, which is also a better match for
+its VFIO_IOMMU_LEGACY QOM type name.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-2-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit da9211f28e280bc9809b116fc186727a01b0f267)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/ppc/spapr_pci_vfio.c          | 10 ++++----
+ hw/vfio/container.c              | 42 +++++++++++++++++---------------
+ hw/vfio/cpr-legacy.c             | 27 +++++++++++---------
+ hw/vfio/spapr.c                  | 18 +++++++-------
+ include/hw/vfio/vfio-container.h |  8 +++---
+ include/hw/vfio/vfio-cpr.h       |  9 ++++---
+ 6 files changed, 60 insertions(+), 54 deletions(-)
+
+diff --git a/hw/ppc/spapr_pci_vfio.c b/hw/ppc/spapr_pci_vfio.c
+index e318d0d912..b658eb372c 100644
+--- a/hw/ppc/spapr_pci_vfio.c
++++ b/hw/ppc/spapr_pci_vfio.c
+@@ -32,7 +32,7 @@
+  * Interfaces for IBM EEH (Enhanced Error Handling)
+  */
+ #ifdef CONFIG_VFIO_PCI
+-static bool vfio_eeh_container_ok(VFIOContainer *container)
++static bool vfio_eeh_container_ok(VFIOLegacyContainer *container)
+ {
+     /*
+      * As of 2016-03-04 (linux-4.5) the host kernel EEH/VFIO
+@@ -60,7 +60,7 @@ static bool vfio_eeh_container_ok(VFIOContainer *container)
+     return true;
+ }
+ 
+-static int vfio_eeh_container_op(VFIOContainer *container, uint32_t op)
++static int vfio_eeh_container_op(VFIOLegacyContainer *container, uint32_t op)
+ {
+     struct vfio_eeh_pe_op pe_op = {
+         .argsz = sizeof(pe_op),
+@@ -83,7 +83,7 @@ static int vfio_eeh_container_op(VFIOContainer *container, uint32_t op)
+     return ret;
+ }
+ 
+-static VFIOContainer *vfio_eeh_as_container(AddressSpace *as)
++static VFIOLegacyContainer *vfio_eeh_as_container(AddressSpace *as)
+ {
+     VFIOAddressSpace *space = vfio_address_space_get(as);
+     VFIOContainerBase *bcontainer = NULL;
+@@ -111,14 +111,14 @@ out:
+ 
+ static bool vfio_eeh_as_ok(AddressSpace *as)
+ {
+-    VFIOContainer *container = vfio_eeh_as_container(as);
++    VFIOLegacyContainer *container = vfio_eeh_as_container(as);
+ 
+     return (container != NULL) && vfio_eeh_container_ok(container);
+ }
+ 
+ static int vfio_eeh_as_op(AddressSpace *as, uint32_t op)
+ {
+-    VFIOContainer *container = vfio_eeh_as_container(as);
++    VFIOLegacyContainer *container = vfio_eeh_as_container(as);
+ 
+     if (!container) {
+         return -ENODEV;
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 860d1aebda..76a09be941 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -58,7 +58,8 @@ int vfio_device_count(void)
+     return i;
+ }
+ 
+-static int vfio_ram_block_discard_disable(VFIOContainer *container, bool state)
++static int vfio_ram_block_discard_disable(VFIOLegacyContainer *container,
++                                          bool state)
+ {
+     switch (container->iommu_type) {
+     case VFIO_TYPE1v2_IOMMU:
+@@ -81,7 +82,7 @@ static int vfio_ram_block_discard_disable(VFIOContainer *container, bool state)
+     }
+ }
+ 
+-static int vfio_dma_unmap_bitmap(const VFIOContainer *container,
++static int vfio_dma_unmap_bitmap(const VFIOLegacyContainer *container,
+                                  hwaddr iova, ram_addr_t size,
+                                  IOMMUTLBEntry *iotlb)
+ {
+@@ -138,7 +139,7 @@ static int vfio_legacy_dma_unmap_one(const VFIOContainerBase *bcontainer,
+                                      hwaddr iova, ram_addr_t size,
+                                      IOMMUTLBEntry *iotlb)
+ {
+-    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     struct vfio_iommu_type1_dma_unmap unmap = {
+         .argsz = sizeof(unmap),
+         .flags = 0,
+@@ -226,7 +227,7 @@ static int vfio_legacy_dma_map(const VFIOContainerBase *bcontainer, hwaddr iova,
+                                ram_addr_t size, void *vaddr, bool readonly,
+                                MemoryRegion *mr)
+ {
+-    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     struct vfio_iommu_type1_dma_map map = {
+         .argsz = sizeof(map),
+         .flags = VFIO_DMA_MAP_FLAG_READ,
+@@ -258,7 +259,7 @@ static int
+ vfio_legacy_set_dirty_page_tracking(const VFIOContainerBase *bcontainer,
+                                     bool start, Error **errp)
+ {
+-    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     int ret;
+     struct vfio_iommu_type1_dirty_bitmap dirty = {
+         .argsz = sizeof(dirty),
+@@ -283,7 +284,7 @@ vfio_legacy_set_dirty_page_tracking(const VFIOContainerBase *bcontainer,
+ static int vfio_legacy_query_dirty_bitmap(const VFIOContainerBase *bcontainer,
+                       VFIOBitmap *vbmap, hwaddr iova, hwaddr size, Error **errp)
+ {
+-    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     struct vfio_iommu_type1_dirty_bitmap *dbitmap;
+     struct vfio_iommu_type1_dirty_bitmap_get *range;
+     int ret;
+@@ -427,12 +428,12 @@ static bool vfio_set_iommu(int container_fd, int group_fd,
+     return true;
+ }
+ 
+-static VFIOContainer *vfio_create_container(int fd, VFIOGroup *group,
++static VFIOLegacyContainer *vfio_create_container(int fd, VFIOGroup *group,
+                                             Error **errp)
+ {
+     int iommu_type;
+     const char *vioc_name;
+-    VFIOContainer *container;
++    VFIOLegacyContainer *container;
+ 
+     iommu_type = vfio_get_iommu_type(fd, errp);
+     if (iommu_type < 0) {
+@@ -456,7 +457,7 @@ static VFIOContainer *vfio_create_container(int fd, VFIOGroup *group,
+     return container;
+ }
+ 
+-static int vfio_get_iommu_info(VFIOContainer *container,
++static int vfio_get_iommu_info(VFIOLegacyContainer *container,
+                                struct vfio_iommu_type1_info **info)
+ {
+ 
+@@ -500,7 +501,7 @@ vfio_get_iommu_info_cap(struct vfio_iommu_type1_info *info, uint16_t id)
+     return NULL;
+ }
+ 
+-static void vfio_get_iommu_info_migration(VFIOContainer *container,
++static void vfio_get_iommu_info_migration(VFIOLegacyContainer *container,
+                                           struct vfio_iommu_type1_info *info)
+ {
+     struct vfio_info_cap_header *hdr;
+@@ -528,7 +529,7 @@ static void vfio_get_iommu_info_migration(VFIOContainer *container,
+ 
+ static bool vfio_legacy_setup(VFIOContainerBase *bcontainer, Error **errp)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     g_autofree struct vfio_iommu_type1_info *info = NULL;
+     int ret;
+ 
+@@ -554,8 +555,8 @@ static bool vfio_legacy_setup(VFIOContainerBase *bcontainer, Error **errp)
+     return true;
+ }
+ 
+-static bool vfio_container_attach_discard_disable(VFIOContainer *container,
+-                                            VFIOGroup *group, Error **errp)
++static bool vfio_container_attach_discard_disable(
++    VFIOLegacyContainer *container, VFIOGroup *group, Error **errp)
+ {
+     int ret;
+ 
+@@ -601,8 +602,8 @@ static bool vfio_container_attach_discard_disable(VFIOContainer *container,
+     return !ret;
+ }
+ 
+-static bool vfio_container_group_add(VFIOContainer *container, VFIOGroup *group,
+-                                     Error **errp)
++static bool vfio_container_group_add(VFIOLegacyContainer *container,
++                                     VFIOGroup *group, Error **errp)
+ {
+     if (!vfio_container_attach_discard_disable(container, group, errp)) {
+         return false;
+@@ -618,7 +619,8 @@ static bool vfio_container_group_add(VFIOContainer *container, VFIOGroup *group,
+     return true;
+ }
+ 
+-static void vfio_container_group_del(VFIOContainer *container, VFIOGroup *group)
++static void vfio_container_group_del(VFIOLegacyContainer *container,
++                                     VFIOGroup *group)
+ {
+     QLIST_REMOVE(group, container_next);
+     group->container = NULL;
+@@ -630,7 +632,7 @@ static void vfio_container_group_del(VFIOContainer *container, VFIOGroup *group)
+ static bool vfio_container_connect(VFIOGroup *group, AddressSpace *as,
+                                    Error **errp)
+ {
+-    VFIOContainer *container;
++    VFIOLegacyContainer *container;
+     VFIOContainerBase *bcontainer;
+     int ret, fd = -1;
+     VFIOAddressSpace *space;
+@@ -743,7 +745,7 @@ fail:
+ 
+ static void vfio_container_disconnect(VFIOGroup *group)
+ {
+-    VFIOContainer *container = group->container;
++    VFIOLegacyContainer *container = group->container;
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+ 
+@@ -1257,7 +1259,7 @@ hiod_legacy_vfio_get_page_size_mask(HostIOMMUDevice *hiod)
+ 
+ static void vfio_iommu_legacy_instance_init(Object *obj)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(obj);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(obj);
+ 
+     QLIST_INIT(&container->group_list);
+ }
+@@ -1277,7 +1279,7 @@ static const TypeInfo types[] = {
+         .name = TYPE_VFIO_IOMMU_LEGACY,
+         .parent = TYPE_VFIO_IOMMU,
+         .instance_init = vfio_iommu_legacy_instance_init,
+-        .instance_size = sizeof(VFIOContainer),
++        .instance_size = sizeof(VFIOLegacyContainer),
+         .class_init = vfio_iommu_legacy_class_init,
+     }, {
+         .name = TYPE_HOST_IOMMU_DEVICE_LEGACY_VFIO,
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index 8f437194fa..12bf920a7d 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -17,7 +17,8 @@
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
+ 
+-static bool vfio_dma_unmap_vaddr_all(VFIOContainer *container, Error **errp)
++static bool vfio_dma_unmap_vaddr_all(VFIOLegacyContainer *container,
++                                     Error **errp)
+ {
+     struct vfio_iommu_type1_dma_unmap unmap = {
+         .argsz = sizeof(unmap),
+@@ -41,7 +42,7 @@ static int vfio_legacy_cpr_dma_map(const VFIOContainerBase *bcontainer,
+                                    hwaddr iova, ram_addr_t size, void *vaddr,
+                                    bool readonly, MemoryRegion *mr)
+ {
+-    const VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+ 
+     struct vfio_iommu_type1_dma_map map = {
+         .argsz = sizeof(map),
+@@ -63,12 +64,13 @@ static int vfio_legacy_cpr_dma_map(const VFIOContainerBase *bcontainer,
+ static void vfio_region_remap(MemoryListener *listener,
+                               MemoryRegionSection *section)
+ {
+-    VFIOContainer *container = container_of(listener, VFIOContainer,
+-                                            cpr.remap_listener);
++    VFIOLegacyContainer *container = container_of(listener,
++                                                  VFIOLegacyContainer,
++                                                  cpr.remap_listener);
+     vfio_container_region_add(VFIO_IOMMU(container), section, true);
+ }
+ 
+-static bool vfio_cpr_supported(VFIOContainer *container, Error **errp)
++static bool vfio_cpr_supported(VFIOLegacyContainer *container, Error **errp)
+ {
+     if (!ioctl(container->fd, VFIO_CHECK_EXTENSION, VFIO_UPDATE_VADDR)) {
+         error_setg(errp, "VFIO container does not support VFIO_UPDATE_VADDR");
+@@ -85,7 +87,7 @@ static bool vfio_cpr_supported(VFIOContainer *container, Error **errp)
+ 
+ static int vfio_container_pre_save(void *opaque)
+ {
+-    VFIOContainer *container = opaque;
++    VFIOLegacyContainer *container = opaque;
+     Error *local_err = NULL;
+ 
+     if (!vfio_dma_unmap_vaddr_all(container, &local_err)) {
+@@ -97,7 +99,7 @@ static int vfio_container_pre_save(void *opaque)
+ 
+ static int vfio_container_post_load(void *opaque, int version_id)
+ {
+-    VFIOContainer *container = opaque;
++    VFIOLegacyContainer *container = opaque;
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     VFIOIOMMUClass *vioc = VFIO_IOMMU_GET_CLASS(bcontainer);
+     dma_map_fn saved_dma_map = vioc->dma_map;
+@@ -133,8 +135,8 @@ static const VMStateDescription vfio_container_vmstate = {
+ static int vfio_cpr_fail_notifier(NotifierWithReturn *notifier,
+                                   MigrationEvent *e, Error **errp)
+ {
+-    VFIOContainer *container =
+-        container_of(notifier, VFIOContainer, cpr.transfer_notifier);
++    VFIOLegacyContainer *container =
++        container_of(notifier, VFIOLegacyContainer, cpr.transfer_notifier);
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+ 
+     if (e->type != MIG_EVENT_PRECOPY_FAILED) {
+@@ -165,7 +167,8 @@ static int vfio_cpr_fail_notifier(NotifierWithReturn *notifier,
+     return 0;
+ }
+ 
+-bool vfio_legacy_cpr_register_container(VFIOContainer *container, Error **errp)
++bool vfio_legacy_cpr_register_container(VFIOLegacyContainer *container,
++                                        Error **errp)
+ {
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     Error **cpr_blocker = &container->cpr.blocker;
+@@ -189,7 +192,7 @@ bool vfio_legacy_cpr_register_container(VFIOContainer *container, Error **errp)
+     return true;
+ }
+ 
+-void vfio_legacy_cpr_unregister_container(VFIOContainer *container)
++void vfio_legacy_cpr_unregister_container(VFIOLegacyContainer *container)
+ {
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+ 
+@@ -263,7 +266,7 @@ static bool same_device(int fd1, int fd2)
+     return !fstat(fd1, &st1) && !fstat(fd2, &st2) && st1.st_dev == st2.st_dev;
+ }
+ 
+-bool vfio_cpr_container_match(VFIOContainer *container, VFIOGroup *group,
++bool vfio_cpr_container_match(VFIOLegacyContainer *container, VFIOGroup *group,
+                               int fd)
+ {
+     if (container->fd == fd) {
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index c41e4588d6..b8bade90d7 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -31,7 +31,7 @@ typedef struct VFIOHostDMAWindow {
+ } VFIOHostDMAWindow;
+ 
+ typedef struct VFIOSpaprContainer {
+-    VFIOContainer container;
++    VFIOLegacyContainer container;
+     MemoryListener prereg_listener;
+     QLIST_HEAD(, VFIOHostDMAWindow) hostwin_list;
+     unsigned int levels;
+@@ -61,7 +61,7 @@ static void vfio_prereg_listener_region_add(MemoryListener *listener,
+ {
+     VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
+                                                   prereg_listener);
+-    VFIOContainer *container = &scontainer->container;
++    VFIOLegacyContainer *container = &scontainer->container;
+     VFIOContainerBase *bcontainer = VFIO_IOMMU(container);
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+@@ -121,7 +121,7 @@ static void vfio_prereg_listener_region_del(MemoryListener *listener,
+ {
+     VFIOSpaprContainer *scontainer = container_of(listener, VFIOSpaprContainer,
+                                                   prereg_listener);
+-    VFIOContainer *container = &scontainer->container;
++    VFIOLegacyContainer *container = &scontainer->container;
+     const hwaddr gpa = section->offset_within_address_space;
+     hwaddr end;
+     int ret;
+@@ -218,7 +218,7 @@ static VFIOHostDMAWindow *vfio_find_hostwin(VFIOSpaprContainer *container,
+     return hostwin_found ? hostwin : NULL;
+ }
+ 
+-static int vfio_spapr_remove_window(VFIOContainer *container,
++static int vfio_spapr_remove_window(VFIOLegacyContainer *container,
+                                     hwaddr offset_within_address_space)
+ {
+     struct vfio_iommu_spapr_tce_remove remove = {
+@@ -239,7 +239,7 @@ static int vfio_spapr_remove_window(VFIOContainer *container,
+     return 0;
+ }
+ 
+-static bool vfio_spapr_create_window(VFIOContainer *container,
++static bool vfio_spapr_create_window(VFIOLegacyContainer *container,
+                                     MemoryRegionSection *section,
+                                     hwaddr *pgsize, Error **errp)
+ {
+@@ -352,7 +352,7 @@ vfio_spapr_container_add_section_window(VFIOContainerBase *bcontainer,
+                                         MemoryRegionSection *section,
+                                         Error **errp)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+                                                   container);
+     VFIOHostDMAWindow *hostwin;
+@@ -442,7 +442,7 @@ static void
+ vfio_spapr_container_del_section_window(VFIOContainerBase *bcontainer,
+                                         MemoryRegionSection *section)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+                                                   container);
+ 
+@@ -463,7 +463,7 @@ vfio_spapr_container_del_section_window(VFIOContainerBase *bcontainer,
+ 
+ static void vfio_spapr_container_release(VFIOContainerBase *bcontainer)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+                                                   container);
+     VFIOHostDMAWindow *hostwin, *next;
+@@ -481,7 +481,7 @@ static void vfio_spapr_container_release(VFIOContainerBase *bcontainer)
+ static bool vfio_spapr_container_setup(VFIOContainerBase *bcontainer,
+                                        Error **errp)
+ {
+-    VFIOContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
+     VFIOSpaprContainer *scontainer = container_of(container, VFIOSpaprContainer,
+                                                   container);
+     struct vfio_iommu_spapr_tce_info info;
+diff --git a/include/hw/vfio/vfio-container.h b/include/hw/vfio/vfio-container.h
+index 240f566993..712a691400 100644
+--- a/include/hw/vfio/vfio-container.h
++++ b/include/hw/vfio/vfio-container.h
+@@ -12,20 +12,20 @@
+ #include "hw/vfio/vfio-container-base.h"
+ #include "hw/vfio/vfio-cpr.h"
+ 
+-typedef struct VFIOContainer VFIOContainer;
++typedef struct VFIOLegacyContainer VFIOLegacyContainer;
+ typedef struct VFIODevice VFIODevice;
+ 
+ typedef struct VFIOGroup {
+     int fd;
+     int groupid;
+-    VFIOContainer *container;
++    VFIOLegacyContainer *container;
+     QLIST_HEAD(, VFIODevice) device_list;
+     QLIST_ENTRY(VFIOGroup) next;
+     QLIST_ENTRY(VFIOGroup) container_next;
+     bool ram_block_discard_allowed;
+ } VFIOGroup;
+ 
+-struct VFIOContainer {
++struct VFIOLegacyContainer {
+     VFIOContainerBase parent_obj;
+ 
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+@@ -34,6 +34,6 @@ struct VFIOContainer {
+     VFIOContainerCPR cpr;
+ };
+ 
+-OBJECT_DECLARE_SIMPLE_TYPE(VFIOContainer, VFIO_IOMMU_LEGACY);
++OBJECT_DECLARE_SIMPLE_TYPE(VFIOLegacyContainer, VFIO_IOMMU_LEGACY);
+ 
+ #endif /* HW_VFIO_CONTAINER_H */
+diff --git a/include/hw/vfio/vfio-cpr.h b/include/hw/vfio/vfio-cpr.h
+index d37daffbc5..04e9872587 100644
+--- a/include/hw/vfio/vfio-cpr.h
++++ b/include/hw/vfio/vfio-cpr.h
+@@ -12,7 +12,7 @@
+ #include "migration/misc.h"
+ #include "system/memory.h"
+ 
+-struct VFIOContainer;
++struct VFIOLegacyContainer;
+ struct VFIOContainerBase;
+ struct VFIOGroup;
+ struct VFIODevice;
+@@ -42,9 +42,10 @@ typedef struct VFIOPCICPR {
+     NotifierWithReturn transfer_notifier;
+ } VFIOPCICPR;
+ 
+-bool vfio_legacy_cpr_register_container(struct VFIOContainer *container,
++bool vfio_legacy_cpr_register_container(struct VFIOLegacyContainer *container,
+                                         Error **errp);
+-void vfio_legacy_cpr_unregister_container(struct VFIOContainer *container);
++void vfio_legacy_cpr_unregister_container(
++    struct VFIOLegacyContainer *container);
+ 
+ int vfio_cpr_reboot_notifier(NotifierWithReturn *notifier, MigrationEvent *e,
+                              Error **errp);
+@@ -61,7 +62,7 @@ void vfio_cpr_load_device(struct VFIODevice *vbasedev);
+ 
+ int vfio_cpr_group_get_device_fd(int d, const char *name);
+ 
+-bool vfio_cpr_container_match(struct VFIOContainer *container,
++bool vfio_cpr_container_match(struct VFIOLegacyContainer *container,
+                               struct VFIOGroup *group, int fd);
+ 
+ void vfio_cpr_giommu_remap(struct VFIOContainerBase *bcontainer,
+-- 
+2.52.0
+

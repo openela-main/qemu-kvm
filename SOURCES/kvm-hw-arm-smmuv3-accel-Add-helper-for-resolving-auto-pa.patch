@@ -1,0 +1,167 @@
+From c7ecd05ab988cc750b7367ea6cebae674cb3e31c Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Mon, 8 Jun 2026 10:48:54 -0700
+Subject: [PATCH 068/111] hw/arm/smmuv3-accel: Add helper for resolving auto
+ parameters
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [68/111] cb386d939db43c67b117bfe51e31407c02e8c616 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-163596
+
+Introduce smmuv3_accel_auto_finalise() to resolve properties that are
+set to 'auto' for accelerated SMMUv3. This helper function allows
+properties such as ats, ril, ssidsize, and oas support to be resolved
+from host IOMMU capabilities via IOMMU_GET_HW_INFO.
+
+The later commits in this series set the auto_mode flag to true when
+an accel SMMUv3 property value is explicitly set to 'auto', or if the
+property value is not set and defaults to auto mode.
+
+Setting these property values to 'auto' requires at least one
+cold-plugged device to retrieve and finalise these properties. If the
+auto_mode flag is true, register a machine_init_done notifier to
+verify this requirement and fail boot if it is not met.
+
+Hot-plugged devices into an accel SMMUv3-associated bus will re-use
+the resolved host values from the initial cold-plug.
+
+Subsequent patches will make use of this helper to resolve 'auto' to
+what is reported by host IOMMU capabilities.
+
+Suggested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260608174900.2227340-4-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 16c547e9cb911d751d35fbe181a5cea8f9d52fbc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c   | 41 +++++++++++++++++++++++++++++++++++++++++
+ hw/arm/smmuv3-accel.h   |  2 ++
+ include/hw/arm/smmuv3.h |  3 +++
+ 3 files changed, 46 insertions(+)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index ae031f1ecc..e625f145c4 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -18,6 +18,7 @@
+ 
+ #include "smmuv3-internal.h"
+ #include "smmuv3-accel.h"
++#include "system/system.h"
+ 
+ /*
+  * The root region aliases the global system memory, and shared_as_sysmem
+@@ -35,11 +36,33 @@ static int smmuv3_oas_bits(uint32_t oas)
+     return map[oas];
+ }
+ 
++static void smmuv3_accel_auto_finalise(SMMUv3State *s,
++                                       struct iommu_hw_info_arm_smmuv3 *info)
++{
++    SMMUv3AccelState *accel = s->s_accel;
++
++    /*
++     * Return if 'auto' was not set for any accel SMMUv3 property, or
++     * if property values were already resolved from a previous call
++     * to this function (e.g. if this function was called again after
++     * VM boot during device hot plug). We do not accept new property
++     * values in this case where auto_finalised == true, and we re-use
++     * the values determined from the initial cold plug.
++     */
++    if (!accel->auto_mode || accel->auto_finalised) {
++        return;
++    }
++
++    accel->auto_finalised = true;
++}
++
+ static bool
+ smmuv3_accel_check_hw_compatible(SMMUv3State *s,
+                                  struct iommu_hw_info_arm_smmuv3 *info,
+                                  Error **errp)
+ {
++    smmuv3_accel_auto_finalise(s, info);
++
+     /* QEMU SMMUv3 supports both linear and 2-level stream tables */
+     if (FIELD_EX32(info->idr[0], IDR0, STLEVEL) !=
+                 FIELD_EX32(s->idr[0], IDR0, STLEVEL)) {
+@@ -917,6 +940,18 @@ static void smmuv3_accel_as_init(SMMUv3State *s)
+     address_space_init(shared_as_sysmem, &root, "smmuv3-accel-as-sysmem");
+ }
+ 
++static void smmuv3_accel_machine_done(Notifier *notifier, void *data)
++{
++    SMMUv3State *s = container_of(notifier, SMMUv3State, machine_done);
++    SMMUv3AccelState *accel = s->s_accel;
++
++    if (accel->auto_mode && !accel->auto_finalised) {
++        error_report("arm-smmuv3 accel=on with 'auto' properties requires "
++                     "at least one cold-plugged VFIO device");
++        exit(1);
++    }
++}
++
+ bool smmuv3_accel_init(SMMUv3State *s, Error **errp)
+ {
+     SMMUState *bs = ARM_SMMU(s);
+@@ -924,5 +959,11 @@ bool smmuv3_accel_init(SMMUv3State *s, Error **errp)
+     s->s_accel = g_new0(SMMUv3AccelState, 1);
+     bs->iommu_ops = &smmuv3_accel_ops;
+     smmuv3_accel_as_init(s);
++
++    if (s->s_accel->auto_mode) {
++        s->machine_done.notify = smmuv3_accel_machine_done;
++        qemu_add_machine_init_done_notifier(&s->machine_done);
++    }
++
+     return true;
+ }
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index 1ca2c80a93..d7b9f8a8e6 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -26,6 +26,8 @@ typedef struct SMMUv3AccelState {
+     uint32_t bypass_hwpt_id;
+     uint32_t abort_hwpt_id;
+     QLIST_HEAD(, SMMUv3AccelDevice) device_list;
++    bool auto_mode;
++    bool auto_finalised;
+ } SMMUv3AccelState;
+ 
+ typedef struct SMMUS1Hwpt {
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 82f18eb090..85be3d7467 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -22,6 +22,7 @@
+ #include "hw/arm/smmu-common.h"
+ #include "qom/object.h"
+ #include "qapi/qapi-types-misc-arm.h"
++#include "qemu/notify.h"
+ 
+ #define TYPE_SMMUV3_IOMMU_MEMORY_REGION "smmuv3-iommu-memory-region"
+ 
+@@ -74,6 +75,8 @@ struct SMMUv3State {
+     OnOffAuto ats;
+     OasMode oas;
+     SsidSizeMode ssidsize;
++
++    Notifier machine_done;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

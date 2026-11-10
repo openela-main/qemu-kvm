@@ -1,0 +1,171 @@
+From 797da99309c9e32426b24dd0ccb50b9c184e7ede Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:43 +0100
+Subject: [PATCH 101/111] hw/arm/smmuv3-accel: Introduce common helper for
+ veventq read
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [101/111] dd3f176292b344f27dffcb67334d2b9fdcf92faa (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Move the vEVENTQ read and validation logic into a common helper
+smmuv3_accel_event_read_validate(). The helper performs the read(),
+checks for overflow and short reads, validates the sequence number,
+and updates the sequence state.
+
+This helper can be reused for Tegra241 CMDQV vEVENTQ support in a
+subsequent patch.
+
+Error handling is slightly adjusted: instead of reporting errors
+directly in the read handler, the helper now returns errors via
+Error **. Sequence gaps are reported as warnings.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-23-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit f8015fe988df09448ea67458dd31f04d704388c3)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel-stubs.c |  7 ++++
+ hw/arm/smmuv3-accel.c       | 67 ++++++++++++++++++++++---------------
+ hw/arm/smmuv3-accel.h       |  2 ++
+ 3 files changed, 49 insertions(+), 27 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel-stubs.c b/hw/arm/smmuv3-accel-stubs.c
+index 70cef66966..9e6c44a282 100644
+--- a/hw/arm/smmuv3-accel-stubs.c
++++ b/hw/arm/smmuv3-accel-stubs.c
+@@ -47,6 +47,13 @@ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp)
+     return true;
+ }
+ 
++bool smmuv3_accel_event_read_validate(IOMMUFDVeventq *veventq, uint32_t type,
++                                      void *buf, size_t size, Error **errp)
++{
++    return true;
++}
++
++
+ void smmuv3_accel_reset(SMMUv3State *s)
+ {
+ }
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 3ceca56a67..c1c2a67c97 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -440,47 +440,60 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *bs, void *cmd, SMMUDevice *sdev,
+                    sizeof(Cmd), &entry_num, cmd, errp);
+ }
+ 
+-static void smmuv3_accel_event_read(void *opaque)
++bool smmuv3_accel_event_read_validate(IOMMUFDVeventq *veventq, uint32_t type,
++                                      void *buf, size_t size, Error **errp)
+ {
+-    SMMUv3State *s = opaque;
+-    IOMMUFDVeventq *veventq = s->s_accel->veventq;
+-    struct {
+-        struct iommufd_vevent_header hdr;
+-        struct iommu_vevent_arm_smmuv3 vevent;
+-    } buf;
+-    enum iommu_veventq_type type = IOMMU_VEVENTQ_TYPE_ARM_SMMUV3;
+-    uint32_t id = veventq->veventq_id;
+     uint32_t last_seq = veventq->last_event_seq;
++    uint32_t id = veventq->veventq_id;
++    struct iommufd_vevent_header *hdr;
+     ssize_t bytes;
+ 
+-    bytes = read(veventq->veventq_fd, &buf, sizeof(buf));
++    bytes = read(veventq->veventq_fd, buf, size);
+     if (bytes <= 0) {
+         if (errno == EAGAIN || errno == EINTR) {
+-            return;
++            return true;
+         }
+-        error_report_once("vEVENTQ(type %u id %u): read failed (%m)", type, id);
+-        return;
++        error_setg(errp, "vEVENTQ(type %u id %u): read failed (%m)", type, id);
++        return false;
+     }
+-
+-    if (bytes == sizeof(buf.hdr) &&
+-        (buf.hdr.flags & IOMMU_VEVENTQ_FLAG_LOST_EVENTS)) {
+-        error_report_once("vEVENTQ(type %u id %u): overflowed", type, id);
++    hdr = (struct iommufd_vevent_header *)buf;
++    if (bytes == sizeof(*hdr) &&
++        (hdr->flags & IOMMU_VEVENTQ_FLAG_LOST_EVENTS)) {
++        error_setg(errp, "vEVENTQ(type %u id %u): overflowed", type, id);
+         veventq->event_start = false;
+-        return;
++        return false;
+     }
+-    if (bytes < sizeof(buf)) {
+-        error_report_once("vEVENTQ(type %u id %u): short read(%zd/%zd bytes)",
+-                          type, id, bytes, sizeof(buf));
+-        return;
++    if (bytes < size) {
++        error_setg(errp, "vEVENTQ(type %u id %u): short read(%zd/%zd bytes)",
++                          type, id, bytes, size);
++        return false;
+     }
+-
+     /* Check sequence in hdr for lost events if any */
+-    if (veventq->event_start && (buf.hdr.sequence - last_seq != 1)) {
+-        error_report_once("vEVENTQ(type %u id %u): lost %u event(s)",
+-                          type, id, buf.hdr.sequence - last_seq - 1);
++    if (veventq->event_start && (hdr->sequence - last_seq != 1)) {
++        warn_report("vEVENTQ(type %u id %u): lost %u event(s)",
++                    type, id, hdr->sequence - last_seq - 1);
+     }
+-    veventq->last_event_seq = buf.hdr.sequence;
++    veventq->last_event_seq = hdr->sequence;
+     veventq->event_start = true;
++    return true;
++}
++
++static void smmuv3_accel_event_read(void *opaque)
++{
++    SMMUv3State *s = opaque;
++    IOMMUFDVeventq *veventq = s->s_accel->veventq;
++    struct {
++        struct iommufd_vevent_header hdr;
++        struct iommu_vevent_arm_smmuv3 vevent;
++    } buf;
++    Error *local_err = NULL;
++
++    if (!smmuv3_accel_event_read_validate(veventq,
++                                          IOMMU_VEVENTQ_TYPE_ARM_SMMUV3, &buf,
++                                          sizeof(buf), &local_err)) {
++        warn_report_err_once(local_err);
++        return;
++    }
+     smmuv3_propagate_event(s, (Evt *)&buf.vevent);
+ }
+ 
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+index e0bbec8581..8d0f636338 100644
+--- a/hw/arm/smmuv3-accel.h
++++ b/hw/arm/smmuv3-accel.h
+@@ -87,6 +87,8 @@ bool smmuv3_accel_issue_inv_cmd(SMMUv3State *s, void *cmd, SMMUDevice *sdev,
+                                 Error **errp);
+ void smmuv3_accel_idr_override(SMMUv3State *s);
+ bool smmuv3_accel_alloc_veventq(SMMUv3State *s, Error **errp);
++bool smmuv3_accel_event_read_validate(IOMMUFDVeventq *veventq, uint32_t type,
++                                      void *buf, size_t size, Error **errp);
+ void smmuv3_accel_reset(SMMUv3State *s);
+ 
+ #endif /* HW_ARM_SMMUV3_ACCEL_H */
+-- 
+2.52.0
+

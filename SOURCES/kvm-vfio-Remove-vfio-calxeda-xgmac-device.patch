@@ -1,0 +1,366 @@
+From c752372d16d3b2d95921c75263f7e119f6bf7c09 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 1 Sep 2025 08:46:29 +0200
+Subject: [PATCH 021/116] vfio: Remove 'vfio-calxeda-xgmac' device
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [5/100] 22237c22b8adb8293ae79327fabe6359bedc010d (rovick1/qemu-kvm)
+
+Conflicts:
+    hw/arm/virt.c: due to the downstream-only code in #if 0
+    hw/core/sysbus-fdt.c: downstream 60e7ac0c41c2 ("vfio: rename
+    field to "num_initial_regions") touches sysbus-fdt.c. Anyway that code
+    is removed
+
+The VFIO_XGMAC device type has been deprecated in the QEMU 10.0
+timeframe. Remove it.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250901064631.530723-7-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 8ebc416ac17a71aec267df1ca5cb5301cc6c4906)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ docs/about/deprecated.rst            |  7 ---
+ docs/about/removed-features.rst      |  7 +++
+ docs/devel/kconfig.rst               |  1 -
+ hw/arm/Kconfig                       |  1 -
+ hw/arm/virt.c                        |  3 +-
+ hw/core/sysbus-fdt.c                 | 68 ----------------------------
+ hw/vfio/Kconfig                      |  5 --
+ hw/vfio/calxeda-xgmac.c              | 61 -------------------------
+ hw/vfio/meson.build                  |  1 -
+ include/hw/vfio/vfio-calxeda-xgmac.h | 43 ------------------
+ 10 files changed, 8 insertions(+), 189 deletions(-)
+ delete mode 100644 hw/vfio/calxeda-xgmac.c
+ delete mode 100644 include/hw/vfio/vfio-calxeda-xgmac.h
+
+diff --git a/docs/about/deprecated.rst b/docs/about/deprecated.rst
+index 631871ffc8..0df97eb2b7 100644
+--- a/docs/about/deprecated.rst
++++ b/docs/about/deprecated.rst
+@@ -519,13 +519,6 @@ which is not enough for all types of use cases, use ``reconnect-ms`` instead.
+ VFIO device options
+ '''''''''''''''''''
+ 
+-``-device vfio-calxeda-xgmac`` (since 10.0)
+-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-The vfio-calxeda-xgmac device allows to assign a host Calxeda Highbank
+-10Gb XGMAC Ethernet controller device ("calxeda,hb-xgmac" compatibility
+-string) to a guest. Calxeda HW has been ewasted now and there is no point
+-keeping that device.
+-
+ ``-device vfio-platform`` (since 10.0)
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ The vfio-platform device allows to assign a host platform device
+diff --git a/docs/about/removed-features.rst b/docs/about/removed-features.rst
+index 759c067412..47e632b4ac 100644
+--- a/docs/about/removed-features.rst
++++ b/docs/about/removed-features.rst
+@@ -1265,6 +1265,13 @@ device driver such as RBD.
+ VFIO devices
+ ------------
+ 
++``-device vfio-calxeda-xgmac`` (since 10.2)
++'''''''''''''''''''''''''''''''''''''''''''
++The vfio-calxeda-xgmac device allows to assign a host Calxeda Highbank
++10Gb XGMAC Ethernet controller device ("calxeda,hb-xgmac" compatibility
++string) to a guest. Calxeda HW has been ewasted now and there is no point
++keeping that device.
++
+ ``-device vfio-amd-xgbe`` (since 10.2)
+ ''''''''''''''''''''''''''''''''''''''
+ The vfio-amd-xgbe device allows to assign a host AMD 10GbE controller
+diff --git a/docs/devel/kconfig.rst b/docs/devel/kconfig.rst
+index 9fdf501529..1d4a114a02 100644
+--- a/docs/devel/kconfig.rst
++++ b/docs/devel/kconfig.rst
+@@ -59,7 +59,6 @@ stanza like the following::
+       config ARM_VIRT
+          bool
+          imply PCI_DEVICES
+-         imply VFIO_XGMAC
+          select A15MPCORE
+          select ACPI
+          select ARM_SMMUV3
+diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
+index 64b2ec87b5..3fca48349a 100644
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -6,7 +6,6 @@ config ARM_VIRT
+     imply PCI_DEVICES
+     imply TEST_DEVICES
+     imply VFIO_PLATFORM
+-    imply VFIO_XGMAC
+     imply TPM_TIS_SYSBUS
+     imply TPM_TIS_I2C
+     imply NVDIMM
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index c0292a3899..2a399e468c 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -38,7 +38,7 @@
+ #include "hw/arm/primecell.h"
+ #include "hw/arm/virt.h"
+ #include "hw/block/flash.h"
+-#include "hw/vfio/vfio-calxeda-xgmac.h"
++#include "hw/vfio/vfio-platform.h"
+ #include "hw/display/ramfb.h"
+ #include "net/net.h"
+ #include "system/device_tree.h"
+@@ -3322,7 +3322,6 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
+     /* Maximum supported VCPU count for all virt-rhel* machines */
+     mc->max_cpus = 384;
+ #if 0 /* Disabled for Red Hat Enterprise Linux */
+-    machine_class_allow_dynamic_sysbus_dev(mc, TYPE_VFIO_CALXEDA_XGMAC);
+     machine_class_allow_dynamic_sysbus_dev(mc, TYPE_VFIO_PLATFORM);
+ #endif
+     machine_class_allow_dynamic_sysbus_dev(mc, TYPE_RAMFB_DEVICE);
+diff --git a/hw/core/sysbus-fdt.c b/hw/core/sysbus-fdt.c
+index 0caffe4845..59f1d17de1 100644
+--- a/hw/core/sysbus-fdt.c
++++ b/hw/core/sysbus-fdt.c
+@@ -33,9 +33,6 @@
+ #include "system/tpm.h"
+ #include "hw/arm/smmuv3.h"
+ #include "hw/platform-bus.h"
+-#include "hw/vfio/vfio-platform.h"
+-#include "hw/vfio/vfio-calxeda-xgmac.h"
+-#include "hw/vfio/vfio-region.h"
+ #include "hw/display/ramfb.h"
+ #include "hw/uefi/var-service-api.h"
+ #include "hw/arm/fdt.h"
+@@ -66,68 +63,6 @@ typedef struct HostProperty {
+     bool optional;
+ } HostProperty;
+ 
+-#ifdef CONFIG_LINUX
+-
+-/* Device Specific Code */
+-
+-/**
+- * add_calxeda_midway_xgmac_fdt_node
+- *
+- * Generates a simple node with following properties:
+- * compatible string, regs, interrupts, dma-coherent
+- */
+-static int add_calxeda_midway_xgmac_fdt_node(SysBusDevice *sbdev, void *opaque)
+-{
+-    PlatformBusFDTData *data = opaque;
+-    PlatformBusDevice *pbus = data->pbus;
+-    void *fdt = data->fdt;
+-    const char *parent_node = data->pbus_node_name;
+-    int compat_str_len, i;
+-    char *nodename;
+-    uint32_t *irq_attr, *reg_attr;
+-    uint64_t mmio_base, irq_number;
+-    VFIOPlatformDevice *vdev = VFIO_PLATFORM_DEVICE(sbdev);
+-    VFIODevice *vbasedev = &vdev->vbasedev;
+-
+-    mmio_base = platform_bus_get_mmio_addr(pbus, sbdev, 0);
+-    nodename = g_strdup_printf("%s/%s@%" PRIx64, parent_node,
+-                               vbasedev->name, mmio_base);
+-    qemu_fdt_add_subnode(fdt, nodename);
+-
+-    compat_str_len = strlen(vdev->compat) + 1;
+-    qemu_fdt_setprop(fdt, nodename, "compatible",
+-                          vdev->compat, compat_str_len);
+-
+-    qemu_fdt_setprop(fdt, nodename, "dma-coherent", "", 0);
+-
+-    reg_attr = g_new(uint32_t, vbasedev->num_initial_regions * 2);
+-    for (i = 0; i < vbasedev->num_initial_regions; i++) {
+-        mmio_base = platform_bus_get_mmio_addr(pbus, sbdev, i);
+-        reg_attr[2 * i] = cpu_to_be32(mmio_base);
+-        reg_attr[2 * i + 1] = cpu_to_be32(
+-                                memory_region_size(vdev->regions[i]->mem));
+-    }
+-    qemu_fdt_setprop(fdt, nodename, "reg", reg_attr,
+-                     vbasedev->num_initial_regions * 2 * sizeof(uint32_t));
+-
+-    irq_attr = g_new(uint32_t, vbasedev->num_irqs * 3);
+-    for (i = 0; i < vbasedev->num_irqs; i++) {
+-        irq_number = platform_bus_get_irqn(pbus, sbdev , i)
+-                         + data->irq_start;
+-        irq_attr[3 * i] = cpu_to_be32(GIC_FDT_IRQ_TYPE_SPI);
+-        irq_attr[3 * i + 1] = cpu_to_be32(irq_number);
+-        irq_attr[3 * i + 2] = cpu_to_be32(GIC_FDT_IRQ_FLAGS_LEVEL_HI);
+-    }
+-    qemu_fdt_setprop(fdt, nodename, "interrupts",
+-                     irq_attr, vbasedev->num_irqs * 3 * sizeof(uint32_t));
+-    g_free(irq_attr);
+-    g_free(reg_attr);
+-    g_free(nodename);
+-    return 0;
+-}
+-
+-#endif /* CONFIG_LINUX */
+-
+ #ifdef CONFIG_TPM
+ /*
+  * add_tpm_tis_fdt_node: Create a DT node for TPM TIS
+@@ -198,9 +133,6 @@ static bool type_match(SysBusDevice *sbdev, const BindingEntry *entry)
+ 
+ /* list of supported dynamic sysbus bindings */
+ static const BindingEntry bindings[] = {
+-#ifdef CONFIG_LINUX
+-    TYPE_BINDING(TYPE_VFIO_CALXEDA_XGMAC, add_calxeda_midway_xgmac_fdt_node),
+-#endif
+ #ifdef CONFIG_TPM
+     TYPE_BINDING(TYPE_TPM_TIS_SYSBUS, add_tpm_tis_fdt_node),
+ #endif
+diff --git a/hw/vfio/Kconfig b/hw/vfio/Kconfig
+index bc984f1986..9a1dbe2926 100644
+--- a/hw/vfio/Kconfig
++++ b/hw/vfio/Kconfig
+@@ -23,11 +23,6 @@ config VFIO_PLATFORM
+     select VFIO
+     depends on LINUX && PLATFORM_BUS
+ 
+-config VFIO_XGMAC
+-    bool
+-    default y
+-    depends on VFIO_PLATFORM
+-
+ config VFIO_AP
+     bool
+     default y
+diff --git a/hw/vfio/calxeda-xgmac.c b/hw/vfio/calxeda-xgmac.c
+deleted file mode 100644
+index 03f2ff5763..0000000000
+--- a/hw/vfio/calxeda-xgmac.c
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/*
+- * calxeda xgmac VFIO device
+- *
+- * Copyright Linaro Limited, 2014
+- *
+- * Authors:
+- *  Eric Auger <eric.auger@linaro.org>
+- *
+- * This work is licensed under the terms of the GNU GPL, version 2.  See
+- * the COPYING file in the top-level directory.
+- *
+- */
+-
+-#include "qemu/osdep.h"
+-#include "hw/vfio/vfio-calxeda-xgmac.h"
+-#include "migration/vmstate.h"
+-#include "qemu/module.h"
+-#include "qemu/error-report.h"
+-
+-static void calxeda_xgmac_realize(DeviceState *dev, Error **errp)
+-{
+-    VFIOPlatformDevice *vdev = VFIO_PLATFORM_DEVICE(dev);
+-    VFIOCalxedaXgmacDeviceClass *k = VFIO_CALXEDA_XGMAC_DEVICE_GET_CLASS(dev);
+-
+-    warn_report("-device vfio-calxeda-xgmac is deprecated");
+-    vdev->compat = g_strdup("calxeda,hb-xgmac");
+-    vdev->num_compat = 1;
+-
+-    k->parent_realize(dev, errp);
+-}
+-
+-static const VMStateDescription vfio_platform_calxeda_xgmac_vmstate = {
+-    .name = "vfio-calxeda-xgmac",
+-    .unmigratable = 1,
+-};
+-
+-static void vfio_calxeda_xgmac_class_init(ObjectClass *klass, const void *data)
+-{
+-    DeviceClass *dc = DEVICE_CLASS(klass);
+-    VFIOCalxedaXgmacDeviceClass *vcxc =
+-        VFIO_CALXEDA_XGMAC_DEVICE_CLASS(klass);
+-    device_class_set_parent_realize(dc, calxeda_xgmac_realize,
+-                                    &vcxc->parent_realize);
+-    dc->desc = "VFIO Calxeda XGMAC";
+-    dc->vmsd = &vfio_platform_calxeda_xgmac_vmstate;
+-}
+-
+-static const TypeInfo vfio_calxeda_xgmac_dev_info = {
+-    .name = TYPE_VFIO_CALXEDA_XGMAC,
+-    .parent = TYPE_VFIO_PLATFORM,
+-    .instance_size = sizeof(VFIOCalxedaXgmacDevice),
+-    .class_init = vfio_calxeda_xgmac_class_init,
+-    .class_size = sizeof(VFIOCalxedaXgmacDeviceClass),
+-};
+-
+-static void register_calxeda_xgmac_dev_type(void)
+-{
+-    type_register_static(&vfio_calxeda_xgmac_dev_info);
+-}
+-
+-type_init(register_calxeda_xgmac_dev_type)
+diff --git a/hw/vfio/meson.build b/hw/vfio/meson.build
+index 0edcaf5155..06473a0789 100644
+--- a/hw/vfio/meson.build
++++ b/hw/vfio/meson.build
+@@ -19,7 +19,6 @@ vfio_ss.add(when: 'CONFIG_VFIO_IGD', if_true: files('igd.c'))
+ 
+ specific_ss.add_all(when: 'CONFIG_VFIO', if_true: vfio_ss)
+ 
+-system_ss.add(when: 'CONFIG_VFIO_XGMAC', if_true: files('calxeda-xgmac.c'))
+ system_ss.add(when: 'CONFIG_VFIO', if_true: files(
+   'cpr.c',
+   'cpr-legacy.c',
+diff --git a/include/hw/vfio/vfio-calxeda-xgmac.h b/include/hw/vfio/vfio-calxeda-xgmac.h
+deleted file mode 100644
+index 8482f151dd..0000000000
+--- a/include/hw/vfio/vfio-calxeda-xgmac.h
++++ /dev/null
+@@ -1,43 +0,0 @@
+-/*
+- * VFIO calxeda xgmac device
+- *
+- * Copyright Linaro Limited, 2014
+- *
+- * Authors:
+- *  Eric Auger <eric.auger@linaro.org>
+- *
+- * This work is licensed under the terms of the GNU GPL, version 2.  See
+- * the COPYING file in the top-level directory.
+- *
+- */
+-
+-#ifndef HW_VFIO_VFIO_CALXEDA_XGMAC_H
+-#define HW_VFIO_VFIO_CALXEDA_XGMAC_H
+-
+-#include "hw/vfio/vfio-platform.h"
+-#include "qom/object.h"
+-
+-#define TYPE_VFIO_CALXEDA_XGMAC "vfio-calxeda-xgmac"
+-
+-/**
+- * This device exposes:
+- * - a single MMIO region corresponding to its register space
+- * - 3 IRQS (main and 2 power related IRQs)
+- */
+-struct VFIOCalxedaXgmacDevice {
+-    VFIOPlatformDevice vdev;
+-};
+-typedef struct VFIOCalxedaXgmacDevice VFIOCalxedaXgmacDevice;
+-
+-struct VFIOCalxedaXgmacDeviceClass {
+-    /*< private >*/
+-    VFIOPlatformDeviceClass parent_class;
+-    /*< public >*/
+-    DeviceRealize parent_realize;
+-};
+-typedef struct VFIOCalxedaXgmacDeviceClass VFIOCalxedaXgmacDeviceClass;
+-
+-DECLARE_OBJ_CHECKERS(VFIOCalxedaXgmacDevice, VFIOCalxedaXgmacDeviceClass,
+-                     VFIO_CALXEDA_XGMAC_DEVICE, TYPE_VFIO_CALXEDA_XGMAC)
+-
+-#endif
+-- 
+2.52.0
+

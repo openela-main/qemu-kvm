@@ -1,0 +1,36 @@
+From 9a4b3f0996a325625a05d0cea8f1f8077b2b94bf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Mon, 1 Sep 2025 08:46:31 +0200
+Subject: [PATCH 024/116] vfio: Move vfio-region.h under hw/vfio/
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [8/100] f7d96a2b1d562aa26f3e13acdcc757b4f8c2e66e (rovick1/qemu-kvm)
+
+Since the removal of vfio-platform, header file vfio-region.h no
+longer needs to be a public VFIO interface. Move it under hw/vfio.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Alex Williamson <alex.williamson@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250901064631.530723-9-clg@redhat.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit e7a47f717718441b546090fe3fa91e2705ca125b)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ {include/hw => hw}/vfio/vfio-region.h | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ rename {include/hw => hw}/vfio/vfio-region.h (100%)
+
+diff --git a/include/hw/vfio/vfio-region.h b/hw/vfio/vfio-region.h
+similarity index 100%
+rename from include/hw/vfio/vfio-region.h
+rename to hw/vfio/vfio-region.h
+-- 
+2.52.0
+

@@ -1,0 +1,74 @@
+From 5386583d1150ea010b4e7c57d6ff23b2eb4582ea Mon Sep 17 00:00:00 2001
+From: Mohammadfaiz Bawa <mbawa@redhat.com>
+Date: Thu, 7 May 2026 15:36:58 +0530
+Subject: [PATCH 7/9] docs/specs/tpm: document PPI support on ARM64 virt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Mohammadfaiz Bawa <None>
+RH-MergeRequest: 485: hw/tpm: add PPI support to tpm-tis-device for ARM64 virt
+RH-Jira: RHEL-112608
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [6/8] f9c4890c23d5b26789da5a95a2e5075924e0b416 (faizb/qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-112608
+
+Document that tpm-tis-device on the ARM virt machine supports PPI
+with dynamically allocated MMIO via the platform bus, unlike x86
+where PPI is at the fixed address 0xFED45000.
+
+Also add hw/arm/virt-acpi-build.c and hw/acpi/tpm.c to the list
+of files related to TPM ACPI tables.
+
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+Message-ID: <20260327173209.148180-2-mbawa@redhat.com>
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+(cherry picked from commit ffdd1949a159502d4e85d76e27b51020929a9d1c)
+Signed-off-by: Mohammadfaiz Bawa <mbawa@redhat.com>
+---
+ docs/specs/tpm.rst | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/docs/specs/tpm.rst b/docs/specs/tpm.rst
+index b630a351b4..ba2b0d7267 100644
+--- a/docs/specs/tpm.rst
++++ b/docs/specs/tpm.rst
+@@ -187,8 +187,32 @@ The location of the table is given by the fw_cfg ``tpmppi_address``
+ field.  The PPI memory region size is 0x400 (``TPM_PPI_ADDR_SIZE``) to
+ leave enough room for future updates.
+ 
++PPI on ARM64 virt
++-----------------
++
++The ARM virt machine supports PPI for ``tpm-tis-device`` as defined
++in the `PPI specification`_.
++
++Unlike the x86 TIS device where the PPI memory region is mapped at
++the fixed address ``0xFED45000`` (within the TIS MMIO range), the
++ARM64 sysbus device registers PPI memory as a second MMIO region
++on the platform bus. The platform bus assigns the guest physical
++address dynamically at device plug time. The ACPI ``_DSM`` method
++and PPI operation regions reference this dynamically resolved
++address.
++
++PPI is controlled by the ``ppi`` property (default ``on``)::
++
++    -device tpm-tis-device,tpmdev=tpm0,ppi=on
++
++Without PPI, guest operating systems such as Windows 11
++ARM64 will log errors when attempting to query TPM Physical
++Presence capabilities via the ACPI ``_DSM`` method.
++
+ QEMU files related to TPM ACPI tables:
+  - ``hw/i386/acpi-build.c``
++ - ``hw/arm/virt-acpi-build.c``
++ - ``hw/acpi/tpm.c``
+  - ``include/hw/acpi/tpm.h``
+ 
+ TPM backend devices
+-- 
+2.52.0
+

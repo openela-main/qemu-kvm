@@ -1,0 +1,47 @@
+From 937cc3882a0c76eb65608f9c79f7f023e3a8bd26 Mon Sep 17 00:00:00 2001
+From: John Levon <john.levon@nutanix.com>
+Date: Wed, 3 Dec 2025 15:33:12 +0530
+Subject: [PATCH 108/116] vfio-user: clarify partial message handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [92/100] 7f20179aa72ae9188fc47b2f2230d58104b7b127 (rovick1/qemu-kvm)
+
+Improve a comment for this.
+
+Signed-off-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Link: https://lore.kernel.org/qemu-devel/20251203100316.3604456-3-john.levon@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 356c7b175258f29429fb91a7641f775080ab6b49)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/proxy.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/hw/vfio-user/proxy.c b/hw/vfio-user/proxy.c
+index 75845d7c89..82c76c6665 100644
+--- a/hw/vfio-user/proxy.c
++++ b/hw/vfio-user/proxy.c
+@@ -362,7 +362,10 @@ static int vfio_user_recv_one(VFIOUserProxy *proxy, Error **errp)
+     while (msgleft > 0) {
+         ret = qio_channel_read(proxy->ioc, data, msgleft, errp);
+ 
+-        /* prepare to complete read on next iternation */
++        /*
++         * We'll complete this read on the next go around; keep track of the
++         * partial message until then.
++         */
+         if (ret == QIO_CHANNEL_ERR_BLOCK) {
+             proxy->part_recv = msg;
+             proxy->recv_left = msgleft;
+-- 
+2.52.0
+

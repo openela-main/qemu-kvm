@@ -1,0 +1,84 @@
+From 9de83551465e408908b9999a70709041c417a120 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:33 +0100
+Subject: [PATCH 091/111] hw/arm/virt: Link SMMUv3 CMDQV resources to platform
+ bus
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [91/111] dad452aedd8dc1227e783e058fd1b58806f5f5e6 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+SMMUv3 devices with acceleration may enable CMDQV extensions
+after device realize. In that case, additional MMIO regions and
+IRQ lines may be registered but not yet mapped to the platform bus.
+
+Ensure SMMUv3 device resources are linked to the platform bus
+during machine_done().
+
+This is safe to do unconditionally since the platform bus helpers
+skip resources that are already mapped.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-13-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dc5726da05a4595338de0e9c3947beaf2e766552)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/virt.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 5169b4ba5b..ca150d455c 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -1853,6 +1853,25 @@ static void virt_build_smbios(VirtMachineState *vms)
+     }
+ }
+ 
++/*
++ * SMMUv3 devices with acceleration may enable CMDQV extensions
++ * after device realize. In that case, additional MMIO regions and
++ * IRQ lines may be registered but not yet mapped to the platform bus.
++ *
++ * Ensure all resources are linked to the platform bus before final
++ * machine setup.
++ */
++
++static void virt_smmuv3_dev_link_cmdqv(VirtMachineState *vms)
++{
++    for (int i = 0; i < vms->smmuv3_devices->len; i++) {
++        DeviceState *dev = g_ptr_array_index(vms->smmuv3_devices, i);
++
++        platform_bus_link_device(PLATFORM_BUS_DEVICE(vms->platform_bus_dev),
++                                 SYS_BUS_DEVICE(dev));
++    }
++}
++
+ static
+ void virt_machine_done(Notifier *notifier, void *data)
+ {
+@@ -1869,6 +1888,9 @@ void virt_machine_done(Notifier *notifier, void *data)
+     if (vms->cxl_devices_state.is_enabled) {
+         cxl_fmws_link_targets(&error_fatal);
+     }
++
++    virt_smmuv3_dev_link_cmdqv(vms);
++
+     /*
+      * If the user provided a dtb, we assume the dynamic sysbus nodes
+      * already are integrated there. This corresponds to a use case where
+-- 
+2.52.0
+

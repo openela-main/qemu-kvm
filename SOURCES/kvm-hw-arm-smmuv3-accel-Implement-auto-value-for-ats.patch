@@ -1,0 +1,93 @@
+From ac95c83d843a5e7d06abbc173fb1b5ebeb938540 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Mon, 8 Jun 2026 10:48:55 -0700
+Subject: [PATCH 069/111] hw/arm/smmuv3-accel: Implement "auto" value for "ats"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [69/111] 101e6549edfef8b539367d77ad887875abdd1b49 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-163596
+
+Allow accelerated SMMUv3 Address Translation Services support property
+to be derived from host IOMMU capabilities. Derive host values using
+IOMMU_GET_HW_INFO, retrieving ATS capability from IDR0.
+
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260608174900.2227340-5-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 7e88c1a9d0f99f42a652e0af856b903e038b38cb)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c |  9 +++++++++
+ hw/arm/smmuv3.c       | 11 ++++-------
+ 2 files changed, 13 insertions(+), 7 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index e625f145c4..e03b0883af 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -53,6 +53,11 @@ static void smmuv3_accel_auto_finalise(SMMUv3State *s,
+         return;
+     }
+ 
++    if (s->ats == ON_OFF_AUTO_AUTO) {
++        s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATS,
++                               FIELD_EX32(info->idr[0], IDR0, ATS));
++    }
++
+     accel->auto_finalised = true;
+ }
+ 
+@@ -960,6 +965,10 @@ bool smmuv3_accel_init(SMMUv3State *s, Error **errp)
+     bs->iommu_ops = &smmuv3_accel_ops;
+     smmuv3_accel_as_init(s);
+ 
++    if (s->ats == ON_OFF_AUTO_AUTO) {
++        s->s_accel->auto_mode = true;
++    }
++
+     if (s->s_accel->auto_mode) {
+         s->machine_done.notify = smmuv3_accel_machine_done;
+         qemu_add_machine_init_done_notifier(&s->machine_done);
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index f76a527182..e2071938c0 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1965,10 +1965,6 @@ static void smmu_reset_exit(Object *obj, ResetType type)
+ 
+ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+ {
+-    if (s->ats == ON_OFF_AUTO_AUTO) {
+-        error_setg(errp, "ats auto mode is not supported");
+-        return false;
+-    }
+     if (s->ril == ON_OFF_AUTO_AUTO) {
+         error_setg(errp, "ril auto mode is not supported");
+         return false;
+@@ -2172,9 +2168,10 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "Disable range invalidation support (for accel=on). ril=auto "
+         "is not supported.");
+     object_class_property_set_description(klass, "ats",
+-        "Enable/disable ATS support (for accel=on). Please ensure host "
+-        "platform has ATS support before enabling this. ats=auto is not "
+-        "supported.");
++        "Enable/disable ATS support (for accel=on). "
++        "Valid values are on, off, and auto. Defaults to off. "
++        "Please ensure host platform supports ATS before setting it "
++        "to on.");
+     object_class_property_set_description(klass, "oas",
+         "Specify Output Address Size (for accel=on). Supported values "
+         "are 44 or 48 bits. Defaults to 44 bits. oas=auto is not "
+-- 
+2.52.0
+

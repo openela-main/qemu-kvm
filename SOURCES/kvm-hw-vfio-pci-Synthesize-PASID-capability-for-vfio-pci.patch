@@ -1,0 +1,214 @@
+From b3bb7119db21bdc9cd2018b9f9518497a8e90715 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 044/111] hw/vfio/pci: Synthesize PASID capability for vfio-pci
+ devices
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [44/111] ce06dcd543f388a70071785ce3cadd620c900e5b (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Conflicts: hw/vfio/pci.c keep using hw/hw.h instead of hw/core/hw-error.h
+because we don't have 048a23851cd4 ("include: move hw/hw.h to hw/core/,
+rename")
+
+Add support for synthesizing a PCIe PASID extended capability for
+vfio-pci devices when PASID is enabled via a vIOMMU and supported by
+the host IOMMU backend.
+
+PASID capability parameters are retrieved via IOMMUFD APIs and the
+capability is inserted into the PCIe extended capability list using
+the insertion helper. A new x-vpasid-cap-offset property allows
+explicit control over the placement; by default the capability is
+placed at the end of the PCIe extended configuration space.
+
+If the kernel does not expose PASID information or insertion fails,
+the device continues without PASID support.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-37-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 06b38473cda8cbeb5f4aa0c2480c3b8c06a8d500)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c           | 75 +++++++++++++++++++++++++++++++++++++++++
+ hw/vfio/pci.h           |  1 +
+ hw/vfio/trace-events    |  1 +
+ include/hw/core/iommu.h |  1 +
+ 4 files changed, 78 insertions(+)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 1ba66699dc..6e0714a630 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -24,6 +24,7 @@
+ #include <sys/ioctl.h>
+ 
+ #include "hw/hw.h"
++#include "hw/core/iommu.h"
+ #include "hw/pci/msi.h"
+ #include "hw/pci/msix.h"
+ #include "hw/pci/pci_bridge.h"
+@@ -2501,9 +2502,62 @@ static int vfio_setup_rebar_ecap(VFIOPCIDevice *vdev, uint16_t pos)
+     return 0;
+ }
+ 
++/*
++ * Try to retrieve PASID capability information via IOMMUFD APIs and,
++ * if supported, synthesize a PASID PCIe extended capability for the
++ * VFIO device.
++ *
++ * Use user-specified PASID capability offset if provided, otherwise
++ * place it at the end of the PCIe extended configuration space.
++ */
++static bool vfio_pci_synthesize_pasid_cap(VFIOPCIDevice *vdev, Error **errp)
++{
++    HostIOMMUDevice *hiod = vdev->vbasedev.hiod;
++    HostIOMMUDeviceClass *hiodc;
++    PasidInfo pasid_info;
++    PCIDevice *pdev = PCI_DEVICE(vdev);
++    uint16_t pasid_offset;
++
++    if (!hiod) {
++        return true;
++    }
++
++    hiodc = HOST_IOMMU_DEVICE_GET_CLASS(hiod);
++    if (!hiodc || !hiodc->get_pasid_info ||
++        !hiodc->get_pasid_info(hiod, &pasid_info) ||
++        !(pci_device_get_viommu_flags(pdev) & VIOMMU_FLAG_PASID_SUPPORTED)) {
++        return true;
++    }
++
++    /* Use user-specified offset if set, otherwise place PASID at the end. */
++    if (vdev->vpasid_cap_offset) {
++        pasid_offset = vdev->vpasid_cap_offset;
++    } else {
++        pasid_offset = PCIE_CONFIG_SPACE_SIZE - PCI_EXT_CAP_PASID_SIZEOF;
++    }
++
++    if (!pcie_insert_capability(pdev, PCI_EXT_CAP_ID_PASID, PCI_PASID_VER,
++                                pasid_offset, PCI_EXT_CAP_PASID_SIZEOF)) {
++        error_setg(errp, "vfio: Placing PASID capability at offset 0x%x failed",
++                   pasid_offset);
++        return false;
++    }
++    trace_vfio_pci_synthesize_pasid_cap(vdev->vbasedev.name, pasid_offset);
++
++    pcie_pasid_common_init(pdev, pasid_offset, pasid_info.max_pasid_log2,
++                           pasid_info.exec_perm, pasid_info.priv_mod);
++
++    /* PASID capability is fully emulated by QEMU */
++    memset(vdev->emulated_config_bits + pdev->exp.pasid_cap, 0xff,
++           PCI_EXT_CAP_PASID_SIZEOF);
++    return true;
++}
++
+ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
+ {
+     PCIDevice *pdev = PCI_DEVICE(vdev);
++    bool pasid_cap_added = false;
++    Error *err = NULL;
+     uint32_t header;
+     uint16_t cap_id, next, size;
+     uint8_t cap_ver;
+@@ -2581,12 +2635,24 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
+                 pcie_add_capability(pdev, cap_id, cap_ver, next, size);
+             }
+             break;
++        /*
++         * VFIO kernel does not expose the PASID CAP today. We may synthesize
++         * one later through IOMMUFD APIs. If VFIO ever starts exposing it,
++         * record its presence here so we do not create a duplicate CAP.
++         */
++        case PCI_EXT_CAP_ID_PASID:
++            pasid_cap_added = true;
++            /* fallthrough */
+         default:
+             pcie_add_capability(pdev, cap_id, cap_ver, next, size);
+         }
+ 
+     }
+ 
++    if (!pasid_cap_added && !vfio_pci_synthesize_pasid_cap(vdev, &err)) {
++        error_report_err(err);
++    }
++
+     /* Cleanup chain head ID if necessary */
+     if (pci_get_word(pdev->config + PCI_CONFIG_SPACE_SIZE) == 0xFFFF) {
+         pci_set_word(pdev->config + PCI_CONFIG_SPACE_SIZE, 0);
+@@ -3777,6 +3843,8 @@ static const Property vfio_pci_properties[] = {
+                      TYPE_IOMMUFD_BACKEND, IOMMUFDBackend *),
+ #endif
+     DEFINE_PROP_BOOL("skip-vsc-check", VFIOPCIDevice, skip_vsc_check, true),
++    DEFINE_PROP_UINT16("x-vpasid-cap-offset", VFIOPCIDevice,
++                       vpasid_cap_offset, 0),
+ };
+ 
+ #ifdef CONFIG_IOMMUFD
+@@ -3934,6 +4002,13 @@ static void vfio_pci_class_init(ObjectClass *klass, const void *data)
+                                           "destination when doing live "
+                                           "migration of device state via "
+                                           "multifd channels");
++   object_class_property_set_description(klass, /* 11.0 */
++                                          "x-vpasid-cap-offset",
++                                          "PCIe extended configuration space offset at which to place a "
++                                          "synthetic PASID extended capability when PASID is enabled via "
++                                          "a vIOMMU. A value of 0 (default) places the capability at the "
++                                          "end of the extended configuration space. The offset must be "
++                                          "4-byte aligned and within the PCIe extended configuration space");
+ }
+ 
+ static const TypeInfo vfio_pci_info = {
+diff --git a/hw/vfio/pci.h b/hw/vfio/pci.h
+index 975836945a..c1c59e4092 100644
+--- a/hw/vfio/pci.h
++++ b/hw/vfio/pci.h
+@@ -188,6 +188,7 @@ struct VFIOPCIDevice {
+     bool defer_kvm_irq_routing;
+     bool clear_parent_atomics_on_exit;
+     bool skip_vsc_check;
++    uint16_t vpasid_cap_offset;
+     VFIODisplay *dpy;
+     Notifier irqchip_change_notifier;
+     VFIOPCICPR cpr;
+diff --git a/hw/vfio/trace-events b/hw/vfio/trace-events
+index 592a0349d4..82abfc99ae 100644
+--- a/hw/vfio/trace-events
++++ b/hw/vfio/trace-events
+@@ -40,6 +40,7 @@ vfio_pci_hot_reset_result(const char *name, const char *result) "%s hot reset: %
+ vfio_pci_populate_device_config(const char *name, unsigned long size, unsigned long offset, unsigned long flags) "Device '%s' config: size: 0x%lx, offset: 0x%lx, flags: 0x%lx"
+ vfio_pci_populate_device_get_irq_info_failure(const char *errstr) "VFIO_DEVICE_GET_IRQ_INFO failure: %s"
+ vfio_mdev(const char *name, bool is_mdev) " (%s) is_mdev %d"
++vfio_pci_synthesize_pasid_cap(const char *name,  uint16_t offset)  "%s offset: 0x%x"
+ vfio_add_ext_cap_dropped(const char *name, uint16_t cap, uint16_t offset) "%s 0x%x@0x%x"
+ vfio_pci_reset(const char *name) " (%s)"
+ vfio_pci_reset_flr(const char *name) "%s FLR/VFIO_DEVICE_RESET"
+diff --git a/include/hw/core/iommu.h b/include/hw/core/iommu.h
+index d5401a397b..86af315c15 100644
+--- a/include/hw/core/iommu.h
++++ b/include/hw/core/iommu.h
+@@ -20,6 +20,7 @@
+ enum viommu_flags {
+     /* vIOMMU needs nesting parent HWPT to create nested HWPT */
+     VIOMMU_FLAG_WANT_NESTING_PARENT = BIT_ULL(0),
++    VIOMMU_FLAG_PASID_SUPPORTED = BIT_ULL(1),
+ };
+ 
+ /* Host IOMMU quirks. Extracted from host IOMMU capabilities */
+-- 
+2.52.0
+

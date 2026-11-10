@@ -1,0 +1,67 @@
+From c5a8a9187f8395f35218cb6e301ee777f4a0da7b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Le=20Goater?= <clg@redhat.com>
+Date: Wed, 15 Jul 2026 10:00:00 +0200
+Subject: [PATCH] vfio/region: Clarify dma-buf failure messages
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 514: vfio/region: Clarify dma-buf failure messages
+RH-Jira: RHEL-224652
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [1/1] 290b4b792bd444608b01bab64514a0e0725e9f89 (rovick1/qemu-kvm)
+
+The dma-buf failure messages in vfio_region_create_dma_buf() say "PCI
+BAR IOMMU mappings may fail", which suggests the BAR is broken. In
+practice, only P2P DMA is affected -- normal passthrough uses the mmap
+fallback.
+
+Reword both messages to mention P2P DMA explicitly and clarify that
+the mmap fallback is in use. Use warn_report_err_once() at the call
+site so per-BAR repetition on mdev devices is suppressed.
+
+Fixes: dcf1b77e834d ("hw/vfio/region: Create dmabuf for PCI BAR per region")
+Cc: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@oss.qualcomm.com>
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 4b2e6505d59b7b16c6e15a2494942d00648e8510)
+---
+ hw/vfio/region.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/hw/vfio/region.c b/hw/vfio/region.c
+index 1e9915fdd3..9258ab6847 100644
+--- a/hw/vfio/region.c
++++ b/hw/vfio/region.c
+@@ -316,13 +316,12 @@ static bool vfio_region_create_dma_buf(VFIORegion *region, Error **errp)
+     ret = vfio_device_get_feature(vbasedev, feature);
+     if (ret < 0) {
+         if (ret == -ENOTTY) {
+-            warn_report_once("VFIO dma-buf not supported in kernel: "
+-                             "PCI BAR IOMMU mappings may fail");
++            warn_report_once("VFIO dma-buf not supported in kernel, "
++                             "using mmap fallback, P2P DMA will not work");
+             return true;
+         }
+-        /* P2P DMA or exposing device memory use cases are not supported. */
+-        error_setg_errno(errp, -ret, "%s: failed to create dma-buf: "
+-                         "PCI BAR IOMMU mappings may fail",
++        error_setg_errno(errp, -ret, "%s: dma-buf unavailable, "
++                         "using mmap fallback, P2P DMA will not work",
+                          memory_region_name(region->mem));
+         return false;
+     }
+@@ -443,7 +442,7 @@ int vfio_region_mmap(VFIORegion *region)
+     }
+ 
+     if (!vfio_region_create_dma_buf(region, &local_err)) {
+-        error_report_err(local_err);
++        warn_report_err_once(local_err);
+     }
+ 
+     return 0;
+-- 
+2.52.0
+

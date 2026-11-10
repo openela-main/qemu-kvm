@@ -1,0 +1,124 @@
+From 8099d6501f399b1c55f23dd482389304349c9664 Mon Sep 17 00:00:00 2001
+From: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Date: Thu, 9 Oct 2025 00:01:32 -0400
+Subject: [PATCH 102/116] vfio/container: Support unmap all in one ioctl()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [86/100] 0c5f202cb07001ea023816c1c4bbf09e460b83b0 (rovick1/qemu-kvm)
+
+VFIO type1 kernel uAPI supports unmapping whole address space in one call
+since commit c19650995374 ("vfio/type1: implement unmap all"). Use the
+unmap_all variant whenever it's supported in kernel.
+
+Opportunistically pass VFIOLegacyContainer pointer in low level function
+vfio_legacy_dma_unmap_one().
+
+Co-developed-by: John Levon <levon@movementarian.org>
+Signed-off-by: John Levon <levon@movementarian.org>
+Signed-off-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20251009040134.334251-2-zhenzhong.duan@intel.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 962bcf0911e7f3601da0f07ba7da9824cb6a5ba5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/container-legacy.c              | 38 ++++++++++++++-----------
+ include/hw/vfio/vfio-container-legacy.h |  1 +
+ 2 files changed, 23 insertions(+), 16 deletions(-)
+
+diff --git a/hw/vfio/container-legacy.c b/hw/vfio/container-legacy.c
+index fad0226f7d..e639760381 100644
+--- a/hw/vfio/container-legacy.c
++++ b/hw/vfio/container-legacy.c
+@@ -135,14 +135,14 @@ unmap_exit:
+     return ret;
+ }
+ 
+-static int vfio_legacy_dma_unmap_one(const VFIOContainer *bcontainer,
++static int vfio_legacy_dma_unmap_one(const VFIOLegacyContainer *container,
+                                      hwaddr iova, uint64_t size,
+-                                     IOMMUTLBEntry *iotlb)
++                                     uint32_t flags, IOMMUTLBEntry *iotlb)
+ {
+-    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    const VFIOContainer *bcontainer = VFIO_IOMMU(container);
+     struct vfio_iommu_type1_dma_unmap unmap = {
+         .argsz = sizeof(unmap),
+-        .flags = 0,
++        .flags = flags,
+         .iova = iova,
+         .size = size,
+     };
+@@ -184,25 +184,28 @@ static int vfio_legacy_dma_unmap(const VFIOContainer *bcontainer,
+                                  hwaddr iova, uint64_t size,
+                                  IOMMUTLBEntry *iotlb, bool unmap_all)
+ {
++    const VFIOLegacyContainer *container = VFIO_IOMMU_LEGACY(bcontainer);
++    uint32_t flags = 0;
+     int ret;
+ 
+     if (unmap_all) {
+-        /* The unmap ioctl doesn't accept a full 64-bit span. */
+-        Int128 llsize = int128_rshift(int128_2_64(), 1);
+-
+-        ret = vfio_legacy_dma_unmap_one(bcontainer, 0, int128_get64(llsize),
+-                                        iotlb);
++        if (container->unmap_all_supported) {
++            flags = VFIO_DMA_UNMAP_FLAG_ALL;
++        } else {
++            /* The unmap ioctl doesn't accept a full 64-bit span. */
++            Int128 llsize = int128_rshift(int128_2_64(), 1);
++            size = int128_get64(llsize);
++
++            ret = vfio_legacy_dma_unmap_one(container, 0, size, flags, iotlb);
++            if (ret) {
++                return ret;
++            }
+ 
+-        if (ret == 0) {
+-            ret = vfio_legacy_dma_unmap_one(bcontainer, int128_get64(llsize),
+-                                            int128_get64(llsize), iotlb);
++            iova = size;
+         }
+-
+-    } else {
+-        ret = vfio_legacy_dma_unmap_one(bcontainer, iova, size, iotlb);
+     }
+ 
+-    return ret;
++    return vfio_legacy_dma_unmap_one(container, iova, size, flags, iotlb);
+ }
+ 
+ static int vfio_legacy_dma_map(const VFIOContainer *bcontainer, hwaddr iova,
+@@ -533,6 +536,9 @@ static bool vfio_legacy_setup(VFIOContainer *bcontainer, Error **errp)
+ 
+     vfio_get_info_iova_range(info, bcontainer);
+ 
++    ret = ioctl(container->fd, VFIO_CHECK_EXTENSION, VFIO_UNMAP_ALL);
++    container->unmap_all_supported = !!ret;
++
+     vfio_get_iommu_info_migration(container, info);
+     return true;
+ }
+diff --git a/include/hw/vfio/vfio-container-legacy.h b/include/hw/vfio/vfio-container-legacy.h
+index 74a72df018..ffd594e80d 100644
+--- a/include/hw/vfio/vfio-container-legacy.h
++++ b/include/hw/vfio/vfio-container-legacy.h
+@@ -30,6 +30,7 @@ struct VFIOLegacyContainer {
+ 
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+     unsigned iommu_type;
++    bool unmap_all_supported;
+     QLIST_HEAD(, VFIOGroup) group_list;
+     VFIOContainerCPR cpr;
+ };
+-- 
+2.52.0
+

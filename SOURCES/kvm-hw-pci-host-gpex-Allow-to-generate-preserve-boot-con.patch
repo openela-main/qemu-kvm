@@ -1,0 +1,193 @@
+From 65626b163011d8db55a94e31a35ac5cdda951e0d Mon Sep 17 00:00:00 2001
+From: Eric Auger <eric.auger@redhat.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 030/111] hw/pci-host/gpex: Allow to generate preserve boot
+ config DSM #5
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [30/111] b597678920fc66163d769bb6800576ff8da82083 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Add a 'preserve_config' field in struct GPEXConfig and, if set, generate
+the _DSM function #5 for preserving PCI boot configurations.
+
+This will be used for SMMUv3 accel=on support in subsequent patch. When
+SMMUv3 acceleration (accel=on) is enabled, QEMU exposes IORT Reserved
+Memory Region (RMR) nodes to support MSI doorbell translations. As per
+the Arm IORT specification, using IORT RMRs mandates the presence of
+_DSM function #5 so that the OS retains the firmware-assigned PCI
+configuration. Hence, this patch adds conditional support for generating
+_DSM #5.
+
+According to the ACPI Specification, Revision 6.6, Section 9.1.1 -
+“_DSM (Device Specific Method)”,
+
+"
+If Function Index is zero, the return is a buffer containing one bit for
+each function index, starting with zero. Bit 0 indicates whether there
+is support for any functions other than function 0 for the specified
+UUID and Revision ID. If set to zero, no functions are supported (other
+than function zero) for the specified UUID and Revision ID. If set to
+one, at least one additional function is supported. For all other bits
+in the buffer, a bit is set to zero to indicate if that function index
+is not supported for the specific UUID and Revision ID. (For example,
+bit 1 set to 0 indicates that function index 1 is not supported for the
+specific UUID and Revision ID.)
+"
+
+Please refer PCI Firmware Specification, Revision 3.3, Section 4.6.5 —
+"_DSM for Preserving PCI Boot Configurations" for Function 5 of _DSM
+method.
+
+Also, while at it, move the byte_list declaration to the top of the
+function for clarity.
+
+At the moment, DSM generation is not yet enabled.
+
+The resulting AML when preserve_config=true is:
+
+    Method (_DSM, 4, NotSerialized)
+        {
+            If ((Arg0 == ToUUID ("e5c937d0-3553-4d7a-9117-ea4d19c3434d")))
+                {
+                    If ((Arg2 == Zero))
+                    {
+                        Return (Buffer (One)
+                        {
+                             0x21
+                        })
+                    }
+
+                    If ((Arg2 == 0x05))
+                    {
+                        Return (Zero)
+                    }
+                }
+         ...
+      }
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 20260126104342.253965-23-skolothumtho@nvidia.com
+[Shameer: Removed possible duplicate _DSM creations]
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 59a5c80623abbb7f5f52fc227cfe0c142858858c)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/pci-host/gpex-acpi.c    | 29 +++++++++++++++++++++++------
+ include/hw/pci-host/gpex.h |  1 +
+ 2 files changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/hw/pci-host/gpex-acpi.c b/hw/pci-host/gpex-acpi.c
+index 4587baeb78..d9820f9b41 100644
+--- a/hw/pci-host/gpex-acpi.c
++++ b/hw/pci-host/gpex-acpi.c
+@@ -51,10 +51,11 @@ static void acpi_dsdt_add_pci_route_table(Aml *dev, uint32_t irq,
+     }
+ }
+ 
+-static Aml *build_pci_host_bridge_dsm_method(void)
++static Aml *build_pci_host_bridge_dsm_method(bool preserve_config)
+ {
+     Aml *method = aml_method("_DSM", 4, AML_NOTSERIALIZED);
+     Aml *UUID, *ifctx, *ifctx1, *buf;
++    uint8_t byte_list[1] = {0};
+ 
+     /* PCI Firmware Specification 3.0
+      * 4.6.1. _DSM for PCI Express Slot Information
+@@ -64,10 +65,23 @@ static Aml *build_pci_host_bridge_dsm_method(void)
+     UUID = aml_touuid("E5C937D0-3553-4D7A-9117-EA4D19C3434D");
+     ifctx = aml_if(aml_equal(aml_arg(0), UUID));
+     ifctx1 = aml_if(aml_equal(aml_arg(2), aml_int(0)));
+-    uint8_t byte_list[1] = {0};
++    if (preserve_config) {
++        /* support functions other than 0, specifically function 5 */
++        byte_list[0] = 0x21;
++    }
+     buf = aml_buffer(1, byte_list);
+     aml_append(ifctx1, aml_return(buf));
+     aml_append(ifctx, ifctx1);
++    if (preserve_config) {
++        Aml *ifctx2 = aml_if(aml_equal(aml_arg(2), aml_int(5)));
++        /*
++         * 0 - The operating system must not ignore the PCI configuration that
++         *     firmware has done at boot time.
++         */
++        aml_append(ifctx2, aml_return(aml_int(0)));
++        aml_append(ifctx, ifctx2);
++    }
++
+     aml_append(method, ifctx);
+ 
+     byte_list[0] = 0;
+@@ -77,12 +91,13 @@ static Aml *build_pci_host_bridge_dsm_method(void)
+ }
+ 
+ static void acpi_dsdt_add_host_bridge_methods(Aml *dev,
+-                                              bool enable_native_pcie_hotplug)
++                                              bool enable_native_pcie_hotplug,
++                                              bool preserve_config)
+ {
+     /* Declare an _OSC (OS Control Handoff) method */
+     aml_append(dev,
+                build_pci_host_bridge_osc_method(enable_native_pcie_hotplug));
+-    aml_append(dev, build_pci_host_bridge_dsm_method());
++    aml_append(dev, build_pci_host_bridge_dsm_method(preserve_config));
+ }
+ 
+ void acpi_dsdt_add_gpex(Aml *scope, struct GPEXConfig *cfg)
+@@ -152,7 +167,8 @@ void acpi_dsdt_add_gpex(Aml *scope, struct GPEXConfig *cfg)
+                 build_cxl_osc_method(dev);
+             } else {
+                 /* pxb bridges do not have ACPI PCI Hot-plug enabled */
+-                acpi_dsdt_add_host_bridge_methods(dev, true);
++                acpi_dsdt_add_host_bridge_methods(dev, true,
++                                                  cfg->preserve_config);
+             }
+ 
+             aml_append(scope, dev);
+@@ -227,7 +243,8 @@ void acpi_dsdt_add_gpex(Aml *scope, struct GPEXConfig *cfg)
+     }
+     aml_append(dev, aml_name_decl("_CRS", rbuf));
+ 
+-    acpi_dsdt_add_host_bridge_methods(dev, cfg->pci_native_hotplug);
++    acpi_dsdt_add_host_bridge_methods(dev, cfg->pci_native_hotplug,
++                                      cfg->preserve_config);
+ 
+     Aml *dev_res0 = aml_device("%s", "RES0");
+     aml_append(dev_res0, aml_name_decl("_HID", aml_string("PNP0C02")));
+diff --git a/include/hw/pci-host/gpex.h b/include/hw/pci-host/gpex.h
+index feaf827474..7eea16e728 100644
+--- a/include/hw/pci-host/gpex.h
++++ b/include/hw/pci-host/gpex.h
+@@ -46,6 +46,7 @@ struct GPEXConfig {
+     int         irq;
+     PCIBus      *bus;
+     bool        pci_native_hotplug;
++    bool        preserve_config;
+ };
+ 
+ typedef struct GPEXIrq GPEXIrq;
+-- 
+2.52.0
+

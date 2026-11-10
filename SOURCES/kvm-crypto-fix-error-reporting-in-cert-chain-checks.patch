@@ -1,0 +1,119 @@
+From 8dce0e99c8ff3962696fcdb2b11bcb6b0db8a031 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 9 Jul 2025 08:36:22 +0100
+Subject: [PATCH 04/30] crypto: fix error reporting in cert chain checks
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [3/27] c5a1e343c28959e1e0e477016caaede8fe3d6fa6 (berrange/centos-src-qemu)
+
+The loop that checks the CA certificate chain can fail to report
+an error message if one of the certs in the chain has an issuer
+that is not present in the chain. In this case, the outer loop
+'while (checking_issuer)' will terminate after failing to find
+the issuer, and no error message will be reported.
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit c677657e99e080a174052074ae77ff37dbe91335)
+---
+ crypto/tlscredsx509.c                 | 33 ++++++++++++++++++---------
+ tests/unit/test-crypto-tlscredsx509.c | 12 ++++++++++
+ 2 files changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 4169ad9a75..2eccd71b3c 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -326,11 +326,11 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+                                         Error **errp)
+ {
+     gnutls_x509_crt_t cert_to_check = cert;
+-    bool checking_issuer = true;
+     int retval = 0;
++    gnutls_datum_t dn = {};
+ 
+-    while (checking_issuer) {
+-        checking_issuer = false;
++    for (;;) {
++        gnutls_x509_crt_t cert_issuer = NULL;
+ 
+         if (gnutls_x509_crt_check_issuer(cert_to_check,
+                                          cert_to_check)) {
+@@ -345,19 +345,30 @@ qcrypto_tls_creds_check_authority_chain(QCryptoTLSCredsX509 *creds,
+         for (int i = 0; i < ncacerts; i++) {
+             if (gnutls_x509_crt_check_issuer(cert_to_check,
+                                              cacerts[i])) {
+-                retval = qcrypto_tls_creds_check_cert(
+-                    creds, cacerts[i], cacertFile,
+-                    isServer, isCA, errp);
+-                if (retval < 0) {
+-                    return retval;
+-                }
+-                cert_to_check = cacerts[i];
+-                checking_issuer = true;
++                cert_issuer = cacerts[i];
+                 break;
+             }
+         }
++        if (!cert_issuer) {
++            break;
++        }
++
++        if (qcrypto_tls_creds_check_cert(creds, cert_issuer, cacertFile,
++                                         isServer, isCA, errp) < 0) {
++            return -1;
++        }
++
++        cert_to_check = cert_issuer;
+     }
+ 
++    retval = gnutls_x509_crt_get_dn2(cert_to_check, &dn);
++    if (retval < 0) {
++        error_setg(errp, "Unable to fetch cert DN: %s",
++                   gnutls_strerror(retval));
++        return -1;
++    }
++    error_setg(errp, "Cert '%s' has no issuer in CA chain", dn.data);
++    g_free(dn.data);
+     return -1;
+ }
+ 
+diff --git a/tests/unit/test-crypto-tlscredsx509.c b/tests/unit/test-crypto-tlscredsx509.c
+index a7ea5f422d..d8bc3be491 100644
+--- a/tests/unit/test-crypto-tlscredsx509.c
++++ b/tests/unit/test-crypto-tlscredsx509.c
+@@ -640,6 +640,15 @@ int main(int argc, char **argv)
+                               certchain_with_invalid,
+                               G_N_ELEMENTS(certchain_with_invalid));
+ 
++    gnutls_x509_crt_t certchain_incomplete[] = {
++        cacertrootreq.crt,
++        cacertlevel2areq.crt,
++    };
++
++    test_tls_write_cert_chain(WORKDIR "cacertchain-incomplete-ctx.pem",
++                              certchain_incomplete,
++                              G_N_ELEMENTS(certchain_incomplete));
++
+     TLS_TEST_REG(chain1, true,
+                  WORKDIR "cacertchain-ctx.pem",
+                  servercertlevel3areq.filename, false);
+@@ -649,6 +658,9 @@ int main(int argc, char **argv)
+     TLS_TEST_REG(certchainwithexpiredcert, false,
+                  WORKDIR "cacertchain-with-invalid-ctx.pem",
+                  clientcertlevel2breq.filename, false);
++    TLS_TEST_REG(chainincomplete, true,
++                 WORKDIR "cacertchain-incomplete-ctx.pem",
++                 servercertlevel3areq.filename, true);
+ 
+     /* Some missing certs - first two are fatal, the last
+      * is ok
+-- 
+2.52.0
+

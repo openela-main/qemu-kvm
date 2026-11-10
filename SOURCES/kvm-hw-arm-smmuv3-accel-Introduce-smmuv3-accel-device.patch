@@ -1,0 +1,219 @@
+From 9fa0e1b82cc1863a481e3700929c40f0160d95cb Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:04 +0000
+Subject: [PATCH 007/111] hw/arm/smmuv3-accel: Introduce smmuv3 accel device
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [7/111] 1b76cd4032c19e0abebd850ee1e000f5e7768993 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Set up dedicated PCIIOMMUOps for the accel SMMUv3, since it will need
+different callback handling in upcoming patches. This also adds a
+CONFIG_ARM_SMMUV3_ACCEL build option so the feature can be disabled
+at compile time. Because we now include CONFIG_DEVICES in the header to
+check for ARM_SMMUV3_ACCEL, the meson file entry for smmuv3.c needs to
+be changed to arm_ss.add.
+
+The “accel” property isn’t user visible yet and it will be introduced in
+a later patch once all the supporting pieces are ready.
+
+Signed-off-by: Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-6-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 79fcbec80a85891b30684703d3ac96a7b992ae49)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/Kconfig          |  5 ++++
+ hw/arm/meson.build      |  3 ++-
+ hw/arm/smmuv3-accel.c   | 59 +++++++++++++++++++++++++++++++++++++++++
+ hw/arm/smmuv3-accel.h   | 27 +++++++++++++++++++
+ hw/arm/smmuv3.c         |  5 ++++
+ include/hw/arm/smmuv3.h |  3 +++
+ 6 files changed, 101 insertions(+), 1 deletion(-)
+ create mode 100644 hw/arm/smmuv3-accel.c
+ create mode 100644 hw/arm/smmuv3-accel.h
+
+diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
+index 3baa6c6c74..1f49550c61 100644
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -622,8 +622,13 @@ config FSL_IMX8MP_EVK
+     depends on TCG && AARCH64
+     select FSL_IMX8MP
+ 
++config ARM_SMMUV3_ACCEL
++    bool
++    depends on ARM_SMMUV3
++
+ config ARM_SMMUV3
+     bool
++    select ARM_SMMUV3_ACCEL if IOMMUFD
+ 
+ config FSL_IMX6UL
+     bool
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index dc68391305..bcb27c0bf6 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -61,7 +61,8 @@ arm_common_ss.add(when: 'CONFIG_ARMSSE', if_true: files('armsse.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX7', if_true: files('fsl-imx7.c', 'mcimx7d-sabre.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX8MP', if_true: files('fsl-imx8mp.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX8MP_EVK', if_true: files('imx8mp-evk.c'))
+-arm_common_ss.add(when: 'CONFIG_ARM_SMMUV3', if_true: files('smmuv3.c'))
++arm_ss.add(when: 'CONFIG_ARM_SMMUV3', if_true: files('smmuv3.c'))
++arm_ss.add(when: 'CONFIG_ARM_SMMUV3_ACCEL', if_true: files('smmuv3-accel.c'))
+ arm_common_ss.add(when: 'CONFIG_FSL_IMX6UL', if_true: files('fsl-imx6ul.c', 'mcimx6ul-evk.c'))
+ arm_common_ss.add(when: 'CONFIG_NRF51_SOC', if_true: files('nrf51_soc.c'))
+ arm_ss.add(when: 'CONFIG_XEN', if_true: files(
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+new file mode 100644
+index 0000000000..99ef0db8c4
+--- /dev/null
++++ b/hw/arm/smmuv3-accel.c
+@@ -0,0 +1,59 @@
++/*
++ * Copyright (c) 2025 Huawei Technologies R & D (UK) Ltd
++ * Copyright (C) 2025 NVIDIA
++ * Written by Nicolin Chen, Shameer Kolothum
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++
++#include "hw/arm/smmuv3.h"
++#include "smmuv3-accel.h"
++
++static SMMUv3AccelDevice *smmuv3_accel_get_dev(SMMUState *bs, SMMUPciBus *sbus,
++                                               PCIBus *bus, int devfn)
++{
++    SMMUDevice *sdev = sbus->pbdev[devfn];
++    SMMUv3AccelDevice *accel_dev;
++
++    if (sdev) {
++        return container_of(sdev, SMMUv3AccelDevice, sdev);
++    }
++
++    accel_dev = g_new0(SMMUv3AccelDevice, 1);
++    sdev = &accel_dev->sdev;
++
++    sbus->pbdev[devfn] = sdev;
++    smmu_init_sdev(bs, sdev, bus, devfn);
++    return accel_dev;
++}
++
++/*
++ * Find or add an address space for the given PCI device.
++ *
++ * If a device matching @bus and @devfn already exists, return its
++ * corresponding address space. Otherwise, create a new device entry
++ * and initialize address space for it.
++ */
++static AddressSpace *smmuv3_accel_find_add_as(PCIBus *bus, void *opaque,
++                                              int devfn)
++{
++    SMMUState *bs = opaque;
++    SMMUPciBus *sbus = smmu_get_sbus(bs, bus);
++    SMMUv3AccelDevice *accel_dev = smmuv3_accel_get_dev(bs, sbus, bus, devfn);
++    SMMUDevice *sdev = &accel_dev->sdev;
++
++    return &sdev->as;
++}
++
++static const PCIIOMMUOps smmuv3_accel_ops = {
++    .get_address_space = smmuv3_accel_find_add_as,
++};
++
++void smmuv3_accel_init(SMMUv3State *s)
++{
++    SMMUState *bs = ARM_SMMU(s);
++
++    bs->iommu_ops = &smmuv3_accel_ops;
++}
+diff --git a/hw/arm/smmuv3-accel.h b/hw/arm/smmuv3-accel.h
+new file mode 100644
+index 0000000000..0dc6b00d35
+--- /dev/null
++++ b/hw/arm/smmuv3-accel.h
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (c) 2025 Huawei Technologies R & D (UK) Ltd
++ * Copyright (C) 2025 NVIDIA
++ * Written by Nicolin Chen, Shameer Kolothum
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef HW_ARM_SMMUV3_ACCEL_H
++#define HW_ARM_SMMUV3_ACCEL_H
++
++#include "hw/arm/smmu-common.h"
++#include CONFIG_DEVICES
++
++typedef struct SMMUv3AccelDevice {
++    SMMUDevice sdev;
++} SMMUv3AccelDevice;
++
++#ifdef CONFIG_ARM_SMMUV3_ACCEL
++void smmuv3_accel_init(SMMUv3State *s);
++#else
++static inline void smmuv3_accel_init(SMMUv3State *s)
++{
++}
++#endif
++
++#endif /* HW_ARM_SMMUV3_ACCEL_H */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index bcf8af8dc7..ef991cb7d8 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -32,6 +32,7 @@
+ #include "qapi/error.h"
+ 
+ #include "hw/arm/smmuv3.h"
++#include "smmuv3-accel.h"
+ #include "smmuv3-internal.h"
+ #include "smmu-internal.h"
+ 
+@@ -1882,6 +1883,10 @@ static void smmu_realize(DeviceState *d, Error **errp)
+     SysBusDevice *dev = SYS_BUS_DEVICE(d);
+     Error *local_err = NULL;
+ 
++    if (s->accel) {
++        smmuv3_accel_init(s);
++    }
++
+     c->parent_realize(d, &local_err);
+     if (local_err) {
+         error_propagate(errp, local_err);
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index d183a62766..bb7076286b 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -63,6 +63,9 @@ struct SMMUv3State {
+     qemu_irq     irq[4];
+     QemuMutex mutex;
+     char *stage;
++
++    /* SMMU has HW accelerator support for nested S1 + s2 */
++    bool accel;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

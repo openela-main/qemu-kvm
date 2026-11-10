@@ -1,0 +1,188 @@
+From edf2b5c6f9319e6516568a31d19c46eac686303f Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 038/111] hw/arm/smmuv3-accel: Add support for ATS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [38/111] 55e6f061ef300a52b72b8268437085e344a6f818 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+QEMU SMMUv3 does not enable ATS (Address Translation Services) by default.
+When accelerated mode is enabled and the host SMMUv3 supports ATS, it can
+be useful to report ATS capability to the guest so it can take advantage
+of it if the device also supports ATS.
+
+Note: ATS support cannot be reliably detected from the host SMMUv3 IDR
+registers alone, as firmware ACPI IORT tables may override them. The
+user must therefore ensure the support before enabling it.
+
+The ATS support enabled here is only relevant for vfio-pci endpoints,
+as SMMUv3 accelerated mode does not support emulated endpoint devices.
+QEMU’s SMMUv3 implementation still lacks support for handling ATS
+translation requests, which would be required for emulated endpoints.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260126104342.253965-31-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit f7f5013a55a3447ca81383d8969626e092feb0c9)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c    |  3 +++
+ hw/arm/smmuv3.c          | 24 +++++++++++++++++++++++-
+ hw/arm/virt-acpi-build.c | 10 ++++++++--
+ include/hw/arm/smmuv3.h  |  1 +
+ 4 files changed, 35 insertions(+), 3 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index df82f1e32a..a97abc1f79 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -654,6 +654,9 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+ 
+     /* By default QEMU SMMUv3 has RIL. Update IDR3 if user has disabled it */
+     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, s->ril);
++
++    /* QEMU SMMUv3 has no ATS. Advertise ATS if opt-in by property */
++    s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATS, s->ats);
+ }
+ 
+ /* Based on SMUUv3 GPBA.ABORT configuration, attach a corresponding HWPT */
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 643706b29c..ead0785b2b 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1498,13 +1498,27 @@ static int smmuv3_cmdq_consume(SMMUv3State *s, Error **errp)
+              */
+             smmuv3_range_inval(bs, &cmd, SMMU_STAGE_2);
+             break;
++        case SMMU_CMD_ATC_INV:
++        {
++            SMMUDevice *sdev = smmu_find_sdev(bs, CMD_SID(&cmd));
++
++            if (!sdev || !s->ats) {
++                trace_smmuv3_unhandled_cmd(type);
++                break;
++            }
++
++            if (!smmuv3_accel_issue_inv_cmd(s, &cmd, sdev, errp)) {
++                cmd_error = SMMU_CERROR_ILL;
++                break;
++            }
++            break;
++        }
+         case SMMU_CMD_TLBI_EL3_ALL:
+         case SMMU_CMD_TLBI_EL3_VA:
+         case SMMU_CMD_TLBI_EL2_ALL:
+         case SMMU_CMD_TLBI_EL2_ASID:
+         case SMMU_CMD_TLBI_EL2_VA:
+         case SMMU_CMD_TLBI_EL2_VAA:
+-        case SMMU_CMD_ATC_INV:
+         case SMMU_CMD_PRI_RESP:
+         case SMMU_CMD_RESUME:
+         case SMMU_CMD_STALL_TERM:
+@@ -1931,6 +1945,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+             error_setg(errp, "ril can only be disabled if accel=on");
+             return false;
+         }
++        if (s->ats) {
++            error_setg(errp, "ats can only be enabled if accel=on");
++            return false;
++        }
+         return true;
+     }
+ 
+@@ -2066,6 +2084,7 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
+     /* RIL can be turned off for accel cases */
+     DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
++    DEFINE_PROP_BOOL("ats", SMMUv3State, ats, false),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2093,6 +2112,9 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "configured in nested mode for vfio-pci dev assignment");
+     object_class_property_set_description(klass, "ril",
+         "Disable range invalidation support (for accel=on)");
++    object_class_property_set_description(klass, "ats",
++        "Enable/disable ATS support (for accel=on). Please ensure host "
++        "platform has ATS support before enabling this");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 33c6519f0a..160f1d10e5 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -352,6 +352,7 @@ typedef struct AcpiIortSMMUv3Dev {
+     /* Offset of the SMMUv3 IORT Node relative to the start of the IORT */
+     size_t offset;
+     bool accel;
++    bool ats;
+ } AcpiIortSMMUv3Dev;
+ 
+ /*
+@@ -407,6 +408,7 @@ static int iort_smmuv3_devices(Object *obj, void *opaque)
+ 
+     bus = PCI_BUS(object_property_get_link(obj, "primary-bus", &error_abort));
+     sdev.accel = object_property_get_bool(obj, "accel", &error_abort);
++    sdev.ats = object_property_get_bool(obj, "ats", &error_abort);
+     pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
+     sbdev = SYS_BUS_DEVICE(obj);
+     sdev.base = platform_bus_get_mmio_addr(pbus, sbdev, 0);
+@@ -550,6 +552,7 @@ build_iort(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
+     int i, nb_nodes, rc_mapping_count;
+     AcpiIortSMMUv3Dev *sdev;
+     size_t node_size;
++    bool ats_needed = false;
+     int num_smmus = 0;
+     uint32_t id = 0;
+     int rc_smmu_idmaps_len = 0;
+@@ -585,6 +588,9 @@ build_iort(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
+         /* Calculate RMR nodes required. One per SMMUv3 with accelerated mode */
+         for (i = 0; i < num_smmus; i++) {
+             sdev = &g_array_index(smmuv3_devs, AcpiIortSMMUv3Dev, i);
++            if (sdev->ats) {
++                ats_needed = true;
++            }
+             if (sdev->accel) {
+                 nb_nodes++;
+             }
+@@ -684,8 +690,8 @@ build_iort(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
+     build_append_int_noprefix(table_data, 0, 2); /* Reserved */
+     /* Table 15 Memory Access Flags */
+     build_append_int_noprefix(table_data, 0x3 /* CCA = CPM = DACS = 1 */, 1);
+-
+-    build_append_int_noprefix(table_data, 0, 4); /* ATS Attribute */
++    /* ATS Attribute */
++    build_append_int_noprefix(table_data, ats_needed, 4);
+     /* MCFG pci_segment */
+     build_append_int_noprefix(table_data, 0, 4); /* PCI Segment number */
+ 
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 533a2182e8..242d6429ed 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -70,6 +70,7 @@ struct SMMUv3State {
+     uint64_t msi_gpa;
+     Error *migration_blocker;
+     bool ril;
++    bool ats;
+ };
+ 
+ typedef enum {
+-- 
+2.52.0
+

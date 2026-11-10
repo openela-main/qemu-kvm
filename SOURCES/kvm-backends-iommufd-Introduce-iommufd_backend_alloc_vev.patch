@@ -1,0 +1,127 @@
+From 30da7f8af7c6d1e240cab27117e4b06143bab4c4 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Fri, 6 Mar 2026 09:01:11 +0000
+Subject: [PATCH 050/111] backends/iommufd: Introduce
+ iommufd_backend_alloc_veventq
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [50/111] ed7d1d76b95dcbd4df9bab81ed7c660b2eda094c (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73796
+
+Conflicts: contextual in backends/trace-events because we don't
+           have IGM trace points downstream
+
+Add a new helper for IOMMU_VEVENTQ_ALLOC ioctl to allocate a virtual event
+queue (vEVENTQ) for a vIOMMU object.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260226084456.112142-2-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 0885cd5504dfdbd531a1fc0e3e421d3c9934b03a)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c       | 31 +++++++++++++++++++++++++++++++
+ backends/trace-events    |  1 +
+ include/system/iommufd.h | 14 ++++++++++++++
+ 3 files changed, 46 insertions(+)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index f1707eadc6..5b919e4be9 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -503,6 +503,37 @@ bool iommufd_backend_alloc_vdev(IOMMUFDBackend *be, uint32_t dev_id,
+     return true;
+ }
+ 
++bool iommufd_backend_alloc_veventq(IOMMUFDBackend *be, uint32_t viommu_id,
++                                   uint32_t type, uint32_t depth,
++                                   uint32_t *out_veventq_id,
++                                   uint32_t *out_veventq_fd, Error **errp)
++{
++    int ret;
++    struct iommu_veventq_alloc alloc_veventq = {
++        .size = sizeof(alloc_veventq),
++        .flags = 0,
++        .type = type,
++        .veventq_depth = depth,
++        .viommu_id = viommu_id,
++    };
++
++    ret = ioctl(be->fd, IOMMU_VEVENTQ_ALLOC, &alloc_veventq);
++
++    trace_iommufd_viommu_alloc_eventq(be->fd, viommu_id, type,
++                                      alloc_veventq.out_veventq_id,
++                                      alloc_veventq.out_veventq_fd, ret);
++    if (ret) {
++        error_setg_errno(errp, errno, "IOMMU_VEVENTQ_ALLOC failed");
++        return false;
++    }
++
++    g_assert(out_veventq_id);
++    g_assert(out_veventq_fd);
++    *out_veventq_id = alloc_veventq.out_veventq_id;
++    *out_veventq_fd = alloc_veventq.out_veventq_fd;
++    return true;
++}
++
+ bool host_iommu_device_iommufd_attach_hwpt(HostIOMMUDeviceIOMMUFD *idev,
+                                            uint32_t hwpt_id, Error **errp)
+ {
+diff --git a/backends/trace-events b/backends/trace-events
+index 8408dc8701..5afa7a40be 100644
+--- a/backends/trace-events
++++ b/backends/trace-events
+@@ -23,3 +23,4 @@ iommufd_backend_get_dirty_bitmap(int iommufd, uint32_t hwpt_id, uint64_t iova, u
+ iommufd_backend_invalidate_cache(int iommufd, uint32_t id, uint32_t data_type, uint32_t entry_len, uint32_t entry_num, uint32_t done_num, uint64_t data_ptr, int ret) " iommufd=%d id=%u data_type=%u entry_len=%u entry_num=%u done_num=%u data_ptr=0x%"PRIx64" (%d)"
+ iommufd_backend_alloc_viommu(int iommufd, uint32_t dev_id, uint32_t type, uint32_t hwpt_id, uint32_t viommu_id, int ret) " iommufd=%d type=%u dev_id=%u hwpt_id=%u viommu_id=%u (%d)"
+ iommufd_backend_alloc_vdev(int iommufd, uint32_t dev_id, uint32_t viommu_id, uint64_t virt_id, uint32_t vdev_id, int ret) " iommufd=%d dev_id=%u viommu_id=%u virt_id=0x%"PRIx64" vdev_id=%u (%d)"
++iommufd_viommu_alloc_eventq(int iommufd, uint32_t viommu_id, uint32_t type, uint32_t veventq_id, uint32_t veventq_fd, int ret) " iommufd=%d viommu_id=%u type=%u veventq_id=%u veventq_fd=%u (%d)"
+diff --git a/include/system/iommufd.h b/include/system/iommufd.h
+index aa78bf1e1d..25da754434 100644
+--- a/include/system/iommufd.h
++++ b/include/system/iommufd.h
+@@ -56,6 +56,15 @@ typedef struct IOMMUFDVdev {
+     uint32_t virt_id;  /* virtual device ID */
+ } IOMMUFDVdev;
+ 
++/* Virtual event queue interface for a vIOMMU */
++typedef struct IOMMUFDVeventq {
++    IOMMUFDViommu *viommu;
++    uint32_t veventq_id;
++    uint32_t veventq_fd;
++    uint32_t last_event_seq; /* Sequence number of last processed event */
++    bool event_start; /* True after first valid event; cleared on overflow */
++} IOMMUFDVeventq;
++
+ bool iommufd_backend_connect(IOMMUFDBackend *be, Error **errp);
+ void iommufd_backend_disconnect(IOMMUFDBackend *be);
+ 
+@@ -86,6 +95,11 @@ bool iommufd_backend_alloc_vdev(IOMMUFDBackend *be, uint32_t dev_id,
+                                 uint32_t viommu_id, uint64_t virt_id,
+                                 uint32_t *out_vdev_id, Error **errp);
+ 
++bool iommufd_backend_alloc_veventq(IOMMUFDBackend *be, uint32_t viommu_id,
++                                   uint32_t type, uint32_t depth,
++                                   uint32_t *out_veventq_id,
++                                   uint32_t *out_veventq_fd, Error **errp);
++
+ bool iommufd_backend_set_dirty_tracking(IOMMUFDBackend *be, uint32_t hwpt_id,
+                                         bool start, Error **errp);
+ bool iommufd_backend_get_dirty_bitmap(IOMMUFDBackend *be, uint32_t hwpt_id,
+-- 
+2.52.0
+

@@ -1,0 +1,167 @@
+From 3a3d4951c65f26ec8215ea06a5283673bef8e499 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 040/111] backends/iommufd: Retrieve PASID width from
+ iommufd_backend_get_device_info()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [40/111] e6c94449414ec82230d03c39d255e1ceff69bbea (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+Conflicts: contextual conflict in hw/vfio/iommufd.c
+Add caps local variable and pass it in iommufd_backend_get_device_info()
+This is due to the fact we don't have
+68d3a2a24d7c  ("Workaround for ERRATA_772415_SPR17")
+
+Retrieve PASID width from iommufd_backend_get_device_info() and store it
+in HostIOMMUDeviceCaps for later use.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-33-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 550beca3d7b0159681a09d63dfce19ac31509f9f)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c                 | 6 +++++-
+ hw/arm/smmuv3-accel.c              | 3 ++-
+ hw/vfio/iommufd.c                  | 8 ++++++--
+ include/system/host_iommu_device.h | 3 +++
+ include/system/iommufd.h           | 3 ++-
+ 5 files changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index e68a2c934f..6381f9664b 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -388,7 +388,8 @@ bool iommufd_backend_get_dirty_bitmap(IOMMUFDBackend *be,
+ 
+ bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
+                                      uint32_t *type, void *data, uint32_t len,
+-                                     uint64_t *caps, Error **errp)
++                                     uint64_t *caps, uint8_t *max_pasid_log2,
++                                     Error **errp)
+ {
+     struct iommu_hw_info info = {
+         .size = sizeof(info),
+@@ -407,6 +408,9 @@ bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
+     g_assert(caps);
+     *caps = info.out_capabilities;
+ 
++    if (max_pasid_log2) {
++        *max_pasid_log2 = info.out_max_pasid_log2;
++    }
+     return true;
+ }
+ 
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index ea420afeb7..342944da23 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -121,7 +121,8 @@ smmuv3_accel_hw_compatible(SMMUv3State *s, HostIOMMUDeviceIOMMUFD *idev,
+     uint64_t caps;
+ 
+     if (!iommufd_backend_get_device_info(idev->iommufd, idev->devid, &data_type,
+-                                         &info, sizeof(info), &caps, errp)) {
++                                         &info, sizeof(info), &caps, NULL,
++                                         errp)) {
+         return false;
+     }
+ 
+diff --git a/hw/vfio/iommufd.c b/hw/vfio/iommufd.c
+index bb5775aa71..67acdfa183 100644
+--- a/hw/vfio/iommufd.c
++++ b/hw/vfio/iommufd.c
+@@ -308,6 +308,7 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+     VFIOContainer *bcontainer = VFIO_IOMMU(container);
+     uint32_t type, flags = 0;
+     uint64_t hw_caps;
++    VendorCaps caps;
+     VFIOIOASHwpt *hwpt;
+     uint32_t hwpt_id;
+     int ret;
+@@ -353,7 +354,8 @@ static bool iommufd_cdev_autodomains_get(VFIODevice *vbasedev,
+      * instead.
+      */
+     if (!iommufd_backend_get_device_info(vbasedev->iommufd, vbasedev->devid,
+-                                         &type, NULL, 0, &hw_caps, errp)) {
++                                         &type, &caps, sizeof(caps), &hw_caps,
++                                         NULL, errp)) {
+         return false;
+     }
+ 
+@@ -880,19 +882,21 @@ static bool hiod_iommufd_vfio_realize(HostIOMMUDevice *hiod, void *opaque,
+     HostIOMMUDeviceCaps *caps = &hiod->caps;
+     VendorCaps *vendor_caps = &caps->vendor_caps;
+     enum iommu_hw_info_type type;
++    uint8_t max_pasid_log2;
+     uint64_t hw_caps;
+ 
+     hiod->agent = opaque;
+ 
+     if (!iommufd_backend_get_device_info(vdev->iommufd, vdev->devid, &type,
+                                          vendor_caps, sizeof(*vendor_caps),
+-                                         &hw_caps, errp)) {
++                                         &hw_caps, &max_pasid_log2, errp)) {
+         return false;
+     }
+ 
+     hiod->name = g_strdup(vdev->name);
+     caps->type = type;
+     caps->hw_caps = hw_caps;
++    caps->max_pasid_log2 = max_pasid_log2;
+ 
+     idev = HOST_IOMMU_DEVICE_IOMMUFD(hiod);
+     idev->iommufd = vdev->iommufd;
+diff --git a/include/system/host_iommu_device.h b/include/system/host_iommu_device.h
+index ab849a4a82..bfb2b60478 100644
+--- a/include/system/host_iommu_device.h
++++ b/include/system/host_iommu_device.h
+@@ -30,6 +30,8 @@ typedef union VendorCaps {
+  * @hw_caps: host platform IOMMU capabilities (e.g. on IOMMUFD this represents
+  *           the @out_capabilities value returned from IOMMU_GET_HW_INFO ioctl)
+  *
++ * @max_pasid_log2: width of PASIDs supported by host IOMMU device
++ *
+  * @vendor_caps: host platform IOMMU vendor specific capabilities (e.g. on
+  *               IOMMUFD this represents a user-space buffer filled by kernel
+  *               with host IOMMU @type specific hardware information data)
+@@ -37,6 +39,7 @@ typedef union VendorCaps {
+ typedef struct HostIOMMUDeviceCaps {
+     uint32_t type;
+     uint64_t hw_caps;
++    uint8_t max_pasid_log2;
+     VendorCaps vendor_caps;
+ } HostIOMMUDeviceCaps;
+ #endif
+diff --git a/include/system/iommufd.h b/include/system/iommufd.h
+index 41e216c677..aa78bf1e1d 100644
+--- a/include/system/iommufd.h
++++ b/include/system/iommufd.h
+@@ -71,7 +71,8 @@ int iommufd_backend_unmap_dma(IOMMUFDBackend *be, uint32_t ioas_id,
+                               hwaddr iova, uint64_t size);
+ bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
+                                      uint32_t *type, void *data, uint32_t len,
+-                                     uint64_t *caps, Error **errp);
++                                     uint64_t *caps, uint8_t *max_pasid_log2,
++                                     Error **errp);
+ bool iommufd_backend_alloc_hwpt(IOMMUFDBackend *be, uint32_t dev_id,
+                                 uint32_t pt_id, uint32_t flags,
+                                 uint32_t data_type, uint32_t data_len,
+-- 
+2.52.0
+

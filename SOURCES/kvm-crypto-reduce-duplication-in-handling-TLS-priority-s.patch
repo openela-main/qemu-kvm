@@ -1,0 +1,224 @@
+From d3d0436e2be1fa3635086114d4def84d8bbaafd0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 10:06:12 +0000
+Subject: [PATCH 18/30] crypto: reduce duplication in handling TLS priority
+ strings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [17/27] b76640c8cffd64aa690959ba5c7f6bfcbfbed135 (berrange/centos-src-qemu)
+
+The logic for setting the TLS priority string on a session object has a
+significant amount of logic duplication across the different credential
+types. By recording the extra priority string suffix against the
+credential class, we can introduce a common method for building the
+priority string. The TLS session can now set the priority string without
+caring about the credential type.
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit e82fccb4a37d84d75ebdbd78d15578a2321870d2)
+---
+ crypto/tlscreds.c         | 15 ++++++++++
+ crypto/tlscredsanon.c     |  2 ++
+ crypto/tlscredspsk.c      |  2 ++
+ crypto/tlssession.c       | 60 ++++++---------------------------------
+ include/crypto/tlscreds.h | 13 +++++++++
+ 5 files changed, 41 insertions(+), 51 deletions(-)
+
+diff --git a/crypto/tlscreds.c b/crypto/tlscreds.c
+index a9e0caf864..c302b3cd72 100644
+--- a/crypto/tlscreds.c
++++ b/crypto/tlscreds.c
+@@ -268,6 +268,21 @@ bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
+     return true;
+ }
+ 
++
++char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds)
++{
++    QCryptoTLSCredsClass *tcc = QCRYPTO_TLS_CREDS_GET_CLASS(creds);
++    const char *priorityBase =
++        creds->priority ? creds->priority : CONFIG_TLS_PRIORITY;
++
++    if (tcc->prioritySuffix) {
++        return g_strdup_printf("%s:%s", priorityBase, tcc->prioritySuffix);
++    } else {
++        return g_strdup(priorityBase);
++    }
++}
++
++
+ static const TypeInfo qcrypto_tls_creds_info = {
+     .parent = TYPE_OBJECT,
+     .name = TYPE_QCRYPTO_TLS_CREDS,
+diff --git a/crypto/tlscredsanon.c b/crypto/tlscredsanon.c
+index 1ddfe4eb31..5c55b07b2f 100644
+--- a/crypto/tlscredsanon.c
++++ b/crypto/tlscredsanon.c
+@@ -137,8 +137,10 @@ static void
+ qcrypto_tls_creds_anon_class_init(ObjectClass *oc, const void *data)
+ {
+     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
++    QCryptoTLSCredsClass *tcc = QCRYPTO_TLS_CREDS_CLASS(oc);
+ 
+     ucc->complete = qcrypto_tls_creds_anon_complete;
++    tcc->prioritySuffix = "+ANON-DH";
+ }
+ 
+ 
+diff --git a/crypto/tlscredspsk.c b/crypto/tlscredspsk.c
+index bf4efe2114..6c2feae077 100644
+--- a/crypto/tlscredspsk.c
++++ b/crypto/tlscredspsk.c
+@@ -240,8 +240,10 @@ static void
+ qcrypto_tls_creds_psk_class_init(ObjectClass *oc, const void *data)
+ {
+     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
++    QCryptoTLSCredsClass *tcc = QCRYPTO_TLS_CREDS_CLASS(oc);
+ 
+     ucc->complete = qcrypto_tls_creds_psk_complete;
++    tcc->prioritySuffix = "+ECDHE-PSK:+DHE-PSK:+PSK";
+ 
+     object_class_property_add_str(oc, "username",
+                                   qcrypto_tls_creds_psk_prop_get_username,
+diff --git a/crypto/tlssession.c b/crypto/tlssession.c
+index 0f86d1393f..827f557ff8 100644
+--- a/crypto/tlssession.c
++++ b/crypto/tlssession.c
+@@ -155,9 +155,6 @@ qcrypto_tls_session_pull(void *opaque, void *buf, size_t len)
+     }
+ }
+ 
+-#define TLS_PRIORITY_ADDITIONAL_ANON "+ANON-DH"
+-#define TLS_PRIORITY_ADDITIONAL_PSK "+ECDHE-PSK:+DHE-PSK:+PSK"
+-
+ QCryptoTLSSession *
+ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
+                         const char *hostname,
+@@ -167,6 +164,7 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
+ {
+     QCryptoTLSSession *session;
+     int ret;
++    g_autofree char *prio = NULL;
+ 
+     session = g_new0(QCryptoTLSSession, 1);
+     trace_qcrypto_tls_session_new(
+@@ -200,28 +198,17 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
+         goto error;
+     }
+ 
++    prio = qcrypto_tls_creds_get_priority(creds);
++    ret = gnutls_priority_set_direct(session->handle, prio, NULL);
++    if (ret < 0) {
++        error_setg(errp, "Unable to set TLS session priority %s: %s",
++                   prio, gnutls_strerror(ret));
++        goto error;
++    }
++
+     if (object_dynamic_cast(OBJECT(creds),
+                             TYPE_QCRYPTO_TLS_CREDS_ANON)) {
+         QCryptoTLSCredsAnon *acreds = QCRYPTO_TLS_CREDS_ANON(creds);
+-        char *prio;
+-
+-        if (creds->priority != NULL) {
+-            prio = g_strdup_printf("%s:%s",
+-                                   creds->priority,
+-                                   TLS_PRIORITY_ADDITIONAL_ANON);
+-        } else {
+-            prio = g_strdup(CONFIG_TLS_PRIORITY ":"
+-                            TLS_PRIORITY_ADDITIONAL_ANON);
+-        }
+-
+-        ret = gnutls_priority_set_direct(session->handle, prio, NULL);
+-        if (ret < 0) {
+-            error_setg(errp, "Unable to set TLS session priority %s: %s",
+-                       prio, gnutls_strerror(ret));
+-            g_free(prio);
+-            goto error;
+-        }
+-        g_free(prio);
+         if (creds->endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+             ret = gnutls_credentials_set(session->handle,
+                                          GNUTLS_CRD_ANON,
+@@ -239,25 +226,6 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
+     } else if (object_dynamic_cast(OBJECT(creds),
+                                    TYPE_QCRYPTO_TLS_CREDS_PSK)) {
+         QCryptoTLSCredsPSK *pcreds = QCRYPTO_TLS_CREDS_PSK(creds);
+-        char *prio;
+-
+-        if (creds->priority != NULL) {
+-            prio = g_strdup_printf("%s:%s",
+-                                   creds->priority,
+-                                   TLS_PRIORITY_ADDITIONAL_PSK);
+-        } else {
+-            prio = g_strdup(CONFIG_TLS_PRIORITY ":"
+-                            TLS_PRIORITY_ADDITIONAL_PSK);
+-        }
+-
+-        ret = gnutls_priority_set_direct(session->handle, prio, NULL);
+-        if (ret < 0) {
+-            error_setg(errp, "Unable to set TLS session priority %s: %s",
+-                       prio, gnutls_strerror(ret));
+-            g_free(prio);
+-            goto error;
+-        }
+-        g_free(prio);
+         if (creds->endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
+             ret = gnutls_credentials_set(session->handle,
+                                          GNUTLS_CRD_PSK,
+@@ -275,17 +243,7 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
+     } else if (object_dynamic_cast(OBJECT(creds),
+                                    TYPE_QCRYPTO_TLS_CREDS_X509)) {
+         QCryptoTLSCredsX509 *tcreds = QCRYPTO_TLS_CREDS_X509(creds);
+-        const char *prio = creds->priority;
+-        if (!prio) {
+-            prio = CONFIG_TLS_PRIORITY;
+-        }
+ 
+-        ret = gnutls_priority_set_direct(session->handle, prio, NULL);
+-        if (ret < 0) {
+-            error_setg(errp, "Cannot set default TLS session priority %s: %s",
+-                       prio, gnutls_strerror(ret));
+-            goto error;
+-        }
+         ret = gnutls_credentials_set(session->handle,
+                                      GNUTLS_CRD_CERTIFICATE,
+                                      tcreds->data);
+diff --git a/include/crypto/tlscreds.h b/include/crypto/tlscreds.h
+index 2a8a857010..afd1016088 100644
+--- a/include/crypto/tlscreds.h
++++ b/include/crypto/tlscreds.h
+@@ -47,6 +47,7 @@ typedef bool (*CryptoTLSCredsReload)(QCryptoTLSCreds *, Error **);
+ struct QCryptoTLSCredsClass {
+     ObjectClass parent_class;
+     CryptoTLSCredsReload reload;
++    const char *prioritySuffix;
+ };
+ 
+ /**
+@@ -64,4 +65,16 @@ bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
+                                       QCryptoTLSCredsEndpoint endpoint,
+                                       Error **errp);
+ 
++
++/**
++ * qcrypto_tls_creds_get_priority:
++ * @creds: pointer to a TLS credentials object
++ *
++ * Get the TLS credentials priority string. The caller
++ * must free the returned string when no longer required.
++ *
++ * Returns: a non-NULL priority string
++ */
++char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds);
++
+ #endif /* QCRYPTO_TLSCREDS_H */
+-- 
+2.52.0
+

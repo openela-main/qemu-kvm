@@ -1,0 +1,69 @@
+From f34e634b62b520727c41a992cc22891b6d3e7ac2 Mon Sep 17 00:00:00 2001
+From: Tao Tang <tangtao1634@phytium.com.cn>
+Date: Wed, 4 Mar 2026 22:23:43 +0800
+Subject: [PATCH 055/111] hw/arm/smmuv3: Correct SMMUEN field name in CR0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [55/111] 33926f3b19af938bd90f11d1c0aa920655940111 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+The FIELD macro for the SMMU enable bit in the CR0 register was
+incorrectly named SMMU_ENABLE.
+
+The ARM SMMUv3 Architecture Specification (both older IHI 0070.E.a and
+newer IHI 0070.G.b) consistently refers to the SMMU enable bit as SMMUEN.
+
+This change makes our implementation consistent with the manual.
+
+Signed-off-by: Tao Tang <tangtao1634@phytium.com.cn>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Pierrick Bouvier <pierrick.bouvier@linaro.org>
+Reviewed-by: Mostafa Saleh <smostafa@google.com>
+Message-id: 20260304142344.3341444-3-tangtao1634@phytium.com.cn
+Fixes: 10a83cb9887 ("hw/arm/smmuv3: Skeleton")
+Link: https://lists.nongnu.org/archive/html/qemu-arm/2025-09/msg01270.html
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit af15801a61d66510434131ae50c2ad2135fa3de1)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-internal.h       | 2 +-
+ include/hw/arm/smmuv3-common.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/smmuv3-internal.h b/hw/arm/smmuv3-internal.h
+index 466bfd390e..0bfb02a054 100644
+--- a/hw/arm/smmuv3-internal.h
++++ b/hw/arm/smmuv3-internal.h
+@@ -41,7 +41,7 @@ typedef enum SMMUTranslationClass {
+ 
+ static inline int smmu_enabled(SMMUv3State *s)
+ {
+-    return FIELD_EX32(s->cr[0], CR0, SMMU_ENABLE);
++    return FIELD_EX32(s->cr[0], CR0, SMMUEN);
+ }
+ 
+ /* Command Queue Entry */
+diff --git a/include/hw/arm/smmuv3-common.h b/include/hw/arm/smmuv3-common.h
+index 4b764ed125..f1d74d6832 100644
+--- a/include/hw/arm/smmuv3-common.h
++++ b/include/hw/arm/smmuv3-common.h
+@@ -351,7 +351,7 @@ REG32(IDR5,                0x14)
+ REG32(IIDR,                0x18)
+ REG32(AIDR,                0x1c)
+ REG32(CR0,                 0x20)
+-    FIELD(CR0, SMMU_ENABLE,   0, 1)
++    FIELD(CR0, SMMUEN,   0, 1)
+     FIELD(CR0, EVENTQEN,      2, 1)
+     FIELD(CR0, CMDQEN,        3, 1)
+ 
+-- 
+2.52.0
+

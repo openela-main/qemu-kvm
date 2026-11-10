@@ -1,0 +1,53 @@
+From b77a509616b7947e546491196ac97ca6cc34aede Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:17 +0100
+Subject: [PATCH 059/116] vfio/vfio-iommufd.h: rename VFIOContainer bcontainer
+ field to parent_obj
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [43/100] 2676c22c782a92aa2ff910f437f6a1d830e01f7d (rovick1/qemu-kvm)
+
+Now that nothing accesses the bcontainer field directly, rename bcontainer to
+parent_obj as per our current coding guidelines.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-10-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit a7f185cbeca75555a7fa7272afbd3a06bc4f7f66)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/vfio-iommufd.h | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/vfio-iommufd.h b/hw/vfio/vfio-iommufd.h
+index 13f412aad7..6b28e1ff7b 100644
+--- a/hw/vfio/vfio-iommufd.h
++++ b/hw/vfio/vfio-iommufd.h
+@@ -22,12 +22,13 @@ typedef struct VFIOIOASHwpt {
+ 
+ typedef struct IOMMUFDBackend IOMMUFDBackend;
+ 
+-typedef struct VFIOIOMMUFDContainer {
+-    VFIOContainer bcontainer;
++struct VFIOIOMMUFDContainer {
++    VFIOContainer parent_obj;
++
+     IOMMUFDBackend *be;
+     uint32_t ioas_id;
+     QLIST_HEAD(, VFIOIOASHwpt) hwpt_list;
+-} VFIOIOMMUFDContainer;
++};
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOIOMMUFDContainer, VFIO_IOMMU_IOMMUFD);
+ 
+-- 
+2.52.0
+

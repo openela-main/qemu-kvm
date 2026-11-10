@@ -1,0 +1,155 @@
+From eafa7ec2363234dec4a325405c3f05b7f3e30c72 Mon Sep 17 00:00:00 2001
+From: Peter Maydell <peter.maydell@linaro.org>
+Date: Tue, 4 Nov 2025 16:09:42 +0000
+Subject: [PATCH 105/116] vfio: Clean up includes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [89/100] 66f086acae0b63d2e4a589529bb52d2a33ba7fe3 (rovick1/qemu-kvm)
+
+This commit was created with scripts/clean-includes:
+ ./scripts/clean-includes --git vfio hw/vfio hw/vfio-user
+
+All .c should include qemu/osdep.h first.  The script performs three
+related cleanups:
+
+* Ensure .c files include qemu/osdep.h first.
+* Including it in a .h is redundant, since the .c  already includes
+  it.  Drop such inclusions.
+* Likewise, including headers qemu/osdep.h includes is redundant.
+  Drop these, too.
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Message-id: 20251104160943.751997-9-peter.maydell@linaro.org
+(cherry picked from commit b1f4f4695c96bb8e20a00e82d1868b5b018002bc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/container.c | 2 +-
+ hw/vfio-user/container.h | 1 -
+ hw/vfio-user/device.h    | 1 -
+ hw/vfio-user/pci.c       | 2 +-
+ hw/vfio/ap.c             | 1 -
+ hw/vfio/container.c      | 2 +-
+ hw/vfio/cpr-legacy.c     | 2 +-
+ hw/vfio/pci-quirks.h     | 1 -
+ 8 files changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/hw/vfio-user/container.c b/hw/vfio-user/container.c
+index e45192fef6..dab7a23224 100644
+--- a/hw/vfio-user/container.c
++++ b/hw/vfio-user/container.c
+@@ -6,9 +6,9 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
++#include "qemu/osdep.h"
+ #include <sys/ioctl.h>
+ #include <linux/vfio.h>
+-#include "qemu/osdep.h"
+ 
+ #include "hw/vfio-user/container.h"
+ #include "hw/vfio-user/device.h"
+diff --git a/hw/vfio-user/container.h b/hw/vfio-user/container.h
+index a2b42e3169..c952e09063 100644
+--- a/hw/vfio-user/container.h
++++ b/hw/vfio-user/container.h
+@@ -7,7 +7,6 @@
+ #ifndef HW_VFIO_USER_CONTAINER_H
+ #define HW_VFIO_USER_CONTAINER_H
+ 
+-#include "qemu/osdep.h"
+ 
+ #include "hw/vfio/vfio-container.h"
+ #include "hw/vfio-user/proxy.h"
+diff --git a/hw/vfio-user/device.h b/hw/vfio-user/device.h
+index d183a3950e..49c05848f1 100644
+--- a/hw/vfio-user/device.h
++++ b/hw/vfio-user/device.h
+@@ -9,7 +9,6 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
+-#include "qemu/osdep.h"
+ #include "linux/vfio.h"
+ 
+ #include "hw/vfio-user/proxy.h"
+diff --git a/hw/vfio-user/pci.c b/hw/vfio-user/pci.c
+index b53ed3b456..353d07e781 100644
+--- a/hw/vfio-user/pci.c
++++ b/hw/vfio-user/pci.c
+@@ -6,8 +6,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
+-#include <sys/ioctl.h>
+ #include "qemu/osdep.h"
++#include <sys/ioctl.h>
+ #include "qapi-visit-sockets.h"
+ #include "qemu/error-report.h"
+ 
+diff --git a/hw/vfio/ap.c b/hw/vfio/ap.c
+index 7719f24579..3368ac8915 100644
+--- a/hw/vfio/ap.c
++++ b/hw/vfio/ap.c
+@@ -10,7 +10,6 @@
+  * directory.
+  */
+ 
+-#include <stdbool.h>
+ #include "qemu/osdep.h"
+ #include CONFIG_DEVICES /* CONFIG_IOMMUFD */
+ #include <linux/vfio.h>
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 41de343924..cc0367ecc4 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -10,10 +10,10 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
++#include "qemu/osdep.h"
+ #include <sys/ioctl.h>
+ #include <linux/vfio.h>
+ 
+-#include "qemu/osdep.h"
+ #include "system/tcg.h"
+ #include "system/ram_addr.h"
+ #include "qapi/error.h"
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index 7184c93991..273b597880 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -4,9 +4,9 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
++#include "qemu/osdep.h"
+ #include <sys/ioctl.h>
+ #include <linux/vfio.h>
+-#include "qemu/osdep.h"
+ #include "hw/vfio/vfio-container-legacy.h"
+ #include "hw/vfio/vfio-device.h"
+ #include "hw/vfio/vfio-listener.h"
+diff --git a/hw/vfio/pci-quirks.h b/hw/vfio/pci-quirks.h
+index d1532e379b..a6282e063a 100644
+--- a/hw/vfio/pci-quirks.h
++++ b/hw/vfio/pci-quirks.h
+@@ -12,7 +12,6 @@
+ #ifndef HW_VFIO_VFIO_PCI_QUIRKS_H
+ #define HW_VFIO_VFIO_PCI_QUIRKS_H
+ 
+-#include "qemu/osdep.h"
+ #include "exec/memop.h"
+ 
+ /*
+-- 
+2.52.0
+

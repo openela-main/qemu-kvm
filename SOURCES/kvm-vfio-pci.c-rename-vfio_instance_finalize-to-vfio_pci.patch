@@ -1,0 +1,54 @@
+From 76b658cd5329cd8aa367b7fc2b0ba6cd2a518eb4 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:21 +0100
+Subject: [PATCH 063/116] vfio/pci.c: rename vfio_instance_finalize() to
+ vfio_pci_finalize()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [47/100] 1d6a68586209f0528d266bfa4a258fe1d10d07f5 (rovick1/qemu-kvm)
+
+This is the more typical naming convention for QOM finalize() functions, in
+particular it changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-14-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit e6fd80873a24883dc204d09f11c16e30c8cd1c37)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 4002af0c54..d30f60c21a 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3568,7 +3568,7 @@ error:
+     error_prepend(errp, VFIO_MSG_PREFIX, vbasedev->name);
+ }
+ 
+-static void vfio_instance_finalize(Object *obj)
++static void vfio_pci_finalize(Object *obj)
+ {
+     VFIOPCIDevice *vdev = VFIO_PCI_BASE(obj);
+ 
+@@ -3939,7 +3939,7 @@ static const TypeInfo vfio_pci_dev_info = {
+     .parent = TYPE_VFIO_PCI_BASE,
+     .class_init = vfio_pci_dev_class_init,
+     .instance_init = vfio_pci_init,
+-    .instance_finalize = vfio_instance_finalize,
++    .instance_finalize = vfio_pci_finalize,
+ };
+ 
+ static const Property vfio_pci_dev_nohotplug_properties[] = {
+-- 
+2.52.0
+

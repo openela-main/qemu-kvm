@@ -1,0 +1,47 @@
+From c39b56b7304e8518c5a374fb9b55b292ddc17530 Mon Sep 17 00:00:00 2001
+From: Steve Sistare <steven.sistare@oracle.com>
+Date: Wed, 13 Aug 2025 07:17:47 -0700
+Subject: [PATCH 025/116] vfio/container: set error on cpr failure
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [9/100] 9822cac629f3132a25b3618094196c72cfd0f28a (rovick1/qemu-kvm)
+
+Set an error message if vfio_cpr_ram_discard_register_listener fails so
+the fail label gets a valid error object.
+
+Reported-by: Cédric Le Goater <clg@redhat.com>
+Fixes: eba1f657cbb1 ("vfio/container: recover from unmap-all-vaddr failure")
+Signed-off-by: Steve Sistare <steven.sistare@oracle.com>
+Reviewed-by: Zhenzhong Duan <zhenzhong.duan@intel.com>
+Link: https://lore.kernel.org/qemu-devel/1755094667-281419-1-git-send-email-steven.sistare@oracle.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 36cd81dc139f899127d868ba9baaf3079c336efc)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/listener.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index f498e23a93..5ebafaa07e 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -574,6 +574,9 @@ void vfio_container_region_add(VFIOContainerBase *bcontainer,
+             vfio_ram_discard_register_listener(bcontainer, section);
+         } else if (!vfio_cpr_ram_discard_register_listener(bcontainer,
+                                                            section)) {
++            error_setg(&err,
++                       "vfio_cpr_ram_discard_register_listener for %s failed",
++                       memory_region_name(section->mr));
+             goto fail;
+         }
+         return;
+-- 
+2.52.0
+

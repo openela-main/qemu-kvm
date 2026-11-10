@@ -1,0 +1,146 @@
+From 404ac4a7236dc28940c7185b2e8a4fadbbe6f06c Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Mon, 8 Jun 2026 10:48:59 -0700
+Subject: [PATCH 073/111] hw/arm/smmuv3: Set default ats, ril, ssidsize, oas to
+ auto
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [73/111] ad6ebf8a64277a364ee604cf9c13b8dced85b7f1 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-163596
+
+Conflicts: contextual conflict in machine.c as we don't have
+hw_compat_10_1, hw_compat_10_2, hw_compat_11_0 in RHEL. So add
+the compats in last hw_compat_10_0 which then are propagated to
+hw_compat_rhel_10_2. Note as we don't have a new machine type in
+10.3 the new defaults don't apply and it will be needed to set auto
+value explicitly. Also fix the setting of hw_compat_rhel_10_2_len.
+
+Set the default value of ATS, RIL, SSIDSIZE, and OAS to auto, in order
+to match the host IOMMU properties when accel=on.
+
+If accel=off and these property values are set to auto, the default
+property values defined in smmuv3_init_id_regs() for OAS and RIL will
+remain unchanged, while SSIDSIZE and ATS values will remain initialized
+at 0.
+
+Introduce a new compat for the changed defaults.
+
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260608174900.2227340-9-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit e61f8d1138aa0f702632723f14161da8288936d4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c   | 23 +++++++++++++++--------
+ hw/core/machine.c | 15 ++++++++++++++-
+ 2 files changed, 29 insertions(+), 9 deletions(-)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 89d34c9923..1e98ee0e76 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -2129,12 +2129,19 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_BOOL("accel", SMMUv3State, accel, false),
+     /* GPA of MSI doorbell, for SMMUv3 accel use. */
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
++    /*
++     * AUTO values for accel=off will resolve to:
++     * ril: on
++     * ats: off
++     * oas: 44
++     * ssidsize: 0
++     */
+     /* RIL can be turned off for accel cases */
+-    DEFINE_PROP_ON_OFF_AUTO("ril", SMMUv3State, ril, ON_OFF_AUTO_ON),
+-    DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_OFF),
+-    DEFINE_PROP_OAS_MODE("oas", SMMUv3State, oas, OAS_MODE_44),
++    DEFINE_PROP_ON_OFF_AUTO("ril", SMMUv3State, ril, ON_OFF_AUTO_AUTO),
++    DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_AUTO),
++    DEFINE_PROP_OAS_MODE("oas", SMMUv3State, oas, OAS_MODE_AUTO),
+     DEFINE_PROP_SSIDSIZE_MODE("ssidsize", SMMUv3State, ssidsize,
+-                              SSID_SIZE_MODE_0),
++                              SSID_SIZE_MODE_AUTO),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2164,22 +2171,22 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "enabling.");
+     object_class_property_set_description(klass, "ril",
+         "Enable/disable range invalidation support (for accel=on). "
+-        "Valid values are on, off, and auto. Defaults to on. "
++        "Valid values are on, off, and auto. Defaults to auto. "
+         "Any attempt to turn it 'on' while the host does not support "
+         "it would fail.");
+     object_class_property_set_description(klass, "ats",
+         "Enable/disable ATS support (for accel=on). "
+-        "Valid values are on, off, and auto. Defaults to off. "
++        "Valid values are on, off, and auto. Defaults to auto. "
+         "Please ensure host platform supports ATS before setting it "
+         "to on.");
+     object_class_property_set_description(klass, "oas",
+         "Set Output Address Size in bits (for accel=on). "
+-        "Valid values are 44, 48, and auto. Defaults to 44 bits."
++        "Valid values are 44, 48, and auto. Defaults to auto."
+         "Please ensure the value does not exceed the maximum "
+         "Output Address Size supported by the host platform.");
+     object_class_property_set_description(klass, "ssidsize",
+         "Set number of bits used to represent SubstreamIDs (SSIDs). "
+-        "Valid values are 0-20 and auto. Defaults to 0. "
++        "Valid values are 0-20 and auto. Defaults to auto. "
+         "A value of N allows SSIDs in the range [0 .. 2^N - 1]. "
+         "A value of 0 disables SubstreamID support. A value greater "
+         "than 0 is required to enable PASID support."
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 2b339f6a13..601d8c6a1f 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -36,12 +36,17 @@
+ #include "hw/virtio/virtio-net.h"
+ #include "hw/virtio/virtio-iommu.h"
+ #include "audio/audio.h"
++#include "hw/arm/smmuv3.h"
+ 
+ GlobalProperty hw_compat_10_0[] = {
+     { "scsi-hd", "dpofua", "off" },
+     { "vfio-pci", "x-migration-load-config-after-iter", "off" },
+     { "ramfb", "use-legacy-x86-rom", "true"},
+     { "vfio-pci-nohotplug", "use-legacy-x86-rom", "true" },
++    { TYPE_ARM_SMMUV3, "ats", "off" },
++    { TYPE_ARM_SMMUV3, "ril", "on" },
++    { TYPE_ARM_SMMUV3, "ssidsize", "0" },
++    { TYPE_ARM_SMMUV3, "oas", "44" },
+ };
+ const size_t hw_compat_10_0_len = G_N_ELEMENTS(hw_compat_10_0);
+ 
+@@ -304,8 +309,16 @@ GlobalProperty hw_compat_rhel_10_2[] = {
+     { "ramfb", "use-legacy-x86-rom", "true"},
+   /* hw_compat_rhel_10_2 from hw_compat_10_0 */
+     { "vfio-pci-nohotplug", "use-legacy-x86-rom", "true" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { TYPE_ARM_SMMUV3, "ats", "off" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { TYPE_ARM_SMMUV3, "ril", "on" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { TYPE_ARM_SMMUV3, "ssidsize", "0" },
++  /* hw_compat_rhel_10_2 from hw_compat_10_0 */
++    { TYPE_ARM_SMMUV3, "oas", "44" },
+ };
+-const size_t hw_compat_rhel_10_2_len = G_N_ELEMENTS(hw_compat_10_0);
++const size_t hw_compat_rhel_10_2_len = G_N_ELEMENTS(hw_compat_rhel_10_2);
+ 
+ GlobalProperty hw_compat_rhel_10_1[] = {
+   /* hw_compat_rhel_10_1 from hw_compat_9_1 */
+-- 
+2.52.0
+

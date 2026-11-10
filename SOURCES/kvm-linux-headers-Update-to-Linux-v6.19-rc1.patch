@@ -1,0 +1,984 @@
+From 5c7e99a166ac5d0c5ca5ef27dc2873f09d3bb00d Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Wed, 21 Jan 2026 11:41:09 +0000
+Subject: [PATCH 114/116] linux-headers: Update to Linux v6.19-rc1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [98/100] 5fcb1379dac08fcfd8b686404b616a197911b4b4 (rovick1/qemu-kvm)
+
+Mainly for adding support for VFIO DMABUF. While at it, update all
+headers.
+
+The header update breaks virtio-net due to virtio_net_hdr_v1_hash
+changes. Include the virtio-net changes to avoid build and bisect
+failures.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Jason Wang <jasowang@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20260121114111.34045-2-skolothumtho@nvidia.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 49f6b93d0752b91c233ae8097d00a986cb8482c3)
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+---
+ hw/net/virtio-net.c                           |  11 +-
+ include/standard-headers/drm/drm_fourcc.h     |  25 ++--
+ include/standard-headers/linux/ethtool.h      |   5 +
+ .../linux/input-event-codes.h                 |  14 ++-
+ include/standard-headers/linux/pci_regs.h     |  89 ++++++++++++++
+ include/standard-headers/linux/virtio_net.h   |   3 +-
+ include/standard-headers/linux/virtio_pci.h   |   2 +-
+ linux-headers/asm-arm64/kvm.h                 |   2 +-
+ linux-headers/asm-arm64/unistd_64.h           |   1 +
+ linux-headers/asm-generic/unistd.h            |   4 +-
+ linux-headers/asm-loongarch/kvm.h             |   1 +
+ linux-headers/asm-loongarch/unistd.h          |   6 +
+ linux-headers/asm-loongarch/unistd_64.h       |   1 +
+ linux-headers/asm-mips/unistd_n32.h           |   1 +
+ linux-headers/asm-mips/unistd_n64.h           |   1 +
+ linux-headers/asm-mips/unistd_o32.h           |   1 +
+ linux-headers/asm-powerpc/unistd_32.h         |   1 +
+ linux-headers/asm-powerpc/unistd_64.h         |   1 +
+ linux-headers/asm-riscv/kvm.h                 |   3 +
+ linux-headers/asm-riscv/unistd_32.h           |   1 +
+ linux-headers/asm-riscv/unistd_64.h           |   1 +
+ linux-headers/asm-s390/bitsperlong.h          |   4 -
+ linux-headers/asm-s390/unistd.h               |   4 -
+ linux-headers/asm-s390/unistd_64.h            |   9 +-
+ linux-headers/asm-x86/kvm.h                   |   1 +
+ linux-headers/asm-x86/unistd_32.h             |   1 +
+ linux-headers/asm-x86/unistd_64.h             |   1 +
+ linux-headers/asm-x86/unistd_x32.h            |   1 +
+ linux-headers/linux/iommufd.h                 |  10 ++
+ linux-headers/linux/kvm.h                     |  11 ++
+ linux-headers/linux/mshv.h                    | 116 +++++++++++++++++-
+ linux-headers/linux/psp-sev.h                 |  66 ++++++----
+ linux-headers/linux/vfio.h                    |  28 +++++
+ 33 files changed, 370 insertions(+), 56 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index f021663f92..16e748c2c5 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1875,7 +1875,8 @@ static int virtio_net_process_rss(NetClientState *nc, const uint8_t *buf,
+                                              n->rss_data.runtime_hash_types);
+     if (net_hash_type > NetPktRssIpV6UdpEx) {
+         if (n->rss_data.populate_hash) {
+-            hdr->hash_value = VIRTIO_NET_HASH_REPORT_NONE;
++            hdr->hash_value_lo = VIRTIO_NET_HASH_REPORT_NONE;
++            hdr->hash_value_hi = VIRTIO_NET_HASH_REPORT_NONE;
+             hdr->hash_report = 0;
+         }
+         return n->rss_data.redirect ? n->rss_data.default_queue : -1;
+@@ -1884,7 +1885,8 @@ static int virtio_net_process_rss(NetClientState *nc, const uint8_t *buf,
+     hash = net_rx_pkt_calc_rss_hash(pkt, net_hash_type, n->rss_data.key);
+ 
+     if (n->rss_data.populate_hash) {
+-        hdr->hash_value = hash;
++        hdr->hash_value_lo = cpu_to_le16(hash & 0xffff);
++        hdr->hash_value_hi = cpu_to_le16((hash >> 16) & 0xffff);
+         hdr->hash_report = reports[net_hash_type];
+     }
+ 
+@@ -1986,10 +1988,11 @@ static ssize_t virtio_net_receive_rcu(NetClientState *nc, const uint8_t *buf,
+ 
+             receive_header(n, sg, elem->in_num, buf, size);
+             if (n->rss_data.populate_hash) {
+-                offset = offsetof(typeof(extra_hdr), hash_value);
++                offset = offsetof(typeof(extra_hdr), hash_value_lo);
+                 iov_from_buf(sg, elem->in_num, offset,
+                              (char *)&extra_hdr + offset,
+-                             sizeof(extra_hdr.hash_value) +
++                             sizeof(extra_hdr.hash_value_lo) +
++                             sizeof(extra_hdr.hash_value_hi) +
+                              sizeof(extra_hdr.hash_report));
+             }
+             offset = n->host_hdr_len;
+diff --git a/include/standard-headers/drm/drm_fourcc.h b/include/standard-headers/drm/drm_fourcc.h
+index cef077dfb3..b39e197cc7 100644
+--- a/include/standard-headers/drm/drm_fourcc.h
++++ b/include/standard-headers/drm/drm_fourcc.h
+@@ -978,14 +978,20 @@ extern "C" {
+  *               2 = Gob Height 8, Turing+ Page Kind mapping
+  *               3 = Reserved for future use.
+  *
+- * 22:22 s     Sector layout.  On Tegra GPUs prior to Xavier, there is a further
+- *             bit remapping step that occurs at an even lower level than the
+- *             page kind and block linear swizzles.  This causes the layout of
+- *             surfaces mapped in those SOC's GPUs to be incompatible with the
+- *             equivalent mapping on other GPUs in the same system.
+- *
+- *               0 = Tegra K1 - Tegra Parker/TX2 Layout.
+- *               1 = Desktop GPU and Tegra Xavier+ Layout
++ * 22:22 s     Sector layout.  There is a further bit remapping step that occurs
++ * 26:27       at an even lower level than the page kind and block linear
++ *             swizzles.  This causes the bit arrangement of surfaces in memory
++ *             to differ subtly, and prevents direct sharing of surfaces between
++ *             GPUs with different layouts.
++ *
++ *               0 = Tegra K1 - Tegra Parker/TX2 Layout
++ *               1 = Pre-GB20x, GB20x 32+ bpp, GB10, Tegra Xavier-Orin Layout
++ *               2 = GB20x(Blackwell 2)+ 8 bpp surface layout
++ *               3 = GB20x(Blackwell 2)+ 16 bpp surface layout
++ *               4 = Reserved for future use.
++ *               5 = Reserved for future use.
++ *               6 = Reserved for future use.
++ *               7 = Reserved for future use.
+  *
+  * 25:23 c     Lossless Framebuffer Compression type.
+  *
+@@ -1000,7 +1006,7 @@ extern "C" {
+  *               6 = Reserved for future use
+  *               7 = Reserved for future use
+  *
+- * 55:25 -     Reserved for future use.  Must be zero.
++ * 55:28 -     Reserved for future use.  Must be zero.
+  */
+ #define DRM_FORMAT_MOD_NVIDIA_BLOCK_LINEAR_2D(c, s, g, k, h) \
+ 	fourcc_mod_code(NVIDIA, (0x10 | \
+@@ -1008,6 +1014,7 @@ extern "C" {
+ 				 (((k) & 0xff) << 12) | \
+ 				 (((g) & 0x3) << 20) | \
+ 				 (((s) & 0x1) << 22) | \
++				 (((s) & 0x6) << 25) | \
+ 				 (((c) & 0x7) << 23)))
+ 
+ /* To grandfather in prior block linear format modifiers to the above layout,
+diff --git a/include/standard-headers/linux/ethtool.h b/include/standard-headers/linux/ethtool.h
+index dc24512d28..d0f7a63f10 100644
+--- a/include/standard-headers/linux/ethtool.h
++++ b/include/standard-headers/linux/ethtool.h
+@@ -2077,6 +2077,10 @@ enum ethtool_link_mode_bit_indices {
+ 	ETHTOOL_LINK_MODE_800000baseDR4_2_Full_BIT	 = 118,
+ 	ETHTOOL_LINK_MODE_800000baseSR4_Full_BIT	 = 119,
+ 	ETHTOOL_LINK_MODE_800000baseVR4_Full_BIT	 = 120,
++	ETHTOOL_LINK_MODE_1600000baseCR8_Full_BIT	 = 121,
++	ETHTOOL_LINK_MODE_1600000baseKR8_Full_BIT	 = 122,
++	ETHTOOL_LINK_MODE_1600000baseDR8_Full_BIT	 = 123,
++	ETHTOOL_LINK_MODE_1600000baseDR8_2_Full_BIT	 = 124,
+ 
+ 	/* must be last entry */
+ 	__ETHTOOL_LINK_MODE_MASK_NBITS
+@@ -2190,6 +2194,7 @@ enum ethtool_link_mode_bit_indices {
+ #define SPEED_200000		200000
+ #define SPEED_400000		400000
+ #define SPEED_800000		800000
++#define SPEED_1600000		1600000
+ 
+ #define SPEED_UNKNOWN		-1
+ 
+diff --git a/include/standard-headers/linux/input-event-codes.h b/include/standard-headers/linux/input-event-codes.h
+index c914ccd723..ede79c6ae4 100644
+--- a/include/standard-headers/linux/input-event-codes.h
++++ b/include/standard-headers/linux/input-event-codes.h
+@@ -27,7 +27,7 @@
+ #define INPUT_PROP_TOPBUTTONPAD		0x04	/* softbuttons at top of pad */
+ #define INPUT_PROP_POINTING_STICK	0x05	/* is a pointing stick */
+ #define INPUT_PROP_ACCELEROMETER	0x06	/* has accelerometer */
+-#define INPUT_PROP_HAPTIC_TOUCHPAD	0x07	/* is a haptic touchpad */
++#define INPUT_PROP_PRESSUREPAD		0x07	/* pressure triggers clicks */
+ 
+ #define INPUT_PROP_MAX			0x1f
+ #define INPUT_PROP_CNT			(INPUT_PROP_MAX + 1)
+@@ -631,6 +631,18 @@
+ #define KEY_BRIGHTNESS_MIN		0x250	/* Set Brightness to Minimum */
+ #define KEY_BRIGHTNESS_MAX		0x251	/* Set Brightness to Maximum */
+ 
++/*
++ * Keycodes for hotkeys toggling the electronic privacy screen found on some
++ * laptops on/off. Note when the embedded-controller turns on/off the eprivacy
++ * screen itself then the state should be reported through drm connecter props:
++ * https://www.kernel.org/doc/html/latest/gpu/drm-kms.html#standard-connector-properties
++ * Except when implementing the drm connecter properties API is not possible
++ * because e.g. the firmware does not allow querying the presence and/or status
++ * of the eprivacy screen at boot.
++ */
++#define KEY_EPRIVACY_SCREEN_ON		0x252
++#define KEY_EPRIVACY_SCREEN_OFF		0x253
++
+ #define KEY_KBDINPUTASSIST_PREV		0x260
+ #define KEY_KBDINPUTASSIST_NEXT		0x261
+ #define KEY_KBDINPUTASSIST_PREVGROUP		0x262
+diff --git a/include/standard-headers/linux/pci_regs.h b/include/standard-headers/linux/pci_regs.h
+index 07e06aafec..3add74ae25 100644
+--- a/include/standard-headers/linux/pci_regs.h
++++ b/include/standard-headers/linux/pci_regs.h
+@@ -503,6 +503,7 @@
+ #define  PCI_EXP_DEVCAP_PWR_VAL	0x03fc0000 /* Slot Power Limit Value */
+ #define  PCI_EXP_DEVCAP_PWR_SCL	0x0c000000 /* Slot Power Limit Scale */
+ #define  PCI_EXP_DEVCAP_FLR     0x10000000 /* Function Level Reset */
++#define  PCI_EXP_DEVCAP_TEE     0x40000000 /* TEE I/O (TDISP) Support */
+ #define PCI_EXP_DEVCTL		0x08	/* Device Control */
+ #define  PCI_EXP_DEVCTL_CERE	0x0001	/* Correctable Error Reporting En. */
+ #define  PCI_EXP_DEVCTL_NFERE	0x0002	/* Non-Fatal Error Reporting Enable */
+@@ -754,6 +755,8 @@
+ #define PCI_EXT_CAP_ID_NPEM	0x29	/* Native PCIe Enclosure Management */
+ #define PCI_EXT_CAP_ID_PL_32GT  0x2A    /* Physical Layer 32.0 GT/s */
+ #define PCI_EXT_CAP_ID_DOE	0x2E	/* Data Object Exchange */
++#define PCI_EXT_CAP_ID_DEV3	0x2F	/* Device 3 Capability/Control/Status */
++#define PCI_EXT_CAP_ID_IDE	0x30    /* Integrity and Data Encryption */
+ #define PCI_EXT_CAP_ID_PL_64GT	0x31	/* Physical Layer 64.0 GT/s */
+ #define PCI_EXT_CAP_ID_MAX	PCI_EXT_CAP_ID_PL_64GT
+ 
+@@ -1244,9 +1247,95 @@
+ /* Deprecated old name, replaced with PCI_DOE_DATA_OBJECT_DISC_RSP_3_TYPE */
+ #define PCI_DOE_DATA_OBJECT_DISC_RSP_3_PROTOCOL		PCI_DOE_DATA_OBJECT_DISC_RSP_3_TYPE
+ 
++/* Device 3 Extended Capability */
++#define PCI_DEV3_CAP		0x04	/* Device 3 Capabilities Register */
++#define PCI_DEV3_CTL		0x08	/* Device 3 Control Register */
++#define PCI_DEV3_STA		0x0c	/* Device 3 Status Register */
++#define  PCI_DEV3_STA_SEGMENT	0x8	/* Segment Captured (end-to-end flit-mode detected) */
++
+ /* Compute Express Link (CXL r3.1, sec 8.1.5) */
+ #define PCI_DVSEC_CXL_PORT				3
+ #define PCI_DVSEC_CXL_PORT_CTL				0x0c
+ #define PCI_DVSEC_CXL_PORT_CTL_UNMASK_SBR		0x00000001
+ 
++/* Integrity and Data Encryption Extended Capability */
++#define PCI_IDE_CAP			0x04
++#define  PCI_IDE_CAP_LINK		0x1  /* Link IDE Stream Supported */
++#define  PCI_IDE_CAP_SELECTIVE		0x2  /* Selective IDE Streams Supported */
++#define  PCI_IDE_CAP_FLOWTHROUGH	0x4  /* Flow-Through IDE Stream Supported */
++#define  PCI_IDE_CAP_PARTIAL_HEADER_ENC 0x8  /* Partial Header Encryption Supported */
++#define  PCI_IDE_CAP_AGGREGATION	0x10 /* Aggregation Supported */
++#define  PCI_IDE_CAP_PCRC		0x20 /* PCRC Supported */
++#define  PCI_IDE_CAP_IDE_KM		0x40 /* IDE_KM Protocol Supported */
++#define  PCI_IDE_CAP_SEL_CFG		0x80 /* Selective IDE for Config Request Support */
++#define  PCI_IDE_CAP_ALG		__GENMASK(12, 8) /* Supported Algorithms */
++#define   PCI_IDE_CAP_ALG_AES_GCM_256	0    /* AES-GCM 256 key size, 96b MAC */
++#define  PCI_IDE_CAP_LINK_TC_NUM	__GENMASK(15, 13) /* Link IDE TCs */
++#define  PCI_IDE_CAP_SEL_NUM		__GENMASK(23, 16) /* Supported Selective IDE Streams */
++#define  PCI_IDE_CAP_TEE_LIMITED	0x1000000 /* TEE-Limited Stream Supported */
++#define PCI_IDE_CTL			0x08
++#define  PCI_IDE_CTL_FLOWTHROUGH_IDE	0x4  /* Flow-Through IDE Stream Enabled */
++
++#define PCI_IDE_LINK_STREAM_0		0xc  /* First Link Stream Register Block */
++#define  PCI_IDE_LINK_BLOCK_SIZE	8
++/* Link IDE Stream block, up to PCI_IDE_CAP_LINK_TC_NUM */
++#define PCI_IDE_LINK_CTL_0		0x00		  /* First Link Control Register Offset in block */
++#define  PCI_IDE_LINK_CTL_EN		0x1		  /* Link IDE Stream Enable */
++#define  PCI_IDE_LINK_CTL_TX_AGGR_NPR	__GENMASK(3, 2)	  /* Tx Aggregation Mode NPR */
++#define  PCI_IDE_LINK_CTL_TX_AGGR_PR	__GENMASK(5, 4)	  /* Tx Aggregation Mode PR */
++#define  PCI_IDE_LINK_CTL_TX_AGGR_CPL	__GENMASK(7, 6)	  /* Tx Aggregation Mode CPL */
++#define  PCI_IDE_LINK_CTL_PCRC_EN	0x100		  /* PCRC Enable */
++#define  PCI_IDE_LINK_CTL_PART_ENC	__GENMASK(13, 10) /* Partial Header Encryption Mode */
++#define  PCI_IDE_LINK_CTL_ALG		__GENMASK(18, 14) /* Selection from PCI_IDE_CAP_ALG */
++#define  PCI_IDE_LINK_CTL_TC		__GENMASK(21, 19) /* Traffic Class */
++#define  PCI_IDE_LINK_CTL_ID		__GENMASK(31, 24) /* Stream ID */
++#define PCI_IDE_LINK_STS_0		0x4               /* First Link Status Register Offset in block */
++#define  PCI_IDE_LINK_STS_STATE		__GENMASK(3, 0)   /* Link IDE Stream State */
++#define  PCI_IDE_LINK_STS_IDE_FAIL	0x80000000	  /* IDE fail message received */
++
++/* Selective IDE Stream block, up to PCI_IDE_CAP_SELECTIVE_STREAMS_NUM */
++/* Selective IDE Stream Capability Register */
++#define  PCI_IDE_SEL_CAP		0x00
++#define   PCI_IDE_SEL_CAP_ASSOC_NUM	__GENMASK(3, 0)
++/* Selective IDE Stream Control Register */
++#define  PCI_IDE_SEL_CTL		0x04
++#define   PCI_IDE_SEL_CTL_EN		0x1		  /* Selective IDE Stream Enable */
++#define   PCI_IDE_SEL_CTL_TX_AGGR_NPR	__GENMASK(3, 2)	  /* Tx Aggregation Mode NPR */
++#define   PCI_IDE_SEL_CTL_TX_AGGR_PR	__GENMASK(5, 4)   /* Tx Aggregation Mode PR */
++#define   PCI_IDE_SEL_CTL_TX_AGGR_CPL	__GENMASK(7, 6)	  /* Tx Aggregation Mode CPL */
++#define   PCI_IDE_SEL_CTL_PCRC_EN	0x100		  /* PCRC Enable */
++#define   PCI_IDE_SEL_CTL_CFG_EN	0x200		  /* Selective IDE for Configuration Requests */
++#define   PCI_IDE_SEL_CTL_PART_ENC	__GENMASK(13, 10) /* Partial Header Encryption Mode */
++#define   PCI_IDE_SEL_CTL_ALG		__GENMASK(18, 14) /* Selection from PCI_IDE_CAP_ALG */
++#define   PCI_IDE_SEL_CTL_TC		__GENMASK(21, 19) /* Traffic Class */
++#define   PCI_IDE_SEL_CTL_DEFAULT	0x400000	  /* Default Stream */
++#define   PCI_IDE_SEL_CTL_TEE_LIMITED	0x800000	  /* TEE-Limited Stream */
++#define   PCI_IDE_SEL_CTL_ID		__GENMASK(31, 24) /* Stream ID */
++#define   PCI_IDE_SEL_CTL_ID_MAX	255
++/* Selective IDE Stream Status Register */
++#define  PCI_IDE_SEL_STS		 0x08
++#define   PCI_IDE_SEL_STS_STATE		 __GENMASK(3, 0) /* Selective IDE Stream State */
++#define   PCI_IDE_SEL_STS_STATE_INSECURE 0
++#define   PCI_IDE_SEL_STS_STATE_SECURE	 2
++#define   PCI_IDE_SEL_STS_IDE_FAIL	 0x80000000	 /* IDE fail message received */
++/* IDE RID Association Register 1 */
++#define  PCI_IDE_SEL_RID_1		 0x0c
++#define   PCI_IDE_SEL_RID_1_LIMIT	 __GENMASK(23, 8)
++/* IDE RID Association Register 2 */
++#define  PCI_IDE_SEL_RID_2		0x10
++#define   PCI_IDE_SEL_RID_2_VALID	0x1
++#define   PCI_IDE_SEL_RID_2_BASE	__GENMASK(23, 8)
++#define   PCI_IDE_SEL_RID_2_SEG		__GENMASK(31, 24)
++/* Selective IDE Address Association Register Block, up to PCI_IDE_SEL_CAP_ASSOC_NUM */
++#define PCI_IDE_SEL_ADDR_BLOCK_SIZE	12
++#define  PCI_IDE_SEL_ADDR_1(x)		(20 + (x) * PCI_IDE_SEL_ADDR_BLOCK_SIZE)
++#define   PCI_IDE_SEL_ADDR_1_VALID	0x1
++#define   PCI_IDE_SEL_ADDR_1_BASE_LOW	__GENMASK(19, 8)
++#define   PCI_IDE_SEL_ADDR_1_LIMIT_LOW	__GENMASK(31, 20)
++/* IDE Address Association Register 2 is "Memory Limit Upper" */
++#define  PCI_IDE_SEL_ADDR_2(x)		(24 + (x) * PCI_IDE_SEL_ADDR_BLOCK_SIZE)
++/* IDE Address Association Register 3 is "Memory Base Upper" */
++#define  PCI_IDE_SEL_ADDR_3(x)		(28 + (x) * PCI_IDE_SEL_ADDR_BLOCK_SIZE)
++#define PCI_IDE_SEL_BLOCK_SIZE(nr_assoc)  (20 + PCI_IDE_SEL_ADDR_BLOCK_SIZE * (nr_assoc))
++
+ #endif /* LINUX_PCI_REGS_H */
+diff --git a/include/standard-headers/linux/virtio_net.h b/include/standard-headers/linux/virtio_net.h
+index 93abaae0b9..17a0174d6c 100644
+--- a/include/standard-headers/linux/virtio_net.h
++++ b/include/standard-headers/linux/virtio_net.h
+@@ -193,7 +193,8 @@ struct virtio_net_hdr_v1 {
+ 
+ struct virtio_net_hdr_v1_hash {
+ 	struct virtio_net_hdr_v1 hdr;
+-	uint32_t hash_value;
++	uint16_t hash_value_lo;
++	uint16_t hash_value_hi;
+ #define VIRTIO_NET_HASH_REPORT_NONE            0
+ #define VIRTIO_NET_HASH_REPORT_IPv4            1
+ #define VIRTIO_NET_HASH_REPORT_TCPv4           2
+diff --git a/include/standard-headers/linux/virtio_pci.h b/include/standard-headers/linux/virtio_pci.h
+index 09e964e6ee..4c82513df2 100644
+--- a/include/standard-headers/linux/virtio_pci.h
++++ b/include/standard-headers/linux/virtio_pci.h
+@@ -40,7 +40,7 @@
+ #define _LINUX_VIRTIO_PCI_H
+ 
+ #include "standard-headers/linux/types.h"
+-#include "standard-headers/linux/kernel.h"
++#include "standard-headers/linux/const.h"
+ 
+ #ifndef VIRTIO_PCI_NO_LEGACY
+ 
+diff --git a/linux-headers/asm-arm64/kvm.h b/linux-headers/asm-arm64/kvm.h
+index f4d9baafa1..46ffbddab5 100644
+--- a/linux-headers/asm-arm64/kvm.h
++++ b/linux-headers/asm-arm64/kvm.h
+@@ -31,7 +31,7 @@
+ #define KVM_SPSR_FIQ	4
+ #define KVM_NR_SPSR	5
+ 
+-#ifndef __ASSEMBLY__
++#ifndef __ASSEMBLER__
+ #include <linux/psci.h>
+ #include <linux/types.h>
+ #include <asm/ptrace.h>
+diff --git a/linux-headers/asm-arm64/unistd_64.h b/linux-headers/asm-arm64/unistd_64.h
+index 4ae25c2b91..1ef9c40813 100644
+--- a/linux-headers/asm-arm64/unistd_64.h
++++ b/linux-headers/asm-arm64/unistd_64.h
+@@ -326,6 +326,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-generic/unistd.h b/linux-headers/asm-generic/unistd.h
+index 04e0077fb4..942370b3f5 100644
+--- a/linux-headers/asm-generic/unistd.h
++++ b/linux-headers/asm-generic/unistd.h
+@@ -857,9 +857,11 @@ __SYSCALL(__NR_open_tree_attr, sys_open_tree_attr)
+ __SYSCALL(__NR_file_getattr, sys_file_getattr)
+ #define __NR_file_setattr 469
+ __SYSCALL(__NR_file_setattr, sys_file_setattr)
++#define __NR_listns 470
++__SYSCALL(__NR_listns, sys_listns)
+ 
+ #undef __NR_syscalls
+-#define __NR_syscalls 470
++#define __NR_syscalls 471
+ 
+ /*
+  * 32 bit systems traditionally used different
+diff --git a/linux-headers/asm-loongarch/kvm.h b/linux-headers/asm-loongarch/kvm.h
+index 57ba1a563b..de6c3f18e4 100644
+--- a/linux-headers/asm-loongarch/kvm.h
++++ b/linux-headers/asm-loongarch/kvm.h
+@@ -104,6 +104,7 @@ struct kvm_fpu {
+ #define  KVM_LOONGARCH_VM_FEAT_PV_IPI		6
+ #define  KVM_LOONGARCH_VM_FEAT_PV_STEALTIME	7
+ #define  KVM_LOONGARCH_VM_FEAT_PTW		8
++#define  KVM_LOONGARCH_VM_FEAT_MSGINT		9
+ 
+ /* Device Control API on vcpu fd */
+ #define KVM_LOONGARCH_VCPU_CPUCFG	0
+diff --git a/linux-headers/asm-loongarch/unistd.h b/linux-headers/asm-loongarch/unistd.h
+index 1f01980f9c..e19c7f2f9f 100644
+--- a/linux-headers/asm-loongarch/unistd.h
++++ b/linux-headers/asm-loongarch/unistd.h
+@@ -1,3 +1,9 @@
+ /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+ 
++#include <asm/bitsperlong.h>
++
++#if __BITS_PER_LONG == 32
++#include <asm/unistd_32.h>
++#else
+ #include <asm/unistd_64.h>
++#endif
+diff --git a/linux-headers/asm-loongarch/unistd_64.h b/linux-headers/asm-loongarch/unistd_64.h
+index 5033fc8f2f..aa5daac4ef 100644
+--- a/linux-headers/asm-loongarch/unistd_64.h
++++ b/linux-headers/asm-loongarch/unistd_64.h
+@@ -322,6 +322,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-mips/unistd_n32.h b/linux-headers/asm-mips/unistd_n32.h
+index c99c10e5bf..a33d106dca 100644
+--- a/linux-headers/asm-mips/unistd_n32.h
++++ b/linux-headers/asm-mips/unistd_n32.h
+@@ -398,5 +398,6 @@
+ #define __NR_open_tree_attr (__NR_Linux + 467)
+ #define __NR_file_getattr (__NR_Linux + 468)
+ #define __NR_file_setattr (__NR_Linux + 469)
++#define __NR_listns (__NR_Linux + 470)
+ 
+ #endif /* _ASM_UNISTD_N32_H */
+diff --git a/linux-headers/asm-mips/unistd_n64.h b/linux-headers/asm-mips/unistd_n64.h
+index 0d975bb185..1bc251e450 100644
+--- a/linux-headers/asm-mips/unistd_n64.h
++++ b/linux-headers/asm-mips/unistd_n64.h
+@@ -374,5 +374,6 @@
+ #define __NR_open_tree_attr (__NR_Linux + 467)
+ #define __NR_file_getattr (__NR_Linux + 468)
+ #define __NR_file_setattr (__NR_Linux + 469)
++#define __NR_listns (__NR_Linux + 470)
+ 
+ #endif /* _ASM_UNISTD_N64_H */
+diff --git a/linux-headers/asm-mips/unistd_o32.h b/linux-headers/asm-mips/unistd_o32.h
+index 86ac0ac84b..c57175d496 100644
+--- a/linux-headers/asm-mips/unistd_o32.h
++++ b/linux-headers/asm-mips/unistd_o32.h
+@@ -444,5 +444,6 @@
+ #define __NR_open_tree_attr (__NR_Linux + 467)
+ #define __NR_file_getattr (__NR_Linux + 468)
+ #define __NR_file_setattr (__NR_Linux + 469)
++#define __NR_listns (__NR_Linux + 470)
+ 
+ #endif /* _ASM_UNISTD_O32_H */
+diff --git a/linux-headers/asm-powerpc/unistd_32.h b/linux-headers/asm-powerpc/unistd_32.h
+index d7a32c5e06..a3f4aa2fe2 100644
+--- a/linux-headers/asm-powerpc/unistd_32.h
++++ b/linux-headers/asm-powerpc/unistd_32.h
+@@ -451,6 +451,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_32_H */
+diff --git a/linux-headers/asm-powerpc/unistd_64.h b/linux-headers/asm-powerpc/unistd_64.h
+index ff35c51fc6..d4444557f1 100644
+--- a/linux-headers/asm-powerpc/unistd_64.h
++++ b/linux-headers/asm-powerpc/unistd_64.h
+@@ -423,6 +423,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-riscv/kvm.h b/linux-headers/asm-riscv/kvm.h
+index 759a4852c0..54f3ad7ed2 100644
+--- a/linux-headers/asm-riscv/kvm.h
++++ b/linux-headers/asm-riscv/kvm.h
+@@ -23,6 +23,8 @@
+ #define KVM_INTERRUPT_SET	-1U
+ #define KVM_INTERRUPT_UNSET	-2U
+ 
++#define KVM_EXIT_FAIL_ENTRY_NO_VSFILE	(1ULL << 0)
++
+ /* for KVM_GET_REGS and KVM_SET_REGS */
+ struct kvm_regs {
+ };
+@@ -211,6 +213,7 @@ enum KVM_RISCV_SBI_EXT_ID {
+ 	KVM_RISCV_SBI_EXT_STA,
+ 	KVM_RISCV_SBI_EXT_SUSP,
+ 	KVM_RISCV_SBI_EXT_FWFT,
++	KVM_RISCV_SBI_EXT_MPXY,
+ 	KVM_RISCV_SBI_EXT_MAX,
+ };
+ 
+diff --git a/linux-headers/asm-riscv/unistd_32.h b/linux-headers/asm-riscv/unistd_32.h
+index 6083373e88..9f33956246 100644
+--- a/linux-headers/asm-riscv/unistd_32.h
++++ b/linux-headers/asm-riscv/unistd_32.h
+@@ -317,6 +317,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_32_H */
+diff --git a/linux-headers/asm-riscv/unistd_64.h b/linux-headers/asm-riscv/unistd_64.h
+index f0c7585c60..c2e7258916 100644
+--- a/linux-headers/asm-riscv/unistd_64.h
++++ b/linux-headers/asm-riscv/unistd_64.h
+@@ -327,6 +327,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-s390/bitsperlong.h b/linux-headers/asm-s390/bitsperlong.h
+index cceaf47b02..7af27a985f 100644
+--- a/linux-headers/asm-s390/bitsperlong.h
++++ b/linux-headers/asm-s390/bitsperlong.h
+@@ -2,11 +2,7 @@
+ #ifndef __ASM_S390_BITSPERLONG_H
+ #define __ASM_S390_BITSPERLONG_H
+ 
+-#ifndef __s390x__
+-#define __BITS_PER_LONG 32
+-#else
+ #define __BITS_PER_LONG 64
+-#endif
+ 
+ #include <asm-generic/bitsperlong.h>
+ 
+diff --git a/linux-headers/asm-s390/unistd.h b/linux-headers/asm-s390/unistd.h
+index 27b8b211c8..1484618877 100644
+--- a/linux-headers/asm-s390/unistd.h
++++ b/linux-headers/asm-s390/unistd.h
+@@ -8,10 +8,6 @@
+ #ifndef _ASM_S390_UNISTD_H_
+ #define _ASM_S390_UNISTD_H_
+ 
+-#ifdef __s390x__
+ #include <asm/unistd_64.h>
+-#else
+-#include <asm/unistd_32.h>
+-#endif
+ 
+ #endif /* _ASM_S390_UNISTD_H_ */
+diff --git a/linux-headers/asm-s390/unistd_64.h b/linux-headers/asm-s390/unistd_64.h
+index 0652ba6331..8d9e579ef5 100644
+--- a/linux-headers/asm-s390/unistd_64.h
++++ b/linux-headers/asm-s390/unistd_64.h
+@@ -1,6 +1,5 @@
+-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+-#ifndef _ASM_S390_UNISTD_64_H
+-#define _ASM_S390_UNISTD_64_H
++#ifndef _ASM_UNISTD_64_H
++#define _ASM_UNISTD_64_H
+ 
+ #define __NR_exit 1
+ #define __NR_fork 2
+@@ -390,5 +389,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+-#endif /* _ASM_S390_UNISTD_64_H */
++
++#endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-x86/kvm.h b/linux-headers/asm-x86/kvm.h
+index 3bb38f6c3a..b804fd25a2 100644
+--- a/linux-headers/asm-x86/kvm.h
++++ b/linux-headers/asm-x86/kvm.h
+@@ -500,6 +500,7 @@ struct kvm_sync_regs {
+ /* vendor-specific groups and attributes for system fd */
+ #define KVM_X86_GRP_SEV			1
+ #  define KVM_X86_SEV_VMSA_FEATURES	0
++#  define KVM_X86_SNP_POLICY_BITS	1
+ 
+ struct kvm_vmx_nested_state_data {
+ 	__u8 vmcs12[KVM_STATE_NESTED_VMX_VMCS_SIZE];
+diff --git a/linux-headers/asm-x86/unistd_32.h b/linux-headers/asm-x86/unistd_32.h
+index 8f784a5634..34255aac64 100644
+--- a/linux-headers/asm-x86/unistd_32.h
++++ b/linux-headers/asm-x86/unistd_32.h
+@@ -460,6 +460,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_32_H */
+diff --git a/linux-headers/asm-x86/unistd_64.h b/linux-headers/asm-x86/unistd_64.h
+index 26c258d1a6..07f242a5fa 100644
+--- a/linux-headers/asm-x86/unistd_64.h
++++ b/linux-headers/asm-x86/unistd_64.h
+@@ -384,6 +384,7 @@
+ #define __NR_open_tree_attr 467
+ #define __NR_file_getattr 468
+ #define __NR_file_setattr 469
++#define __NR_listns 470
+ 
+ 
+ #endif /* _ASM_UNISTD_64_H */
+diff --git a/linux-headers/asm-x86/unistd_x32.h b/linux-headers/asm-x86/unistd_x32.h
+index 65c2aed946..08fc9da2fa 100644
+--- a/linux-headers/asm-x86/unistd_x32.h
++++ b/linux-headers/asm-x86/unistd_x32.h
+@@ -337,6 +337,7 @@
+ #define __NR_open_tree_attr (__X32_SYSCALL_BIT + 467)
+ #define __NR_file_getattr (__X32_SYSCALL_BIT + 468)
+ #define __NR_file_setattr (__X32_SYSCALL_BIT + 469)
++#define __NR_listns (__X32_SYSCALL_BIT + 470)
+ #define __NR_rt_sigaction (__X32_SYSCALL_BIT + 512)
+ #define __NR_rt_sigreturn (__X32_SYSCALL_BIT + 513)
+ #define __NR_ioctl (__X32_SYSCALL_BIT + 514)
+diff --git a/linux-headers/linux/iommufd.h b/linux-headers/linux/iommufd.h
+index 2105a03955..384183a403 100644
+--- a/linux-headers/linux/iommufd.h
++++ b/linux-headers/linux/iommufd.h
+@@ -450,6 +450,16 @@ struct iommu_hwpt_vtd_s1 {
+  * nested domain will translate the same as the nesting parent. The S1 will
+  * install a Context Descriptor Table pointing at userspace memory translated
+  * by the nesting parent.
++ *
++ * It's suggested to allocate a vDEVICE object carrying vSID and then re-attach
++ * the nested domain, as soon as the vSID is available in the VMM level:
++ *
++ * - when Cfg=translate, a vDEVICE must be allocated prior to attaching to the
++ *   allocated nested domain, as CD/ATS invalidations and vevents need a vSID.
++ * - when Cfg=bypass/abort, a vDEVICE is not enforced during the nested domain
++ *   attachment, to support a GBPA case where VM sets CR0.SMMUEN=0. However, if
++ *   VM sets CR0.SMMUEN=1 while missing a vDEVICE object, kernel would fail to
++ *   report events to the VM. E.g. F_TRANSLATION when guest STE.Cfg=abort.
+  */
+ struct iommu_hwpt_arm_smmuv3 {
+ 	__aligned_le64 ste[2];
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 4ea28ef7ca..a4ab42dcba 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -179,6 +179,7 @@ struct kvm_xen_exit {
+ #define KVM_EXIT_LOONGARCH_IOCSR  38
+ #define KVM_EXIT_MEMORY_FAULT     39
+ #define KVM_EXIT_TDX              40
++#define KVM_EXIT_ARM_SEA          41
+ 
+ /* For KVM_EXIT_INTERNAL_ERROR */
+ /* Emulate instruction failed. */
+@@ -465,6 +466,14 @@ struct kvm_run {
+ 				} setup_event_notify;
+ 			};
+ 		} tdx;
++		/* KVM_EXIT_ARM_SEA */
++		struct {
++#define KVM_EXIT_ARM_SEA_FLAG_GPA_VALID	(1ULL << 0)
++			__u64 flags;
++			__u64 esr;
++			__u64 gva;
++			__u64 gpa;
++		} arm_sea;
+ 		/* Fix the size of the union. */
+ 		char padding[256];
+ 	};
+@@ -955,6 +964,8 @@ struct kvm_enable_cap {
+ #define KVM_CAP_RISCV_MP_STATE_RESET 242
+ #define KVM_CAP_ARM_CACHEABLE_PFNMAP_SUPPORTED 243
+ #define KVM_CAP_GUEST_MEMFD_FLAGS 244
++#define KVM_CAP_ARM_SEA_TO_USER 245
++#define KVM_CAP_S390_USER_OPEREXEC 246
+ 
+ struct kvm_irq_routing_irqchip {
+ 	__u32 irqchip;
+diff --git a/linux-headers/linux/mshv.h b/linux-headers/linux/mshv.h
+index 5bc83db6a3..acceeddc1c 100644
+--- a/linux-headers/linux/mshv.h
++++ b/linux-headers/linux/mshv.h
+@@ -26,6 +26,7 @@ enum {
+ 	MSHV_PT_BIT_LAPIC,
+ 	MSHV_PT_BIT_X2APIC,
+ 	MSHV_PT_BIT_GPA_SUPER_PAGES,
++	MSHV_PT_BIT_CPU_AND_XSAVE_FEATURES,
+ 	MSHV_PT_BIT_COUNT,
+ };
+ 
+@@ -41,6 +42,8 @@ enum {
+  * @pt_flags: Bitmask of 1 << MSHV_PT_BIT_*
+  * @pt_isolation: MSHV_PT_ISOLATION_*
+  *
++ * This is the initial/v1 version for backward compatibility.
++ *
+  * Returns a file descriptor to act as a handle to a guest partition.
+  * At this point the partition is not yet initialized in the hypervisor.
+  * Some operations must be done with the partition in this state, e.g. setting
+@@ -52,6 +55,37 @@ struct mshv_create_partition {
+ 	__u64 pt_isolation;
+ };
+ 
++#define MSHV_NUM_CPU_FEATURES_BANKS 2
++
++/**
++ * struct mshv_create_partition_v2
++ *
++ * This is extended version of the above initial MSHV_CREATE_PARTITION
++ * ioctl and allows for following additional parameters:
++ *
++ * @pt_num_cpu_fbanks: Must be set to MSHV_NUM_CPU_FEATURES_BANKS.
++ * @pt_cpu_fbanks: Disabled processor feature banks array.
++ * @pt_disabled_xsave: Disabled xsave feature bits.
++ *
++ * pt_cpu_fbanks and pt_disabled_xsave are passed through as-is to the create
++ * partition hypercall.
++ *
++ * Returns : same as above original mshv_create_partition
++ */
++struct mshv_create_partition_v2 {
++	__u64 pt_flags;
++	__u64 pt_isolation;
++	__u16 pt_num_cpu_fbanks;
++	__u8  pt_rsvd[6];		/* MBZ */
++	__u64 pt_cpu_fbanks[MSHV_NUM_CPU_FEATURES_BANKS];
++	__u64 pt_rsvd1[2];		/* MBZ */
++#if defined(__x86_64__)
++	__u64 pt_disabled_xsave;
++#else
++	__u64 pt_rsvd2;			/* MBZ */
++#endif
++} __attribute__((packed));
++
+ /* /dev/mshv */
+ #define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x00, struct mshv_create_partition)
+ 
+@@ -89,7 +123,7 @@ enum {
+  * @rsvd: MBZ
+  *
+  * Map or unmap a region of userspace memory to Guest Physical Addresses (GPA).
+- * Mappings can't overlap in GPA space or userspace.
++ * Mappings can't overlap in GPA space.
+  * To unmap, these fields must match an existing mapping.
+  */
+ struct mshv_user_mem_region {
+@@ -288,4 +322,84 @@ struct mshv_get_set_vp_state {
+  * #define MSHV_ROOT_HVCALL			_IOWR(MSHV_IOCTL, 0x07, struct mshv_root_hvcall)
+  */
+ 
++/* Structure definitions, macros and IOCTLs for mshv_vtl */
++
++#define MSHV_CAP_CORE_API_STABLE        0x0
++#define MSHV_CAP_REGISTER_PAGE          0x1
++#define MSHV_CAP_VTL_RETURN_ACTION      0x2
++#define MSHV_CAP_DR6_SHARED             0x3
++#define MSHV_MAX_RUN_MSG_SIZE                256
++
++struct mshv_vp_registers {
++	__u32 count;	/* supports only 1 register at a time */
++	__u32 reserved; /* Reserved for alignment or future use */
++	__u64 regs_ptr;	/* pointer to struct hv_register_assoc */
++};
++
++struct mshv_vtl_set_eventfd {
++	__s32 fd;
++	__u32 flag;
++};
++
++struct mshv_vtl_signal_event {
++	__u32 connection_id;
++	__u32 flag;
++};
++
++struct mshv_vtl_sint_post_msg {
++	__u64 message_type;
++	__u32 connection_id;
++	__u32 payload_size; /* Must not exceed HV_MESSAGE_PAYLOAD_BYTE_COUNT */
++	__u64 payload_ptr; /* pointer to message payload (bytes) */
++};
++
++struct mshv_vtl_ram_disposition {
++	__u64 start_pfn;
++	__u64 last_pfn;
++};
++
++struct mshv_vtl_set_poll_file {
++	__u32 cpu;
++	__u32 fd;
++};
++
++struct mshv_vtl_hvcall_setup {
++	__u64 bitmap_array_size; /* stores number of bytes */
++	__u64 allow_bitmap_ptr;
++};
++
++struct mshv_vtl_hvcall {
++	__u64 control;      /* Hypercall control code */
++	__u64 input_size;   /* Size of the input data */
++	__u64 input_ptr;    /* Pointer to the input struct */
++	__u64 status;       /* Status of the hypercall (output) */
++	__u64 output_size;  /* Size of the output data */
++	__u64 output_ptr;   /* Pointer to the output struct */
++};
++
++struct mshv_sint_mask {
++	__u8 mask;
++	__u8 reserved[7];
++};
++
++/* /dev/mshv device IOCTL */
++#define MSHV_CHECK_EXTENSION    _IOW(MSHV_IOCTL, 0x00, __u32)
++
++/* vtl device */
++#define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
++#define MSHV_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
++#define MSHV_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
++#define MSHV_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
++#define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
++#define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
++
++/* VMBus device IOCTLs */
++#define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
++#define MSHV_SINT_POST_MESSAGE    _IOW(MSHV_IOCTL, 0x23, struct mshv_vtl_sint_post_msg)
++#define MSHV_SINT_SET_EVENTFD     _IOW(MSHV_IOCTL, 0x24, struct mshv_vtl_set_eventfd)
++#define MSHV_SINT_PAUSE_MESSAGE_STREAM     _IOW(MSHV_IOCTL, 0x25, struct mshv_sint_mask)
++
++/* hv_hvcall device */
++#define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_vtl_hvcall_setup)
++#define MSHV_HVCALL              _IOWR(MSHV_IOCTL, 0x1F, struct mshv_vtl_hvcall)
+ #endif
+diff --git a/linux-headers/linux/psp-sev.h b/linux-headers/linux/psp-sev.h
+index c525125ea8..9479928a4a 100644
+--- a/linux-headers/linux/psp-sev.h
++++ b/linux-headers/linux/psp-sev.h
+@@ -47,32 +47,32 @@ typedef enum {
+ 	 * with possible values from the specification.
+ 	 */
+ 	SEV_RET_NO_FW_CALL = -1,
+-	SEV_RET_SUCCESS = 0,
+-	SEV_RET_INVALID_PLATFORM_STATE,
+-	SEV_RET_INVALID_GUEST_STATE,
+-	SEV_RET_INAVLID_CONFIG,
++	SEV_RET_SUCCESS                    = 0,
++	SEV_RET_INVALID_PLATFORM_STATE     = 0x0001,
++	SEV_RET_INVALID_GUEST_STATE        = 0x0002,
++	SEV_RET_INAVLID_CONFIG             = 0x0003,
+ 	SEV_RET_INVALID_CONFIG = SEV_RET_INAVLID_CONFIG,
+-	SEV_RET_INVALID_LEN,
+-	SEV_RET_ALREADY_OWNED,
+-	SEV_RET_INVALID_CERTIFICATE,
+-	SEV_RET_POLICY_FAILURE,
+-	SEV_RET_INACTIVE,
+-	SEV_RET_INVALID_ADDRESS,
+-	SEV_RET_BAD_SIGNATURE,
+-	SEV_RET_BAD_MEASUREMENT,
+-	SEV_RET_ASID_OWNED,
+-	SEV_RET_INVALID_ASID,
+-	SEV_RET_WBINVD_REQUIRED,
+-	SEV_RET_DFFLUSH_REQUIRED,
+-	SEV_RET_INVALID_GUEST,
+-	SEV_RET_INVALID_COMMAND,
+-	SEV_RET_ACTIVE,
+-	SEV_RET_HWSEV_RET_PLATFORM,
+-	SEV_RET_HWSEV_RET_UNSAFE,
+-	SEV_RET_UNSUPPORTED,
+-	SEV_RET_INVALID_PARAM,
+-	SEV_RET_RESOURCE_LIMIT,
+-	SEV_RET_SECURE_DATA_INVALID,
++	SEV_RET_INVALID_LEN                = 0x0004,
++	SEV_RET_ALREADY_OWNED              = 0x0005,
++	SEV_RET_INVALID_CERTIFICATE        = 0x0006,
++	SEV_RET_POLICY_FAILURE             = 0x0007,
++	SEV_RET_INACTIVE                   = 0x0008,
++	SEV_RET_INVALID_ADDRESS            = 0x0009,
++	SEV_RET_BAD_SIGNATURE              = 0x000A,
++	SEV_RET_BAD_MEASUREMENT            = 0x000B,
++	SEV_RET_ASID_OWNED                 = 0x000C,
++	SEV_RET_INVALID_ASID               = 0x000D,
++	SEV_RET_WBINVD_REQUIRED            = 0x000E,
++	SEV_RET_DFFLUSH_REQUIRED           = 0x000F,
++	SEV_RET_INVALID_GUEST              = 0x0010,
++	SEV_RET_INVALID_COMMAND            = 0x0011,
++	SEV_RET_ACTIVE                     = 0x0012,
++	SEV_RET_HWSEV_RET_PLATFORM         = 0x0013,
++	SEV_RET_HWSEV_RET_UNSAFE           = 0x0014,
++	SEV_RET_UNSUPPORTED                = 0x0015,
++	SEV_RET_INVALID_PARAM              = 0x0016,
++	SEV_RET_RESOURCE_LIMIT             = 0x0017,
++	SEV_RET_SECURE_DATA_INVALID        = 0x0018,
+ 	SEV_RET_INVALID_PAGE_SIZE          = 0x0019,
+ 	SEV_RET_INVALID_PAGE_STATE         = 0x001A,
+ 	SEV_RET_INVALID_MDATA_ENTRY        = 0x001B,
+@@ -87,6 +87,22 @@ typedef enum {
+ 	SEV_RET_RESTORE_REQUIRED           = 0x0025,
+ 	SEV_RET_RMP_INITIALIZATION_FAILED  = 0x0026,
+ 	SEV_RET_INVALID_KEY                = 0x0027,
++	SEV_RET_SHUTDOWN_INCOMPLETE        = 0x0028,
++	SEV_RET_INCORRECT_BUFFER_LENGTH	   = 0x0030,
++	SEV_RET_EXPAND_BUFFER_LENGTH_REQUEST = 0x0031,
++	SEV_RET_SPDM_REQUEST               = 0x0032,
++	SEV_RET_SPDM_ERROR                 = 0x0033,
++	SEV_RET_SEV_STATUS_ERR_IN_DEV_CONN = 0x0035,
++	SEV_RET_SEV_STATUS_INVALID_DEV_CTX = 0x0036,
++	SEV_RET_SEV_STATUS_INVALID_TDI_CTX = 0x0037,
++	SEV_RET_SEV_STATUS_INVALID_TDI     = 0x0038,
++	SEV_RET_SEV_STATUS_RECLAIM_REQUIRED = 0x0039,
++	SEV_RET_IN_USE                     = 0x003A,
++	SEV_RET_SEV_STATUS_INVALID_DEV_STATE = 0x003B,
++	SEV_RET_SEV_STATUS_INVALID_TDI_STATE = 0x003C,
++	SEV_RET_SEV_STATUS_DEV_CERT_CHANGED = 0x003D,
++	SEV_RET_SEV_STATUS_RESYNC_REQ      = 0x003E,
++	SEV_RET_SEV_STATUS_RESPONSE_TOO_LARGE = 0x003F,
+ 	SEV_RET_MAX,
+ } sev_ret_code;
+ 
+diff --git a/linux-headers/linux/vfio.h b/linux-headers/linux/vfio.h
+index 4d96d1fc12..720edfee7a 100644
+--- a/linux-headers/linux/vfio.h
++++ b/linux-headers/linux/vfio.h
+@@ -14,6 +14,7 @@
+ 
+ #include <linux/types.h>
+ #include <linux/ioctl.h>
++#include <linux/stddef.h>
+ 
+ #define VFIO_API_VERSION	0
+ 
+@@ -1478,6 +1479,33 @@ struct vfio_device_feature_bus_master {
+ };
+ #define VFIO_DEVICE_FEATURE_BUS_MASTER 10
+ 
++/**
++ * Upon VFIO_DEVICE_FEATURE_GET create a dma_buf fd for the
++ * regions selected.
++ *
++ * open_flags are the typical flags passed to open(2), eg O_RDWR, O_CLOEXEC,
++ * etc. offset/length specify a slice of the region to create the dmabuf from.
++ * nr_ranges is the total number of (P2P DMA) ranges that comprise the dmabuf.
++ *
++ * flags should be 0.
++ *
++ * Return: The fd number on success, -1 and errno is set on failure.
++ */
++#define VFIO_DEVICE_FEATURE_DMA_BUF 11
++
++struct vfio_region_dma_range {
++	__u64 offset;
++	__u64 length;
++};
++
++struct vfio_device_feature_dma_buf {
++	__u32	region_index;
++	__u32	open_flags;
++	__u32   flags;
++	__u32   nr_ranges;
++	struct vfio_region_dma_range dma_ranges[] __counted_by(nr_ranges);
++};
++
+ /* -------- API for Type1 VFIO IOMMU -------- */
+ 
+ /**
+-- 
+2.52.0
+

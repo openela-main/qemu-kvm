@@ -1,0 +1,50 @@
+From 411f31528a9ae2a04914634b5bf412ccc40e49f7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Philippe=20Mathieu-Daud=C3=A9?= <philmd@linaro.org>
+Date: Wed, 1 Oct 2025 09:56:41 +0200
+Subject: [PATCH 096/116] hw/vfio/listener: Include missing
+ 'exec/target_page.h' header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [80/100] 3343efdd3a369dd5dcd7ae2102ff68fc55e88f22 (rovick1/qemu-kvm)
+
+The "exec/target_page.h" header is indirectly pulled from
+"system/ram_addr.h". Include it explicitly, in order to
+avoid unrelated issues when refactoring "system/ram_addr.h":
+
+  hw/vfio/listener.c: In function ‘vfio_ram_discard_register_listener’:
+  hw/vfio/listener.c:258:28: error: implicit declaration of function ‘qemu_target_page_size’; did you mean ‘qemu_ram_pagesize’?
+    258 |     int target_page_size = qemu_target_page_size();
+        |                            ^~~~~~~~~~~~~~~~~~~~~
+
+Signed-off-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Reviewed-by: Richard Henderson <richard.henderson@linaro.org>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Message-Id: <20251001175448.18933-5-philmd@linaro.org>
+(cherry picked from commit edd1f91d38dfc341cac02529fcd315609e959763)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/listener.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/vfio/listener.c b/hw/vfio/listener.c
+index a2c19a3cec..b5cefc9395 100644
+--- a/hw/vfio/listener.c
++++ b/hw/vfio/listener.c
+@@ -25,6 +25,7 @@
+ #endif
+ #include <linux/vfio.h>
+ 
++#include "exec/target_page.h"
+ #include "hw/vfio/vfio-device.h"
+ #include "hw/vfio/pci.h"
+ #include "system/address-spaces.h"
+-- 
+2.52.0
+

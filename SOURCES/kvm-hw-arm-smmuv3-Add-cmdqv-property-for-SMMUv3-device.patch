@@ -1,0 +1,92 @@
+From 00aaa67fff49aa2dabd33cc51975e2d09287af60 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:52 +0100
+Subject: [PATCH 110/111] hw/arm/smmuv3: Add cmdqv property for SMMUv3 device
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [110/111] afd980dfcdcf4d602312a4c65fedf19f08fc6c3b (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Conflicts: contextual conflict in qemu-options.hx as we don't
+have amd-iommu device documentation downstream
+
+Introduce a "cmdqv" property to enable Tegra241 CMDQV support.
+This is only enabled for accelerated SMMUv3 devices.
+
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-32-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit fced8da695f9f40842aa87d0dfde365c8ef65a36)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3.c | 8 ++++++++
+ qemu-options.hx | 8 ++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index 9e252bca66..931c2fe710 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -1994,6 +1994,10 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+                        "bits if accel=on");
+             return false;
+         }
++        if (s->cmdqv == ON_OFF_AUTO_ON) {
++            error_setg(errp, "cmdqv can only be enabled if accel=on");
++            return false;
++        }
+         return true;
+     }
+ 
+@@ -2144,6 +2148,7 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_OAS_MODE("oas", SMMUv3State, oas, OAS_MODE_AUTO),
+     DEFINE_PROP_SSIDSIZE_MODE("ssidsize", SMMUv3State, ssidsize,
+                               SSID_SIZE_MODE_AUTO),
++    DEFINE_PROP_ON_OFF_AUTO("cmdqv", SMMUv3State, cmdqv, ON_OFF_AUTO_AUTO),
+ };
+ 
+ static void smmuv3_instance_init(Object *obj)
+@@ -2194,6 +2199,9 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "than 0 is required to enable PASID support."
+         "Please ensure the value does not exceed the maximum "
+         "SubstreamID size supported by the host platform.");
++    object_class_property_set_description(klass, "cmdqv",
++        "Enable/disable CMDQV support (for accel=on). "
++        "Valid values are on, off, and auto. Defaults to auto.");
+ }
+ 
+ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
+diff --git a/qemu-options.hx b/qemu-options.hx
+index 3fe2171e70..c0e863bb00 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -1281,6 +1281,14 @@ SRST
+ 
+         - With accel=off, auto is resolved to 0.
+ 
++    ``cmdqv=on|off|auto`` (default: auto)
++        Enable hardware Command Queue Virtualization (CMDQV) for the
++        SMMUv3 command queue. Currently only the NVIDIA Tegra241 CMDQV
++        implementation is supported.
++
++        - With accel=on, auto means the value is automatically derived from the host SMMU.
++        - With accel=off, auto is resolved to 'off'.
++
+ ERST
+ 
+ DEF("name", HAS_ARG, QEMU_OPTION_name,
+-- 
+2.52.0
+

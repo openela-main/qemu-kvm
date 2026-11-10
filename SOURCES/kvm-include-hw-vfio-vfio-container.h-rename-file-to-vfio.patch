@@ -1,0 +1,129 @@
+From f07bd6689ca57fe08bf730ee8265ce33c769023b Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:11 +0100
+Subject: [PATCH 053/116] include/hw/vfio/vfio-container.h: rename file to
+ vfio-container-legacy.h
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [37/100] 6f06ff3f512c9d55da838566fbc7b907be5acef6 (rovick1/qemu-kvm)
+
+With the rename of VFIOContainer to VFIOLegacyContainer, the vfio-container.h
+header file containing the struct definition is misleading. Rename it from
+vfio-container.h to vfio-container-legacy.h accordingly, fixing up the name
+of the include guard at the same time.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-4-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 07cbbfb108586a03059975aa0e093b833cb9bf56)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/ppc/spapr_pci_vfio.c                                     | 2 +-
+ hw/s390x/s390-pci-vfio.c                                    | 2 +-
+ hw/vfio/container.c                                         | 2 +-
+ hw/vfio/cpr-legacy.c                                        | 2 +-
+ hw/vfio/spapr.c                                             | 2 +-
+ .../hw/vfio/{vfio-container.h => vfio-container-legacy.h}   | 6 +++---
+ 6 files changed, 8 insertions(+), 8 deletions(-)
+ rename include/hw/vfio/{vfio-container.h => vfio-container-legacy.h} (88%)
+
+diff --git a/hw/ppc/spapr_pci_vfio.c b/hw/ppc/spapr_pci_vfio.c
+index 48fa98c199..18c5059262 100644
+--- a/hw/ppc/spapr_pci_vfio.c
++++ b/hw/ppc/spapr_pci_vfio.c
+@@ -24,7 +24,7 @@
+ #include "hw/pci-host/spapr.h"
+ #include "hw/pci/msix.h"
+ #include "hw/pci/pci_device.h"
+-#include "hw/vfio/vfio-container.h"
++#include "hw/vfio/vfio-container-legacy.h"
+ #include "qemu/error-report.h"
+ #include CONFIG_DEVICES /* CONFIG_VFIO_PCI */
+ 
+diff --git a/hw/s390x/s390-pci-vfio.c b/hw/s390x/s390-pci-vfio.c
+index aaf91319b4..c51bcea5fc 100644
+--- a/hw/s390x/s390-pci-vfio.c
++++ b/hw/s390x/s390-pci-vfio.c
+@@ -20,7 +20,7 @@
+ #include "hw/s390x/s390-pci-clp.h"
+ #include "hw/s390x/s390-pci-vfio.h"
+ #include "hw/vfio/pci.h"
+-#include "hw/vfio/vfio-container.h"
++#include "hw/vfio/vfio-container-legacy.h"
+ #include "hw/vfio/vfio-helpers.h"
+ 
+ /*
+diff --git a/hw/vfio/container.c b/hw/vfio/container.c
+index 84f5a5fdee..0101a72f53 100644
+--- a/hw/vfio/container.c
++++ b/hw/vfio/container.c
+@@ -34,7 +34,7 @@
+ #include "migration/cpr.h"
+ #include "migration/blocker.h"
+ #include "pci.h"
+-#include "hw/vfio/vfio-container.h"
++#include "hw/vfio/vfio-container-legacy.h"
+ #include "vfio-helpers.h"
+ #include "vfio-listener.h"
+ 
+diff --git a/hw/vfio/cpr-legacy.c b/hw/vfio/cpr-legacy.c
+index bd3f6fc3d3..bbf7a0d35f 100644
+--- a/hw/vfio/cpr-legacy.c
++++ b/hw/vfio/cpr-legacy.c
+@@ -7,7 +7,7 @@
+ #include <sys/ioctl.h>
+ #include <linux/vfio.h>
+ #include "qemu/osdep.h"
+-#include "hw/vfio/vfio-container.h"
++#include "hw/vfio/vfio-container-legacy.h"
+ #include "hw/vfio/vfio-device.h"
+ #include "hw/vfio/vfio-listener.h"
+ #include "migration/blocker.h"
+diff --git a/hw/vfio/spapr.c b/hw/vfio/spapr.c
+index 6d462aa13c..acaa9c1419 100644
+--- a/hw/vfio/spapr.c
++++ b/hw/vfio/spapr.c
+@@ -15,7 +15,7 @@
+ #include "system/hostmem.h"
+ #include "system/address-spaces.h"
+ 
+-#include "hw/vfio/vfio-container.h"
++#include "hw/vfio/vfio-container-legacy.h"
+ #include "hw/hw.h"
+ #include "system/ram_addr.h"
+ #include "qemu/error-report.h"
+diff --git a/include/hw/vfio/vfio-container.h b/include/hw/vfio/vfio-container-legacy.h
+similarity index 88%
+rename from include/hw/vfio/vfio-container.h
+rename to include/hw/vfio/vfio-container-legacy.h
+index a84dfb0dee..ab5130d26e 100644
+--- a/include/hw/vfio/vfio-container.h
++++ b/include/hw/vfio/vfio-container-legacy.h
+@@ -6,8 +6,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
+-#ifndef HW_VFIO_CONTAINER_H
+-#define HW_VFIO_CONTAINER_H
++#ifndef HW_VFIO_CONTAINER_LEGACY_H
++#define HW_VFIO_CONTAINER_LEGACY_H
+ 
+ #include "hw/vfio/vfio-container-base.h"
+ #include "hw/vfio/vfio-cpr.h"
+@@ -36,4 +36,4 @@ struct VFIOLegacyContainer {
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOLegacyContainer, VFIO_IOMMU_LEGACY);
+ 
+-#endif /* HW_VFIO_CONTAINER_H */
++#endif /* HW_VFIO_CONTAINER_LEGACY_H */
+-- 
+2.52.0
+

@@ -1,0 +1,111 @@
+From e614aef2ad181cc80c1688ebbf568d5eed193e37 Mon Sep 17 00:00:00 2001
+From: Shameer Kolothum <skolothumtho@nvidia.com>
+Date: Thu, 29 Jan 2026 13:32:05 +0000
+Subject: [PATCH 041/111] backends/iommufd: Add get_pasid_info() callback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [41/111] 3c436702f4ac6d8819ba999b7503a98efb770fec (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73794
+
+The get_pasid_info callback retrieves PASID capability information
+when the HostIOMMUDevice backend supports it. Currently, only the
+Linux IOMMUFD backend provides this information.
+
+This will be used by a subsequent patch to synthesize a PASID
+capability for vfio-pci devices behind a vIOMMU that supports PASID.
+
+Reviewed-by: Jonathan Cameron <jonathan.cameron@huawei.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Zhangfei Gao <zhangfei.gao@linaro.org>
+Reviewed-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Yi Liu <yi.l.liu@intel.com>
+Message-id: 20260126104342.253965-34-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 22afd9d865cb05d93c92c8fca7a23e1eb879e889)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ backends/iommufd.c                 | 17 +++++++++++++++++
+ include/system/host_iommu_device.h | 17 +++++++++++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/backends/iommufd.c b/backends/iommufd.c
+index 6381f9664b..f1707eadc6 100644
+--- a/backends/iommufd.c
++++ b/backends/iommufd.c
+@@ -538,11 +538,28 @@ static int hiod_iommufd_get_cap(HostIOMMUDevice *hiod, int cap, Error **errp)
+     }
+ }
+ 
++static bool hiod_iommufd_get_pasid_info(HostIOMMUDevice *hiod,
++                                        PasidInfo *pasid_info)
++{
++    HostIOMMUDeviceCaps *caps = &hiod->caps;
++
++    if (!caps->max_pasid_log2) {
++        return false;
++    }
++
++    g_assert(pasid_info);
++    pasid_info->exec_perm = (caps->hw_caps & IOMMU_HW_CAP_PCI_PASID_EXEC);
++    pasid_info->priv_mod = (caps->hw_caps & IOMMU_HW_CAP_PCI_PASID_PRIV);
++    pasid_info->max_pasid_log2 = caps->max_pasid_log2;
++    return true;
++}
++
+ static void hiod_iommufd_class_init(ObjectClass *oc, const void *data)
+ {
+     HostIOMMUDeviceClass *hioc = HOST_IOMMU_DEVICE_CLASS(oc);
+ 
+     hioc->get_cap = hiod_iommufd_get_cap;
++    hioc->get_pasid_info = hiod_iommufd_get_pasid_info;
+ };
+ 
+ static const TypeInfo types[] = {
+diff --git a/include/system/host_iommu_device.h b/include/system/host_iommu_device.h
+index bfb2b60478..f000301583 100644
+--- a/include/system/host_iommu_device.h
++++ b/include/system/host_iommu_device.h
+@@ -59,6 +59,12 @@ struct HostIOMMUDevice {
+ #endif
+ };
+ 
++typedef struct PasidInfo {
++    bool exec_perm;
++    bool priv_mod;
++    uint8_t max_pasid_log2;
++} PasidInfo;
++
+ /**
+  * struct HostIOMMUDeviceClass - The base class for all host IOMMU devices.
+  *
+@@ -116,6 +122,17 @@ struct HostIOMMUDeviceClass {
+      * @hiod: handle to the host IOMMU device
+      */
+     uint64_t (*get_page_size_mask)(HostIOMMUDevice *hiod);
++    /**
++     * @get_pasid_info: Return the PASID information associated with the
++     * @hiod Host IOMMU device.
++     *
++     * @hiod: handle to the host IOMMU device
++     *
++     * @pasid_info: If success, returns the PASID related information.
++     *
++     * Returns: true on success, false on failure.
++     */
++    bool (*get_pasid_info)(HostIOMMUDevice *hiod, PasidInfo *pasid_info);
+ };
+ 
+ /*
+-- 
+2.52.0
+

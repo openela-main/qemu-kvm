@@ -1,0 +1,52 @@
+From 89a252c44c9acc995d34d1c77c7f652bc4994a06 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:23 +0100
+Subject: [PATCH 065/116] vfio/pci.c: rename vfio_pci_dev_info to vfio_pci_info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [49/100] e7837d38dc5250bfd3130e2088729b4e9850d307 (rovick1/qemu-kvm)
+
+This changes the prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-16-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 25c8376b37948d7608b1a13f43e985fc801295e5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 96a0d8b290..fd8d8f7e32 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3934,7 +3934,7 @@ static void vfio_pci_class_init(ObjectClass *klass, const void *data)
+                                           "multifd channels");
+ }
+ 
+-static const TypeInfo vfio_pci_dev_info = {
++static const TypeInfo vfio_pci_info = {
+     .name = TYPE_VFIO_PCI,
+     .parent = TYPE_VFIO_PCI_BASE,
+     .class_init = vfio_pci_class_init,
+@@ -3992,7 +3992,7 @@ static void register_vfio_pci_dev_type(void)
+     vfio_pci_migration_multifd_transfer_prop.realized_set_allowed = true;
+ 
+     type_register_static(&vfio_pci_base_dev_info);
+-    type_register_static(&vfio_pci_dev_info);
++    type_register_static(&vfio_pci_info);
+     type_register_static(&vfio_pci_nohotplug_dev_info);
+ }
+ 
+-- 
+2.52.0
+

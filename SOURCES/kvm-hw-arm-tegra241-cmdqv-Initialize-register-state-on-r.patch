@@ -1,0 +1,120 @@
+From 3d0860d341a6cfb580cb1f5369fc42c8e5edf7e5 Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:45 +0100
+Subject: [PATCH 103/111] hw/arm/tegra241-cmdqv: Initialize register state on
+ reset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [103/111] c7d9172502f2e3ab87e9205b814f5f6e80637eee (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Initialize the Tegra241 CMDQV register state in the reset handler.
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Message-id: 20260609112552.378999-25-skolothumtho@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ae1a6a69c002fc331861be505d641014198bc33e)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/tegra241-cmdqv.c | 38 ++++++++++++++++++++++++++++++++++++++
+ hw/arm/tegra241-cmdqv.h |  3 +++
+ hw/arm/trace-events     |  1 +
+ 3 files changed, 42 insertions(+)
+
+diff --git a/hw/arm/tegra241-cmdqv.c b/hw/arm/tegra241-cmdqv.c
+index 71d02ae740..6804f0bb7e 100644
+--- a/hw/arm/tegra241-cmdqv.c
++++ b/hw/arm/tegra241-cmdqv.c
+@@ -863,6 +863,42 @@ free_viommu:
+     return false;
+ }
+ 
++static void tegra241_cmdqv_init_regs(SMMUv3State *s, Tegra241CMDQV *cmdqv)
++{
++    int i;
++
++    cmdqv->config = V_CONFIG_RESET;
++    cmdqv->param = FIELD_DP32(0, PARAM, CMDQV_VER, CMDQV_VER);
++    cmdqv->param = FIELD_DP32(cmdqv->param, PARAM, CMDQV_NUM_CMDQ_LOG2,
++                              CMDQV_NUM_CMDQ_LOG2);
++    cmdqv->param = FIELD_DP32(cmdqv->param, PARAM, CMDQV_NUM_SID_PER_VI_LOG2,
++                              CMDQV_NUM_SID_PER_VI_LOG2);
++    trace_tegra241_cmdqv_init_regs(cmdqv->param);
++    cmdqv->status = R_STATUS_CMDQV_ENABLED_MASK;
++
++    for (i = 0; i < 2; i++) {
++        cmdqv->vi_err_map[i] = 0;
++        cmdqv->vi_int_mask[i] = 0;
++    }
++    for (i = 0; i < 4; i++) {
++        cmdqv->cmdq_err_map[i] = 0;
++        cmdqv->vintf_cmdq_err_map[i] = 0;
++    }
++    cmdqv->vintf_config = 0;
++    cmdqv->vintf_status = 0;
++    for (i = 0; i < TEGRA241_CMDQV_MAX_CMDQ; i++) {
++        cmdqv->cmdq_alloc_map[i] = 0;
++        cmdqv->vcmdq_cons_indx[i] = 0;
++        cmdqv->vcmdq_prod_indx[i] = 0;
++        cmdqv->vcmdq_config[i] = 0;
++        cmdqv->vcmdq_status[i] = 0;
++        cmdqv->vcmdq_gerror[i] = 0;
++        cmdqv->vcmdq_gerrorn[i] = 0;
++        cmdqv->vcmdq_base[i] = 0;
++        cmdqv->vcmdq_cons_indx_base[i] = 0;
++    }
++}
++
+ static void tegra241_cmdqv_reset(SMMUv3State *s)
+ {
+     Tegra241CMDQV *cmdqv = s->s_accel->cmdqv;
+@@ -873,6 +909,8 @@ static void tegra241_cmdqv_reset(SMMUv3State *s)
+ 
+     tegra241_cmdqv_guest_unmap_vintf_page0(cmdqv);
+     tegra241_cmdqv_free_all_vcmdq(cmdqv);
++
++    tegra241_cmdqv_init_regs(s, cmdqv);
+ }
+ 
+ static const MemoryRegionOps mmio_cmdqv_ops = {
+diff --git a/hw/arm/tegra241-cmdqv.h b/hw/arm/tegra241-cmdqv.h
+index 0964f68a20..a924e7e90f 100644
+--- a/hw/arm/tegra241-cmdqv.h
++++ b/hw/arm/tegra241-cmdqv.h
+@@ -89,6 +89,9 @@ FIELD(CONFIG, CMDQ_MAX_CLK_BATCH, 4, 8)
+ FIELD(CONFIG, CMDQ_MAX_CMD_BATCH, 12, 8)
+ FIELD(CONFIG, CONS_DRAM_EN, 20, 1)
+ 
++/* CMDQV_EN=1, PER_CMD_OFFSET=16B, CLK_BATCH=256, CMD_BATCH=32. */
++#define V_CONFIG_RESET 0x00020083
++
+ REG32(PARAM, 0x4)
+ FIELD(PARAM, CMDQV_VER, 0, 4)
+ FIELD(PARAM, CMDQV_NUM_CMDQ_LOG2, 4, 4)
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index dbed00afbb..0bd718b1ab 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -76,6 +76,7 @@ smmuv3_accel_install_ste(uint32_t vsid, const char * type, uint32_t hwpt_id) "vS
+ tegra241_cmdqv_read_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+ tegra241_cmdqv_write_mmio(uint64_t offset, uint64_t val, unsigned size) "offset: 0x%"PRIx64" val: 0x%"PRIx64" size: 0x%x"
+ tegra241_cmdqv_err_map(uint32_t map3, uint32_t map2, uint32_t map1, uint32_t map0) "hw irq received. error (hex) maps: %04X:%04X:%04X:%04X"
++tegra241_cmdqv_init_regs(uint32_t param) "register init, param=0x%08X"
+ tegra241_cmdqv_read_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_read_vcmdq_page1(int index, const char *aperture, uint64_t offset0, uint64_t val) "vcmdq[%d] %s offset0: 0x%"PRIx64" val: 0x%"PRIx64
+ tegra241_cmdqv_write_vcmdq_page0(int index, const char *aperture, const char *backing, uint64_t offset0, uint64_t val) "vcmdq[%d] %s (%s) offset0: 0x%"PRIx64" val: 0x%"PRIx64
+-- 
+2.52.0
+

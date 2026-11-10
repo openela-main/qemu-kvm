@@ -1,0 +1,53 @@
+From 7bc2dc6aeea3fc68757d816eba5b99f4735792c0 Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Thu, 25 Sep 2025 12:31:25 +0100
+Subject: [PATCH 068/116] vfio/pci.c: rename vfio_pci_base_dev_class_init() to
+ vfio_pci_device_class_init()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [52/100] df1c185ff24360560eadae0ca7f414de6c073d34 (rovick1/qemu-kvm)
+
+This changes the function prefix to match the name of the QOM type.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Link: https://lore.kernel.org/qemu-devel/20250925113159.1760317-18-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 153273f2796a664b08120799f326c6319f640011)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio/pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 937283bcc6..5380cf0c53 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3674,7 +3674,7 @@ static void vfio_pci_init(Object *obj)
+     pci_dev->cap_present |= QEMU_PCI_SKIP_RESET_ON_CPR;
+ }
+ 
+-static void vfio_pci_base_dev_class_init(ObjectClass *klass, const void *data)
++static void vfio_pci_device_class_init(ObjectClass *klass, const void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
+@@ -3691,7 +3691,7 @@ static const TypeInfo vfio_pci_base_dev_info = {
+     .parent = TYPE_PCI_DEVICE,
+     .instance_size = sizeof(VFIOPCIDevice),
+     .abstract = true,
+-    .class_init = vfio_pci_base_dev_class_init,
++    .class_init = vfio_pci_device_class_init,
+     .interfaces = (const InterfaceInfo[]) {
+         { INTERFACE_PCIE_DEVICE },
+         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+-- 
+2.52.0
+

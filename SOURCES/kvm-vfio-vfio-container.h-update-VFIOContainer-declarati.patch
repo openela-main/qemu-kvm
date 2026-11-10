@@ -1,0 +1,55 @@
+From 686d603502ea7af8420f9fee603cca00103159dc Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Date: Tue, 15 Jul 2025 10:25:42 +0100
+Subject: [PATCH 030/116] vfio/vfio-container.h: update VFIOContainer
+ declaration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [14/100] 436abec7a08de2d3558242abbd20adc0330f6200 (rovick1/qemu-kvm)
+
+Update the VFIOContainer declaration so that it is closer to our coding
+guidelines: emove the explicit typedef (this is already handled by the
+OBJECT_DECLARE_TYPE() macro) and add a blank line after the parent object.
+
+Signed-off-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Reviewed-by: Cédric Le Goater <clg@redhat.com>
+Reviewed-by: Philippe Mathieu-Daudé <philmd@linaro.org>
+Link: https://lore.kernel.org/qemu-devel/20250715093110.107317-3-mark.caveayland@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 98c12de5aeb1cb464a9cde13cd7a53dd6520d3aa)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ include/hw/vfio/vfio-container.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/hw/vfio/vfio-container.h b/include/hw/vfio/vfio-container.h
+index 21e5807e48..50c91788d5 100644
+--- a/include/hw/vfio/vfio-container.h
++++ b/include/hw/vfio/vfio-container.h
+@@ -25,13 +25,14 @@ typedef struct VFIOGroup {
+     bool ram_block_discard_allowed;
+ } VFIOGroup;
+ 
+-typedef struct VFIOContainer {
++struct VFIOContainer {
+     VFIOContainerBase bcontainer;
++
+     int fd; /* /dev/vfio/vfio, empowered by the attached groups */
+     unsigned iommu_type;
+     QLIST_HEAD(, VFIOGroup) group_list;
+     VFIOContainerCPR cpr;
+-} VFIOContainer;
++};
+ 
+ OBJECT_DECLARE_SIMPLE_TYPE(VFIOContainer, VFIO_IOMMU_LEGACY);
+ 
+-- 
+2.52.0
+

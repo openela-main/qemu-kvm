@@ -1,0 +1,36 @@
+From 7b2ba3acaf2863de479f1672373a8f2eb03e9a5d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Daniel=20P=2E=20Berrang=C3=A9?= <berrange@redhat.com>
+Date: Wed, 29 Oct 2025 18:06:54 +0000
+Subject: [PATCH 09/30] crypto: add missing free of certs array
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Daniel P. Berrangé <berrange@redhat.com>
+RH-MergeRequest: 460: crypto: changes to support multiple certificates for PQC
+RH-Jira: RHEL-111934
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Commit: [8/27] 07f334a66ed05d4bf66fa39741811e753add604e (berrange/centos-src-qemu)
+
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Signed-off-by: Daniel P. Berrangé <berrange@redhat.com>
+(cherry picked from commit 0de19c148a1d1ffda8f18b342adb6133237279e4)
+---
+ crypto/tlscredsx509.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/crypto/tlscredsx509.c b/crypto/tlscredsx509.c
+index 847fd4d9fa..75c70af522 100644
+--- a/crypto/tlscredsx509.c
++++ b/crypto/tlscredsx509.c
+@@ -550,6 +550,7 @@ qcrypto_tls_creds_x509_sanity_check(QCryptoTLSCredsX509 *creds,
+     for (i = 0; i < ncerts; i++) {
+         gnutls_x509_crt_deinit(certs[i]);
+     }
++    g_free(certs);
+     for (i = 0; i < ncacerts; i++) {
+         gnutls_x509_crt_deinit(cacerts[i]);
+     }
+-- 
+2.52.0
+

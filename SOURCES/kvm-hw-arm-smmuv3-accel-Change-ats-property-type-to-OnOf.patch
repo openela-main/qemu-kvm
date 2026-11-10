@@ -1,0 +1,154 @@
+From 90c17ee6172d145d3d79e5ffed4f58d6a4747728 Mon Sep 17 00:00:00 2001
+From: Nathan Chen <nathanc@nvidia.com>
+Date: Tue, 24 Mar 2026 14:02:29 +0000
+Subject: [PATCH 058/111] hw/arm/smmuv3-accel: Change "ats" property type to
+ OnOffAuto
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [58/111] 0ddc3fd7fce821a980fc30482c6316191d49d300 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-160190
+
+Change accel SMMUv3 ATS property from bool to OnOffAuto. The 'auto'
+value is not implemented, as this commit is meant to set the property
+to the correct type and avoid breaking JSON/QMP when the auto mode is
+introduced. A future patch will implement resolution of the 'auto'
+value to match the host SMMUv3 ATS support.
+
+The conversion of the ATS property type to OnOffAuto is an
+incompatible change for JSON/QMP when a bool value is expected for
+"ats", but the "ats" property is new in 11.0 and this patch is
+submitted as a fix to the property type.
+
+Fixes: f7f5013a55a3 ("hw/arm/smmuv3-accel: Add support for ATS")
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Reviewed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Tested-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Acked-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Nathan Chen <nathanc@nvidia.com>
+Message-id: 20260323182454.1416110-3-nathanc@nvidia.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 9f8a8e0f2c6fd48b4f3759a02b5210cba6a978e3)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/smmuv3-accel.c    |  4 +++-
+ hw/arm/smmuv3.c          | 17 ++++++++++++++---
+ hw/arm/virt-acpi-build.c |  2 +-
+ include/hw/arm/smmuv3.h  |  4 +++-
+ 4 files changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/hw/arm/smmuv3-accel.c b/hw/arm/smmuv3-accel.c
+index 2bb142c47f..f21a6a9997 100644
+--- a/hw/arm/smmuv3-accel.c
++++ b/hw/arm/smmuv3-accel.c
+@@ -827,7 +827,9 @@ void smmuv3_accel_idr_override(SMMUv3State *s)
+     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, s->ril);
+ 
+     /* QEMU SMMUv3 has no ATS. Advertise ATS if opt-in by property */
+-    s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATS, s->ats);
++    if (s->ats == ON_OFF_AUTO_ON) {
++        s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATS, 1);
++    }
+ 
+     /* Advertise 48-bit OAS in IDR5 when requested (default is 44 bits). */
+     if (s->oas == SMMU_OAS_48BIT) {
+diff --git a/hw/arm/smmuv3.c b/hw/arm/smmuv3.c
+index d937f4add5..6f8d093f51 100644
+--- a/hw/arm/smmuv3.c
++++ b/hw/arm/smmuv3.c
+@@ -317,6 +317,11 @@ static void smmuv3_init_id_regs(SMMUv3State *s)
+     smmuv3_accel_idr_override(s);
+ }
+ 
++bool smmuv3_ats_enabled(SMMUv3State *s)
++{
++    return FIELD_EX32(s->idr[0], IDR0, ATS);
++}
++
+ static void smmuv3_reset(SMMUv3State *s)
+ {
+     s->cmdq.base = deposit64(s->cmdq.base, 0, 5, SMMU_CMDQS);
+@@ -1966,12 +1971,17 @@ static bool smmu_validate_property(SMMUv3State *s, Error **errp)
+     }
+ #endif
+ 
++    if (s->ats == ON_OFF_AUTO_AUTO) {
++        error_setg(errp, "ats auto mode is not supported");
++        return false;
++    }
++
+     if (!s->accel) {
+         if (!s->ril) {
+             error_setg(errp, "ril can only be disabled if accel=on");
+             return false;
+         }
+-        if (s->ats) {
++        if (s->ats == ON_OFF_AUTO_ON) {
+             error_setg(errp, "ats can only be enabled if accel=on");
+             return false;
+         }
+@@ -2128,7 +2138,7 @@ static const Property smmuv3_properties[] = {
+     DEFINE_PROP_UINT64("msi-gpa", SMMUv3State, msi_gpa, 0),
+     /* RIL can be turned off for accel cases */
+     DEFINE_PROP_BOOL("ril", SMMUv3State, ril, true),
+-    DEFINE_PROP_BOOL("ats", SMMUv3State, ats, false),
++    DEFINE_PROP_ON_OFF_AUTO("ats", SMMUv3State, ats, ON_OFF_AUTO_OFF),
+     DEFINE_PROP_UINT8("oas", SMMUv3State, oas, 44),
+     DEFINE_PROP_UINT8("ssidsize", SMMUv3State, ssidsize, 0),
+ };
+@@ -2160,7 +2170,8 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
+         "Disable range invalidation support (for accel=on)");
+     object_class_property_set_description(klass, "ats",
+         "Enable/disable ATS support (for accel=on). Please ensure host "
+-        "platform has ATS support before enabling this");
++        "platform has ATS support before enabling this. ats=auto is not "
++        "supported.");
+     object_class_property_set_description(klass, "oas",
+         "Specify Output Address Size (for accel=on). Supported values "
+         "are 44 or 48 bits. Defaults to 44 bits");
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 160f1d10e5..b923e965da 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -408,7 +408,7 @@ static int iort_smmuv3_devices(Object *obj, void *opaque)
+ 
+     bus = PCI_BUS(object_property_get_link(obj, "primary-bus", &error_abort));
+     sdev.accel = object_property_get_bool(obj, "accel", &error_abort);
+-    sdev.ats = object_property_get_bool(obj, "ats", &error_abort);
++    sdev.ats = smmuv3_ats_enabled(ARM_SMMUV3(obj));
+     pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
+     sbdev = SYS_BUS_DEVICE(obj);
+     sdev.base = platform_bus_get_mmio_addr(pbus, sbdev, 0);
+diff --git a/include/hw/arm/smmuv3.h b/include/hw/arm/smmuv3.h
+index 26b2fc42fd..ce51a5b9b4 100644
+--- a/include/hw/arm/smmuv3.h
++++ b/include/hw/arm/smmuv3.h
+@@ -70,7 +70,7 @@ struct SMMUv3State {
+     uint64_t msi_gpa;
+     Error *migration_blocker;
+     bool ril;
+-    bool ats;
++    OnOffAuto ats;
+     uint8_t oas;
+     uint8_t ssidsize;
+ };
+@@ -91,6 +91,8 @@ struct SMMUv3Class {
+     ResettablePhases parent_phases;
+ };
+ 
++bool smmuv3_ats_enabled(struct SMMUv3State *s);
++
+ #define TYPE_ARM_SMMUV3   "arm-smmuv3"
+ OBJECT_DECLARE_TYPE(SMMUv3State, SMMUv3Class, ARM_SMMUV3)
+ 
+-- 
+2.52.0
+

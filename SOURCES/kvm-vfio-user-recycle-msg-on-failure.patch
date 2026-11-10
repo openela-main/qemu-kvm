@@ -1,0 +1,64 @@
+From e199275276173ff9bba201c762b40dd9649dd843 Mon Sep 17 00:00:00 2001
+From: John Levon <john.levon@nutanix.com>
+Date: Wed, 3 Dec 2025 15:33:15 +0530
+Subject: [PATCH 111/116] vfio-user: recycle msg on failure
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Rodolfo Vick <None>
+RH-MergeRequest: 486: Add DMABUF support
+RH-Jira: RHEL-138494
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Eric Auger <eric.auger@redhat.com>
+RH-Commit: [95/100] e51ea3292bfecfcca427eb6d71399af7c36a0868 (rovick1/qemu-kvm)
+
+If we fail to read an incoming request, recycle the message.
+
+Resolves: Coverity CID 1611807
+Resolves: Coverity CID 1611808
+Signed-off-by: John Levon <john.levon@nutanix.com>
+Reviewed-by: Mark Cave-Ayland <mark.caveayland@nutanix.com>
+Link: https://lore.kernel.org/qemu-devel/20251203100316.3604456-6-john.levon@nutanix.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+(cherry picked from commit 23c586abf2e12843894189c4742c8ea55c594cd5)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/vfio-user/proxy.c | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/hw/vfio-user/proxy.c b/hw/vfio-user/proxy.c
+index f2601eada5..314dfd23d8 100644
+--- a/hw/vfio-user/proxy.c
++++ b/hw/vfio-user/proxy.c
+@@ -412,11 +412,22 @@ err:
+     for (i = 0; i < numfds; i++) {
+         close(fdp[i]);
+     }
+-    if (isreply && msg != NULL) {
+-        /* force an error to keep sending thread from hanging */
+-        vfio_user_set_error(msg->hdr, EINVAL);
+-        msg->complete = true;
+-        qemu_cond_signal(&msg->cv);
++    if (msg != NULL) {
++        if (msg->type == VFIO_MSG_REQ) {
++            /*
++             * Clean up the request message on failure. Change type back to
++             * NOWAIT to free.
++             */
++            msg->type = VFIO_MSG_NOWAIT;
++            vfio_user_recycle(proxy, msg);
++        } else {
++            /*
++             * Report an error back to the sender. Sender will recycle msg.
++             */
++            vfio_user_set_error(msg->hdr, EINVAL);
++            msg->complete = true;
++            qemu_cond_signal(&msg->cv);
++        }
+     }
+     return -1;
+ }
+-- 
+2.52.0
+

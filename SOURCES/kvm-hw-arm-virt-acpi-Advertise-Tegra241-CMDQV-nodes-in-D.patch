@@ -1,0 +1,173 @@
+From e20c2fceac0cad9a6f509d9087e2fa965cc1489d Mon Sep 17 00:00:00 2001
+From: Nicolin Chen <nicolinc@nvidia.com>
+Date: Tue, 9 Jun 2026 12:25:49 +0100
+Subject: [PATCH 107/111] hw/arm/virt-acpi: Advertise Tegra241 CMDQV nodes in
+ DSDT
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RH-Author: Eric Auger <eric.auger@redhat.com>
+RH-MergeRequest: 505: SMMU Rebase for accelerated SMMU and CMDQV support
+RH-Jira: RHEL-142465 RHEL-160190 RHEL-163596 RHEL-73794 RHEL-73796 RHEL-73798
+RH-Acked-by: Cédric Le Goater <clg@redhat.com>
+RH-Acked-by: Gavin Shan <gshan@redhat.com>
+RH-Commit: [107/111] bae67aefac140c1e405d35e4b6a02560cc40f671 (eauger1/centos-qemu-kvm)
+
+JIRA: https://redhat.atlassian.net/browse/RHEL-73798
+
+Add ACPI DSDT support for Tegra241 CMDQV when the SMMUv3 instance is
+created with tegra241-cmdqv.
+
+For each accelerated SMMUv3 instance, add a Tegra241 CMDQV device
+object under the DSDT \_SB namespace, with HID "NVDA200C" and a UID
+that matches the Identifier of the corresponding SMMUv3 IORT node, so
+the guest OS can associate the DSDT device with the right SMMU. The
+_CRS covers the CMDQV MMIO aperture plus its interrupt, and _CCA
+declares I/O cache coherency.
+
+See ACPI Specification 6.5, Section 6 (Device Configuration) for
+_HID/_UID/_CCA/_CRS.
+
+Generated DSDT entry for a CMDQV instance paired with SMMUv3 Identifier=1:
+  ...
+  Device (CV01)
+  {
+      Name (_HID, "NVDA200C")  // _HID: Hardware ID
+      Name (_UID, One)  // _UID: Unique ID
+      Name (_CCA, One)  // _CCA: Cache Coherency Attribute
+      Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
+      {
+          QWordMemory (ResourceProducer, PosDecode, MinFixed, MaxFixed, Cacheable, ReadWrite,
+              0x0000000000000000, // Granularity
+              0x000000000C080000, // Range Minimum
+              0x000000000C0CFFFF, // Range Maximum
+              0x0000000000000000, // Translation Offset
+              0x0000000000050000, // Length
+              ,, , AddressRangeMemory, TypeStatic)
+          Interrupt (ResourceConsumer, Edge, ActiveHigh, Exclusive, ,, )
+          {
+              0x00000094,
+          }
+      })
+  }
+  ...
+Generated IORT SMMUv3 node (Identifier = 1):
+
+  ...
+  [048h 0072 001h]                        Type : 04
+  [049h 0073 002h]                      Length : 0058
+  [04Bh 0075 001h]                    Revision : 04
+  [04Ch 0076 004h]                  Identifier : 00000001
+  [050h 0080 004h]               Mapping Count : 00000001
+  [054h 0084 004h]              Mapping Offset : 00000044
+  ...
+
+Signed-off-by: Nicolin Chen <nicolinc@nvidia.com>
+Reviewed-by: Eric Auger <eric.auger@redhat.com>
+Tested-by: Nicolin Chen <nicolinc@nvidia.com>
+Tested-by: Eric Auger <eric.auger@redhat.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Message-id: 20260609112552.378999-29-skolothumtho@nvidia.com
+Co-developed-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Shameer Kolothum <skolothumtho@nvidia.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 67dc6a4c911b5f3a82766d27f41c5cf60b9c17d4)
+Signed-off-by: Eric Auger <eric.auger@redhat.com>
+---
+ hw/arm/trace-events      |  1 +
+ hw/arm/virt-acpi-build.c | 52 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 53 insertions(+)
+
+diff --git a/hw/arm/trace-events b/hw/arm/trace-events
+index 0bd718b1ab..1b16f710fe 100644
+--- a/hw/arm/trace-events
++++ b/hw/arm/trace-events
+@@ -9,6 +9,7 @@ omap1_lpg_led(const char *onoff) "omap1 LPG: LED is %s"
+ 
+ # virt-acpi-build.c
+ virt_acpi_setup(void) "No fw cfg or ACPI disabled. Bailing out."
++virt_acpi_dsdt_tegra241_cmdqv(int smmu_id, uint64_t base, uint32_t irq) "DSDT: add cmdqv node for (id=%d), base=0x%" PRIx64 ", irq=%d"
+ 
+ # smmu-common.c
+ smmu_add_mr(const char *name) "%s"
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 20dfe9e4d8..2c77d443fe 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -64,6 +64,9 @@
+ #include "hw/virtio/virtio-acpi.h"
+ #include "target/arm/multiprocessing.h"
+ 
++#include "smmuv3-accel.h"
++#include "tegra241-cmdqv.h"
++
+ #define ARM_SPI_BASE 32
+ 
+ #define ACPI_BUILD_TABLE_SIZE             0x20000
+@@ -1116,6 +1119,51 @@ static void build_fadt_rev6(GArray *table_data, BIOSLinker *linker,
+     build_fadt(table_data, linker, &fadt, vms->oem_id, vms->oem_table_id);
+ }
+ 
++static void acpi_dsdt_add_tegra241_cmdqv(Aml *scope, VirtMachineState *vms)
++{
++    for (int i = 0; i < vms->smmuv3_devices->len; i++) {
++        Object *obj = OBJECT(g_ptr_array_index(vms->smmuv3_devices, i));
++        PlatformBusDevice *pbus;
++        Aml *dev, *crs, *addr;
++        SysBusDevice *sbdev;
++        hwaddr base;
++        uint32_t id;
++        int irq;
++
++        if (smmuv3_accel_cmdqv_type(obj) != SMMUV3_CMDQV_TEGRA241) {
++            continue;
++        }
++        id = object_property_get_uint(obj, "identifier", &error_abort);
++        pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
++        sbdev = SYS_BUS_DEVICE(obj);
++        base = platform_bus_get_mmio_addr(pbus, sbdev, 1);
++        base += vms->memmap[VIRT_PLATFORM_BUS].base;
++        irq = platform_bus_get_irqn(pbus, sbdev, NUM_SMMU_IRQS);
++        irq += vms->irqmap[VIRT_PLATFORM_BUS];
++        irq += ARM_SPI_BASE;
++
++        dev = aml_device("CV%.02u", id);
++        aml_append(dev, aml_name_decl("_HID", aml_string("NVDA200C")));
++        aml_append(dev, aml_name_decl("_UID", aml_int(id)));
++        aml_append(dev, aml_name_decl("_CCA", aml_int(1)));
++
++        crs = aml_resource_template();
++        addr = aml_qword_memory(AML_POS_DECODE, AML_MIN_FIXED, AML_MAX_FIXED,
++                                AML_CACHEABLE, AML_READ_WRITE, 0x0, base,
++                                base + TEGRA241_CMDQV_IO_LEN - 0x1, 0x0,
++                                TEGRA241_CMDQV_IO_LEN);
++        aml_append(crs, addr);
++        aml_append(crs, aml_interrupt(AML_CONSUMER, AML_EDGE,
++                                      AML_ACTIVE_HIGH, AML_EXCLUSIVE,
++                                      (uint32_t *)&irq, 1));
++        aml_append(dev, aml_name_decl("_CRS", crs));
++
++        aml_append(scope, dev);
++
++        trace_virt_acpi_dsdt_tegra241_cmdqv(id, base, irq);
++    }
++}
++
+ /* DSDT */
+ static void
+ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
+@@ -1179,6 +1227,10 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
+     acpi_dsdt_add_tpm(scope, vms);
+ #endif
+ 
++    if (!vms->legacy_smmuv3_present) {
++        acpi_dsdt_add_tegra241_cmdqv(scope, vms);
++    }
++
+     aml_append(dsdt, scope);
+ 
+     pci0_scope = aml_scope("\\_SB.PCI0");
+-- 
+2.52.0
+
