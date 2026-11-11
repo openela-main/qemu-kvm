@@ -149,7 +149,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 24%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 24%{?rcrel}%{?dist}%{?cc_suffix}.1
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -525,6 +525,10 @@ Patch190: kvm-iotests-046-Test-that-discard-write_zeroes-wait-for-.patch
 Patch191: kvm-qcow2-Fix-data-loss-on-zero-write-with-detect-zeroes.patch
 # For RHEL-216952 - virt-storage: Backport stable branch fixes [rhel-9]
 Patch192: kvm-block-Fix-crash-after-setting-latency-historygram-wi.patch
+# For RHEL-283122 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.9.z]
+Patch193: kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch
+# For RHEL-283122 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.9.z]
+Patch194: kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch
 
 
 # For RHEL-11424 - [IBM 9.6 FEAT] KVM: Full boot order support - qemu part
@@ -2243,6 +2247,12 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Sat Oct 17 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-24.el9_9.1
+- kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch [RHEL-283122]
+- kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch [RHEL-283122]
+- Resolves: RHEL-283122
+  (Fix pending QEMU issues for L1VH GA - QEMU [rhel-9.9.z])
+
 * Fri Aug 21 2026 Jon Maloy <jmaloy@redhat.com> - 10.1.0-24
 - kvm-block-graph-lock-fix-missed-wakeup-in-bdrv_graph_co_.patch [RHEL-216952]
 - kvm-block-curl-fix-curl-internal-handles-handling.patch [RHEL-216952]
