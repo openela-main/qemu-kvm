@@ -143,7 +143,7 @@ Obsoletes: %{name}-block-ssh <= %{epoch}:%{version}                    \
 Summary: QEMU is a machine emulator and virtualizer
 Name: qemu-kvm
 Version: 10.1.0
-Release: 28%{?rcrel}%{?dist}%{?cc_suffix}
+Release: 28%{?rcrel}%{?dist}%{?cc_suffix}.1
 # Epoch because we pushed a qemu-1.0 package. AIUI this can't ever be dropped
 # Epoch 15 used for RHEL 8
 # Epoch 17 used for RHEL 9 (due to release versioning offset in RHEL 8.5)
@@ -1682,6 +1682,10 @@ Patch482: kvm-system-memory-Use-memmove-for-directly-accessible-re.patch
 Patch483: kvm-system-memory-Use-qemu_ram_move-for-directly-accessi.patch
 # For RHEL-246035 - [RHEL10.3] Exhausted DMA bounce buffer on building cuda-samples in VM
 Patch484: kvm-system-memory-Make-ram-device-region-directly-access.patch
+# For RHEL-283119 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-10.3.z]
+Patch485: kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch
+# For RHEL-283119 - Fix pending QEMU issues for L1VH GA - QEMU [rhel-10.3.z]
+Patch486: kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch
 
 %if %{have_clang}
 BuildRequires: clang
@@ -2764,6 +2768,12 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 
 %changelog
+* Thu Oct 15 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-28.el10_3.1
+- kvm-target-i386-mshv-switch-mmio-pagewalk-to-mshv-mmu.patch [RHEL-283119]
+- kvm-target-i386-mshv-add-soft-mmu-for-pagewalk.patch [RHEL-283119]
+- Resolves: RHEL-283119
+  (Fix pending QEMU issues for L1VH GA - QEMU [rhel-10.3.z])
+
 * Mon Aug 24 2026 Miroslav Rezanina <mrezanin@redhat.com> - 10.1.0-28
 - kvm-system-memory-Use-memmove-for-directly-accessible-re.patch [RHEL-246035]
 - kvm-system-memory-Use-qemu_ram_move-for-directly-accessi.patch [RHEL-246035]
